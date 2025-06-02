@@ -1,0 +1,221 @@
+package com.kino.puber.data.api.models
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class ApiResponse<T>(
+    val data: T? = null,
+    val error: String? = null,
+    val status: String? = null
+)
+
+@Serializable
+data class PaginatedResponse<T>(
+    val items: List<T>,
+    val pagination: Pagination
+)
+
+@Serializable
+data class Pagination(
+    val current: Int,
+    val perpage: Int,
+    val total: Int,
+    @SerialName("total_items") val totalItems: Int
+)
+
+@Serializable
+data class Item(
+    val id: Int,
+    val title: String,
+    val type: String,
+    val year: Int? = null,
+    val rating: String? = null,
+    val genres: List<Genre>? = null,
+    val countries: List<Country>? = null,
+    val director: String? = null,
+    val cast: String? = null,
+    val plot: String? = null,
+    val duration: Duration? = null,
+    val posters: Posters? = null,
+    val trailer: Trailer? = null,
+    val quality: Int? = null,
+    val ac3: Int? = null,
+    val advert: Boolean? = null,
+    val subscribed: Boolean? = null,
+    @SerialName("in_watchlist") val inWatchlist: Boolean? = null,
+    val imdb: String? = null,
+    @SerialName("imdb_rating") val imdbRating: String? = null,
+    @SerialName("imdb_votes") val imdbVotes: Int? = null,
+    val kinopoisk: String? = null,
+    @SerialName("kinopoisk_rating") val kinopoiskRating: String? = null,
+    @SerialName("kinopoisk_votes") val kinopoiskVotes: Int? = null,
+    val langs: String? = null,
+    @SerialName("poor_quality") val poorQuality: Boolean? = null,
+    @SerialName("rating_percentage") val ratingPercentage: String? = null,
+    @SerialName("rating_votes") val ratingVotes: Int? = null,
+    val subtype: String? = null,
+    val tracklist: List<Tracklist>? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    val views: Int? = null,
+    val voice: String? = null,
+    val finished: Boolean? = null,
+    val comments: Int? = null
+)
+
+@Serializable
+data class Genre(
+    val id: Int,
+    val title: String
+)
+
+@Serializable
+data class Country(
+    val id: Int,
+    val title: String
+)
+
+@Serializable
+data class Duration(
+    val average: String? = null,
+    val total: String? = null
+)
+
+@Serializable
+data class Posters(
+    val small: String? = null,
+    val medium: String? = null,
+    val big: String? = null,
+    val wide: String? = null
+)
+
+@Serializable
+data class Trailer(
+    val url: String? = null,
+    val quality: String? = null
+)
+
+@Serializable
+data class Tracklist(
+    val artists: String? = null,
+    val title: String? = null,
+    val url: String? = null
+)
+
+@Serializable
+data class History(
+    val id: Int,
+    val item: Item,
+    val video: Video? = null,
+    val season: Int? = null,
+    val time: Int? = null,
+    val updated: String? = null
+)
+
+@Serializable
+data class Video(
+    val id: Int,
+    val number: Int? = null,
+    val title: String? = null,
+    val thumbnail: String? = null
+)
+
+@Serializable
+data class Media(
+    val id: Int,
+    val title: String? = null,
+    val files: List<MediaFile>? = null
+)
+
+@Serializable
+data class MediaFile(
+    val url: String,
+    val quality: String? = null,
+    val type: String? = null
+)
+
+@Serializable
+data class Audio(
+    val id: Int,
+    val lang: String? = null,
+    val type: String? = null,
+    val author: String? = null
+)
+
+@Serializable
+data class Subtitle(
+    val id: Int,
+    val lang: String,
+    val url: String,
+    val shift: Int? = null
+)
+
+@Serializable
+data class Author(
+    val id: Int,
+    val name: String,
+    val role: String? = null
+)
+
+@Serializable
+data class Comment(
+    val id: Int,
+    val text: String,
+    val author: String? = null,
+    val date: String? = null,
+    val rating: Int? = null
+)
+
+@Serializable
+data class Bookmark(
+    val id: Int,
+    val title: String,
+    val count: Int? = null,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class KCollection(
+    val id: Int,
+    val title: String,
+    val description: String? = null,
+    val count: Int? = null,
+    val posters: Posters? = null
+)
+
+@Serializable
+data class UserInfo(
+    val id: Int,
+    val username: String,
+    val email: String? = null,
+    val subscription: Subscription? = null
+)
+
+@Serializable
+data class Subscription(
+    val active: Boolean,
+    @SerialName("expires_at") val expiresAt: String? = null,
+    val days: Int? = null
+)
+
+@Serializable
+data class DeviceSettings(
+    val id: Int,
+    @SerialName("support_ssl") val supportSsl: Boolean? = null,
+    @SerialName("support_hevc") val supportHevc: Boolean? = null,
+    @SerialName("support_hdr") val supportHdr: Boolean? = null,
+    @SerialName("support_4k") val support4k: Boolean? = null,
+    @SerialName("mixed_playlist") val mixedPlaylist: Boolean? = null,
+    @SerialName("streaming_type") val streamingType: Int? = null,
+    @SerialName("server_location") val serverLocation: Int? = null
+)
+
+@Serializable
+data class WatchingStatus(
+    val id: Int,
+    val status: Int,
+    val time: Int? = null,
+    val season: Int? = null,
+    val episode: Int? = null
+) 

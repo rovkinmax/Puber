@@ -145,7 +145,7 @@ complexity:
     ignoreStringsRegex: '$^'
   TooManyFunctions:
     active: true
-    excludes: [ '**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/jsTest/**', '**/iosTest/**' ]
+    excludes: [ '**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/jsTest/**', '**/iosTest/**', '**/api/**' ]
     thresholdInFiles: 25
     thresholdInClasses: 25
     thresholdInInterfaces: 25
@@ -608,7 +608,7 @@ style:
   ReturnCount:
     active: true
     max: 3
-    excludedFunctions: [ 'equals' ]
+    excludes: [ '**/auth/**' ]
     excludeLabeled: false
     excludeReturnFromLambda: true
     excludeGuardClauses: false

@@ -6,10 +6,37 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("io.gitlab.arturbosch.detekt") version libs.versions.detektVersion.get()
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.detekt)
 }
 
 val currentVersion = "1.0.0"
+
+/**
+ * Reads CLIENT_SECRET from local.properties or system environment variable
+ */
+fun getClientSecret(): String {
+    // Try to read from local.properties first
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        val localProperties = Properties()
+        localProperties.load(FileInputStream(localPropertiesFile))
+        val localSecret = localProperties.getProperty("PUBER_CLIENT_SECRET")
+        if (!localSecret.isNullOrEmpty()) {
+            return localSecret
+        }
+    }
+
+    // Fall back to system environment variable
+    val envSecret = System.getenv("PUBER_CLIENT_SECRET")
+    if (!envSecret.isNullOrEmpty()) {
+        return envSecret
+    }
+
+    // Fallback to default value for development (not recommended for production)
+    return ""
+}
+
 android {
     namespace = "com.kino.puber"
     compileSdk = Versions.CompileSdk
@@ -23,6 +50,9 @@ android {
 
         buildFeatures.compose = true
         buildFeatures.buildConfig = true
+
+        // Add CLIENT_SECRET to BuildConfig
+        buildConfigField("String", "CLIENT_SECRET", "\"${getClientSecret()}\"")
     }
 
     flavorDimensions += "buildType"
@@ -128,6 +158,20 @@ kotlin {
     }
 }
 
+tasks {
+    @Suppress("unused")
+    val detektAll by registering(io.gitlab.arturbosch.detekt.Detekt::class) {
+        parallel = true
+        setSource(files(projectDir))
+        include("**/*.kt")
+        exclude("**/resources/**")
+        exclude("**/build/**")
+        exclude("**/androidTest/**")
+        config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+        baseline.set(file("$rootDir/config/detekt/detekt-baseline.xml"))
+        buildUponDefaultConfig = false
+    }
+}
 
 dependencies {
     implementation(libs.androidx.core.ktx)
@@ -142,6 +186,27 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
+
+    // Ktor HTTP client
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.client.auth)
+    implementation(libs.ktor.client.logging)
+    implementation(libs.ktor.serialization.kotlinx.json)
+
+    // Serialization & Utils
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.datetime)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
+
+    // Logging
+    implementation(libs.timber)
+
+    // Testing
+    testImplementation(libs.junit)
+
     detektPlugins(libs.detekt.compose.rules)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
