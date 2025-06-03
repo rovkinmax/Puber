@@ -140,6 +140,8 @@ dependencies {
     implementation(libs.androidx.tv.material)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.koin.android)
+    implementation(libs.koin.androidx.compose)
     detektPlugins(libs.detekt.compose.rules)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
