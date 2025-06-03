@@ -11,6 +11,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.kino.puber.ui.theme.PuberTheme
+import org.koin.androidx.compose.koinViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,6 +31,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
+    val vm = koinViewModel<MainViewmodel>()
+    vm.hello()
     Text(
         text = "Hello $name!",
         modifier = modifier
