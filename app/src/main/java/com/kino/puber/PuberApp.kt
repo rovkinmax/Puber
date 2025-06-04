@@ -5,6 +5,7 @@ import com.kino.puber.core.logger.LinkingDebugTree
 import com.kino.puber.data.di.apiModule
 import com.kino.puber.data.di.repositoryModule
 import com.kino.puber.domain.di.interactorModule
+import com.kino.puber.ui.feature.auth.vm.MainViewmodel
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 import org.koin.core.module.dsl.viewModelOf
