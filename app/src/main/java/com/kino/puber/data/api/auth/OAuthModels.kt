@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class DeviceCodeResponse(
-    @SerialName("device_code") val deviceCode: String,
+    val code: String,
     @SerialName("user_code") val userCode: String,
     @SerialName("verification_uri") val verificationUri: String,
     @SerialName("expires_in") val expiresIn: Int,
@@ -22,9 +22,7 @@ data class TokenResponse(
 
 @Serializable
 data class TokenRequest(
-    val code: String,
-    val username: String,
-    val timestamp: Long
+    val code: String
 )
 
 @Serializable
@@ -40,5 +38,41 @@ data class OAuthError(
 
 data class DeviceFlowResult(
     val deviceCode: DeviceCodeResponse,
-    val token: TokenResponse
-) 
+    val token: TokenResponse?,
+)
+
+/**
+ * Represents different states during OAuth Device Flow process
+ */
+sealed class DeviceFlowState {
+    /**
+     * Device code successfully obtained, user should visit verification URL
+     */
+    data class DeviceCodeObtained(
+        val deviceCode: DeviceCodeResponse
+    ) : DeviceFlowState()
+
+    /**
+     * Waiting for user authorization
+     */
+    data class WaitingForAuthorization(
+        val attempt: Int,
+        val maxAttempts: Int,
+        val deviceCode: DeviceCodeResponse
+    ) : DeviceFlowState()
+
+    /**
+     * Authentication completed successfully
+     */
+    data class Completed(
+        val result: DeviceFlowResult
+    ) : DeviceFlowState()
+
+    /**
+     * Error occurred during the process
+     */
+    data class Error(
+        val exception: Throwable,
+        val isRecoverable: Boolean = false
+    ) : DeviceFlowState()
+} 

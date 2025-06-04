@@ -6,6 +6,7 @@ appcompat = "1.7.0"
 composeBom = "2025.05.01"
 tvFoundation = "1.0.0-alpha12"
 tvMaterial = "1.0.0"
+composeMaterial3Android = "1.3.2"
 lifecycleRuntimeKtx = "2.9.0"
 activityCompose = "1.10.1"
 detekt = "1.23.8"
@@ -36,6 +37,7 @@ androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-man
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-tv-foundation = { group = "androidx.tv", name = "tv-foundation", version.ref = "tvFoundation" }
 androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tvMaterial" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3-android", version.ref = "composeMaterial3Android" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 detekt-compose-rules = { module = "ru.kode:detekt-rules-compose", version = "1.4.0" }

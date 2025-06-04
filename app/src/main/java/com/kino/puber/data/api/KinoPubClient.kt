@@ -6,16 +6,32 @@ import com.kino.puber.data.api.auth.OAuthClient
 import com.kino.puber.data.api.auth.TokenResponse
 import com.kino.puber.data.api.config.KinoPubClientConfig
 import com.kino.puber.data.api.models.Bookmark
+import com.kino.puber.data.api.models.BookmarkFolder
+import com.kino.puber.data.api.models.BookmarkToggleResult
 import com.kino.puber.data.api.models.Comment
 import com.kino.puber.data.api.models.Country
+import com.kino.puber.data.api.models.DeviceInfo
 import com.kino.puber.data.api.models.DeviceSettings
+import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Genre
 import com.kino.puber.data.api.models.History
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.ItemFiles
 import com.kino.puber.data.api.models.KCollection
+import com.kino.puber.data.api.models.MediaLinks
 import com.kino.puber.data.api.models.PaginatedResponse
+import com.kino.puber.data.api.models.QualityType
+import com.kino.puber.data.api.models.Season
+import com.kino.puber.data.api.models.ServerLocation
+import com.kino.puber.data.api.models.StreamingType
+import com.kino.puber.data.api.models.TVChannel
+import com.kino.puber.data.api.models.TranslationType
 import com.kino.puber.data.api.models.UserInfo
+import com.kino.puber.data.api.models.VoiceAuthor
+import com.kino.puber.data.api.models.VoteResult
 import com.kino.puber.data.api.models.WatchingStatus
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.onEach
 
 /**
  * Main KinoPub client that combines OAuth authentication and API functionality
@@ -35,19 +51,16 @@ class KinoPubClient(
         /**
          * Create default client with logging enabled
          * @param context Android context for device info
-         * @param username Username for User-Agent
          * @param enableLogging Enable HTTP logging
          */
         fun create(
             context: Context,
-            username: String? = null,
             enableLogging: Boolean = true
         ): KinoPubClient {
             return KinoPubClient(
                 KinoPubClientConfig(
                     enableLogging = enableLogging,
-                    context = context,
-                    username = username
+                    context = context
                 )
             )
         }
@@ -76,14 +89,13 @@ class KinoPubClient(
 
     /**
      * Authenticate using device flow
-     * @param username Username for authentication
-     * @return Device flow result with verification info and token
+     * @return Flow that emits device flow states and final result
      */
-    suspend fun authenticateWithDeviceFlow(username: String): Result<DeviceFlowResult> {
-        return oauthClient.completeDeviceFlow(username).also { result ->
-            if (result.isSuccess) {
+    fun authenticateWithDeviceFlow(): Flow<Result<DeviceFlowResult>> {
+        return oauthClient.completeDeviceFlow().onEach { result ->
+            if (result.isSuccess && result.getOrNull()?.token != null) {
                 val flowResult = result.getOrThrow()
-                setTokens(flowResult.token)
+                setTokens(flowResult.token!!)
             }
         }
     }
@@ -290,6 +302,106 @@ class KinoPubClient(
 
     suspend fun getCountries(): Result<List<Country>> =
         requireAuthentication().getCountries()
+
+    // Reference data API methods
+
+    suspend fun getServerLocations(): Result<List<ServerLocation>> =
+        requireAuthentication().getServerLocations()
+
+    suspend fun getStreamingTypes(): Result<List<StreamingType>> =
+        requireAuthentication().getStreamingTypes()
+
+    suspend fun getTranslationTypes(): Result<List<TranslationType>> =
+        requireAuthentication().getTranslationTypes()
+
+    suspend fun getVoiceAuthors(): Result<List<VoiceAuthor>> =
+        requireAuthentication().getVoiceAuthors()
+
+    suspend fun getQualityTypes(): Result<List<QualityType>> =
+        requireAuthentication().getQualityTypes()
+
+    // TV Broadcasting API methods
+
+    suspend fun getTVChannels(): Result<List<TVChannel>> =
+        requireAuthentication().getTVChannels()
+
+    suspend fun getTVChannelDetails(id: Int): Result<TVChannel> =
+        requireAuthentication().getTVChannelDetails(id)
+
+    // Media files and links API methods
+
+    suspend fun getMediaLinks(
+        id: Int,
+        season: Int? = null,
+        episode: Int? = null
+    ): Result<MediaLinks> =
+        requireAuthentication().getMediaLinks(id, season, episode)
+
+    suspend fun getVideoFileLink(filename: String): Result<String> =
+        requireAuthentication().getVideoFileLink(filename)
+
+    suspend fun getItemFiles(
+        id: Int,
+        season: Int? = null,
+        episode: Int? = null
+    ): Result<ItemFiles> =
+        requireAuthentication().getItemFiles(id, season, episode)
+
+    // Voting API methods
+
+    suspend fun voteForItem(id: Int, rating: Int): Result<VoteResult> =
+        requireAuthentication().voteForItem(id, rating)
+
+    suspend fun removeVoteForItem(id: Int): Result<VoteResult> =
+        requireAuthentication().removeVoteForItem(id)
+
+    // Extended device API methods
+
+    suspend fun getAllDevices(): Result<List<DeviceInfo>> =
+        requireAuthentication().getAllDevices()
+
+    suspend fun removeDevice(deviceId: String): Result<Unit> =
+        requireAuthentication().removeDevice(deviceId)
+
+    suspend fun getDeviceSettingsById(deviceId: String): Result<DeviceSettings> =
+        requireAuthentication().getDeviceSettingsById(deviceId)
+
+    suspend fun updateDeviceSettings(
+        supportSsl: Boolean? = null,
+        supportHevc: Boolean? = null,
+        supportHdr: Boolean? = null,
+        support4k: Boolean? = null,
+        mixedPlaylist: Boolean? = null,
+        streamingType: Int? = null,
+        serverLocation: Int? = null
+    ): Result<DeviceSettings> =
+        requireAuthentication().updateDeviceSettings(
+            supportSsl, supportHevc, supportHdr, support4k,
+            mixedPlaylist, streamingType, serverLocation
+        )
+
+    // Extended bookmarks API methods
+
+    suspend fun getItemBookmarkFolders(itemId: Int): Result<List<BookmarkFolder>> =
+        requireAuthentication().getItemBookmarkFolders(itemId)
+
+    suspend fun toggleBookmark(itemId: Int, folderId: Int): Result<BookmarkToggleResult> =
+        requireAuthentication().toggleBookmark(itemId, folderId)
+
+    // Extended content API methods
+
+    suspend fun getItemSeasons(id: Int): Result<List<Season>> =
+        requireAuthentication().getItemSeasons(id)
+
+    suspend fun getSeasonEpisodes(itemId: Int, seasonNumber: Int): Result<List<Episode>> =
+        requireAuthentication().getSeasonEpisodes(itemId, seasonNumber)
+
+    suspend fun getEpisodeDetails(
+        itemId: Int,
+        seasonNumber: Int,
+        episodeNumber: Int
+    ): Result<Episode> =
+        requireAuthentication().getEpisodeDetails(itemId, seasonNumber, episodeNumber)
 
     /**
      * Close the client and release resources

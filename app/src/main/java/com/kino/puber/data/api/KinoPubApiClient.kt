@@ -5,15 +5,29 @@ import com.kino.puber.data.api.config.KinoPubConfig
 import com.kino.puber.data.api.config.createHttpClient
 import com.kino.puber.data.api.config.createOkHttpClient
 import com.kino.puber.data.api.models.Bookmark
+import com.kino.puber.data.api.models.BookmarkFolder
+import com.kino.puber.data.api.models.BookmarkToggleResult
 import com.kino.puber.data.api.models.Comment
 import com.kino.puber.data.api.models.Country
+import com.kino.puber.data.api.models.DeviceInfo
 import com.kino.puber.data.api.models.DeviceSettings
+import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Genre
 import com.kino.puber.data.api.models.History
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.ItemFiles
 import com.kino.puber.data.api.models.KCollection
+import com.kino.puber.data.api.models.MediaLinks
 import com.kino.puber.data.api.models.PaginatedResponse
+import com.kino.puber.data.api.models.QualityType
+import com.kino.puber.data.api.models.Season
+import com.kino.puber.data.api.models.ServerLocation
+import com.kino.puber.data.api.models.StreamingType
+import com.kino.puber.data.api.models.TVChannel
+import com.kino.puber.data.api.models.TranslationType
 import com.kino.puber.data.api.models.UserInfo
+import com.kino.puber.data.api.models.VoiceAuthor
+import com.kino.puber.data.api.models.VoteResult
 import com.kino.puber.data.api.models.WatchingStatus
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -417,6 +431,239 @@ class KinoPubApiClient(
      */
     suspend fun getCountries(): Result<List<Country>> = apiCall {
         httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}countries")
+    }
+
+    // Reference data API (based on official documentation)
+
+    /**
+     * Get server locations
+     */
+    suspend fun getServerLocations(): Result<List<ServerLocation>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}server-locations")
+    }
+
+    /**
+     * Get streaming types
+     */
+    suspend fun getStreamingTypes(): Result<List<StreamingType>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}streaming-types")
+    }
+
+    /**
+     * Get translation types
+     */
+    suspend fun getTranslationTypes(): Result<List<TranslationType>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}translation-types")
+    }
+
+    /**
+     * Get voice authors
+     */
+    suspend fun getVoiceAuthors(): Result<List<VoiceAuthor>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}voice-authors")
+    }
+
+    /**
+     * Get quality types
+     */
+    suspend fun getQualityTypes(): Result<List<QualityType>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}quality-types")
+    }
+
+    // TV Broadcasting API
+
+    /**
+     * Get TV channels
+     */
+    suspend fun getTVChannels(): Result<List<TVChannel>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}tv/channels")
+    }
+
+    /**
+     * Get TV channel details
+     */
+    suspend fun getTVChannelDetails(id: Int): Result<TVChannel> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}tv/channels/$id")
+    }
+
+    // Media files and links API
+
+    /**
+     * Get media links (subtitles and video files) for media
+     */
+    suspend fun getMediaLinks(
+        id: Int,
+        season: Int? = null,
+        episode: Int? = null
+    ): Result<MediaLinks> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}items/media-links") {
+            parameter("id", id)
+            season?.let { parameter("season", it) }
+            episode?.let { parameter("episode", it) }
+        }
+    }
+
+    /**
+     * Get video file link by filename
+     */
+    suspend fun getVideoFileLink(filename: String): Result<String> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}items/media-link") {
+            parameter("filename", filename)
+        }
+    }
+
+    /**
+     * Get item files (video files with different qualities and translations)
+     */
+    suspend fun getItemFiles(
+        id: Int,
+        season: Int? = null,
+        episode: Int? = null
+    ): Result<ItemFiles> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}items/files") {
+            parameter("id", id)
+            season?.let { parameter("season", it) }
+            episode?.let { parameter("episode", it) }
+        }
+    }
+
+    // Voting API
+
+    /**
+     * Vote for video content
+     */
+    suspend fun voteForItem(
+        id: Int,
+        rating: Int // 1-10
+    ): Result<VoteResult> = apiCall {
+        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}items/vote") {
+            setBody(
+                mapOf(
+                    "id" to id,
+                    "rating" to rating
+                )
+            )
+            contentType(ContentType.Application.Json)
+        }
+    }
+
+    /**
+     * Remove vote for item
+     */
+    suspend fun removeVoteForItem(id: Int): Result<VoteResult> = apiCall {
+        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}items/vote/remove") {
+            setBody(mapOf("id" to id))
+            contentType(ContentType.Application.Json)
+        }
+    }
+
+    // Extended device API
+
+    /**
+     * Get all devices on account
+     */
+    suspend fun getAllDevices(): Result<List<DeviceInfo>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}device/devices")
+    }
+
+    /**
+     * Remove specific device by ID
+     */
+    suspend fun removeDevice(deviceId: String): Result<Unit> = apiCall {
+        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}device/remove") {
+            setBody(mapOf("device_id" to deviceId))
+            contentType(ContentType.Application.Json)
+        }
+    }
+
+    /**
+     * Get device settings by ID
+     */
+    suspend fun getDeviceSettingsById(deviceId: String): Result<DeviceSettings> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}device/$deviceId")
+    }
+
+    /**
+     * Update device settings
+     */
+    suspend fun updateDeviceSettings(
+        supportSsl: Boolean? = null,
+        supportHevc: Boolean? = null,
+        supportHdr: Boolean? = null,
+        support4k: Boolean? = null,
+        mixedPlaylist: Boolean? = null,
+        streamingType: Int? = null,
+        serverLocation: Int? = null
+    ): Result<DeviceSettings> = apiCall {
+        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}device/settings") {
+            val settings = mutableMapOf<String, Any>()
+            supportSsl?.let { settings["support_ssl"] = it }
+            supportHevc?.let { settings["support_hevc"] = it }
+            supportHdr?.let { settings["support_hdr"] = it }
+            support4k?.let { settings["support_4k"] = it }
+            mixedPlaylist?.let { settings["mixed_playlist"] = it }
+            streamingType?.let { settings["streaming_type"] = it }
+            serverLocation?.let { settings["server_location"] = it }
+
+            setBody(settings)
+            contentType(ContentType.Application.Json)
+        }
+    }
+
+    // Extended bookmarks API
+
+    /**
+     * Get bookmark folders for specific item
+     */
+    suspend fun getItemBookmarkFolders(itemId: Int): Result<List<BookmarkFolder>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/get-item-folders") {
+            parameter("item", itemId)
+        }
+    }
+
+    /**
+     * Toggle bookmark (add/remove from folder)
+     */
+    suspend fun toggleBookmark(itemId: Int, folderId: Int): Result<BookmarkToggleResult> = apiCall {
+        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/toggle") {
+            setBody(
+                mapOf(
+                    "item" to itemId,
+                    "folder" to folderId
+                )
+            )
+            contentType(ContentType.Application.Json)
+        }
+    }
+
+    // Extended content API
+
+    /**
+     * Get item seasons (for TV shows)
+     */
+    suspend fun getItemSeasons(id: Int): Result<List<Season>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}items/$id/seasons")
+    }
+
+    /**
+     * Get season episodes
+     */
+    suspend fun getSeasonEpisodes(
+        itemId: Int,
+        seasonNumber: Int
+    ): Result<List<Episode>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}items/$itemId/seasons/$seasonNumber/episodes")
+    }
+
+    /**
+     * Get episode details
+     */
+    suspend fun getEpisodeDetails(
+        itemId: Int,
+        seasonNumber: Int,
+        episodeNumber: Int
+    ): Result<Episode> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}items/$itemId/seasons/$seasonNumber/episodes/$episodeNumber")
     }
 
     // Helper method for API calls

@@ -2,6 +2,7 @@ package com.kino.puber.data.api.config
 
 import android.content.Context
 import com.kino.puber.BuildConfig
+import com.kino.puber.core.logger.CurlLoggingInterceptor
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.DefaultRequest
@@ -24,9 +25,9 @@ import okhttp3.Response
 import java.util.concurrent.TimeUnit
 
 object KinoPubConfig {
-    const val MAIN_API_BASE_URL = "https://api.alador.space/v1/"
-    const val OAUTH_BASE_URL = "https://api.alador.space/oauth2/"
-    const val EXTRA_API_BASE_URL = "https://api.alador.space/"
+    const val MAIN_API_BASE_URL = "https://api.service-kp.com/v1/"
+    const val OAUTH_BASE_URL = "https://api.service-kp.com/oauth2/"
+    const val EXTRA_API_BASE_URL = "https://api.service-kp.com/"
 
     const val CLIENT_ID = "android"
     const val CLIENT_SECRET = BuildConfig.CLIENT_SECRET
@@ -106,6 +107,7 @@ fun createOkHttpClient(config: KinoPubClientConfig = KinoPubClientConfig()): OkH
         .readTimeout(config.requestTimeout, TimeUnit.MILLISECONDS)
         .writeTimeout(config.socketTimeout, TimeUnit.MILLISECONDS)
         .addInterceptor(KinoPubParametersInterceptor())
+        .addInterceptor(CurlLoggingInterceptor(BuildConfig.DEBUG))
         .build()
 }
 
