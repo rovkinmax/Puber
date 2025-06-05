@@ -187,6 +187,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
+    implementation(libs.security.crypto)
 
     // Ktor HTTP client
     implementation(libs.ktor.client.core)

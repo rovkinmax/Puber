@@ -17,6 +17,7 @@ coroutines = "1.10.2"
 timber = "5.0.1"
 junit = "4.13.2"
 koinVersion = "4.0.4"
+security = "1.1.0-alpha06"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -43,6 +44,7 @@ androidx-activity-compose = { group = "androidx.activity", name = "activity-comp
 detekt-compose-rules = { module = "ru.kode:detekt-rules-compose", version = "1.4.0" }
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koinVersion" }
 koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koinVersion" }
+security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "security" }
 
 # Ktor
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
