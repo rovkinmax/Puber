@@ -6,22 +6,23 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
 
-private const val PREFS_NAME = "KINOPUBER_SECURE_PREFS"
-private const val ACCESS_TOKEN_KEY_NAME = "KINOPUBER_ACCESS_TOKEN"
-private const val REFRESH_TOKEN_KEY_NAME = "KINOPUBER_REFRESH_TOKEN"
-
 internal class CryptoPreferenceRepository(
     private val context: Context,
 ) : ICryptoPreferenceRepository {
 
     private val sharedPreferences by lazy {
-        val masterKey = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        val masterKey =
+            MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
         return@lazy EncryptedSharedPreferences.create(
             /* context = */ context,
-            /* fileName = */ PREFS_NAME,
-            /* masterKey = */ masterKey,
-            /* prefKeyEncryptionScheme = */ EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            /* prefValueEncryptionScheme = */ EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            /* fileName = */
+            PREFS_NAME,
+            /* masterKey = */
+            masterKey,
+            /* prefKeyEncryptionScheme = */
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            /* prefValueEncryptionScheme = */
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
     }
 
@@ -46,4 +47,10 @@ internal class CryptoPreferenceRepository(
 
     private fun getString(name: String): String? =
         sharedPreferences.getString(name, null)
+
+    companion object {
+        private const val PREFS_NAME = "KINOPUBER_SECURE_PREFS"
+        private const val ACCESS_TOKEN_KEY_NAME = "KINOPUBER_ACCESS_TOKEN"
+        private const val REFRESH_TOKEN_KEY_NAME = "KINOPUBER_REFRESH_TOKEN"
+    }
 }
