@@ -40,7 +40,6 @@ internal class CryptoPreferenceRepository(
     private fun saveString(name: String, value: String?) {
         sharedPreferences.edit {
             putString(name, value)
-            put
         }
 
     }
