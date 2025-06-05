@@ -185,9 +185,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.security.crypto)
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
-    implementation(libs.security.crypto)
 
     // Ktor HTTP client
     implementation(libs.ktor.client.core)
