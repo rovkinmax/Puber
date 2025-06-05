@@ -1,0 +1,54 @@
+package com.kino.puber.core.ui.navigation
+
+import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.Navigator
+import cafe.adriel.voyager.navigator.bottomSheet.BottomSheetNavigator
+
+internal const val HiddenBottomSheetKey =
+    "cafe.adriel.voyager.navigator.bottomSheet.HiddenBottomSheetScreen"
+
+internal fun BottomSheetNavigator.osomePop() {
+    val lastItem = lastItemOrNull
+    pop()
+}
+
+internal fun BottomSheetNavigator.osomeHide() {
+    if (/*lastItemOrNull != null && */lastItemOrNull?.key != HiddenBottomSheetKey) {
+        val items = items.toList()
+        this.hide()
+    }
+}
+
+internal fun BottomSheetNavigator.osomeShow(screen: Screen) {
+    show(screen)
+}
+
+internal fun Navigator.osomePush(screen: Screen) {
+    push(screen)
+}
+
+internal fun Navigator.osomeReplace(screen: Screen) {
+    val lastItem = lastItemOrNull
+    replace(screen)
+}
+
+internal fun Navigator.osomeReplaceAll(vararg screen: Screen) {
+    val items = items.toList()
+    replaceAll(screen.toList())
+}
+
+internal fun Navigator.osomePop() {
+    val lastItem = lastItemOrNull
+    pop()
+}
+
+internal fun Navigator.osomePopUntil(predicate: (Screen) -> Boolean) {
+    val poppedScreens = mutableListOf<Screen>()
+    popUntil {
+        val popped = predicate(it)
+        if (popped) {
+            poppedScreens.add(it)
+        }
+        return@popUntil popped
+    }
+}
