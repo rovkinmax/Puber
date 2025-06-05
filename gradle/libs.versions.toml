@@ -41,10 +41,10 @@ androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.re
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3-android", version.ref = "composeMaterial3Android" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "security" }
 detekt-compose-rules = { module = "ru.kode:detekt-rules-compose", version = "1.4.0" }
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koinVersion" }
 koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koinVersion" }
-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "security" }
 
 # Ktor
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
