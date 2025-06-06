@@ -28,11 +28,11 @@ import com.kino.puber.core.ui.navigation.osomePush
 import com.kino.puber.core.ui.navigation.osomeReplace
 import com.kino.puber.core.ui.navigation.osomeReplaceAll
 import com.kino.puber.core.ui.navigation.osomeShow
-import com.kino.puber.core.ui.uikit.FullScreenProgressIndicator
+import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.parcelize.Parcelize
 import org.koin.compose.LocalKoinScope
-import org.koin.compose.koinInject
+import org.koin.compose.currentKoinScope
 import org.koin.core.module.Module
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -47,7 +47,12 @@ private fun buildFlowModule(
 ): Module = module {
     scope(named(scopeId)) {
         scoped<CoroutineScope> { coroutineScope }
-        scoped { AppRouter(coroutineScope = get()) }
+        scoped {
+            AppRouter(
+                coroutineScope = get(),
+                screens = get(),
+            )
+        }
     }
 }
 
@@ -65,7 +70,7 @@ fun FlowComponent(
     },
     scopeName = scopeName,
 ) {
-    val router = koinInject<AppRouter>()
+    val router by currentKoinScope().inject<AppRouter>()
 
     BottomSheetNavigator(
         sheetBackgroundColor = Color.Unspecified,

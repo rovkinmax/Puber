@@ -8,7 +8,7 @@ import cafe.adriel.voyager.navigator.tab.TabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import com.kino.puber.core.ui.navigation.TabCommand
 import com.kino.puber.core.ui.navigation.TabRouter
-import com.kino.puber.core.ui.uikit.FullScreenProgressIndicator
+import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import org.koin.compose.LocalKoinScope
 import org.koin.compose.koinInject
 

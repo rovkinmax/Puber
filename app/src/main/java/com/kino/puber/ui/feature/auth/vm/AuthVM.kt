@@ -4,13 +4,15 @@ import com.kino.puber.core.error.DefaultErrorHandler
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.logger.log
 import com.kino.puber.core.ui.PuberVM
+import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.domain.interactor.auth.IAuthInteractor
 import com.kino.puber.domain.interactor.auth.model.AuthState
 import com.kino.puber.ui.feature.auth.model.AuthViewState
 
-internal class MainViewmodel(
+internal class AuthVM(
     private val authInteractor: IAuthInteractor,
-) : PuberVM<AuthViewState>() {
+    router: AppRouter,
+) : PuberVM<AuthViewState>(router) {
 
     override val errorHandler: ErrorHandler = DefaultErrorHandler
     override val initialViewState = AuthViewState.Loading

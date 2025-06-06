@@ -26,8 +26,6 @@ data class PuberTab(
             throw NotImplementedError()
         }
 
-    override fun getBackDispatcher(): BackButtonDispatcher = object : BackButtonDispatcher {}
-
     @Composable
     override fun Content() {
         Navigator(screen)

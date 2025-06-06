@@ -1,4 +1,4 @@
-package com.kino.puber.core.ui.uikit
+package com.kino.puber.core.ui.uikit.component
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize

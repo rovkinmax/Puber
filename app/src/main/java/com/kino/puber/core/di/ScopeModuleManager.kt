@@ -12,7 +12,7 @@ import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
 import org.koin.core.scope.ScopeID
 
-class ScopeModuleManager(
+internal class ScopeModuleManager(
     private val scopeName: String,
     private val moduleFactory: (ScopeID, Scope) -> Module,
     private val parentScope: Scope,
@@ -22,7 +22,7 @@ class ScopeModuleManager(
     private var scope: Scope? = null
     private var module: Module? = null
 
-    override fun onRemembered() {
+    fun initialize() {
         scope = koin.createScope(scopeName, named(scopeName)).apply {
             linkTo(parentScope)
         }
@@ -30,6 +30,8 @@ class ScopeModuleManager(
             koin.loadModules(listOf(it))
         }
     }
+
+    override fun onRemembered() {}
 
     override fun onAbandoned() {
         clearScope()
@@ -65,6 +67,6 @@ fun rememberDIScope(
             moduleFactory = moduleFactory,
             parentScope = parentScope,
             koin = koin,
-        )
+        ).apply { initialize() }
     }.getScope()!!
 }

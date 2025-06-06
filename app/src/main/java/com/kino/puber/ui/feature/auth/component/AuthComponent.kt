@@ -9,12 +9,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.tv.material3.Text
 import com.kino.puber.ui.feature.auth.model.AuthViewState
-import com.kino.puber.ui.feature.auth.vm.MainViewmodel
+import com.kino.puber.ui.feature.auth.vm.AuthVM
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
 internal fun AuthComponent() {
-    val vm = koinViewModel<MainViewmodel>()
+    val vm = koinViewModel<AuthVM>()
     val viewState by vm.collectViewState()
     Box(
         modifier = Modifier.fillMaxSize(),

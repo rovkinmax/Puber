@@ -10,6 +10,7 @@ import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.BackButtonDispatcher
+import com.kino.puber.core.ui.uikit.model.UIAction
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -63,6 +64,12 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
     }
 
     protected open fun onStart() {}
+
+    fun onAction(action: UIAction) {}
+
+    override fun onBackPressed() {
+        router.back()
+    }
 
     @Composable
     fun collectViewState(initial: ViewState = stateValue): State<ViewState> {

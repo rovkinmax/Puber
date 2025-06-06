@@ -11,6 +11,7 @@ import java.util.ArrayDeque
 typealias OnResult<T> = (T?) -> (Unit)
 
 class AppRouter(
+    val screens: Screens,
     val coroutineScope: CoroutineScope,
     //val scopeName: String, // for debug info
 ) {

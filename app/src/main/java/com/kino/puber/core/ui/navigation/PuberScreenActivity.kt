@@ -18,8 +18,4 @@ abstract class PuberScreenActivity(screenKey: String? = null) : PuberScreen {
     override fun Content() {
         throw UnsupportedOperationException("Check that you are correctly using the OsomeScreenActivity ")
     }
-
-    override fun getBackDispatcher(): BackButtonDispatcher {
-        throw UnsupportedOperationException("Check that you are correctly using the OsomeScreenActivity ")
-    }
 }
