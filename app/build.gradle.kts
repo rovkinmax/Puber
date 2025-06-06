@@ -7,7 +7,9 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.detekt)
+    id("kotlin-parcelize")
 }
 
 val currentVersion = "1.0.0"
@@ -153,6 +155,7 @@ kotlin {
                 "kotlinx.coroutines.ExperimentalCoroutinesApi",
                 "kotlinx.coroutines.FlowPreview",
                 "androidx.tv.material3.ExperimentalTvMaterial3Api",
+                "org.koin.compose.scope.ExperimentalKoinApi",
             )
         )
     }
@@ -202,6 +205,12 @@ dependencies {
     implementation(libs.kotlinx.datetime)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
+
+    //navigation
+    implementation(libs.voyager.navigator)
+    implementation(libs.voyager.tab.navigator)
+    implementation(libs.voyager.bottom.sheet.navigator)
+    implementation(libs.voyager.koin)
 
     // Logging
     implementation(libs.timber)

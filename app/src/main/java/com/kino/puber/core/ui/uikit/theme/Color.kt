@@ -1,5 +1,6 @@
 @file:Suppress("MagicNumber")
-package com.kino.puber.ui.theme
+
+package com.kino.puber.core.ui.uikit.theme
 
 import androidx.compose.ui.graphics.Color
 

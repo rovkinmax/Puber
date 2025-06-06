@@ -1,4 +1,4 @@
-package com.osome.utils
+package com.puber.utils
 
 import org.apache.tools.ant.taskdefs.condition.Os
 import org.gradle.api.DefaultTask

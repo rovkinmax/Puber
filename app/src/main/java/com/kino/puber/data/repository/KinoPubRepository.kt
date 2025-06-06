@@ -9,7 +9,7 @@ class KinoPubRepository(
     private val client: KinoPubClient,
 ) : IKinoPubRepository {
 
-    override fun isAuth(): Flow<AuthState> = flow {
+    override fun getAuthState(): Flow<AuthState> = flow {
         if (client.isAuthenticated()) {
             emit(AuthState.Success)
         } else {

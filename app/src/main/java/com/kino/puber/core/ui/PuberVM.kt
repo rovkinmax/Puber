@@ -8,6 +8,9 @@ import androidx.lifecycle.viewModelScope
 import com.kino.puber.core.coroutine.DefaultExceptionHandler
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.navigation.BackButtonDispatcher
+import com.kino.puber.core.ui.uikit.model.UIAction
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -18,7 +21,8 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.CoroutineContext
 
-abstract class PuberVM<ViewState> : ViewModel() {
+abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel(),
+    BackButtonDispatcher {
 
     protected open val errorHandler: ErrorHandler? = null
     protected abstract val initialViewState: ViewState
@@ -61,11 +65,22 @@ abstract class PuberVM<ViewState> : ViewModel() {
 
     protected open fun onStart() {}
 
+    fun onAction(action: UIAction) {}
+
+    override fun onBackPressed() {
+        router.back()
+    }
+
     @Composable
     fun collectViewState(initial: ViewState = stateValue): State<ViewState> {
         if (started.compareAndSet(false, true)) {
+            router.addBackDispatcher(this)
             onStart()
         }
         return viewState.collectAsStateWithLifecycle(initial)
+    }
+
+    override fun onCleared() {
+        router.removeBackDispatcher(this)
     }
 }
