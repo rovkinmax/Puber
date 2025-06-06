@@ -2,7 +2,6 @@ package com.kino.puber.ui.feature.auth.vm
 
 import com.kino.puber.core.error.DefaultErrorHandler
 import com.kino.puber.core.error.ErrorHandler
-import com.kino.puber.core.logger.log
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.domain.interactor.auth.IAuthInteractor
@@ -27,7 +26,7 @@ internal class AuthVM(
                 .collect {
                     when (it) {
                         is AuthState.Code -> updateViewState(AuthViewState.Content(it.code))
-                        AuthState.Success -> log("navigate to main")
+                        AuthState.Success -> router.newRootScreen(router.screens.main())
                     }
                 }
         }

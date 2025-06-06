@@ -536,7 +536,7 @@ style:
     maxJumpCount: 1
   MagicNumber:
     active: true
-    excludes: [ '**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/jsTest/**', '**/iosTest/**', 'com/osome/module/uikit/ui/component/icons/**' ]
+    excludes: [ '**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/jsTest/**', '**/iosTest/**', ]
     ignoreNumbers:
       - '-1'
       - '0'

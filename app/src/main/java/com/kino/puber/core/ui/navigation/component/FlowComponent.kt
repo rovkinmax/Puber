@@ -21,13 +21,13 @@ import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.Command
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreenActivity
-import com.kino.puber.core.ui.navigation.osomeHide
-import com.kino.puber.core.ui.navigation.osomePop
-import com.kino.puber.core.ui.navigation.osomePopUntil
-import com.kino.puber.core.ui.navigation.osomePush
-import com.kino.puber.core.ui.navigation.osomeReplace
-import com.kino.puber.core.ui.navigation.osomeReplaceAll
-import com.kino.puber.core.ui.navigation.osomeShow
+import com.kino.puber.core.ui.navigation.puberHide
+import com.kino.puber.core.ui.navigation.puberPop
+import com.kino.puber.core.ui.navigation.puberPopUntil
+import com.kino.puber.core.ui.navigation.puberPush
+import com.kino.puber.core.ui.navigation.puberReplace
+import com.kino.puber.core.ui.navigation.puberReplaceAll
+import com.kino.puber.core.ui.navigation.puberShow
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.parcelize.Parcelize
@@ -65,8 +65,12 @@ fun FlowComponent(
     content: @Composable () -> Unit = {},
 ) = DIScope(
     moduleFactory = { scopeId, parentScope ->
-        buildFlowModule(scopeId, parentScope, composableScope)
-        moduleFactory(scopeId, parentScope)
+        module {
+            this.includes(
+                buildFlowModule(scopeId, parentScope, composableScope),
+                moduleFactory(scopeId, parentScope),
+            )
+        }
     },
     scopeName = scopeName,
 ) {
@@ -113,18 +117,18 @@ private fun FlowCommandRunner(router: AppRouter) {
         router.events().collect { event ->
             router.log("router command: $event")
             if (event !is Command.ShowOver) {
-                bottomSheetNavigator.osomeHide()
+                bottomSheetNavigator.puberHide()
             }
 
             if (event.screen is PuberScreenActivity) {
                 activityNavigator.navigateTo(event.screen as PuberScreenActivity)
             } else {
                 when (event) {
-                    is Command.NavigateTo -> navigator.osomePush(event.screen)
-                    is Command.ShowOver -> bottomSheetNavigator.osomeShow(event.screen)
-                    is Command.HideOver -> bottomSheetNavigator.osomeHide()
-                    is Command.Replace -> navigator.osomeReplace(event.screen)
-                    is Command.NewRoot -> navigator.osomeReplaceAll(*event.screens.toTypedArray())
+                    is Command.NavigateTo -> navigator.puberPush(event.screen)
+                    is Command.ShowOver -> bottomSheetNavigator.puberShow(event.screen)
+                    is Command.HideOver -> bottomSheetNavigator.puberHide()
+                    is Command.Replace -> navigator.puberReplace(event.screen)
+                    is Command.NewRoot -> navigator.puberReplaceAll(*event.screens.toTypedArray())
                     is Command.BackTo -> onBackTo(navigator, event)
                     Command.FinishFlow -> navigator.parent?.let { parentNavigator ->
                         onBackEventNavigator(
@@ -149,9 +153,9 @@ private fun onBackTo(
     event: Command.BackTo,
 ) {
     if (navigator.items.firstOrNull { it.key == event.screen.key } != null) {
-        navigator.osomePopUntil { it.key == event.screen.key }
+        navigator.puberPopUntil { it.key == event.screen.key }
     } else {
-        navigator.osomeReplaceAll(event.screen)
+        navigator.puberReplaceAll(event.screen)
     }
 }
 
@@ -171,9 +175,9 @@ private fun onBackEvenSheetNavigator(
     sheetNavigator: BottomSheetNavigator,
 ) {
     if (sheetNavigator.canPop) {
-        sheetNavigator.osomePop()
+        sheetNavigator.puberPop()
     } else {
-        sheetNavigator.osomeHide()
+        sheetNavigator.puberHide()
     }
 }
 
@@ -186,7 +190,7 @@ private fun onBackEventNavigator(
 
 private fun onBackWithNavigator(navigator: Navigator, appLauncher: AppLauncher?) {
     if (navigator.canPop()) {
-        navigator.osomePop()
+        navigator.puberPop()
     } else {
         navigator.parent?.let { parent ->
             onBackWithNavigator(parent, appLauncher)

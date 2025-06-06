@@ -13,7 +13,7 @@ import com.kino.puber.ui.feature.auth.vm.AuthVM
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
-internal fun AuthComponent() {
+internal fun AuthScreenComponent() {
     val vm = koinViewModel<AuthVM>()
     val viewState by vm.collectViewState()
     Box(

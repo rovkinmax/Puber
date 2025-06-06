@@ -23,6 +23,6 @@ internal class AuthScreen : PuberScreen {
 
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
-
+        AuthScreenComponent()
     }
 }
