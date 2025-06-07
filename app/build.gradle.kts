@@ -1,3 +1,5 @@
+import jdk.javadoc.internal.Versions
+import jdk.tools.jlink.resources.plugins
 import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 import java.io.FileInputStream
 import java.util.Properties
@@ -188,6 +190,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.security.crypto)
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
