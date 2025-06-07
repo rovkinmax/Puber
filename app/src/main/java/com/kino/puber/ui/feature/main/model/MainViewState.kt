@@ -9,6 +9,7 @@ import kotlinx.parcelize.Parcelize
 @Immutable
 internal data class MainViewState(
     val tabs: List<MainTab> = emptyList(),
+    val selectedTab: TabType = TabType.Favourites,
 )
 
 

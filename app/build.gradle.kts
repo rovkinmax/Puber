@@ -1,5 +1,3 @@
-import jdk.javadoc.internal.Versions
-import jdk.tools.jlink.resources.plugins
 import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 import java.io.FileInputStream
 import java.util.Properties

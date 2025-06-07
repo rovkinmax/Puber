@@ -58,6 +58,7 @@ internal class MainUIMapper(private val resources: ResourceProvider) {
     fun updateSelectedTab(state: MainViewState, tab: MainTab): MainViewState {
         return state.copy(
             tabs = state.tabs.map { it.copy(isSelected = it.type == tab.type) },
+            selectedTab = tab.type,
         )
     }
 
