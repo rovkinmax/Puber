@@ -1,7 +1,6 @@
 package com.kino.puber.data.di
 
 import com.kino.puber.data.api.KinoPubApiClient
-import com.kino.puber.data.api.KinoPubClient
 import com.kino.puber.data.repository.CryptoPreferenceRepository
 import com.kino.puber.data.repository.ICryptoPreferenceRepository
 import com.kino.puber.data.repository.IKinoPubRepository
@@ -12,7 +11,6 @@ import org.koin.dsl.module
 
 val apiModule = module {
     singleOf(::KinoPubApiClient)
-    singleOf(::KinoPubClient)
 }
 
 val repositoryModule = module {

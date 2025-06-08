@@ -1,7 +1,6 @@
 package com.kino.puber.data.api
 
 import com.kino.puber.BuildConfig
-import com.kino.puber.core.logger.CurlLoggingInterceptor
 import com.kino.puber.data.api.auth.DeviceCodeResponse
 import com.kino.puber.data.api.auth.DeviceFlowResult
 import com.kino.puber.data.api.auth.OAuthError
@@ -64,7 +63,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
-import java.util.concurrent.TimeUnit
 
 
 class KinoPubApiClient(
@@ -79,13 +77,7 @@ class KinoPubApiClient(
     private val httpClient: HttpClient = createHttpClient(okHttpClient)
 
     private fun createOkHttpClient(): OkHttpClient {
-        return OkHttpClient.Builder()
-            .connectTimeout(TIMEOUT, TimeUnit.MILLISECONDS)
-            .readTimeout(TIMEOUT, TimeUnit.MILLISECONDS)
-            .writeTimeout(TIMEOUT, TimeUnit.MILLISECONDS)
-            .addInterceptor(KinoPubParametersInterceptor())
-            .addInterceptor(CurlLoggingInterceptor(BuildConfig.DEBUG))
-            .build()
+        return OkHttpClient.Builder().build()
     }
 
     private fun createHttpClient(
@@ -96,6 +88,8 @@ class KinoPubApiClient(
         engine {
             preconfigured = okHttpClient
         }
+
+        install(KinoPubParametersPlugin)
 
         // Request timeout configuration (Ktor level)
         install(HttpTimeout) {
@@ -125,7 +119,6 @@ class KinoPubApiClient(
                 append("Accept", "application/json")
                 append("Content-Type", "application/json")
             }
-
         }
 
         // Authentication if token provided
@@ -166,6 +159,8 @@ class KinoPubApiClient(
             exponentialDelay()
         }
     }
+
+    fun isAuthenticated(): Boolean = cryptoPreferenceRepository.getAccessToken().isNullOrEmpty().not()
 
     // Content API
 
