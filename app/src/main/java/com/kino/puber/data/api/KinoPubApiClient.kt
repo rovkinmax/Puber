@@ -84,11 +84,6 @@ class KinoPubApiClient(
         okHttpClient: OkHttpClient,
     ): HttpClient = HttpClient(OkHttp) {
 
-        // OkHttp engine configuration
-        engine {
-            preconfigured = okHttpClient
-        }
-
         install(KinoPubParametersPlugin)
 
         // Request timeout configuration (Ktor level)
