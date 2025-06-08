@@ -1,5 +1,6 @@
 package com.kino.puber.data.api
 
+import com.kino.puber.BuildConfig
 import com.kino.puber.data.api.auth.DeviceCodeResponse
 import com.kino.puber.data.api.auth.DeviceFlowResult
 import com.kino.puber.data.api.auth.OAuthError
@@ -72,7 +73,8 @@ class KinoPubApiClient(
     private fun createHttpClient(): HttpClient = HttpClient(OkHttp) {
 
         install(KinoPubParametersPlugin)
-        install(CurlLogger)
+
+        if (BuildConfig.DEBUG) install(CurlLogger)
 
         // Request timeout configuration (Ktor level)
         install(HttpTimeout) {
