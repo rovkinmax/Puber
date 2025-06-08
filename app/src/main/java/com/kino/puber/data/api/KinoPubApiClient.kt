@@ -1,6 +1,5 @@
 package com.kino.puber.data.api
 
-import com.kino.puber.BuildConfig
 import com.kino.puber.data.api.auth.DeviceCodeResponse
 import com.kino.puber.data.api.auth.DeviceFlowResult
 import com.kino.puber.data.api.auth.OAuthError
@@ -43,9 +42,6 @@ import io.ktor.client.plugins.auth.Auth
 import io.ktor.client.plugins.auth.providers.BearerTokens
 import io.ktor.client.plugins.auth.providers.bearer
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logger
-import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
@@ -61,7 +57,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
-import timber.log.Timber
 
 
 class KinoPubApiClient(
@@ -77,6 +72,7 @@ class KinoPubApiClient(
     private fun createHttpClient(): HttpClient = HttpClient(OkHttp) {
 
         install(KinoPubParametersPlugin)
+        install(CurlLogger)
 
         // Request timeout configuration (Ktor level)
         install(HttpTimeout) {
@@ -88,18 +84,6 @@ class KinoPubApiClient(
         // JSON serialization
         install(ContentNegotiation) {
             json(json)
-        }
-
-        // Logging
-        if (BuildConfig.DEBUG) {
-            install(Logging) {
-                level = LogLevel.ALL
-                logger = object : Logger {
-                    override fun log(message: String) {
-                        Timber.d(message)
-                    }
-                }
-            }
         }
 
         // Default request configuration
