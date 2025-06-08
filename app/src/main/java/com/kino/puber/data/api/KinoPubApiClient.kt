@@ -57,7 +57,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
@@ -834,9 +833,7 @@ class KinoPubApiClient(
      * Implements the complete flow as described in the official documentation
      * Returns Flow to emit intermediate states during the authentication process
      */
-    fun completeDeviceFlow(
-        pollingInterval: Long = 5000L,
-        maxAttempts: Int = 60
+    fun getDeviceLoginCode(
     ): Flow<Result<DeviceFlowResult>> = flow {
         // Step 1: Get device code
         val deviceCodeResult = getDeviceCode()
@@ -855,50 +852,38 @@ class KinoPubApiClient(
                 )
             )
         )
+    }
 
-        // Step 2: Poll for token
-        // Use interval from API response (converted to milliseconds) or default
-        val interval = (deviceCode.interval * 1000L).coerceAtLeast(pollingInterval)
-        var attempts = 0
+    fun getDeviceLoginStatus(codeResponse: DeviceCodeResponse): Flow<Result<DeviceFlowResult>> = flow {
+        val tokenResult = getDeviceToken(
+            code = codeResponse.code // Use 'code' field as per official documentation
+        )
 
-        while (attempts < maxAttempts) {
-            delay(interval)
-            attempts++
-
-            val tokenResult = getDeviceToken(
-                code = deviceCode.code // Use 'code' field as per official documentation
-            )
-
-            if (tokenResult.isSuccess) {
-                // Emit successful result and complete the flow
-                emit(
-                    Result.success(
-                        DeviceFlowResult(
-                            deviceCode = deviceCode,
-                            token = tokenResult.getOrThrow()
-                        )
+        if (tokenResult.isSuccess) {
+            // Emit successful result and complete the flow
+            emit(
+                Result.success(
+                    DeviceFlowResult(
+                        deviceCode = codeResponse,
+                        token = tokenResult.getOrThrow()
                     )
                 )
-                return@flow
-            }
-
-            // Check if error is polling-related (authorization_pending)
-            val error = tokenResult.exceptionOrNull()
-            val isAuthorizationPending =
-                error?.message?.contains("authorization_pending", true) ?: false
-
-            if (!isAuthorizationPending) {
-                // Emit non-recoverable error and complete the flow
-                emit(Result.failure(error!!))
-                return@flow
-            }
-
-            // Continue polling for authorization_pending errors
+            )
+            return@flow
         }
 
-        // Emit timeout error if max attempts reached
-        emit(Result.failure(RuntimeException("Device flow timeout after $maxAttempts attempts")))
+        // Check if error is polling-related (authorization_pending)
+        val error = tokenResult.exceptionOrNull()
+        val isAuthorizationPending =
+            error?.message?.contains("authorization_pending", true) ?: false
+
+        if (!isAuthorizationPending) {
+            // Emit non-recoverable error and complete the flow
+            emit(Result.failure(error!!))
+            return@flow
+        }
     }
+
 
     fun close() {
         httpClient.close()
