@@ -62,7 +62,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
-import okhttp3.OkHttpClient
 
 
 class KinoPubApiClient(
@@ -73,16 +72,9 @@ class KinoPubApiClient(
         isLenient = true
         prettyPrint = true
     }
-    private val okHttpClient = createOkHttpClient()
-    private val httpClient: HttpClient = createHttpClient(okHttpClient)
+    private val httpClient: HttpClient = createHttpClient()
 
-    private fun createOkHttpClient(): OkHttpClient {
-        return OkHttpClient.Builder().build()
-    }
-
-    private fun createHttpClient(
-        okHttpClient: OkHttpClient,
-    ): HttpClient = HttpClient(OkHttp) {
+    private fun createHttpClient(): HttpClient = HttpClient(OkHttp) {
 
         install(KinoPubParametersPlugin)
 
