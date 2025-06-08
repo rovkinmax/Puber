@@ -70,14 +70,13 @@ import java.util.concurrent.TimeUnit
 class KinoPubApiClient(
     private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
 ) {
-    private val okHttpClient = createOkHttpClient()
-    private val httpClient: HttpClient = createHttpClient(okHttpClient)
-
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
         prettyPrint = true
     }
+    private val okHttpClient = createOkHttpClient()
+    private val httpClient: HttpClient = createHttpClient(okHttpClient)
 
     private fun createOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
