@@ -40,7 +40,6 @@ internal fun MainScreenComponent() {
     val state by vm.collectViewState()
     val onAction: (UIAction) -> Unit = remember { vm::onAction }
     MainScreenContent(state, onAction = onAction)
-    //SampleModalNavigationDrawerWithGradientScrim()
 }
 
 
@@ -48,7 +47,6 @@ internal fun MainScreenComponent() {
 private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val focusRequester = remember { FocusRequester() }
-
     val coroutineScope = rememberCoroutineScope()
 
     SideEffect {
@@ -72,9 +70,12 @@ private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit
                 horizontalAlignment = Alignment.Start,
             ) {
                 state.tabs.forEachIndexed { index, tab ->
+
+                    val modifier = Modifier
+                        .height(40.dp)
+
                     NavigationDrawerItem(
-                        modifier = Modifier
-                            .height(40.dp),
+                        modifier = modifier,
                         selected = tab.isSelected,
                         onClick = {
                             onAction(CommonAction.ItemSelected(tab))
@@ -114,6 +115,7 @@ private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit
                 Modifier
                     .padding(closeDrawerWidth + backgroundContentPadding)
                     .focusRequester(focusRequester)
+
             ) {
                 OsomeCurrentTab()
             }
