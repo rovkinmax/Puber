@@ -26,7 +26,9 @@ internal class AuthVM(
                 .collect {
                     when (it) {
                         is AuthState.Code -> updateViewState(AuthViewState.Content(it.code))
-                        AuthState.Success -> router.newRootScreen(router.screens.main())
+                        AuthState.Success -> {
+                            router.newRootScreen(router.screens.main())
+                        }
                     }
                 }
         }

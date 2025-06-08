@@ -43,7 +43,6 @@ import io.ktor.client.plugins.auth.Auth
 import io.ktor.client.plugins.auth.providers.BearerTokens
 import io.ktor.client.plugins.auth.providers.bearer
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.logging.DEFAULT
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
@@ -62,6 +61,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
+import timber.log.Timber
 
 
 class KinoPubApiClient(
@@ -93,8 +93,12 @@ class KinoPubApiClient(
         // Logging
         if (BuildConfig.DEBUG) {
             install(Logging) {
-                level = LogLevel.INFO
-                logger = Logger.DEFAULT
+                level = LogLevel.ALL
+                logger = object : Logger {
+                    override fun log(message: String) {
+                        Timber.d(message)
+                    }
+                }
             }
         }
 

@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.flow
 
 class KinoPubRepository(
     private val client: KinoPubApiClient,
+    private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
 ) : IKinoPubRepository {
 
     override fun getAuthState(): Flow<AuthState> = flow {
@@ -19,6 +20,8 @@ class KinoPubRepository(
                     if (value.token == null) {
                         emit(AuthState.Code(value.deviceCode.userCode))
                     } else {
+                        cryptoPreferenceRepository.saveAccessToken(value.token.accessToken)
+                        cryptoPreferenceRepository.saveRefreshToken(value.token.refreshToken)
                         emit(AuthState.Success)
                     }
                 }
