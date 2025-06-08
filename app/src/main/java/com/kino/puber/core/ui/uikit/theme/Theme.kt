@@ -1,32 +1,36 @@
 package com.kino.puber.core.ui.uikit.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
-import androidx.tv.material3.lightColorScheme
 
 @Composable
 fun PuberTheme(
-    isInDarkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = if (isInDarkTheme) {
-        darkColorScheme(
-            primary = Purple80,
-            secondary = PurpleGrey80,
-            tertiary = Pink80
-        )
-    } else {
-        lightColorScheme(
-            primary = Purple40,
-            secondary = PurpleGrey40,
-            tertiary = Pink40
-        )
-    }
+    val colorSchemeTv = darkColorScheme(
+        primary = Purple80,
+        secondary = PurpleGrey80,
+        tertiary = Pink80,
+        error = Error60,
+        errorContainer = Error60,
+    )
+
+    val colorScheme = androidx.compose.material3.darkColorScheme(
+        primary = Purple40,
+        secondary = PurpleGrey40,
+        tertiary = Pink40,
+        error = Error60,
+        errorContainer = Error60,
+    )
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = colorSchemeTv,
         typography = Typography,
-        content = content
+        content = {
+            androidx.compose.material3.MaterialTheme(
+                colorScheme = colorScheme,
+                content = content
+            )
+        }
     )
 }

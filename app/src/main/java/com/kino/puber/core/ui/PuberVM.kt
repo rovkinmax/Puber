@@ -65,7 +65,7 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
 
     protected open fun onStart() {}
 
-    fun onAction(action: UIAction) {}
+    open fun onAction(action: UIAction) {}
 
     override fun onBackPressed() {
         router.back()
