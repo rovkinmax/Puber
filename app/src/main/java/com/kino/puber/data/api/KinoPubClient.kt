@@ -1,10 +1,7 @@
 package com.kino.puber.data.api
 
-import android.content.Context
 import com.kino.puber.data.api.auth.DeviceFlowResult
-import com.kino.puber.data.api.auth.OAuthClient
 import com.kino.puber.data.api.auth.TokenResponse
-import com.kino.puber.data.api.config.KinoPubClientConfig
 import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.BookmarkFolder
 import com.kino.puber.data.api.models.BookmarkToggleResult
@@ -30,61 +27,27 @@ import com.kino.puber.data.api.models.UserInfo
 import com.kino.puber.data.api.models.VoiceAuthor
 import com.kino.puber.data.api.models.VoteResult
 import com.kino.puber.data.api.models.WatchingStatus
+import com.kino.puber.data.repository.ICryptoPreferenceRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onEach
+
 
 /**
  * Main KinoPub client that combines OAuth authentication and API functionality
  */
+
+private const val DEFAULT_TOKEN_EXPIRY = 60 * 60 * 24 * 1000
+
 class KinoPubClient(
-    private val config: KinoPubClientConfig = KinoPubClientConfig()
+    private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
+    private val apiClient: KinoPubApiClient,
 ) {
-    private var accessToken: String? = null
-    private var refreshToken: String? = null
-
-    private val oauthClient = OAuthClient(config)
-    private var apiClient: KinoPubApiClient? = null
-
-    companion object {
-        private const val DEFAULT_TOKEN_EXPIRY = 3600
-
-        /**
-         * Create default client with logging enabled
-         * @param context Android context for device info
-         * @param enableLogging Enable HTTP logging
-         */
-        fun create(
-            context: Context,
-            enableLogging: Boolean = true
-        ): KinoPubClient {
-            return KinoPubClient(
-                KinoPubClientConfig(
-                    enableLogging = enableLogging,
-                    context = context
-                )
-            )
-        }
-
-        /**
-         * Create client with custom configuration
-         */
-        fun create(config: KinoPubClientConfig): KinoPubClient {
-            return KinoPubClient(config)
-        }
-    }
-
     /**
      * Update username in configuration (will affect future requests)
      */
     fun updateUsername(username: String) {
-        val newConfig = config.copy(username = username)
         // Update oauth client
-        oauthClient.updateConfig(newConfig)
-
-        // Update API client if authenticated
-        accessToken?.let { token ->
-            apiClient = KinoPubApiClient(token, newConfig)
-        }
+        cryptoPreferenceRepository.saveUsername(username)
     }
 
     /**
@@ -92,7 +55,7 @@ class KinoPubClient(
      * @return Flow that emits device flow states and final result
      */
     fun authenticateWithDeviceFlow(): Flow<Result<DeviceFlowResult>> {
-        return oauthClient.completeDeviceFlow().onEach { result ->
+        return apiClient.completeDeviceFlow().onEach { result ->
             if (result.isSuccess && result.getOrNull()?.token != null) {
                 val flowResult = result.getOrThrow()
                 setTokens(flowResult.token!!)
@@ -108,47 +71,25 @@ class KinoPubClient(
     }
 
     /**
-     * Refresh access token
-     */
-    suspend fun refreshAccessToken(): Result<TokenResponse> {
-        val currentRefreshToken = refreshToken
-            ?: return Result.failure(IllegalStateException("No refresh token available"))
-
-        return oauthClient.refreshToken(currentRefreshToken).also { result ->
-            if (result.isSuccess) {
-                setTokens(result.getOrThrow())
-            }
-        }
-    }
-
-    /**
      * Check if client is authenticated
      */
-    fun isAuthenticated(): Boolean = accessToken != null
-
-    /**
-     * Get current access token
-     */
-    fun getAccessToken(): String? = accessToken
+    fun isAuthenticated(): Boolean = cryptoPreferenceRepository.getAccessToken().isNullOrEmpty().not()
 
     /**
      * Clear authentication
      */
     fun clearAuthentication() {
-        accessToken = null
-        refreshToken = null
-        apiClient = null
+        cryptoPreferenceRepository.clearAccessToken()
+        cryptoPreferenceRepository.clearRefreshToken()
     }
 
     private fun setTokens(tokenResponse: TokenResponse) {
-        accessToken = tokenResponse.accessToken
-        refreshToken = tokenResponse.refreshToken
-        apiClient = KinoPubApiClient(tokenResponse.accessToken, config)
+        cryptoPreferenceRepository.saveAccessToken(tokenResponse.accessToken)
+        cryptoPreferenceRepository.saveRefreshToken(tokenResponse.refreshToken)
     }
 
     private fun requireAuthentication(): KinoPubApiClient {
         return apiClient
-            ?: throw IllegalStateException("Client is not authenticated. Call authenticate* method first.")
     }
 
     // Content API methods
@@ -407,7 +348,6 @@ class KinoPubClient(
      * Close the client and release resources
      */
     fun close() {
-        oauthClient.close()
-        apiClient?.close()
+        apiClient.close()
     }
 } 

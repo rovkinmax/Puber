@@ -8,4 +8,7 @@ interface ICryptoPreferenceRepository {
     fun saveRefreshToken(token: String)
     fun getRefreshToken(): String?
     fun clearRefreshToken()
+    fun saveUsername(userName: String)
+    fun getUsername(): String?
+    fun clearUsername()
 }
