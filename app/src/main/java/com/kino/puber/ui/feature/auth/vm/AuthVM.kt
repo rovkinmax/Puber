@@ -25,7 +25,12 @@ internal class AuthVM(
             authInteractor.getAuthState()
                 .collect {
                     when (it) {
-                        is AuthState.Code -> updateViewState(AuthViewState.Content(it.code))
+                        is AuthState.Code -> updateViewState(
+                            AuthViewState.Content(
+                                code = it.code, url = it.url, expireTimeSeconds = it.expireTimeSeconds
+                            )
+                        )
+
                         AuthState.Success -> {
                             router.newRootScreen(router.screens.main())
                         }

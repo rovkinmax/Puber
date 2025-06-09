@@ -2,9 +2,7 @@ package com.kino.puber.data.repository
 
 import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.domain.interactor.auth.model.AuthState
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.retryWhen
@@ -14,8 +12,7 @@ class KinoPubRepository(
     private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
 ) : IKinoPubRepository {
 
-
-    override fun getAuthState(): Flow<AuthState> = channelFlow {
+    override fun getAuthState(): Flow<AuthState> = flow {
         if (client.isAuthenticated()) {
             send(AuthState.Success)
             return@channelFlow

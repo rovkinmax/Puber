@@ -214,6 +214,9 @@ dependencies {
     implementation(libs.voyager.bottom.sheet.navigator)
     implementation(libs.voyager.koin)
 
+    // QR
+    implementation(libs.chaintech.qrkit)
+
     // Logging
     implementation(libs.timber)
 

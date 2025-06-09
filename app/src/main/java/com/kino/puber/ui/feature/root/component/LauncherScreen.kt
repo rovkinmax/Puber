@@ -1,11 +1,11 @@
-package com.kino.puber.core.ui.root.component
+package com.kino.puber.ui.feature.root.component
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.tv.material3.Text
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
-import com.kino.puber.core.ui.root.vm.LauncherVM
+import com.kino.puber.ui.feature.root.vm.LauncherVM
 import kotlinx.parcelize.Parcelize
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.module.dsl.viewModelOf

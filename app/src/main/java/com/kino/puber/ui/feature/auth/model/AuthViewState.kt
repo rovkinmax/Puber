@@ -6,5 +6,5 @@ import androidx.compose.runtime.Immutable
 internal sealed class AuthViewState {
     data object Loading : AuthViewState()
 
-    data class Content(val code: String) : AuthViewState()
+    data class Content(val code: String, val url: String, val expireTimeSeconds: Int) : AuthViewState()
 }
