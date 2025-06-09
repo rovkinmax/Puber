@@ -10,7 +10,6 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.spec.GCMParameterSpec
 
-
 internal class CryptoPreferenceRepository(
     private val context: Context,
 ) : ICryptoPreferenceRepository {
@@ -43,12 +42,11 @@ internal class CryptoPreferenceRepository(
             val encrypted = encrypt(SECURITY_KEY_ALIAS, value.orEmpty())
             putString(name, encrypted)
         }
-
     }
 
     private fun getString(name: String): String? {
-        val value = sharedPreferences.getString(name, null)
-        return decrypt(SECURITY_KEY_ALIAS, value.orEmpty())
+        val value = sharedPreferences.getString(name, null) ?: return null
+        return decrypt(SECURITY_KEY_ALIAS, value)
     }
 
     private fun encrypt(alias: String, plainText: String?): String {

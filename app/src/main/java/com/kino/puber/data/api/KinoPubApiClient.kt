@@ -1,6 +1,7 @@
 package com.kino.puber.data.api
 
 import com.kino.puber.BuildConfig
+import com.kino.puber.core.logger.log
 import com.kino.puber.data.api.auth.DeviceCodeResponse
 import com.kino.puber.data.api.auth.DeviceFlowResult
 import com.kino.puber.data.api.auth.OAuthError
@@ -71,6 +72,61 @@ class KinoPubApiClient(
 
     private fun createHttpClient(): HttpClient = HttpClient(OkHttp) {
 
+        // Authentication if token provided
+        install(Auth) {
+            bearer {
+                loadTokens {
+                    println("Loading tokens") // для отладки
+                    val accessToken = cryptoPreferenceRepository.getAccessToken()
+                    val refreshToken = cryptoPreferenceRepository.getRefreshToken()
+                    println("Access token: $accessToken")
+                    BearerTokens(accessToken.orEmpty(), refreshToken.orEmpty())
+                }
+
+                sendWithoutRequest { true }
+
+                refreshTokens {
+                    val refreshToken = cryptoPreferenceRepository.getRefreshToken().orEmpty()
+                    log("Attempting to refresh token with refresh token: $refreshToken")
+
+                    val tokenUpdateResponse: Result<TokenResponse> = apiCall {
+                        client.post("${KinoPubConfig.OAUTH_BASE_URL}token") {
+                            parameter("grant_type", KinoPubConfig.GRANT_TYPE_REFRESH_TOKEN)
+                            parameter("refresh_token", refreshToken)
+                            log("Sending refresh token request with params: grant_type=${KinoPubConfig.GRANT_TYPE_REFRESH_TOKEN}, refresh_token=$refreshToken")
+                        }
+                    }
+
+                    if (tokenUpdateResponse.isSuccess) {
+                        val newTokens = tokenUpdateResponse.getOrNull()
+                        if (newTokens != null) {
+                            log("Successfully received new tokens")
+                            cryptoPreferenceRepository.saveAccessToken(newTokens.accessToken)
+                            cryptoPreferenceRepository.saveRefreshToken(newTokens.refreshToken)
+
+                            BearerTokens(
+                                newTokens.accessToken,
+                                newTokens.refreshToken
+                            )
+                        } else {
+                            log("Failed to get new tokens")
+                            throw IllegalStateException("Failed to get new tokens")
+                        }
+                    } else {
+                        val error = tokenUpdateResponse.exceptionOrNull()
+                        log("Failed to refresh token: ${error?.message}")
+
+                        if (error?.message?.contains("invalid_refresh_token") == true) {
+                            cryptoPreferenceRepository.clearAccessToken()
+                            cryptoPreferenceRepository.clearRefreshToken()
+                        }
+
+                        throw IllegalStateException("Failed to refresh token: ${error?.message}")
+                    }
+                }
+            }
+        }
+
         install(KinoPubParametersPlugin)
 
         if (BuildConfig.DEBUG) install(CurlLogger)
@@ -93,36 +149,7 @@ class KinoPubApiClient(
                 val username = cryptoPreferenceRepository.getUsername()
                 append("User-Agent", UserAgentBuilder.build(username))
                 append("Accept", "application/json")
-                append("Content-Type", "application/json")
-            }
-        }
-
-        // Authentication if token provided
-        install(Auth) {
-            bearer {
-                loadTokens {
-                    val accessToken = cryptoPreferenceRepository.getAccessToken().orEmpty()
-                    val refreshToken = cryptoPreferenceRepository.getRefreshToken().orEmpty()
-                    BearerTokens(accessToken, refreshToken)
-                }
-
-                refreshTokens {
-//                    val accessToken = cryptoPreferenceRepository.getAccessToken().orEmpty()
-                    val refreshToken = cryptoPreferenceRepository.getRefreshToken().orEmpty()
-                    val tokenUpdateResponse: Result<TokenResponse> = apiCall {
-                        client.post("${KinoPubConfig.OAUTH_BASE_URL}token") {
-                            parameter("grant_type", KinoPubConfig.GRANT_TYPE_REFRESH_TOKEN)
-                            parameter("refresh_token", refreshToken)
-                            // CLIENT_ID и CLIENT_SECRET добавляются автоматически через KinoPubParametersInterceptor
-                        }
-                    }
-                    if (tokenUpdateResponse.isSuccess) {
-                        BearerTokens(
-                            tokenUpdateResponse.getOrNull()?.accessToken.orEmpty(),
-                            tokenUpdateResponse.getOrNull()?.refreshToken.orEmpty()
-                        )
-                    } else throw IllegalStateException("No tokens data")
-                }
+                contentType(ContentType.Application.Json)
             }
         }
 
@@ -491,6 +518,8 @@ class KinoPubApiClient(
         software: String
     ): Result<Unit> = apiCall {
         httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}device/notify") {
+            val token = cryptoPreferenceRepository.getAccessToken().orEmpty()
+            log("Access token: $token")
             setBody(
                 mapOf(
                     "title" to title,
@@ -498,7 +527,6 @@ class KinoPubApiClient(
                     "software" to software
                 )
             )
-            contentType(ContentType.Application.Json)
         }
     }
 

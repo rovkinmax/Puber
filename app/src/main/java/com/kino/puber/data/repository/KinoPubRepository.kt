@@ -34,6 +34,8 @@ class KinoPubRepository(
 
                 val token = result.getOrThrow().token
                 if (token != null) {
+                    cryptoPreferenceRepository.saveAccessToken(token.accessToken)
+                    cryptoPreferenceRepository.saveRefreshToken(token.refreshToken)
                     emit(token)
                     break
                 } else {
@@ -43,8 +45,6 @@ class KinoPubRepository(
         }.retryWhen { cause, attempt ->
             attempt < MAX_RETRIES
         }.collect { token ->
-            cryptoPreferenceRepository.saveAccessToken(token.accessToken)
-            cryptoPreferenceRepository.saveRefreshToken(token.refreshToken)
             send(AuthState.Success)
         }
     }
