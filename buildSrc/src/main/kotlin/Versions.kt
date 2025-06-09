@@ -3,7 +3,7 @@ import java.util.Calendar
 import java.util.TimeZone
 
 object Versions {
-    const val MinSdk = 23
+    const val MinSdk = 24
     const val TargetSdk = 36
     const val CompileSdk = 36
     val JavaVersionCompat: JavaVersion = JavaVersion.VERSION_17

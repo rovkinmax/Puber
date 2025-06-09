@@ -20,6 +20,8 @@ junit = "4.13.2"
 koinVersion = "4.0.4"
 security = "1.1.0-beta01"
 voyager = "1.1.0-beta03"
+qrkit = "3.1.1"
+
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -71,6 +73,8 @@ voyager-tab-navigator = { group = "cafe.adriel.voyager", name = "voyager-tab-nav
 voyager-bottom-sheet-navigator = { group = "cafe.adriel.voyager", name = "voyager-bottom-sheet-navigator", version.ref = "voyager" }
 voyager-koin = { group = "cafe.adriel.voyager", name = "voyager-koin", version.ref = "voyager" }
 
+#QR
+chaintech-qrkit = { group = "network.chaintech", name = "qr-kit", version.ref = "qrkit" }
 
 # Logging
 timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }

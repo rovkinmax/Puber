@@ -1,4 +1,4 @@
-package com.kino.puber.core.ui.root.vm
+package com.kino.puber.ui.feature.root.vm
 
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter

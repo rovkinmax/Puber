@@ -1,4 +1,4 @@
-package com.kino.puber.core.ui.root.component
+package com.kino.puber.ui.feature.root.component
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
