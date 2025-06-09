@@ -2,7 +2,9 @@ package com.kino.puber.data.repository
 
 import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.domain.interactor.auth.model.AuthState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.retryWhen
@@ -12,7 +14,7 @@ class KinoPubRepository(
     private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
 ) : IKinoPubRepository {
 
-    override fun getAuthState(): Flow<AuthState> = flow {
+    override fun getAuthState(): Flow<AuthState> = channelFlow {
         if (client.isAuthenticated()) {
             send(AuthState.Success)
             return@channelFlow
@@ -22,11 +24,11 @@ class KinoPubRepository(
         if (codeResult.isFailure) throw codeResult.exceptionOrNull()!!
 
         val deviceCode = codeResult.getOrThrow().deviceCode
-        send(AuthState.Code(deviceCode.userCode))
+        send(AuthState.Code(deviceCode.userCode, deviceCode.verificationUri, deviceCode.expiresIn))
 
         flow {
             while (true) {
-                delay(MAX_RETRIES_DELAY)
+                delay(deviceCode.interval * 1000L)
                 val result = client.getDeviceLoginStatus(deviceCode).first()
                 if (result.isFailure) throw result.exceptionOrNull()!!
 
@@ -49,6 +51,5 @@ class KinoPubRepository(
 
     companion object {
         private const val MAX_RETRIES = 500L
-        private const val MAX_RETRIES_DELAY = 5000L
     }
 }
