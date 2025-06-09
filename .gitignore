@@ -1,0 +1,16 @@
+*.iml
+.gradle
+/local.properties
+**/keystore.properties
+.idea/
+.kotlin/
+.DS_Store
+**/build
+/captures
+.externalNativeBuild
+/feature/storybook/out/**
+/app/mapping.txt
+/app/credentials/publisher.json
+/credentials/publisher.json
+/artifacts/dummy.pdf
+.todo

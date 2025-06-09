@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Основной домен KinoPub -->
+        <domain includeSubdomains="true">api.service-kp.com</domain>
+        <!-- Fallback домен -->
+        <domain includeSubdomains="true">api.alador.space</domain>
+        <!-- Другие KinoPub домены -->
+        <domain includeSubdomains="true">kino.pub</domain>
+        <!-- Эмулятор хосты -->
+        <domain includeSubdomains="true">10.0.2.2</domain> <!-- Android emulator host -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+
+    <!-- Allow all hostnames for debug builds -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+
+    <!-- Base configuration for release -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config> 

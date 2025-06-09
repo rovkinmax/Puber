@@ -1,0 +1,16 @@
+<resources>
+    <string name="main_tabs_favorites">Я смотрю</string>
+    <string name="main_tabs_bookmarks">Закладки</string>
+    <string name="main_tabs_history">История</string>
+    <string name="main_tabs_movies">Фильмы</string>
+    <string name="main_tabs_series">Сериалы</string>
+    <string name="main_tabs_cartoons">Мультфильмы</string>
+    <string name="main_tabs_f4k">4К</string>
+    <string name="main_tabs_concerts">Концерты</string>
+    <string name="main_tabs_docmovies">Док. Фильмы</string>
+    <string name="main_tabs_docseries">Док. Сериалы</string>
+    <string name="main_tabs_tvshows">ТВ Шоу</string>
+    <string name="main_tabs_collections">Подборки</string>
+    <string name="main_tabs_sport_tv">Спорт ТВ</string>
+    <string name="main_tabs_settings">Настройки</string>
+</resources>
