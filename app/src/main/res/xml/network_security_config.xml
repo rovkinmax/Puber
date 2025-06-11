@@ -1,27 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
-        <!-- Основной домен KinoPub -->
+        <!-- Основные домены KinoPub -->
         <domain includeSubdomains="true">api.service-kp.com</domain>
-        <!-- Fallback домен -->
         <domain includeSubdomains="true">api.alador.space</domain>
-        <!-- Другие KinoPub домены -->
         <domain includeSubdomains="true">kino.pub</domain>
-        <!-- Эмулятор хосты -->
-        <domain includeSubdomains="true">10.0.2.2</domain> <!-- Android emulator host -->
+
+        <!-- Локальные хосты -->
+        <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
+
+        <!-- IP адрес вашего компьютера с Charles -->
+        <domain includeSubdomains="true">192.168.1.163</domain> <!-- Замените на ваш IP -->
+
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
     </domain-config>
 
-    <!-- Allow all hostnames for debug builds -->
+    <!-- Debug конфигурация - доверяем всем сертификатам -->
     <debug-overrides>
         <trust-anchors>
+            <certificates src="@raw/charles" />
             <certificates src="system" />
             <certificates src="user" />
         </trust-anchors>
     </debug-overrides>
 
-    <!-- Base configuration for release -->
+    <!-- Базовая конфигурация для release -->
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />

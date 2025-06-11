@@ -3,6 +3,7 @@ package com.kino.puber.core.di
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.remember
+import com.kino.puber.core.logger.log
 import org.koin.compose.LocalKoinScope
 import org.koin.compose.getKoin
 import org.koin.core.Koin
@@ -22,13 +23,14 @@ internal class ScopeModuleManager(
     private var scope: Scope? = null
     private var module: Module? = null
 
-    fun initialize() {
+    fun initialize(): ScopeModuleManager {
         scope = koin.createScope(scopeName, named(scopeName)).apply {
             linkTo(parentScope)
         }
         module = moduleFactory(scope!!.id, parentScope).also {
             koin.loadModules(listOf(it))
         }
+        return this
     }
 
     override fun onRemembered() {}
@@ -42,7 +44,11 @@ internal class ScopeModuleManager(
     }
 
     private fun clearScope() {
-        scope?.close()
+        log("Clearing scope: $scopeName")
+        scope?.let {
+            it.close()
+            koin.deleteScope(it.id)
+        }
         scope = null
 
         module?.let {
@@ -67,6 +73,6 @@ fun rememberDIScope(
             moduleFactory = moduleFactory,
             parentScope = parentScope,
             koin = koin,
-        ).apply { initialize() }
+        ).initialize()
     }.getScope()!!
 }

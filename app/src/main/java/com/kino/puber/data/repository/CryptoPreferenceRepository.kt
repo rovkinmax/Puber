@@ -19,15 +19,23 @@ internal class CryptoPreferenceRepository(
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
-    override fun saveAccessToken(token: String) = saveString(ACCESS_TOKEN_KEY_NAME, token)
+    override fun saveAccessToken(token: String) {
+        saveString(ACCESS_TOKEN_KEY_NAME, token)
+    }
 
-    override fun getAccessToken(): String? = getString(ACCESS_TOKEN_KEY_NAME)
+    override fun getAccessToken(): String? {
+        return getString(ACCESS_TOKEN_KEY_NAME)
+    }
 
     override fun clearAccessToken() = saveString(ACCESS_TOKEN_KEY_NAME, null)
 
-    override fun saveRefreshToken(token: String) = saveString(REFRESH_TOKEN_KEY_NAME, token)
+    override fun saveRefreshToken(token: String) {
+        saveString(REFRESH_TOKEN_KEY_NAME, token)
+    }
 
-    override fun getRefreshToken() = getString(REFRESH_TOKEN_KEY_NAME)
+    override fun getRefreshToken(): String? {
+        return getString(REFRESH_TOKEN_KEY_NAME)
+    }
 
     override fun clearRefreshToken() = saveString(REFRESH_TOKEN_KEY_NAME, null)
 
@@ -36,6 +44,12 @@ internal class CryptoPreferenceRepository(
     override fun getUsername(): String? = getString(USERNAME_KEY_NAME)
 
     override fun clearUsername() = saveString(USERNAME_KEY_NAME, null)
+
+    override fun clearAll() {
+        sharedPreferences.edit {
+            clear()
+        }
+    }
 
     private fun saveString(name: String, value: String?) {
         sharedPreferences.edit {
@@ -83,7 +97,8 @@ internal class CryptoPreferenceRepository(
     private fun generateAndStoreKeyIfNecessary(alias: String) {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         if (!keyStore.containsAlias(alias)) {
-            val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+            val keyGenerator =
+                KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
             val keySpec = KeyGenParameterSpec.Builder(
                 alias,
                 KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT

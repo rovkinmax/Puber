@@ -30,10 +30,8 @@ internal class AuthVM(
             authInteractor.getAuthState()
                 .flatMapConcat { state ->
                     when (state) {
-                        is AuthState.Success -> {
-                            deviceInfoInteractor.setDeviceInformation()
-                                .map { state }
-                        }
+                        is AuthState.Success -> deviceInfoInteractor.setDeviceInformation()
+                            .map { state }
 
                         else -> flowOf(state)
                     }
@@ -42,13 +40,13 @@ internal class AuthVM(
                     when (it) {
                         is AuthState.Code -> updateViewState(
                             AuthViewState.Content(
-                                code = it.code, url = it.url, expireTimeSeconds = it.expireTimeSeconds
+                                code = it.code,
+                                url = it.url,
+                                expireTimeSeconds = it.expireTimeSeconds
                             )
                         )
 
-                        AuthState.Success -> {
-                            router.newRootScreen(router.screens.main())
-                        }
+                        AuthState.Success -> router.newRootScreen(router.screens.main())
                     }
                 }
         }

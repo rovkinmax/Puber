@@ -11,4 +11,5 @@ interface ICryptoPreferenceRepository {
     fun saveUsername(userName: String)
     fun getUsername(): String?
     fun clearUsername()
+    fun clearAll()
 }

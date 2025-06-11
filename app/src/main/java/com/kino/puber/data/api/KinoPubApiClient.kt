@@ -4,6 +4,8 @@ import com.kino.puber.BuildConfig
 import com.kino.puber.core.logger.log
 import com.kino.puber.data.api.auth.DeviceCodeResponse
 import com.kino.puber.data.api.auth.DeviceFlowResult
+import com.kino.puber.data.api.auth.LogOutBus
+import com.kino.puber.data.api.auth.LogOutEvent
 import com.kino.puber.data.api.auth.OAuthError
 import com.kino.puber.data.api.auth.TokenResponse
 import com.kino.puber.data.api.config.KinoPubConfig
@@ -62,24 +64,25 @@ import kotlinx.serialization.json.Json
 
 class KinoPubApiClient(
     private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
+    logOutBus: LogOutBus,
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
         prettyPrint = true
     }
-    private val httpClient: HttpClient = createHttpClient()
+    private val httpClient: HttpClient = createHttpClient(logOutBus)
 
-    private fun createHttpClient(): HttpClient = HttpClient(OkHttp) {
+    private fun createHttpClient(logOutBus: LogOutBus): HttpClient = HttpClient(OkHttp) {
 
         // Authentication if token provided
         install(Auth) {
             bearer {
                 loadTokens {
-                    println("Loading tokens") // для отладки
+                    log("Loading tokens")
                     val accessToken = cryptoPreferenceRepository.getAccessToken()
                     val refreshToken = cryptoPreferenceRepository.getRefreshToken()
-                    println("Access token: $accessToken")
+                    log("Access token: $accessToken")
                     BearerTokens(accessToken.orEmpty(), refreshToken.orEmpty())
                 }
 
@@ -93,7 +96,6 @@ class KinoPubApiClient(
                         client.post("${KinoPubConfig.OAUTH_BASE_URL}token") {
                             parameter("grant_type", KinoPubConfig.GRANT_TYPE_REFRESH_TOKEN)
                             parameter("refresh_token", refreshToken)
-                            log("Sending refresh token request with params: grant_type=${KinoPubConfig.GRANT_TYPE_REFRESH_TOKEN}, refresh_token=$refreshToken")
                         }
                     }
 
@@ -109,8 +111,8 @@ class KinoPubApiClient(
                                 newTokens.refreshToken
                             )
                         } else {
-                            log("Failed to get new tokens")
-                            throw IllegalStateException("Failed to get new tokens")
+                            logOutBus.setValue(LogOutEvent)
+                            return@refreshTokens null
                         }
                     } else {
                         val error = tokenUpdateResponse.exceptionOrNull()
@@ -121,7 +123,8 @@ class KinoPubApiClient(
                             cryptoPreferenceRepository.clearRefreshToken()
                         }
 
-                        throw IllegalStateException("Failed to refresh token: ${error?.message}")
+                        logOutBus.setValue(LogOutEvent)
+                        return@refreshTokens null
                     }
                 }
             }
@@ -163,7 +166,8 @@ class KinoPubApiClient(
         }
     }
 
-    fun isAuthenticated(): Boolean = cryptoPreferenceRepository.getAccessToken().isNullOrEmpty().not()
+    fun isAuthenticated(): Boolean =
+        cryptoPreferenceRepository.getAccessToken().isNullOrEmpty().not()
 
     // Content API
 
@@ -868,35 +872,36 @@ class KinoPubApiClient(
         )
     }
 
-    fun getDeviceLoginStatus(codeResponse: DeviceCodeResponse): Flow<Result<DeviceFlowResult>> = flow {
-        val tokenResult = getDeviceToken(
-            code = codeResponse.code // Use 'code' field as per official documentation
-        )
+    fun getDeviceLoginStatus(codeResponse: DeviceCodeResponse): Flow<Result<DeviceFlowResult>> =
+        flow {
+            val tokenResult = getDeviceToken(
+                code = codeResponse.code // Use 'code' field as per official documentation
+            )
 
-        if (tokenResult.isSuccess) {
-            // Emit successful result and complete the flow
-            emit(
-                Result.success(
-                    DeviceFlowResult(
-                        deviceCode = codeResponse,
-                        token = tokenResult.getOrThrow()
+            if (tokenResult.isSuccess) {
+                // Emit successful result and complete the flow
+                emit(
+                    Result.success(
+                        DeviceFlowResult(
+                            deviceCode = codeResponse,
+                            token = tokenResult.getOrThrow()
+                        )
                     )
                 )
-            )
-            return@flow
-        }
+                return@flow
+            }
 
-        // Check if error is polling-related (authorization_pending)
-        val error = tokenResult.exceptionOrNull()
-        val isAuthorizationPending =
-            error?.message?.contains("authorization_pending", true) ?: false
+            // Check if error is polling-related (authorization_pending)
+            val error = tokenResult.exceptionOrNull()
+            val isAuthorizationPending =
+                error?.message?.contains("authorization_pending", true) ?: false
 
-        if (!isAuthorizationPending) {
-            // Emit non-recoverable error and complete the flow
-            emit(Result.failure(error!!))
-            return@flow
+            if (!isAuthorizationPending) {
+                // Emit non-recoverable error and complete the flow
+                emit(Result.failure(error!!))
+                return@flow
+            }
         }
-    }
 
 
     fun close() {
