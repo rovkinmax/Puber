@@ -14,7 +14,7 @@ internal class DeviceSettingsVM(
     router: AppRouter,
 ) : PuberVM<DeviceSettingsViewState>(router) {
 
-    init {
+    override fun onStart() {
         loadDeviceSettings()
     }
 
