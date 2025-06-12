@@ -13,4 +13,12 @@
     <string name="main_tabs_collections">Подборки</string>
     <string name="main_tabs_sport_tv">Спорт ТВ</string>
     <string name="main_tabs_settings">Настройки</string>
+    <!-- Device Settings Screen -->
+    <string name="device_settings_title">Настройки устройства</string>
+    <string name="device_settings_current_device">Текущее устройство</string>
+    <string name="device_settings_name">Название: %1$s</string>
+    <string name="device_settings_hardware">Оборудование: %1$s</string>
+    <string name="device_settings_software">Программное обеспечение: %1$s</string>
+    <string name="device_settings_retry">Повторить</string>
+    <string name="device_settings_unlink">Отвязать устройство</string>
 </resources>
