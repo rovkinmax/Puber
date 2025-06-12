@@ -24,7 +24,7 @@ internal class DeviceSettingsVM(
         viewModelScope.launch {
             updateViewState(stateValue.copy(isLoading = true, error = null))
             deviceSettingInteractor.getCurrentDeviceSettings().collect { currentDevice ->
-                try {
+                runCatching {
                     if (currentDevice.isSuccess) {
                         updateViewState(
                             stateValue.copy(
@@ -42,11 +42,11 @@ internal class DeviceSettingsVM(
                             )
                         )
                     }
-                } catch (e: Exception) {
+                }.onFailure {
                     updateViewState(
                         stateValue.copy(
                             isLoading = false,
-                            error = e.message
+                            error = it.message
                         )
                     )
                 }
