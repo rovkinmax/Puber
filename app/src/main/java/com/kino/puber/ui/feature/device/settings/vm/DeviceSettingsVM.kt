@@ -7,9 +7,6 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.device.IDeviceSettingInteractor
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 internal class DeviceSettingsVM(
@@ -17,41 +14,37 @@ internal class DeviceSettingsVM(
     router: AppRouter,
 ) : PuberVM<DeviceSettingsViewState>(router) {
 
-    private val _state = MutableStateFlow(initialViewState)
-    val state = _state.asStateFlow()
-
     init {
         loadDeviceSettings()
     }
 
     private fun loadDeviceSettings() {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            updateViewState(stateValue.copy(isLoading = true, error = null))
             deviceSettingInteractor.getCurrentDeviceSettings().collect { currentDevice ->
                 try {
-
                     if (currentDevice.isSuccess) {
-                        _state.update {
-                            it.copy(
+                        updateViewState(
+                            stateValue.copy(
                                 isLoading = false,
                                 currentDevice = currentDevice.getOrThrow()
                             )
-                        }
+                        )
                     } else {
-                        _state.update {
-                            it.copy(
+                        updateViewState(
+                            stateValue.copy(
                                 isLoading = false,
                                 error = currentDevice.exceptionOrNull()?.message
                             )
-                        }
+                        )
                     }
                 } catch (e: Exception) {
-                    _state.update {
-                        it.copy(
+                    updateViewState(
+                        stateValue.copy(
                             isLoading = false,
                             error = e.message
                         )
-                    }
+                    )
                 }
             }
         }
