@@ -31,7 +31,7 @@ internal class DeviceSettingsVM(
                                 isLoading = false,
                                 error = null,
                                 settings = deviceUiSettingsMapper.mapSettings(currentDevice.getOrThrow().device.settings),
-                                deviceUI = deviceUiSettingsMapper.mapDevice(currentDevice.getOrThrow().device)
+                                device = deviceUiSettingsMapper.mapDevice(currentDevice.getOrThrow().device)
                             )
                         )
                     } else {
