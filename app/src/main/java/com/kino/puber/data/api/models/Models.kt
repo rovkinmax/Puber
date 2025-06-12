@@ -201,7 +201,7 @@ data class Subscription(
 
 @Serializable
 data class DeviceSettings(
-    val id: Int,
+    @SerialName("id") val id: Int?,
     @SerialName("support_ssl") val supportSsl: Boolean? = null,
     @SerialName("support_hevc") val supportHevc: Boolean? = null,
     @SerialName("support_hdr") val supportHdr: Boolean? = null,
@@ -297,6 +297,57 @@ data class BookmarkFolder(
 data class BookmarkToggleResult(
     val status: String,
     val action: String // "added" or "removed"
+)
+
+@Serializable
+data class DeviceResponse(
+    val status: Int,
+    val device: Device
+)
+
+@Serializable
+data class Device(
+    val id: Long,
+    val title: String,
+    val hardware: String,
+    val software: String,
+    val created: Long,
+    val updated: Long,
+    val last_seen: Long,
+    val is_browser: Boolean,
+    val settings: Settings
+)
+
+@Serializable
+data class Settings(
+    val supportSsl: SettingValue,
+    val supportHevc: SettingValue,
+    val supportHdr: SettingValue,
+    val support4k: SettingValue,
+    val mixedPlaylist: SettingValue,
+    val serverLocation: SettingList,
+    val streamingType: SettingList
+)
+
+@Serializable
+data class SettingValue(
+    val value: Int,
+    val label: String
+)
+
+@Serializable
+data class SettingList(
+    val type: String,
+    val value: List<SettingOption>,
+    val label: String
+)
+
+@Serializable
+data class SettingOption(
+    val id: Int,
+    val label: String,
+    val description: String = "",
+    val selected: Int
 )
 
 @Serializable

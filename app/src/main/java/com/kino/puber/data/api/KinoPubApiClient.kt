@@ -14,6 +14,7 @@ import com.kino.puber.data.api.models.BookmarkToggleResult
 import com.kino.puber.data.api.models.Comment
 import com.kino.puber.data.api.models.Country
 import com.kino.puber.data.api.models.DeviceInfo
+import com.kino.puber.data.api.models.DeviceResponse
 import com.kino.puber.data.api.models.DeviceSettings
 import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Genre
@@ -496,10 +497,17 @@ class KinoPubApiClient(
     }
 
     /**
-     * Get device settings
+     * Get current device settings
      */
-    suspend fun getDeviceSettings(): Result<DeviceSettings> = apiCall {
+    suspend fun getDeviceSettings(): Result<DeviceResponse> = apiCall {
         httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}device/info")
+    }
+
+    /**
+     * Get device settings by ID
+     */
+    suspend fun getDeviceSettingsById(deviceId: String): Result<DeviceSettings> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}device/$deviceId")
     }
 
     /**
@@ -694,13 +702,6 @@ class KinoPubApiClient(
             setBody(mapOf("device_id" to deviceId))
             contentType(ContentType.Application.Json)
         }
-    }
-
-    /**
-     * Get device settings by ID
-     */
-    suspend fun getDeviceSettingsById(deviceId: String): Result<DeviceSettings> = apiCall {
-        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}device/$deviceId")
     }
 
     /**

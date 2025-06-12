@@ -3,6 +3,7 @@ package com.kino.puber.ui
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.ui.feature.auth.component.AuthScreen
+import com.kino.puber.ui.feature.device.settings.DeviceSettingsScreen
 import com.kino.puber.ui.feature.main.component.MainScreen
 
 internal object ScreensImpl : Screens {
@@ -14,4 +15,7 @@ internal object ScreensImpl : Screens {
         return MainScreen()
     }
 
+    override fun deviceSettings(): PuberScreen {
+        return DeviceSettingsScreen()
+    }
 }
