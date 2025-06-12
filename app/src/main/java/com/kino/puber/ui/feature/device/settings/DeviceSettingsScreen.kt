@@ -65,12 +65,12 @@ internal class DeviceSettingsScreen : PuberScreen {
 
         DeviceSettingsContent(
             settings = state.settings,
+            device = state.device,
             errorMessage = state.error,
             isLoading = state.isLoading,
             onValueSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingValue(it)) },
             onListSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingList(it)) },
             onRetry = { viewModel.onAction(DeviceSettingsActions.Retry) },
-            device = state.device,
         )
     }
 }
@@ -157,6 +157,7 @@ private fun DeviceSettingsList(
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.primary,
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
                     DeviceInfoCard(
                         title = device.title,
                         hardware = device.hardware,
@@ -169,7 +170,7 @@ private fun DeviceSettingsList(
         }
 
         item {
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
         item {
@@ -201,7 +202,7 @@ private fun DeviceInfoCard(
             .selectable(true) {}
             .focusable(false)) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
@@ -230,8 +231,7 @@ private fun SettingSwitchItem(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
