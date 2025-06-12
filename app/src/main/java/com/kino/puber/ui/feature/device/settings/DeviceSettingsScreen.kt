@@ -148,9 +148,8 @@ private fun DeviceSettingsList(
                 color = MaterialTheme.colorScheme.primary,
             )
         }
-
-        item {
-            if (device != null) {
+        if (device != null) {
+            item {
                 DeviceInfoCard(
                     title = device.title,
                     hardware = device.hardware,
