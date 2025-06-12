@@ -65,8 +65,8 @@ internal class DeviceSettingsScreen : PuberScreen {
             settings = state.settings,
             errorMessage = state.error,
             isLoading = state.isLoading,
-            onValueSettingsUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingValue(it)) },
-            onListSettingsUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingList(it)) },
+            onValueSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingValue(it)) },
+            onListSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingList(it)) },
             onRetry = { viewModel.onAction(DeviceSettingsActions.Retry) },
             device = state.device,
         )
@@ -79,8 +79,8 @@ private fun DeviceSettingsContent(
     device: DeviceUi?,
     errorMessage: String?,
     isLoading: Boolean,
-    onValueSettingsUpdate: (DeviceSettingUIModel.TypeValue) -> Unit,
-    onListSettingsUpdate: (DeviceSettingUIModel.TypeList) -> Unit,
+    onValueSettingUpdate: (DeviceSettingUIModel.TypeValue) -> Unit,
+    onListSettingUpdate: (DeviceSettingUIModel.TypeList) -> Unit,
     onRetry: () -> Unit,
 ) {
     Box(
@@ -96,8 +96,8 @@ private fun DeviceSettingsContent(
                 settings?.let { deviceSettings ->
                     DeviceSettingsList(
                         settings = deviceSettings,
-                        onValueSettingsUpdate = onValueSettingsUpdate,
-                        onListSettingsUpdate = onListSettingsUpdate,
+                        onValueSettingsUpdate = onValueSettingUpdate,
+                        onListSettingsUpdate = onListSettingUpdate,
                         device = device,
                     )
                 }
@@ -286,8 +286,8 @@ private fun DeviceSettingsContentPreview() {
         ),
         errorMessage = null,
         isLoading = false,
-        onValueSettingsUpdate = {},
-        onListSettingsUpdate = {},
+        onValueSettingUpdate = {},
+        onListSettingUpdate = {},
         onRetry = {}
     )
 }
