@@ -22,9 +22,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.kino.puber.R
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.data.api.models.DeviceResponse
@@ -103,7 +105,7 @@ private fun ErrorView(
         Text(text = error)
         Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = { onAction(DeviceSettingsActions.Retry) }) {
-            Text("Повторить")
+            Text(stringResource(R.string.device_settings_retry))
         }
     }
 }
@@ -121,7 +123,7 @@ private fun DeviceSettingsList(
     ) {
         item {
             Text(
-                text = "Текущее устройство",
+                text = stringResource(R.string.device_settings_current_device),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -137,7 +139,7 @@ private fun DeviceSettingsList(
 
         item {
             Text(
-                text = "Настройки устройства",
+                text = stringResource(R.string.device_settings_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -170,17 +172,17 @@ private fun DeviceInfoCard(deviceResponse: DeviceResponse) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                "Название: ${deviceResponse.device.title}",
+                text = stringResource(R.string.device_settings_name, deviceResponse.device.title),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
             )
             Text(
-                "Оборудование: ${deviceResponse.device.hardware}",
+                text = stringResource(R.string.device_settings_hardware, deviceResponse.device.hardware),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
             )
             Text(
-                "Программное обеспечение: ${deviceResponse.device.software}",
+                text = stringResource(R.string.device_settings_software, deviceResponse.device.software),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
             )
