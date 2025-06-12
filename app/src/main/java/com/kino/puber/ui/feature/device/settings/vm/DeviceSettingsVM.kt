@@ -5,12 +5,14 @@ import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.device.IDeviceSettingInteractor
+import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
 import kotlinx.coroutines.launch
 
 internal class DeviceSettingsVM(
     private val deviceSettingInteractor: IDeviceSettingInteractor,
+    private val deviceUiSettingsMapper: DeviceUiSettingsMapper,
     router: AppRouter,
 ) : PuberVM<DeviceSettingsViewState>(router) {
 
@@ -27,7 +29,9 @@ internal class DeviceSettingsVM(
                         updateViewState(
                             stateValue.copy(
                                 isLoading = false,
-                                currentDevice = currentDevice.getOrThrow()
+                                error = null,
+                                settings = deviceUiSettingsMapper.mapSettings(currentDevice.getOrThrow().device.settings),
+                                deviceUI = deviceUiSettingsMapper.mapDevice(currentDevice.getOrThrow().device)
                             )
                         )
                     } else {

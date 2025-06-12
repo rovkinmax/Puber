@@ -23,20 +23,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Devices.TV_1080p
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kino.puber.R
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
-import com.kino.puber.data.api.models.DeviceResponse
-import com.kino.puber.data.api.models.SettingList
-import com.kino.puber.data.api.models.SettingValue
+import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
+import com.kino.puber.ui.feature.device.settings.model.DeviceSettingUIModel
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
-import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
+import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
+import com.kino.puber.ui.feature.device.settings.model.DeviceUi
+import com.kino.puber.ui.feature.device.settings.model.SettingOptionUi
 import com.kino.puber.ui.feature.device.settings.vm.DeviceSettingsVM
 import kotlinx.parcelize.Parcelize
 import org.koin.androidx.compose.koinViewModel
+import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -48,6 +50,7 @@ internal class DeviceSettingsScreen : PuberScreen {
 
     @Suppress("unused")
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
+        singleOf(::DeviceUiSettingsMapper)
         scope(named(scopeId)) {
             viewModelOf(::DeviceSettingsVM)
         }
@@ -59,29 +62,44 @@ internal class DeviceSettingsScreen : PuberScreen {
         val state by viewModel.collectViewState()
 
         DeviceSettingsContent(
-            state = state,
-            onAction = viewModel::onAction,
+            settings = state.settings,
+            errorMessage = state.error,
+            isLoading = state.isLoading,
+            onValueSettingsUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingValue(it)) },
+            onListSettingsUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingList(it)) },
+            onRetry = { viewModel.onAction(DeviceSettingsActions.Retry) },
+            device = state.deviceUI,
         )
     }
 }
 
 @Composable
 private fun DeviceSettingsContent(
-    state: DeviceSettingsViewState,
-    onAction: (DeviceSettingsActions) -> Unit,
+    settings: DeviceSettingsListUi?,
+    device: DeviceUi?,
+    errorMessage: String?,
+    isLoading: Boolean,
+    onValueSettingsUpdate: (DeviceSettingUIModel.TypeValue) -> Unit,
+    onListSettingsUpdate: (DeviceSettingUIModel.TypeList) -> Unit,
+    onRetry: () -> Unit,
 ) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         when {
-            state.isLoading -> LoadingView()
+            isLoading -> LoadingView()
 
-            state.error != null -> ErrorView(state.error, onAction)
+            errorMessage != null -> ErrorView(errorMessage, onRetry)
 
             else -> {
-                state.currentDevice?.let { deviceResponse ->
-                    DeviceSettingsList(deviceResponse, onAction)
+                settings?.let { deviceSettings ->
+                    DeviceSettingsList(
+                        settings = deviceSettings,
+                        onValueSettingsUpdate = onValueSettingsUpdate,
+                        onListSettingsUpdate = onListSettingsUpdate,
+                        device = device,
+                    )
                 }
             }
         }
@@ -96,7 +114,7 @@ private fun LoadingView() {
 @Composable
 private fun ErrorView(
     error: String,
-    onAction: (DeviceSettingsActions) -> Unit
+    onRetry: () -> Unit,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -104,7 +122,7 @@ private fun ErrorView(
     ) {
         Text(text = error)
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = { onAction(DeviceSettingsActions.Retry) }) {
+        Button(onClick = onRetry) {
             Text(stringResource(R.string.device_settings_retry))
         }
     }
@@ -112,8 +130,10 @@ private fun ErrorView(
 
 @Composable
 private fun DeviceSettingsList(
-    deviceResponse: DeviceResponse,
-    onAction: (DeviceSettingsActions) -> Unit
+    settings: DeviceSettingsListUi,
+    device: DeviceUi?,
+    onValueSettingsUpdate: (DeviceSettingUIModel.TypeValue) -> Unit,
+    onListSettingsUpdate: (DeviceSettingUIModel.TypeList) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -130,7 +150,13 @@ private fun DeviceSettingsList(
         }
 
         item {
-            DeviceInfoCard(deviceResponse)
+            if (device != null) {
+                DeviceInfoCard(
+                    title = device.title,
+                    hardware = device.hardware,
+                    software = device.software,
+                )
+            }
         }
 
         item {
@@ -145,44 +171,39 @@ private fun DeviceSettingsList(
             )
         }
 
-        val settingsList = buildList {
-            add(deviceResponse.device.settings.supportSsl)
-            add(deviceResponse.device.settings.supportHevc)
-            add(deviceResponse.device.settings.supportHdr)
-            add(deviceResponse.device.settings.support4k)
-            add(deviceResponse.device.settings.mixedPlaylist)
-            add(deviceResponse.device.settings.serverLocation)
-            add(deviceResponse.device.settings.streamingType)
-        }
-
-        items(settingsList) { setting ->
+        items(settings.settingsList) { setting ->
             when (setting) {
-                is SettingValue -> SettingSwitchItem(setting, onAction)
-                is SettingList -> SettingListItem(setting, onAction)
+                is DeviceSettingUIModel.TypeValue -> SettingSwitchItem(setting, onValueSettingsUpdate)
+                is DeviceSettingUIModel.TypeList -> SettingListItem(setting, onListSettingsUpdate)
             }
         }
     }
 }
 
 @Composable
-private fun DeviceInfoCard(deviceResponse: DeviceResponse) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun DeviceInfoCard(
+    title: String,
+    hardware: String,
+    software: String,
+    modifier: Modifier = Modifier
+) {
+    Card(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = stringResource(R.string.device_settings_name, deviceResponse.device.title),
+                text = stringResource(R.string.device_settings_name, title),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
             )
             Text(
-                text = stringResource(R.string.device_settings_hardware, deviceResponse.device.hardware),
+                text = stringResource(R.string.device_settings_hardware, hardware),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
             )
             Text(
-                text = stringResource(R.string.device_settings_software, deviceResponse.device.software),
+                text = stringResource(R.string.device_settings_software, software),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
             )
@@ -192,8 +213,8 @@ private fun DeviceInfoCard(deviceResponse: DeviceResponse) {
 
 @Composable
 private fun SettingSwitchItem(
-    setting: SettingValue,
-    onAction: (DeviceSettingsActions) -> Unit
+    setting: DeviceSettingUIModel.TypeValue,
+    onSettingUpdate: (DeviceSettingUIModel.TypeValue) -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -210,7 +231,7 @@ private fun SettingSwitchItem(
         Switch(
             checked = (setting.value == 1),
             onCheckedChange = {
-                onAction(DeviceSettingsActions.ChangeSettingValue(setting))
+                onSettingUpdate.invoke(setting)
             }
         )
     }
@@ -218,14 +239,14 @@ private fun SettingSwitchItem(
 
 @Composable
 private fun SettingListItem(
-    setting: SettingList,
-    onAction: (DeviceSettingsActions) -> Unit
+    setting: DeviceSettingUIModel.TypeList,
+    onSettingUpdate: (DeviceSettingUIModel.TypeList) -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .clickable { onAction.invoke(DeviceSettingsActions.ChangeSettingList(setting)) },
+            .clickable { onSettingUpdate.invoke(setting) },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -235,22 +256,42 @@ private fun SettingListItem(
             modifier = Modifier.weight(1f)
         )
         Text(
-            text = setting.value.find { it.selected == 1 }?.label.orEmpty(),
+            text = setting.values.find { it.selected == 1 }?.label.orEmpty(),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.secondary,
         )
     }
 }
 
-@Preview(device = Devices.TV_1080p, showBackground = true)
 @Composable
+@Preview(device = TV_1080p)
 private fun DeviceSettingsContentPreview() {
     DeviceSettingsContent(
-        state = DeviceSettingsViewState(
-            isLoading = false,
-            error = null,
-            currentDevice = null,
+        settings = DeviceSettingsListUi(
+            settingsList = listOf(
+                DeviceSettingUIModel.TypeValue(value = 1, label = "Setting 1"),
+                DeviceSettingUIModel.TypeList(
+                    type = "type",
+                    values = listOf(
+                        SettingOptionUi(id = 1, label = "Option 1", selected = 1),
+                        SettingOptionUi(id = 2, label = "Option 2", selected = 0)
+                    ),
+                    label = "Setting 2"
+                )
+            )
         ),
-        onAction = {}
+        device = DeviceUi(
+            title = "Device Title",
+            hardware = "Hardware Version",
+            software = "Software Version"
+        ),
+        errorMessage = null,
+        isLoading = false,
+        onValueSettingsUpdate = {},
+        onListSettingsUpdate = {},
+        onRetry = {}
     )
 }
+
+
+
