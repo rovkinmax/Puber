@@ -34,14 +34,7 @@ internal class DeviceSettingsVM(
                                 device = deviceUiSettingsMapper.mapDevice(currentDevice.getOrThrow().device)
                             )
                         )
-                    } else {
-                        updateViewState(
-                            stateValue.copy(
-                                isLoading = false,
-                                error = currentDevice.exceptionOrNull()?.message
-                            )
-                        )
-                    }
+                    } else throw IllegalStateException(currentDevice.exceptionOrNull())
                 }.onFailure {
                     updateViewState(
                         stateValue.copy(
