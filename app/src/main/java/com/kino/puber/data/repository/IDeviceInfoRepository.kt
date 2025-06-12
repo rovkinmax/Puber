@@ -6,6 +6,8 @@ interface IDeviceInfoRepository {
 
     fun is4kSupported(): Boolean
     fun isHdrSupported(): Boolean
+    fun isSslSupported(): Boolean
+    fun isHevcHardwareDecodingSupported(): Boolean
     fun getAndroidVersion(): String
     fun getDeviceBrand(): String
     fun getDeviceModel(): String

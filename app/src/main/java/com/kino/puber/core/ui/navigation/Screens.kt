@@ -4,4 +4,6 @@ interface Screens {
     fun auth(): PuberScreen
 
     fun main(): PuberScreen
+
+    fun deviceSettings(): PuberScreen
 }

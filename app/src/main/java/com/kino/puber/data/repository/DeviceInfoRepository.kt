@@ -9,8 +9,9 @@ import android.view.Display
 import com.kino.puber.data.api.KinoPubApiClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import javax.net.ssl.SSLSocketFactory
 
-class DeviceInfoRepository(
+internal class DeviceInfoRepository(
     private val context: Context,
     private val apiClient: KinoPubApiClient,
 ) : IDeviceInfoRepository {
@@ -42,6 +43,42 @@ class DeviceInfoRepository(
                 }
             }
         }
+        return false
+    }
+
+    override fun isSslSupported(): Boolean {
+        return try {
+            val factory = SSLSocketFactory.getDefault() as? SSLSocketFactory
+            val supported = factory?.supportedCipherSuites
+            supported != null && supported.isNotEmpty()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    override fun isHevcHardwareDecodingSupported(): Boolean {
+        val codecList = MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos
+
+        for (codecInfo in codecList) {
+            if (!codecInfo.isEncoder) {
+                codecInfo.supportedTypes.forEach { type ->
+                    if (type.equals("video/hevc", ignoreCase = true)) {
+                        val capabilities = codecInfo.getCapabilitiesForType(type)
+                        val isHardwareAccelerated = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            codecInfo.isHardwareAccelerated
+                        } else {
+                            // На API < 29 такой информации нет, считаем что true если не "OMX.google"
+                            !codecInfo.name.contains("omx.google", ignoreCase = true)
+                        }
+
+                        if (isHardwareAccelerated) {
+                            return true
+                        }
+                    }
+                }
+            }
+        }
+
         return false
     }
 
