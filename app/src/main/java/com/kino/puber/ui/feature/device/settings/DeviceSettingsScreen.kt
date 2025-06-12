@@ -68,7 +68,7 @@ internal class DeviceSettingsScreen : PuberScreen {
             onValueSettingsUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingValue(it)) },
             onListSettingsUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingList(it)) },
             onRetry = { viewModel.onAction(DeviceSettingsActions.Retry) },
-            device = state.deviceUI,
+            device = state.device,
         )
     }
 }

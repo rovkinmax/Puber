@@ -4,5 +4,5 @@ internal data class DeviceSettingsViewState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val settings: DeviceSettingsListUi? = null,
-    val deviceUI: DeviceUi? = null,
+    val device: DeviceUi? = null,
 )
