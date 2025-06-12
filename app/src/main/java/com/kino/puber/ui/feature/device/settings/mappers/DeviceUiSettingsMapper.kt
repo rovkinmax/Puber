@@ -1,16 +1,16 @@
 package com.kino.puber.ui.feature.device.settings.mappers
 
-import com.kino.puber.data.api.models.Device
+import com.kino.puber.data.api.models.DeviceResponseModel
 import com.kino.puber.data.api.models.SettingList
 import com.kino.puber.data.api.models.SettingValue
-import com.kino.puber.data.api.models.Settings
+import com.kino.puber.data.api.models.SettingsResponse
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingUIModel
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
 import com.kino.puber.ui.feature.device.settings.model.DeviceUi
 import com.kino.puber.ui.feature.device.settings.model.SettingOptionUi
 
 internal class DeviceUiSettingsMapper() {
-    fun mapSettings(settings: Settings): DeviceSettingsListUi {
+    fun mapSettings(settings: SettingsResponse): DeviceSettingsListUi {
         val settingsList = buildList {
             add(settings.supportSsl.mapToUi())
             add(settings.supportHevc.mapToUi())
@@ -24,7 +24,7 @@ internal class DeviceUiSettingsMapper() {
         return DeviceSettingsListUi(settingsList)
     }
 
-    fun mapDevice(device: Device) = DeviceUi(
+    fun mapDevice(device: DeviceResponseModel) = DeviceUi(
         title = device.title,
         hardware = device.hardware,
         software = device.software,

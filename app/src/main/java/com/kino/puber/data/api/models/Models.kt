@@ -302,11 +302,11 @@ data class BookmarkToggleResult(
 @Serializable
 data class DeviceResponse(
     val status: Int,
-    val device: Device
+    val device: DeviceResponseModel
 )
 
 @Serializable
-data class Device(
+data class DeviceResponseModel(
     val id: Long,
     val title: String,
     val hardware: String,
@@ -315,11 +315,11 @@ data class Device(
     val updated: Long,
     val last_seen: Long,
     val is_browser: Boolean,
-    val settings: Settings
+    val settings: SettingsResponse
 )
 
 @Serializable
-data class Settings(
+data class SettingsResponse(
     val supportSsl: SettingValue,
     val supportHevc: SettingValue,
     val supportHdr: SettingValue,
