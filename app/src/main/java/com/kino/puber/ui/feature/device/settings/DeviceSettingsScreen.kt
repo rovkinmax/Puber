@@ -1,6 +1,7 @@
 package com.kino.puber.ui.feature.device.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -141,20 +143,28 @@ private fun DeviceSettingsList(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item {
-            Text(
-                text = stringResource(R.string.device_settings_current_device),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
         if (device != null) {
             item {
-                DeviceInfoCard(
-                    title = device.title,
-                    hardware = device.hardware,
-                    software = device.software,
-                )
+                Column(
+                    // todo нужно разобраться с акцентом выделения элементов
+                    modifier = Modifier.selectable(
+                        selected = false,
+                        indication = null,
+                        interactionSource = null,
+                    ) {}) {
+                    Text(
+                        text = stringResource(R.string.device_settings_current_device),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    DeviceInfoCard(
+                        title = device.title,
+                        hardware = device.hardware,
+                        software = device.software,
+                    )
+
+                }
+
             }
         }
 
@@ -184,9 +194,12 @@ private fun DeviceInfoCard(
     title: String,
     hardware: String,
     software: String,
-    modifier: Modifier = Modifier
 ) {
-    Card(modifier = modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(true) {}
+            .focusable(false)) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
