@@ -19,7 +19,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,7 +54,7 @@ internal class DeviceSettingsScreen : PuberScreen {
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
         val viewModel = koinViewModel<DeviceSettingsVM>()
-        val state by viewModel.state.collectAsState()
+        val state by viewModel.collectViewState()
 
         DeviceSettingsContent(
             state = state,
