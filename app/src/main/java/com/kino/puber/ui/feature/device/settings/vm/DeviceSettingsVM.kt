@@ -39,7 +39,7 @@ internal class DeviceSettingsVM(
                     updateViewState(
                         stateValue.copy(
                             isLoading = false,
-                            error = it.message
+                            error = it.message.orEmpty()
                         )
                     )
                 }
