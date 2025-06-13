@@ -9,6 +9,7 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.device.IDeviceSettingInteractor
 import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
+import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
 
 internal class DeviceSettingsVM(
@@ -27,15 +28,15 @@ internal class DeviceSettingsVM(
 
     private fun loadDeviceSettings() {
         launch {
-            updateViewState(stateValue.copy(isLoading = true, error = null))
+            updateViewState(stateValue.copy(state = DeviceSettingsState.Loading))
             deviceSettingInteractor.getCurrentDeviceSettings().collect { currentDevice ->
                 if (currentDevice.isSuccess) {
                     updateViewState(
                         stateValue.copy(
-                            isLoading = false,
-                            error = null,
-                            settings = deviceUiSettingsMapper.mapSettings(currentDevice.getOrThrow().device.settings),
-                            device = deviceUiSettingsMapper.mapDevice(currentDevice.getOrThrow().device)
+                            state = DeviceSettingsState.Success(
+                                deviceUiSettingsMapper.mapSettings(currentDevice.getOrThrow().device.settings),
+                                deviceUiSettingsMapper.mapDevice(currentDevice.getOrThrow().device)
+                            )
                         )
                     )
                 } else throw IllegalStateException(currentDevice.exceptionOrNull())
@@ -45,8 +46,8 @@ internal class DeviceSettingsVM(
 
     override fun onAction(action: UIAction) {
         when (action) {
-            is DeviceSettingsActions.ChangeSettingList -> TODO()
-            is DeviceSettingsActions.ChangeSettingValue -> TODO()
+            is DeviceSettingsActions.ChangeSettingList -> {}
+            is DeviceSettingsActions.ChangeSettingValue -> {}
             DeviceSettingsActions.UnlinkDevice -> onUnlinkDevice()
             CommonAction.RetryClicked -> onRetry()
         }
@@ -55,8 +56,7 @@ internal class DeviceSettingsVM(
     override fun dispatchError(error: ErrorEntity) {
         updateViewState(
             stateValue.copy(
-                isLoading = false,
-                error = error.message
+                state = DeviceSettingsState.Error(error.toString())
             )
         )
     }
