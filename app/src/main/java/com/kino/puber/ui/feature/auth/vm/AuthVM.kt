@@ -1,6 +1,5 @@
 package com.kino.puber.ui.feature.auth.vm
 
-import com.kino.puber.core.error.DefaultErrorHandler
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
@@ -15,10 +14,10 @@ import kotlinx.coroutines.flow.map
 internal class AuthVM(
     private val authInteractor: IAuthInteractor,
     private val deviceInfoInteractor: IDeviceInfoInteractor,
+    override val errorHandler: ErrorHandler,
     router: AppRouter,
 ) : PuberVM<AuthViewState>(router) {
 
-    override val errorHandler: ErrorHandler = DefaultErrorHandler
     override val initialViewState = AuthViewState.Loading
 
     override fun onStart() {
