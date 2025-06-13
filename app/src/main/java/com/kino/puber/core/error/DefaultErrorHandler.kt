@@ -1,6 +1,6 @@
 package com.kino.puber.core.error
 
-object DefaultErrorHandler : ErrorHandler {
+internal class DefaultErrorHandler() : ErrorHandler {
     override fun proceed(action: ((ErrorEntity) -> Unit)?): (Throwable) -> Unit {
         return { e -> proceedInvoke(e, action) }
     }

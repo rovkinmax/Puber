@@ -1,6 +1,5 @@
 package com.kino.puber.ui.feature.device.settings.vm
 
-import com.kino.puber.core.error.DefaultErrorHandler
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
@@ -15,13 +14,12 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
 internal class DeviceSettingsVM(
     private val deviceSettingInteractor: IDeviceSettingInteractor,
     private val deviceUiSettingsMapper: DeviceUiSettingsMapper,
+    override val errorHandler: ErrorHandler,
     router: AppRouter,
 ) : PuberVM<DeviceSettingsViewState>(router) {
 
     override val initialViewState: DeviceSettingsViewState
         get() = DeviceSettingsViewState()
-
-    override val errorHandler: ErrorHandler = DefaultErrorHandler
 
     override fun onStart() {
         loadDeviceSettings()
