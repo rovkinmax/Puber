@@ -1,14 +1,16 @@
 package com.kino.puber.ui.feature.device.settings.vm
 
-import androidx.lifecycle.viewModelScope
+import com.kino.puber.core.error.DefaultErrorHandler
+import com.kino.puber.core.error.ErrorEntity
+import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.device.IDeviceSettingInteractor
 import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
-import kotlinx.coroutines.launch
 
 internal class DeviceSettingsVM(
     private val deviceSettingInteractor: IDeviceSettingInteractor,
@@ -16,46 +18,49 @@ internal class DeviceSettingsVM(
     router: AppRouter,
 ) : PuberVM<DeviceSettingsViewState>(router) {
 
+    override val initialViewState: DeviceSettingsViewState
+        get() = DeviceSettingsViewState()
+
+    override val errorHandler: ErrorHandler = DefaultErrorHandler
+
     override fun onStart() {
         loadDeviceSettings()
     }
 
     private fun loadDeviceSettings() {
-        viewModelScope.launch {
+        launch {
             updateViewState(stateValue.copy(isLoading = true, error = null))
             deviceSettingInteractor.getCurrentDeviceSettings().collect { currentDevice ->
-                runCatching {
-                    if (currentDevice.isSuccess) {
-                        updateViewState(
-                            stateValue.copy(
-                                isLoading = false,
-                                error = null,
-                                settings = deviceUiSettingsMapper.mapSettings(currentDevice.getOrThrow().device.settings),
-                                device = deviceUiSettingsMapper.mapDevice(currentDevice.getOrThrow().device)
-                            )
-                        )
-                    } else throw IllegalStateException(currentDevice.exceptionOrNull())
-                }.onFailure {
+                if (currentDevice.isSuccess) {
                     updateViewState(
                         stateValue.copy(
                             isLoading = false,
-                            error = it.message.orEmpty()
+                            error = null,
+                            settings = deviceUiSettingsMapper.mapSettings(currentDevice.getOrThrow().device.settings),
+                            device = deviceUiSettingsMapper.mapDevice(currentDevice.getOrThrow().device)
                         )
                     )
-                }
+                } else throw IllegalStateException(currentDevice.exceptionOrNull())
             }
         }
     }
 
     override fun onAction(action: UIAction) {
-        if (action is DeviceSettingsActions) {
-            when (action) {
-                is DeviceSettingsActions.ChangeSettingList -> TODO()
-                is DeviceSettingsActions.ChangeSettingValue -> TODO()
-                DeviceSettingsActions.UnlinkDevice -> onUnlinkDevice()
-                DeviceSettingsActions.Retry -> onRetry()
-            }
+        when (action) {
+            is DeviceSettingsActions.ChangeSettingList -> TODO()
+            is DeviceSettingsActions.ChangeSettingValue -> TODO()
+            DeviceSettingsActions.UnlinkDevice -> onUnlinkDevice()
+            CommonAction.RetryClicked -> onRetry()
         }
+    }
+
+    override fun dispatchError(error: ErrorEntity) {
+        updateViewState(
+            stateValue.copy(
+                isLoading = false,
+                error = error.message
+            )
+        )
     }
 
     private fun onUnlinkDevice() {
@@ -65,7 +70,4 @@ internal class DeviceSettingsVM(
     private fun onRetry() {
         loadDeviceSettings()
     }
-
-    override val initialViewState: DeviceSettingsViewState
-        get() = DeviceSettingsViewState()
 } 

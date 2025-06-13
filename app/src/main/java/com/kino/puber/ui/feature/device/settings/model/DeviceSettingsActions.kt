@@ -5,7 +5,6 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 internal sealed class DeviceSettingsActions : UIAction {
 
     data object UnlinkDevice : DeviceSettingsActions()
-    data object Retry : DeviceSettingsActions()
     data class ChangeSettingValue(val setting: DeviceSettingUIModel.TypeValue) : DeviceSettingsActions()
     data class ChangeSettingList(val setting: DeviceSettingUIModel.TypeList) : DeviceSettingsActions()
 }

@@ -25,12 +25,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Devices.TV_1080p
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kino.puber.R
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
+import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingUIModel
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
@@ -40,7 +42,6 @@ import com.kino.puber.ui.feature.device.settings.model.SettingOptionUi
 import com.kino.puber.ui.feature.device.settings.vm.DeviceSettingsVM
 import kotlinx.parcelize.Parcelize
 import org.koin.androidx.compose.koinViewModel
-import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -52,8 +53,8 @@ internal class DeviceSettingsScreen : PuberScreen {
 
     @Suppress("unused")
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
-        singleOf(::DeviceUiSettingsMapper)
         scope(named(scopeId)) {
+            scoped { DeviceUiSettingsMapper() }
             viewModelOf(::DeviceSettingsVM)
         }
     }
@@ -70,7 +71,7 @@ internal class DeviceSettingsScreen : PuberScreen {
             isLoading = state.isLoading,
             onValueSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingValue(it)) },
             onListSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingList(it)) },
-            onRetry = { viewModel.onAction(DeviceSettingsActions.Retry) },
+            onRetry = { viewModel.onAction(CommonAction.RetryClicked) },
         )
     }
 }
@@ -122,7 +123,12 @@ private fun ErrorView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = error)
+        Text(
+            text = error,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.secondary,
+            textAlign = TextAlign.Center,
+        )
         Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = onRetry) {
             Text(stringResource(R.string.device_settings_retry))
