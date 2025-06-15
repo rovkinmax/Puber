@@ -1,5 +1,6 @@
 package com.kino.puber.ui.feature.favorites.content
 
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,38 +27,26 @@ internal class FavoritesScreen(private val tab: TabType) : PuberScreen {
     @Composable
     override fun Content() {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .focusGroup(),
             verticalArrangement = Arrangement.Center,
         ) {
             Text("Favorites TBD $tab")
             Row {
-                Card(onClick = {}) {
-                    Icon(
-                        modifier = Modifier.size(94.dp),
-                        imageVector = Icons.Default.Accessibility,
-                        contentDescription = null,
-                    )
+                repeat(4) {
+                    Card(
+                        modifier = Modifier,
+                        onClick = {},
+                    ) {
+                        Icon(
+                            modifier = Modifier.size(94.dp),
+                            imageVector = Icons.Default.Accessibility,
+                            contentDescription = null,
+                        )
 
-                    Text("Favorites TBD $tab")
-                }
-
-                Card(onClick = {}) {
-                    Icon(
-                        modifier = Modifier.size(94.dp),
-                        imageVector = Icons.Default.Accessibility,
-                        contentDescription = null,
-                    )
-
-                    Text("Favorites TBD $tab")
-                }
-                Card(onClick = {}) {
-                    Icon(
-                        modifier = Modifier.size(94.dp),
-                        imageVector = Icons.Default.Accessibility,
-                        contentDescription = null,
-                    )
-
-                    Text("Favorites TBD $tab")
+                        Text("Favorites TBD $tab")
+                    }
                 }
             }
         }
