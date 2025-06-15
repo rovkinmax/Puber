@@ -1,6 +1,6 @@
 package com.kino.puber.ui.feature.main.component
 
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -11,14 +11,14 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Badge
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.DrawerState
@@ -36,7 +36,6 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.vm.MainVM
-import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -52,13 +51,6 @@ internal fun MainScreenComponent() {
 private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val mainContentFocus = remember { FocusRequester() }
-    val coroutineScope = rememberCoroutineScope()
-
-    SideEffect {
-        coroutineScope.launch {
-            mainContentFocus.requestFocus()
-        }
-    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -70,8 +62,12 @@ private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit
                 mainContentFocus = mainContentFocus,
             )
         },
-        content = { MainScreenContentBody(mainContentFocus) }
+        content = { MainScreenContentBody(mainContentFocus) },
     )
+
+    LaunchedEffect(Unit) {
+        mainContentFocus.requestFocus()
+    }
 }
 
 @Composable
@@ -81,31 +77,25 @@ private fun NavigationDrawerScope.MainSideMenuContent(
     mainContentFocus: FocusRequester,
     onAction: (UIAction) -> Unit
 ) {
-    val tabFocusRequesters = remember(state.tabs.map { it.type }) {
-        state.tabs.map { it.type }.associateWith { FocusRequester() }
-    }
+
+    val fallbackFocusItem = remember { FocusRequester() }
+
     Column(
         Modifier
             .fillMaxHeight()
             .padding(horizontal = 12.dp)
-            .selectableGroup()
             .verticalScroll(rememberScrollState())
-            .onFocusChanged { focusState ->
-                if (focusState.hasFocus) {
-                    val selectedTab = state.tabs.first { it.isSelected }
-                    tabFocusRequesters[selectedTab.type]?.requestFocus()
-                }
-            }
-            .focusable(),
+            .focusRestorer(fallbackFocusItem)
+            .focusGroup(),
         horizontalAlignment = Alignment.Start,
     ) {
         state.tabs.forEachIndexed { index, tab ->
             MainSideMenuItem(
-                tabFocusRequester = tabFocusRequesters[tab.type]!!,
+                tabFocusRequester = fallbackFocusItem,
                 tab = tab,
                 onAction = onAction,
                 drawerState = drawerState,
-                focusRequester = mainContentFocus,
+                mainContentFocus = mainContentFocus,
             )
         }
     }
@@ -116,21 +106,28 @@ private fun NavigationDrawerScope.MainSideMenuItem(
     tab: MainTab,
     drawerState: DrawerState,
     tabFocusRequester: FocusRequester,
-    focusRequester: FocusRequester,
+    mainContentFocus: FocusRequester,
     onAction: (UIAction) -> Unit
 ) {
-    val coroutineScope = rememberCoroutineScope()
+    val modifier = Modifier.height(40.dp)
+        .onFocusChanged { focusState ->
+            if (focusState.isFocused) {
+                onAction(CommonAction.ItemSelected(tab))
+            }
+        }.run {
+            if (tab.isSelected) {
+                focusRequester(tabFocusRequester)
+            } else {
+                this
+            }
+        }
+
     NavigationDrawerItem(
-        modifier = Modifier
-            .height(40.dp)
-            .focusRequester(tabFocusRequester),
+        modifier = modifier,
         selected = tab.isSelected,
         onClick = {
-            onAction(CommonAction.ItemSelected(tab))
             drawerState.setValue(DrawerValue.Closed)
-            coroutineScope.launch {
-                focusRequester.requestFocus()
-            }
+            mainContentFocus.requestFocus()
         },
         leadingContent = {
             Icon(
@@ -138,8 +135,7 @@ private fun NavigationDrawerScope.MainSideMenuItem(
                 contentDescription = null,
             )
         },
-        trailingContent = mainSideMenuItemBadge(tab)
-
+        trailingContent = mainSideMenuItemBadge(tab),
     ) {
         Text(text = tab.label)
     }
@@ -171,6 +167,7 @@ private fun MainScreenContentBody(
         Box(
             Modifier
                 .padding(closeDrawerWidth + backgroundContentPadding)
+                .selectableGroup()
                 .focusRequester(focusRequester)
 
         ) {
