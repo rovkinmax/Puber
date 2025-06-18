@@ -11,9 +11,12 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Badge
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -36,6 +39,8 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.vm.MainVM
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -46,11 +51,11 @@ internal fun MainScreenComponent() {
     MainScreenContent(state, onAction = onAction)
 }
 
-
 @Composable
 private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val mainContentFocus = remember { FocusRequester() }
+    var isMainFocusRequested by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -65,8 +70,17 @@ private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit
         content = { MainScreenContentBody(mainContentFocus) },
     )
 
-    LaunchedEffect(Unit) {
-        mainContentFocus.requestFocus()
+    val scope = rememberCoroutineScope()
+    SideEffect {
+        scope.launch {
+            // hack to force focus on launch
+            // if you know how to fix it, please do
+            delay(100)
+            if (isMainFocusRequested.not()) {
+                isMainFocusRequested = true
+                mainContentFocus.requestFocus()
+            }
+        }
     }
 }
 
