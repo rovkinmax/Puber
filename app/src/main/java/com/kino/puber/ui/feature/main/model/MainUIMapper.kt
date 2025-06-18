@@ -18,10 +18,13 @@ import com.kino.puber.R
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberTab
-import com.kino.puber.ui.feature.device.settings.DeviceSettingsScreen
+import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.ui.feature.favorites.content.FavoritesScreen
 
-internal class MainUIMapper(private val resources: ResourceProvider) {
+internal class MainUIMapper(
+    private val resources: ResourceProvider,
+    private val screens: Screens,
+) {
 
     fun buildViewState(): MainViewState {
         return MainViewState(
@@ -87,7 +90,7 @@ internal class MainUIMapper(private val resources: ResourceProvider) {
             TabType.TvShows -> FavoritesScreen(tab = type)
             TabType.Collections -> FavoritesScreen(tab = type)
             TabType.SportTV -> FavoritesScreen(tab = type)
-            TabType.Settings -> DeviceSettingsScreen()
+            TabType.Settings -> screens.deviceSettings()
         }
     }
 }
