@@ -1,0 +1,1 @@
+package com.kino.puber.core.ui.uikit.component.moviesList

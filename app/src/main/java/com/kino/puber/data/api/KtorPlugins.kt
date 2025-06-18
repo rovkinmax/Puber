@@ -9,11 +9,11 @@ import io.ktor.content.TextContent
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.availableForRead
 import io.ktor.utils.io.core.build
-import io.ktor.utils.io.core.readBytes
 import io.ktor.utils.io.core.remaining
 import io.ktor.utils.io.core.writePacket
 import io.ktor.utils.io.readRemaining
 import kotlinx.io.Buffer
+import kotlinx.io.readByteArray
 import kotlin.text.Charsets.UTF_8
 
 private const val CLIENT_ID = "android"
@@ -98,7 +98,7 @@ private suspend fun readTextLimited(channel: ByteReadChannel, maxSize: Long): St
         buffer.writePacket(packet)
     }
 
-    val byteArray = buffer.build().readBytes()
+    val byteArray = buffer.build().readByteArray()
     return try {
         byteArray.toString(UTF_8)
     } catch (_: Exception) {

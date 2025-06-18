@@ -4,11 +4,19 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class ApiResponse<T>(
-    val data: T? = null,
+data class ApiResponseList<T>(
+    val items: List<T>? = null,
     val error: String? = null,
     val status: String? = null
 )
+
+@Serializable
+data class ApiResponse<T>(
+    val item: T? = null,
+    val error: String? = null,
+    val status: String? = null
+)
+
 
 @Serializable
 data class PaginatedResponse<T>(

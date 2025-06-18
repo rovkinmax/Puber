@@ -19,7 +19,6 @@ import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberTab
 import com.kino.puber.core.ui.navigation.Screens
-import com.kino.puber.ui.feature.favorites.content.FavoritesScreen
 
 internal class MainUIMapper(
     private val resources: ResourceProvider,
@@ -77,19 +76,19 @@ internal class MainUIMapper(
         // тут будем брать экраны из router.screens.someTabScreen()
         // сейчас сделано для примера
         return when (type) {
-            TabType.Favourites -> FavoritesScreen(tab = type)
-            TabType.Bookmarks -> FavoritesScreen(tab = type)
-            TabType.History -> FavoritesScreen(tab = type)
-            TabType.Movies -> FavoritesScreen(tab = type)
-            TabType.Series -> FavoritesScreen(tab = type)
-            TabType.Cartoons -> FavoritesScreen(tab = type)
-            TabType.For4k -> FavoritesScreen(tab = type)
-            TabType.Concerts -> FavoritesScreen(tab = type)
-            TabType.DocMovies -> FavoritesScreen(tab = type)
-            TabType.DocSeries -> FavoritesScreen(tab = type)
-            TabType.TvShows -> FavoritesScreen(tab = type)
-            TabType.Collections -> FavoritesScreen(tab = type)
-            TabType.SportTV -> FavoritesScreen(tab = type)
+            TabType.Favourites -> screens.favorites()
+            TabType.Bookmarks -> screens.underDevelopment()
+            TabType.History -> screens.underDevelopment()
+            TabType.Movies -> screens.underDevelopment()
+            TabType.Series -> screens.underDevelopment()
+            TabType.Cartoons -> screens.underDevelopment()
+            TabType.For4k -> screens.underDevelopment()
+            TabType.Concerts -> screens.underDevelopment()
+            TabType.DocMovies -> screens.underDevelopment()
+            TabType.DocSeries -> screens.underDevelopment()
+            TabType.TvShows -> screens.underDevelopment()
+            TabType.Collections -> screens.underDevelopment()
+            TabType.SportTV -> screens.underDevelopment()
             TabType.Settings -> screens.deviceSettings()
         }
     }

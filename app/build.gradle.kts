@@ -194,6 +194,12 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
 
+    //coil
+    implementation(libs.coil.core)
+    implementation(libs.coil.video)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.ktor)
+
     // Ktor HTTP client
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

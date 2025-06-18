@@ -106,7 +106,7 @@ private fun NavigationDrawerScope.MainSideMenuContent(
     val fallbackFocusItem = remember { FocusRequester() }
     val backgroundColor = animateColorAsState(
         targetValue = if (drawerState.isOpen) {
-            Color.Unspecified
+            Color.Transparent
         } else {
             MaterialTheme.colorScheme.surface
         }

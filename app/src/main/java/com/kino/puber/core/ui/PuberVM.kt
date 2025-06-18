@@ -31,6 +31,10 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
     }
     private val started = AtomicBoolean(false)
     private val viewState: Flow<ViewState> get() = mutableViewState
+
+    protected val coroutineContext: CoroutineContext
+        get() = viewModelScope.coroutineContext
+
     protected val stateValue
         get() = mutableViewState.value
 
