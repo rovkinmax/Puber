@@ -1,4 +1,7 @@
 <resources>
+    <!-- General -->
+    <string name="error_button_retry">Повторить</string>
+    <!-- Main Screen -->
     <string name="main_tabs_favorites">Я смотрю</string>
     <string name="main_tabs_bookmarks">Закладки</string>
     <string name="main_tabs_history">История</string>
