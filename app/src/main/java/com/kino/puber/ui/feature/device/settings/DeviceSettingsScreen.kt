@@ -36,6 +36,7 @@ internal class DeviceSettingsScreen : PuberScreen {
             state.state,
             onValueSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingValue(it)) },
             onListSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingList(it)) },
+            onListSettingsSelect = { viewModel.onAction(DeviceSettingsActions.OnListSettingsList(emptyList())) },
             onRetry = { viewModel.onAction(CommonAction.RetryClicked) },
         )
     }

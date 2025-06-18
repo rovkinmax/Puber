@@ -3,17 +3,17 @@ package com.kino.puber.ui.feature.device.settings.model
 import androidx.compose.runtime.Immutable
 
 @Immutable
-internal sealed interface DeviceSettingUIModel {
+sealed class DeviceSettingUIModel {
     data class TypeValue(
         val value: Int,
         val label: String
-    ) : DeviceSettingUIModel
+    ) : DeviceSettingUIModel()
 
     data class TypeList(
         val type: String,
         val values: List<SettingOptionUi>,
         val label: String,
-    ) : DeviceSettingUIModel
+    ) : DeviceSettingUIModel()
 }
 
 @Immutable
@@ -22,7 +22,7 @@ internal data class DeviceSettingsListUi(
 )
 
 @Immutable
-internal data class SettingOptionUi(
+data class SettingOptionUi(
     val id: Int,
     val label: String,
     val description: String = "",

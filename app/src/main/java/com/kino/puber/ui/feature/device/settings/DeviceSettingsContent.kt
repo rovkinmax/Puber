@@ -49,6 +49,7 @@ internal fun DeviceSettingsContent(
     onValueSettingUpdate: (DeviceSettingUIModel.TypeValue) -> Unit,
     onListSettingUpdate: (DeviceSettingUIModel.TypeList) -> Unit,
     onRetry: () -> Unit,
+    onListSettingsSelect: () -> Unit,
 ) {
     Box(
         modifier = Modifier.Companion.fillMaxSize(),
@@ -62,6 +63,7 @@ internal fun DeviceSettingsContent(
                 device = state.device,
                 onValueSettingsUpdate = onValueSettingUpdate,
                 onListSettingsUpdate = onListSettingUpdate,
+                onListSettingsSelect = onListSettingsSelect,
             )
         }
     }
@@ -100,6 +102,7 @@ private fun DeviceSettingsList(
     device: DeviceUi?,
     onValueSettingsUpdate: (DeviceSettingUIModel.TypeValue) -> Unit,
     onListSettingsUpdate: (DeviceSettingUIModel.TypeList) -> Unit,
+    onListSettingsSelect: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -145,7 +148,7 @@ private fun DeviceSettingsList(
         items(settings.settingsList) { setting ->
             when (setting) {
                 is DeviceSettingUIModel.TypeValue -> SettingSwitchItem(setting, onValueSettingsUpdate)
-                is DeviceSettingUIModel.TypeList -> SettingListItem(setting, onListSettingsUpdate)
+                is DeviceSettingUIModel.TypeList -> SettingListItem(setting, onListSettingsUpdate, onListSettingsSelect)
             }
         }
     }
@@ -228,7 +231,8 @@ internal fun SettingSwitchItem(
 @Composable
 private fun SettingListItem(
     setting: DeviceSettingUIModel.TypeList,
-    onSettingUpdate: (DeviceSettingUIModel.TypeList) -> Unit
+    onSettingUpdate: (DeviceSettingUIModel.TypeList) -> Unit,
+    onListSettingsSelect: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -237,6 +241,7 @@ private fun SettingListItem(
         modifier = Modifier
             .fillMaxWidth()
             .focusable(interactionSource = interactionSource)
+            .selectableGroup()
             .background(
                 if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                 else Color.Transparent
@@ -244,7 +249,9 @@ private fun SettingListItem(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = { onSettingUpdate(setting) }
+                onClick = {
+                    onListSettingsSelect()
+                }
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -293,6 +300,7 @@ internal fun DeviceSettingsContentPreview() {
         ),
         onValueSettingUpdate = {},
         onListSettingUpdate = {},
+        onListSettingsSelect = {},
         onRetry = {}
     )
 }

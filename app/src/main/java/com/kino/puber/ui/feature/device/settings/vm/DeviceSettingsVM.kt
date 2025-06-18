@@ -7,6 +7,7 @@ import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.device.IDeviceSettingInteractor
+import com.kino.puber.ui.ScreensImpl
 import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
@@ -48,6 +49,10 @@ internal class DeviceSettingsVM(
         when (action) {
             is DeviceSettingsActions.ChangeSettingList -> {}
             is DeviceSettingsActions.ChangeSettingValue -> {}
+            is DeviceSettingsActions.OnListSettingsList -> {
+                //fixme
+                router.showOver(ScreensImpl.deviceSettingsListChooser(emptyList()))
+            }
             DeviceSettingsActions.UnlinkDevice -> onUnlinkDevice()
             CommonAction.RetryClicked -> onRetry()
         }
