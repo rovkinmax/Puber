@@ -1,5 +1,8 @@
 package com.kino.puber.ui.feature.main.component
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Badge
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +27,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.DrawerState
 import androidx.tv.material3.DrawerValue
@@ -59,6 +65,11 @@ private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        scrimBrush = Brush.horizontalGradient(
+            listOf(
+                MaterialTheme.colorScheme.scrim, Color.Transparent
+            )
+        ),
         drawerContent = {
             MainSideMenuContent(
                 state = state,
@@ -93,9 +104,21 @@ private fun NavigationDrawerScope.MainSideMenuContent(
 ) {
 
     val fallbackFocusItem = remember { FocusRequester() }
+    val backgroundColor = animateColorAsState(
+        targetValue = if (drawerState.isOpen) {
+            Color.Unspecified
+        } else {
+            MaterialTheme.colorScheme.surface
+        }
+    )
+
+    BackHandler(enabled = drawerState.isOpen.not()) {
+        drawerState.setValue(DrawerValue.Open)
+    }
 
     Column(
         Modifier
+            .background(backgroundColor.value)
             .fillMaxHeight()
             .padding(horizontal = 12.dp)
             .verticalScroll(rememberScrollState())
@@ -115,6 +138,9 @@ private fun NavigationDrawerScope.MainSideMenuContent(
     }
 }
 
+private val DrawerState.isOpen: Boolean
+    get() = currentValue == DrawerValue.Open
+
 @Composable
 private fun NavigationDrawerScope.MainSideMenuItem(
     tab: MainTab,
@@ -123,18 +149,17 @@ private fun NavigationDrawerScope.MainSideMenuItem(
     mainContentFocus: FocusRequester,
     onAction: (UIAction) -> Unit
 ) {
-    val modifier = Modifier.height(40.dp)
-        .onFocusChanged { focusState ->
-            if (focusState.isFocused) {
-                onAction(CommonAction.ItemSelected(tab))
-            }
-        }.run {
-            if (tab.isSelected) {
-                focusRequester(tabFocusRequester)
-            } else {
-                this
-            }
+    val modifier = Modifier.height(40.dp).onFocusChanged { focusState ->
+        if (focusState.isFocused) {
+            onAction(CommonAction.ItemSelected(tab))
         }
+    }.run {
+        if (tab.isSelected) {
+            focusRequester(tabFocusRequester)
+        } else {
+            this
+        }
+    }
 
     NavigationDrawerItem(
         modifier = modifier,
@@ -176,11 +201,10 @@ private fun MainScreenContentBody(
     focusRequester: FocusRequester
 ) {
     val closeDrawerWidth = 80.dp
-    val backgroundContentPadding = 10.dp
     TabComponent {
         Box(
             Modifier
-                .padding(closeDrawerWidth + backgroundContentPadding)
+                .padding(start = closeDrawerWidth)
                 .selectableGroup()
                 .focusRequester(focusRequester)
 

@@ -4,7 +4,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.HdrOn
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
@@ -15,6 +14,7 @@ import androidx.compose.material.icons.filled.SportsSoccer
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.VideoCameraFront
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.kino.puber.R
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberTab
@@ -45,7 +45,7 @@ internal class MainUIMapper(private val resources: ResourceProvider) {
                 TabType.Movies -> Icons.Default.Movie
                 TabType.Series -> Icons.Default.Tv
                 TabType.Cartoons -> Icons.Default.ChildCare
-                TabType.Fork -> Icons.Default.HdrOn
+                TabType.For4k -> resources.getImageVector(R.drawable.for_4k)
                 TabType.Concerts -> Icons.Default.MusicVideo
                 TabType.DocMovies -> Icons.Default.VideoCameraFront
                 TabType.DocSeries -> Icons.Default.VideoCameraFront
@@ -80,7 +80,7 @@ internal class MainUIMapper(private val resources: ResourceProvider) {
             TabType.Movies -> FavoritesScreen(tab = type)
             TabType.Series -> FavoritesScreen(tab = type)
             TabType.Cartoons -> FavoritesScreen(tab = type)
-            TabType.Fork -> FavoritesScreen(tab = type)
+            TabType.For4k -> FavoritesScreen(tab = type)
             TabType.Concerts -> FavoritesScreen(tab = type)
             TabType.DocMovies -> FavoritesScreen(tab = type)
             TabType.DocSeries -> FavoritesScreen(tab = type)

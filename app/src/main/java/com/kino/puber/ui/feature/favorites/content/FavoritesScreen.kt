@@ -3,9 +3,10 @@ package com.kino.puber.ui.feature.favorites.content
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.runtime.Composable
@@ -40,8 +41,8 @@ internal class FavoritesScreen(private val tab: TabType) : PuberScreen {
             verticalArrangement = Arrangement.Center,
         ) {
             Text("Favorites TBD $tab")
-            Row {
-                repeat(4) { index ->
+            LazyRow(contentPadding = PaddingValues(start = 16.dp)) {
+                items(count = 20) { index ->
                     Card(
                         modifier = Modifier.ifElse(
                             index == 0,

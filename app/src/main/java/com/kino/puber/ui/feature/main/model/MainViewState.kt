@@ -31,7 +31,7 @@ internal enum class TabType(val title: Int) : Parcelable {
     Movies(R.string.main_tabs_movies),
     Series(R.string.main_tabs_series),
     Cartoons(R.string.main_tabs_cartoons),
-    Fork(R.string.main_tabs_f4k),
+    For4k(R.string.main_tabs_f4k),
     Concerts(R.string.main_tabs_concerts),
     DocMovies(R.string.main_tabs_docmovies),
     DocSeries(R.string.main_tabs_docseries),
