@@ -9,13 +9,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Card
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import cafe.adriel.voyager.core.screen.ScreenKey
 import com.kino.puber.core.ui.navigation.PuberScreen
+import com.kino.puber.core.ui.uikit.component.modifier.ifElse
 import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.parcelize.Parcelize
 
@@ -26,17 +31,22 @@ internal class FavoritesScreen(private val tab: TabType) : PuberScreen {
 
     @Composable
     override fun Content() {
+        val fallbackFocusRequester = remember { FocusRequester() }
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .focusRestorer(fallbackFocusRequester)
                 .focusGroup(),
             verticalArrangement = Arrangement.Center,
         ) {
             Text("Favorites TBD $tab")
             Row {
-                repeat(4) {
+                repeat(4) { index ->
                     Card(
-                        modifier = Modifier,
+                        modifier = Modifier.ifElse(
+                            index == 0,
+                            Modifier.focusRequester(fallbackFocusRequester),
+                        ),
                         onClick = {},
                     ) {
                         Icon(
