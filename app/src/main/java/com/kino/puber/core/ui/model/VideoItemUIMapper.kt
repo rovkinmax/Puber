@@ -1,4 +1,4 @@
-package com.kino.puber.ui.feature.favorites.model
+package com.kino.puber.core.ui.model
 
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.data.api.models.Item

@@ -302,9 +302,11 @@ class KinoPubApiClient(
         }
     }
 
-    suspend fun getWatchingList(): Result<ApiResponseList<Item>> = apiCall {
-        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}watching/serials?subscribed=1")
-    }
+    suspend fun getWatchingList(onlySubscribed: Boolean = false): Result<ApiResponseList<Item>> =
+        apiCall {
+            val subscribed = if (onlySubscribed) 1 else 0
+            httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}watching/serials?subscribed=$subscribed")
+        }
 
     /**
      * Get history data with pagination

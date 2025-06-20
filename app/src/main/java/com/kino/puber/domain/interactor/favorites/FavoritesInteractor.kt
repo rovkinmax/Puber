@@ -7,13 +7,7 @@ internal class FavoritesInteractor(
     val api: KinoPubApiClient,
 ) {
     suspend fun getWatchlist(): List<Item> {
-        val result = api.getWatchingList()
+        val result = api.getWatchingList(onlySubscribed = false)
         return result.getOrThrow().items.orEmpty()
-        /*return buildList {
-            val list = result.getOrThrow().items.orEmpty()
-            repeat(10) {
-                addAll(list)
-            }
-        }*/
     }
 }

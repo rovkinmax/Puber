@@ -7,9 +7,10 @@ import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.favorites.FavoritesInteractor
+import com.kino.puber.ui.feature.favorites.model.FavoriteItemUIMapper
 import com.kino.puber.ui.feature.favorites.vm.FavoriteVM
 import kotlinx.parcelize.Parcelize
-import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.module.dsl.scopedOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
@@ -23,6 +24,7 @@ internal class FavoritesScreen : PuberScreen {
     @Suppress("unused")
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
         scope(named(scopeId)) {
+            scopedOf(::FavoriteItemUIMapper)
             scopedOf(::FavoritesInteractor)
             viewModelOf(::FavoriteVM)
         }
@@ -37,5 +39,56 @@ internal class FavoritesScreen : PuberScreen {
             state = state,
             onAction = onAction,
         )
+
+
+        /*
+                val fallbackFocusRequester = remember { FocusRequester() }
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .focusRestorer(fallbackFocusRequester)
+                        .verticalScroll(rememberScrollState())
+                        .focusGroup(),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("Favorites TBD")
+                    LazyRow(contentPadding = PaddingValues(start = 16.dp)) {
+                        items(count = 20) { index ->
+                            Card(
+                                modifier = Modifier.ifElse(
+                                    index == 0,
+                                    Modifier.focusRequester(fallbackFocusRequester),
+                                ),
+                                onClick = {},
+                            ) {
+                                Icon(
+                                    modifier = Modifier.size(94.dp),
+                                    imageVector = Icons.Default.Accessibility,
+                                    contentDescription = null,
+                                )
+
+                                Text("Favorites TBD")
+                            }
+                        }
+                    }
+
+                    LazyRow(contentPadding = PaddingValues(start = 16.dp)) {
+                        items(count = 20) { index ->
+                            Card(
+                                modifier = Modifier,
+                                onClick = {},
+                            ) {
+                                Icon(
+                                    modifier = Modifier.size(94.dp),
+                                    imageVector = Icons.Default.Accessibility,
+                                    contentDescription = null,
+                                )
+
+                                Text("Favorites TBD")
+                            }
+                        }
+                    }
+                }
+        */
     }
 }

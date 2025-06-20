@@ -3,12 +3,16 @@ package com.kino.puber.core.ui.navigation.component
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.core.screen.ScreenKey
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.bottomSheet.BottomSheetNavigator
@@ -208,14 +212,18 @@ private class ActivityNavigator(private val context: Context) {
     }
 }
 
+val LocalScreenKey: ProvidableCompositionLocal<ScreenKey?> = staticCompositionLocalOf { null }
+
 @Composable
 private fun CurrentScreen(key: String) {
     val navigator = LocalNavigator.currentOrThrow
     val currentScreen = navigator.lastItem
     val screenKey = key + currentScreen.key
 
-    navigator.saveableState(screenKey) {
-        currentScreen.Content()
+    CompositionLocalProvider(LocalScreenKey provides screenKey) {
+        navigator.saveableState(screenKey) {
+            currentScreen.Content()
+        }
     }
 }
 
