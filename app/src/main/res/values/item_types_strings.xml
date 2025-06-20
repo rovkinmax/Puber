@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="item_type_movie">Фильмы</string>
+    <string name="item_type_serial">Сериалы</string>
+    <string name="item_type_tv_show">TV шоу</string>
+    <string name="item_type_f4k">4К</string>
+    <string name="item_type_d3d">3D</string>
+    <string name="item_type_concert">Концерты</string>
+    <string name="item_type_docu_movie">Документальные фильмы</string>
+    <string name="item_type_docu_serial">Документальные сериалы</string>
+</resources>

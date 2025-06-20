@@ -1,27 +1,26 @@
 package com.kino.puber.data.api.models
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
 @Serializable
 data class ApiResponseList<T>(
-    val items: List<T>? = null,
-    val error: String? = null,
-    val status: String? = null
+    val items: List<T>? = null, val error: String? = null, val status: String? = null,
 )
 
 @Serializable
 data class ApiResponse<T>(
-    val item: T? = null,
-    val error: String? = null,
-    val status: String? = null
+    val item: T? = null, val error: String? = null, val status: String? = null,
 )
 
 
 @Serializable
 data class PaginatedResponse<T>(
-    val items: List<T>,
-    val pagination: Pagination
+    val items: List<T>, val pagination: Pagination,
 )
 
 @Serializable
@@ -36,7 +35,7 @@ data class Pagination(
 data class Item(
     val id: Int,
     val title: String,
-    val type: String,
+    val type: ItemType,
     val year: Int? = null,
     val rating: String? = null,
     val genres: List<Genre>? = null,
@@ -69,25 +68,65 @@ data class Item(
     val views: Int? = null,
     val voice: String? = null,
     val finished: Boolean? = null,
-    val comments: Int? = null
+    val comments: Int? = null,
 )
+
+@Serializable(with = ItemType.ItemTypeSerializer::class)
+enum class ItemType(val value: String) {
+    @SerialName("movie")
+    MOVIE("movie"),
+
+    @SerialName("serial")
+    SERIAL("serial"),
+
+    @SerialName("tvshow")
+    TV_SHOW("tvshow"),
+
+    @SerialName("4k")
+    F4K("4k"),
+
+    @SerialName("3d")
+    D3D("3d"),
+
+    @SerialName("concert")
+    CONCERT("concert"),
+
+    @SerialName("documovie")
+    DOCU_MOVIE("documovie"),
+
+    @SerialName("docuserial")
+    DOCU_SERIAL("docuserial"),
+
+    @SerialName(value = "unknown_value")
+    UNKNOWN_VALUE("unknown_value");
+
+    internal object ItemTypeSerializer : KSerializer<ItemType> {
+        override val descriptor = String.serializer().descriptor
+
+        override fun deserialize(decoder: Decoder): ItemType {
+            val value = decoder.decodeSerializableValue(String.serializer())
+            return ItemType.entries.firstOrNull { it.value == value } ?: UNKNOWN_VALUE
+        }
+
+        override fun serialize(encoder: Encoder, value: ItemType) {
+            encoder.encodeSerializableValue(String.serializer(), value.value)
+        }
+    }
+}
 
 @Serializable
 data class Genre(
-    val id: Int,
-    val title: String
+    val id: Int, val title: String,
 )
 
 @Serializable
 data class Country(
-    val id: Int,
-    val title: String
+    val id: Int, val title: String,
 )
 
 @Serializable
 data class Duration(
-    val average: String? = null,
-    val total: String? = null
+    val average: String? = null, val total: String? = null,
 )
 
 @Serializable
@@ -95,20 +134,20 @@ data class Posters(
     val small: String? = null,
     val medium: String? = null,
     val big: String? = null,
-    val wide: String? = null
+    val wide: String? = null,
 )
 
 @Serializable
 data class Trailer(
     val url: String? = null,
-    val quality: String? = null
+    val quality: String? = null,
 )
 
 @Serializable
 data class Tracklist(
     val artists: String? = null,
     val title: String? = null,
-    val url: String? = null
+    val url: String? = null,
 )
 
 @Serializable
@@ -118,52 +157,41 @@ data class History(
     val video: Video? = null,
     val season: Int? = null,
     val time: Int? = null,
-    val updated: String? = null
+    val updated: String? = null,
 )
 
 @Serializable
 data class Video(
-    val id: Int,
-    val number: Int? = null,
+    val id: Int, val number: Int? = null,
     val title: String? = null,
-    val thumbnail: String? = null
+    val thumbnail: String? = null,
 )
 
 @Serializable
 data class Media(
     val id: Int,
     val title: String? = null,
-    val files: List<MediaFile>? = null
+    val files: List<MediaFile>? = null,
 )
 
 @Serializable
 data class MediaFile(
-    val url: String,
-    val quality: String? = null,
-    val type: String? = null
+    val url: String, val quality: String? = null, val type: String? = null,
 )
 
 @Serializable
 data class Audio(
-    val id: Int,
-    val lang: String? = null,
-    val type: String? = null,
-    val author: String? = null
+    val id: Int, val lang: String? = null, val type: String? = null, val author: String? = null,
 )
 
 @Serializable
 data class Subtitle(
-    val id: Int,
-    val lang: String,
-    val url: String,
-    val shift: Int? = null
+    val id: Int, val lang: String, val url: String, val shift: Int? = null,
 )
 
 @Serializable
 data class Author(
-    val id: Int,
-    val name: String,
-    val role: String? = null
+    val id: Int, val name: String, val role: String? = null,
 )
 
 @Serializable
@@ -232,56 +260,42 @@ data class WatchingStatus(
 
 @Serializable
 data class ServerLocation(
-    val id: Int,
-    val title: String,
-    val location: String
+    val id: Int, val title: String, val location: String,
 )
 
 @Serializable
 data class StreamingType(
-    val id: Int,
-    val title: String
+    val id: Int, val title: String,
 )
 
 @Serializable
 data class TranslationType(
-    val id: Int,
-    val title: String
+    val id: Int, val title: String,
 )
 
 @Serializable
 data class QualityType(
-    val id: Int,
-    val title: String
+    val id: Int, val title: String,
 )
 
 @Serializable
 data class VoiceAuthor(
-    val id: Int,
-    val name: String,
-    val ru_name: String? = null
+    val id: Int, val name: String, val ru_name: String? = null,
 )
 
 @Serializable
 data class MediaLinks(
-    val playlist: String? = null,
-    val subtitles: List<SubtitleLink>? = null
+    val playlist: String? = null, val subtitles: List<SubtitleLink>? = null,
 )
 
 @Serializable
 data class SubtitleLink(
-    val id: Int,
-    val lang: String,
-    val url: String,
-    val shift: Int? = null
+    val id: Int, val lang: String, val url: String, val shift: Int? = null,
 )
 
 @Serializable
 data class TVChannel(
-    val id: Int,
-    val title: String,
-    val stream: String? = null,
-    val epg: List<EPGProgram>? = null
+    val id: Int, val title: String, val stream: String? = null, val epg: List<EPGProgram>? = null,
 )
 
 @Serializable
@@ -303,14 +317,12 @@ data class BookmarkFolder(
 
 @Serializable
 data class BookmarkToggleResult(
-    val status: String,
-    val action: String // "added" or "removed"
+    val status: String, val action: String, // "added" or "removed"
 )
 
 @Serializable
 data class DeviceResponse(
-    val status: Int,
-    val device: DeviceResponseModel
+    val status: Int, val device: DeviceResponseModel,
 )
 
 @Serializable
@@ -339,23 +351,17 @@ data class SettingsResponse(
 
 @Serializable
 data class SettingValue(
-    val value: Int,
-    val label: String
+    val value: Int, val label: String,
 )
 
 @Serializable
 data class SettingList(
-    val type: String,
-    val value: List<SettingOption>,
-    val label: String
+    val type: String, val value: List<SettingOption>, val label: String,
 )
 
 @Serializable
 data class SettingOption(
-    val id: Int,
-    val label: String,
-    val description: String = "",
-    val selected: Int
+    val id: Int, val label: String, val description: String = "", val selected: Int,
 )
 
 @Serializable
@@ -378,10 +384,7 @@ data class VoteResult(
 
 @Serializable
 data class Season(
-    val id: Int,
-    val number: Int,
-    val title: String? = null,
-    val episodes: List<Episode>? = null
+    val id: Int, val number: Int, val title: String? = null, val episodes: List<Episode>? = null,
 )
 
 @Serializable
@@ -405,21 +408,16 @@ data class WatchingInfo(
 
 @Serializable
 data class ItemFiles(
-    val id: Int,
-    val files: List<VideoFile>
+    val id: Int, val files: List<VideoFile>,
 )
 
 @Serializable
 data class VideoFile(
-    val url: String,
-    val quality: String,
-    val translation: Translation? = null
+    val url: String, val quality: String, val translation: Translation? = null,
 )
 
 @Serializable
 data class Translation(
-    val id: Int,
-    val title: String,
-    val type: String, // "voice", "sub"
-    val lang: String? = null
+    val id: Int, val title: String, val type: String, // "voice", "sub"
+    val lang: String? = null,
 ) 

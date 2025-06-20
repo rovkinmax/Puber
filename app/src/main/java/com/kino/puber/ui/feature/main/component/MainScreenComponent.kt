@@ -10,17 +10,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Badge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -40,13 +35,12 @@ import androidx.tv.material3.Text
 import androidx.tv.material3.rememberDrawerState
 import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
 import com.kino.puber.core.ui.navigation.component.TabComponent
+import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.vm.MainVM
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -60,8 +54,7 @@ internal fun MainScreenComponent() {
 @Composable
 private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val mainContentFocus = remember { FocusRequester() }
-    var isMainFocusRequested by remember { mutableStateOf(false) }
+    val mainContentFocus = rememberFocusRequesterOnLaunch()
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -80,19 +73,6 @@ private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit
         },
         content = { MainScreenContentBody(mainContentFocus) },
     )
-
-    val scope = rememberCoroutineScope()
-    SideEffect {
-        scope.launch {
-            // hack to force focus on launch
-            // if you know how to fix it, please do
-            delay(100)
-            if (isMainFocusRequested.not()) {
-                isMainFocusRequested = true
-                mainContentFocus.requestFocus()
-            }
-        }
-    }
 }
 
 @Composable
@@ -149,17 +129,18 @@ private fun NavigationDrawerScope.MainSideMenuItem(
     mainContentFocus: FocusRequester,
     onAction: (UIAction) -> Unit
 ) {
-    val modifier = Modifier.height(40.dp).onFocusChanged { focusState ->
-        if (focusState.isFocused) {
-            onAction(CommonAction.ItemSelected(tab))
+    val modifier = Modifier.height(40.dp)
+        .onFocusChanged { focusState ->
+            if (focusState.isFocused) {
+                onAction(CommonAction.ItemSelected(tab))
+            }
+        }.run {
+            if (tab.isSelected) {
+                focusRequester(tabFocusRequester)
+            } else {
+                this
+            }
         }
-    }.run {
-        if (tab.isSelected) {
-            focusRequester(tabFocusRequester)
-        } else {
-            this
-        }
-    }
 
     NavigationDrawerItem(
         modifier = modifier,
@@ -205,8 +186,8 @@ private fun MainScreenContentBody(
         Box(
             Modifier
                 .padding(start = closeDrawerWidth)
-                .selectableGroup()
                 .focusRequester(focusRequester)
+                .focusGroup()
 
         ) {
             PuberCurrentTab()

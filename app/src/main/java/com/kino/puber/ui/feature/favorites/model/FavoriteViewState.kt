@@ -1,7 +1,7 @@
 package com.kino.puber.ui.feature.favorites.model
 
 import androidx.compose.runtime.Immutable
-import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 
 @Immutable
 internal sealed class FavoriteViewState {
@@ -12,6 +12,6 @@ internal sealed class FavoriteViewState {
     data class Error(val message: String) : FavoriteViewState()
 
     data class Content(
-        val items: List<VideoItemUIState>,
+        val gridState: VideoGridUIState,
     ) : FavoriteViewState()
 }
