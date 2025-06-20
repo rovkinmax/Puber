@@ -1,8 +1,16 @@
 package com.kino.puber.core.ui.uikit.theme
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
+
+data object PuberTheme {
+    data object Defaults {
+        val VideoItemWidth = 100.dp
+        val VideoItemHeight = 150.dp
+    }
+}
 
 @Composable
 fun PuberTheme(

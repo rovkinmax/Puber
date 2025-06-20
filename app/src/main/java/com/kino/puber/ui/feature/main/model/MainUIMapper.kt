@@ -73,8 +73,6 @@ internal class MainUIMapper(
     }
 
     private fun tabScreen(type: TabType): PuberScreen {
-        // тут будем брать экраны из router.screens.someTabScreen()
-        // сейчас сделано для примера
         return when (type) {
             TabType.Favourites -> screens.favorites()
             TabType.Bookmarks -> screens.underDevelopment()
