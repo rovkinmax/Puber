@@ -39,56 +39,5 @@ internal class FavoritesScreen : PuberScreen {
             state = state,
             onAction = onAction,
         )
-
-
-        /*
-                val fallbackFocusRequester = remember { FocusRequester() }
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .focusRestorer(fallbackFocusRequester)
-                        .verticalScroll(rememberScrollState())
-                        .focusGroup(),
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text("Favorites TBD")
-                    LazyRow(contentPadding = PaddingValues(start = 16.dp)) {
-                        items(count = 20) { index ->
-                            Card(
-                                modifier = Modifier.ifElse(
-                                    index == 0,
-                                    Modifier.focusRequester(fallbackFocusRequester),
-                                ),
-                                onClick = {},
-                            ) {
-                                Icon(
-                                    modifier = Modifier.size(94.dp),
-                                    imageVector = Icons.Default.Accessibility,
-                                    contentDescription = null,
-                                )
-
-                                Text("Favorites TBD")
-                            }
-                        }
-                    }
-
-                    LazyRow(contentPadding = PaddingValues(start = 16.dp)) {
-                        items(count = 20) { index ->
-                            Card(
-                                modifier = Modifier,
-                                onClick = {},
-                            ) {
-                                Icon(
-                                    modifier = Modifier.size(94.dp),
-                                    imageVector = Icons.Default.Accessibility,
-                                    contentDescription = null,
-                                )
-
-                                Text("Favorites TBD")
-                            }
-                        }
-                    }
-                }
-        */
     }
 }
