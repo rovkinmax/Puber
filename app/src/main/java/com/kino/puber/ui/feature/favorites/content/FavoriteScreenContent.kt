@@ -66,12 +66,11 @@ private fun FavoriteScreenContentBody(
         ) {
 
         }
-
         VideoGrid(
-            modifier = Modifier
-                .weight(2F),
+            modifier = Modifier.weight(2F),
             state = state.gridState,
             onItemClick = { onAction(CommonAction.ItemSelected(it)) },
         )
+
     }
 }
