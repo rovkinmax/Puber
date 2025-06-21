@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="video_details_label_season">Сезон</string>
+
+    <string name="duration_days_hours_minutes">%1$d д %2$d ч %3$d мин</string>
+    <string name="duration_days_hours">%1$d д %2$d ч</string>
+    <string name="duration_days_minutes">%1$d д %2$d мин</string>
+    <string name="duration_days_only">%1$d д</string>
+    <string name="duration_hours_minutes">%1$d ч %2$d мин</string>
+    <string name="duration_hours_only">%1$d ч</string>
+    <string name="duration_minutes_only">%1$d мин</string>
+    <string name="duration_zero">0 мин</string>
+
+    <plurals name="video_details_label_season_plurals">
+        <item quantity="one">%s сезон</item>
+        <item quantity="few">%s сезона</item>
+        <item quantity="many">%s сезонов</item>
+        <item quantity="other">%s сезонов</item>
+    </plurals>
+</resources>
