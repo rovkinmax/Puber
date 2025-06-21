@@ -19,8 +19,10 @@ import com.kino.puber.core.ui.uikit.theme.PuberTheme
 
 @Immutable
 data class VideoItemUIState(
+    val id: Int,
     val title: String,
     val imageUrl: String,
+    val bigImageUrl: String,
 )
 
 @Composable

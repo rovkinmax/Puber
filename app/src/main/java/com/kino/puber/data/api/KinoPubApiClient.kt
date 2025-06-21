@@ -8,6 +8,7 @@ import com.kino.puber.data.api.auth.OAuthError
 import com.kino.puber.data.api.auth.TokenResponse
 import com.kino.puber.data.api.config.KinoPubConfig
 import com.kino.puber.data.api.config.UserAgentBuilder
+import com.kino.puber.data.api.models.ApiResponse
 import com.kino.puber.data.api.models.ApiResponseList
 import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.BookmarkFolder
@@ -193,7 +194,7 @@ class KinoPubApiClient(
     /**
      * Get item details by ID
      */
-    suspend fun getItemDetails(id: Int): Result<Item> = apiCall {
+    suspend fun getItemDetails(id: Int): Result<ApiResponse<Item>> = apiCall {
         httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}items/$id")
     }
 
