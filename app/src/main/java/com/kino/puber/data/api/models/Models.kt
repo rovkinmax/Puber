@@ -9,18 +9,23 @@ import kotlinx.serialization.encoding.Encoder
 
 @Serializable
 data class ApiResponseList<T>(
-    val items: List<T>? = null, val error: String? = null, val status: String? = null,
+    val items: List<T>? = null,
+    val error: String? = null,
+    val status: String? = null,
 )
 
 @Serializable
 data class ApiResponse<T>(
-    val item: T? = null, val error: String? = null, val status: String? = null,
+    val item: T? = null,
+    val error: String? = null,
+    val status: String? = null,
 )
 
 
 @Serializable
 data class PaginatedResponse<T>(
-    val items: List<T>, val pagination: Pagination,
+    val items: List<T>,
+    val pagination: Pagination,
 )
 
 @Serializable
@@ -28,7 +33,7 @@ data class Pagination(
     val current: Int,
     val perpage: Int,
     val total: Int,
-    @SerialName("total_items") val totalItems: Int
+    @SerialName("total_items") val totalItems: Int,
 )
 
 @Serializable
@@ -59,7 +64,7 @@ data class Item(
     @SerialName("kinopoisk_votes") val kinopoiskVotes: Int? = null,
     val langs: String? = null,
     @SerialName("poor_quality") val poorQuality: Boolean? = null,
-    @SerialName("rating_percentage") val ratingPercentage: String? = null,
+    @SerialName("rating_percentage") val ratingPercentage: Int? = null,
     @SerialName("rating_votes") val ratingVotes: Int? = null,
     val subtype: String? = null,
     val tracklist: List<Tracklist>? = null,
@@ -69,6 +74,7 @@ data class Item(
     val voice: String? = null,
     val finished: Boolean? = null,
     val comments: Int? = null,
+    val seasons: List<Season>? = null,
 )
 
 @Serializable(with = ItemType.ItemTypeSerializer::class)
@@ -116,17 +122,20 @@ enum class ItemType(val value: String) {
 
 @Serializable
 data class Genre(
-    val id: Int, val title: String,
+    val id: Int,
+    val title: String,
 )
 
 @Serializable
 data class Country(
-    val id: Int, val title: String,
+    val id: Int,
+    val title: String,
 )
 
 @Serializable
 data class Duration(
-    val average: String? = null, val total: String? = null,
+    val average: Double? = null,
+    val total: Int? = null,
 )
 
 @Serializable
@@ -290,7 +299,9 @@ data class MediaLinks(
 
 @Serializable
 data class SubtitleLink(
-    val id: Int, val lang: String, val url: String, val shift: Int? = null,
+    val lang: String,
+    val url: String,
+    val shift: Int? = null,
 )
 
 @Serializable
@@ -384,7 +395,10 @@ data class VoteResult(
 
 @Serializable
 data class Season(
-    val id: Int, val number: Int, val title: String? = null, val episodes: List<Episode>? = null,
+    val id: Int,
+    val number: Int,
+    val title: String? = null,
+    val episodes: List<Episode>? = null,
 )
 
 @Serializable
@@ -394,7 +408,7 @@ data class Episode(
     val title: String? = null,
     val thumbnail: String? = null,
     val duration: Int? = null,
-    @SerialName("ac3") val hasAC3: Boolean? = null,
+    val ac3: Int? = null,
     val subtitles: List<SubtitleLink>? = null
 )
 
