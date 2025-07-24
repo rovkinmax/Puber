@@ -1,6 +1,7 @@
 package com.kino.puber.core.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,13 +79,22 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
     @Composable
     fun collectViewState(initial: ViewState = stateValue): State<ViewState> {
         if (started.compareAndSet(false, true)) {
-            router.addBackDispatcher(this)
             onStart()
+        }
+        DisposableEffect(this@PuberVM) {
+            registerBackDispatcher()
+            onDispose {
+                removeBackDispatcher()
+            }
         }
         return viewState.collectAsStateWithLifecycle(initial)
     }
 
-    override fun onCleared() {
+    private fun registerBackDispatcher() {
+        router.addBackDispatcher(this)
+    }
+
+    private fun removeBackDispatcher() {
         router.removeBackDispatcher(this)
     }
 }
