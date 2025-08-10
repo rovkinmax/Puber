@@ -33,7 +33,7 @@ data class VideoDetailsUIState(
             ),
             year = "1991",
             genres = "horror, thriller, action",
-            duration = "2:00",
+            duration = "Длительность: 2:00",
             country = "KZ",
             isLoading = true
         )

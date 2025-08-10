@@ -11,10 +11,6 @@
     <string name="duration_minutes_only">%1$d мин</string>
     <string name="duration_zero">0 мин</string>
 
-    <plurals name="video_details_label_season_plurals">
-        <item quantity="one">%s сезон</item>
-        <item quantity="few">%s сезона</item>
-        <item quantity="many">%s сезонов</item>
-        <item quantity="other">%s сезонов</item>
-    </plurals>
+    <string name="video_details_label_seasons">Сезонов: %s</string>
+    <string name="video_details_label_duration">Длительность: %s</string>
 </resources>
