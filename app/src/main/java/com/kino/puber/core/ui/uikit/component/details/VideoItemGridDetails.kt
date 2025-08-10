@@ -30,7 +30,9 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.kino.puber.core.ui.uikit.component.Rating
+import com.kino.puber.core.ui.uikit.component.RatingUIState
 import com.kino.puber.core.ui.uikit.component.modifier.placeholder
+import com.kino.puber.core.ui.uikit.model.Lorem
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 
 
@@ -103,7 +105,16 @@ private fun VideoDetailsDescription(
                 modifier = Modifier
                     .fillMaxWidth()
                     .placeholder(visible = state.isLoading),
-                text = "${state.year}, ${state.genres} ${state.duration} ${state.country}",
+                text = "${state.year}, ${state.genres} ${state.country}",
+                style = MaterialTheme.typography.labelSmall,
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                modifier = Modifier
+                    .placeholder(visible = state.isLoading),
+                text = state.duration,
                 style = MaterialTheme.typography.labelSmall,
             )
 
@@ -202,6 +213,36 @@ private fun VideoItemGridLoadingPreview() = PuberTheme {
                 .fillMaxWidth()
                 .weight(3F),
             state = VideoDetailsUIState.Loading,
+        )
+
+        Box(Modifier.weight(2F))
+    }
+}
+
+@Composable
+@Preview(device = TV_1080p, showBackground = true)
+private fun VideoItemGridPreview() = PuberTheme {
+    Column(Modifier.background(MaterialTheme.colorScheme.background)) {
+        VideoItemGridDetails(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(3F),
+            state = VideoDetailsUIState(
+                id = 0,
+                title = "Movie Title \n Some Long Title",
+                description = Lorem.words(100, newLineEachWordCount = 10),
+                imageUrl = "",
+                trailerUrl = "",
+                ratings = listOf(
+                    RatingUIState.IMDB("9.9"),
+                    RatingUIState.KP("9.9"),
+                    RatingUIState.PUB("9.9"),
+                ),
+                year = "1991",
+                genres = "horror, thriller, action",
+                duration = "Длительность: 2:00",
+                country = "KZ",
+            ),
         )
 
         Box(Modifier.weight(2F))

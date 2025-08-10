@@ -53,12 +53,11 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
 
     private fun buildDuration(item: Item): String {
         return item.seasons?.let { seasons ->
-            resources.getQuantityString(
-                R.plurals.video_details_label_season_plurals,
-                seasons.size,
-                seasons.size
-            )
-        } ?: item.duration?.total?.formatDurationWithResources().orEmpty()
+            resources.getString(R.string.video_details_label_seasons, seasons.size)
+        } ?: resources.getString(
+            R.string.video_details_label_duration,
+            item.duration?.total?.formatDurationWithResources().orEmpty(),
+        )
     }
 
     fun Int.formatDurationWithResources(): String {
