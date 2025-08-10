@@ -2,19 +2,23 @@ package com.kino.puber.ui.feature.favorites.vm
 
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.favorites.FavoritesInteractor
 import com.kino.puber.ui.feature.favorites.model.FavoriteItemUIMapper
 import com.kino.puber.ui.feature.favorites.model.FavoriteViewState
+import kotlinx.coroutines.Job
 
 internal class FavoriteVM(
     router: AppRouter,
     private val interactor: FavoritesInteractor,
     private val favoriteItemUIMapper: FavoriteItemUIMapper,
 ) : PuberVM<FavoriteViewState>(router) {
+
     override val initialViewState = FavoriteViewState.Loading
+    private var focusedItedJob: Job? = null
 
     override fun onStart() {
         loadData()
@@ -47,8 +51,14 @@ internal class FavoriteVM(
     }
 
     private fun onItemFocused(selectedItem: VideoItemUIState) {
-        launch {
+        focusedItedJob?.cancel()
+        focusedItedJob = launch {
+            updateViewState<FavoriteViewState.Content> {
+                copy(selectedItem = VideoDetailsUIState.Loading)
+            }
+
             val details = interactor.getItemDetails(selectedItem.id)
+
             updateViewState<FavoriteViewState.Content> {
                 copy(selectedItem = favoriteItemUIMapper.mapDetailedItem(details))
             }

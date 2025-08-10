@@ -14,6 +14,6 @@ internal sealed class FavoriteViewState {
 
     data class Content(
         val gridState: VideoGridUIState,
-        val selectedItem: VideoDetailsUIState? = null,
+        val selectedItem: VideoDetailsUIState,
     ) : FavoriteViewState()
 }

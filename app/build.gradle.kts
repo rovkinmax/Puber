@@ -181,6 +181,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
+    implementation(libs.androidx.ui.text)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.tv.foundation)
@@ -193,6 +194,7 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
+    implementation(libs.compose.placeholder.material3)
 
     //coil
     implementation(libs.coil.core)

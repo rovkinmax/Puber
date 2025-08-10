@@ -15,7 +15,7 @@ internal class FavoriteItemUIMapper(
     fun mapToState(items: List<Item>, selectedItem: Item?): FavoriteViewState.Content {
         return FavoriteViewState.Content(
             gridState = mapList(items),
-            selectedItem = selectedItem?.let(::mapDetailedItem),
+            selectedItem = selectedItem?.let(::mapDetailedItem) ?: VideoDetailsUIState.Loading,
         )
     }
 

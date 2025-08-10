@@ -1,5 +1,6 @@
 package com.kino.puber.core.ui.uikit.component
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -10,6 +11,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -18,13 +20,27 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kino.puber.R
+import com.kino.puber.core.ui.uikit.component.modifier.placeholder
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 
 @Immutable
 sealed class RatingUIState(open val value: String) {
-    data class KP(override val value: String) : RatingUIState(value)
-    data class IMDB(override val value: String) : RatingUIState(value)
-    data class PUB(override val value: String) : RatingUIState(value)
+    open val isLoading: Boolean = false
+
+    data class KP(
+        override val value: String,
+        override val isLoading: Boolean = false,
+    ) : RatingUIState(value)
+
+    data class IMDB(
+        override val value: String,
+        override val isLoading: Boolean = false,
+    ) : RatingUIState(value)
+
+    data class PUB(
+        override val value: String,
+        override val isLoading: Boolean = false,
+    ) : RatingUIState(value)
 }
 
 @Suppress("unused")
@@ -52,11 +68,19 @@ fun Rating(
             tint = Color.Unspecified,
         )
 
-        Text(
-            modifier = Modifier.padding(start = 4.dp),
-            text = state.value,
-            style = MaterialTheme.typography.bodySmall,
-        )
+        Box(modifier = Modifier.placeholder(visible = state.isLoading)) {
+            Text(
+                modifier = Modifier
+                    .padding(start = 4.dp)
+                    .drawWithContent {
+                        if (state.isLoading.not()) {
+                            drawContent()
+                        }
+                    },
+                text = state.value,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 
