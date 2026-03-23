@@ -24,10 +24,6 @@ internal class MainScreen : PuberScreen {
     private fun buildModule(scopeId: ScopeID, parentScope: Scope): Module {
         return module {
             scope(named(scopeId)) {
-                //возможно потребуется создать отедельный Flow для авторизованной зоны,чтобы провайдить эти маперы
-                scopedOf(::VideoItemUIMapper)
-                scopedOf(::VideoItemTypeMapper)
-
                 scopedOf(::TabRouter)
                 scopedOf(::MainUIMapper)
                 viewModelOf(::MainVM)
