@@ -198,7 +198,7 @@ internal fun SettingSwitchItem(
         modifier = Modifier
             .fillMaxWidth()
             .focusable(interactionSource = interactionSource)
-            .background(if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.Transparent)
+            .background(if (isFocused) Color(MaterialTheme.colorScheme.primary.value).copy(alpha = 0.2f) else Color.Transparent)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -238,7 +238,7 @@ private fun SettingListItem(
             .fillMaxWidth()
             .focusable(interactionSource = interactionSource)
             .background(
-                if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                if (isFocused) Color(MaterialTheme.colorScheme.primary.value).copy(alpha = 0.2f)
                 else Color.Transparent
             )
             .clickable(

@@ -1,10 +1,8 @@
-import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 import java.io.FileInputStream
 import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.ksp)
@@ -50,11 +48,14 @@ android {
         versionCode = Versions.DebugVersionCode
         versionName = currentVersion
 
-        buildFeatures.compose = true
-        buildFeatures.buildConfig = true
-
         // Add CLIENT_SECRET to BuildConfig
         buildConfigField("String", "CLIENT_SECRET", "\"${getClientSecret()}\"")
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+        resValues = true
     }
 
     flavorDimensions += "buildType"
@@ -126,7 +127,7 @@ android {
             dimension = "buildType"
             versionName = "$currentVersion-$name"
             applicationIdSuffix = ".stage"
-            resValue("string", "app_name", "Puber(${name.uppercaseFirstChar()})")
+            resValue("string", "app_name", "Puber(${name.replaceFirstChar { it.uppercaseChar() }})")
         }
 
         create("prod") {
@@ -140,9 +141,6 @@ android {
 
 kotlin {
     jvmToolchain(Versions.JavaVersionCompat.majorVersion.toInt())
-    sourceSets.all {
-        languageSettings.languageVersion = "2.0"
-    }
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(Versions.JvmTargetVersion))
         freeCompilerArgs.add("-Xjvm-default=all")
