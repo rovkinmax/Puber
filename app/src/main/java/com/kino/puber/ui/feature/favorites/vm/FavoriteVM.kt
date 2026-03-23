@@ -18,7 +18,7 @@ internal class FavoriteVM(
 ) : PuberVM<FavoriteViewState>(router) {
 
     override val initialViewState = FavoriteViewState.Loading
-    private var focusedItedJob: Job? = null
+    private var focusedItemJob: Job? = null
 
     override fun onStart() {
         loadData()
@@ -51,8 +51,8 @@ internal class FavoriteVM(
     }
 
     private fun onItemFocused(selectedItem: VideoItemUIState) {
-        focusedItedJob?.cancel()
-        focusedItedJob = launch {
+        focusedItemJob?.cancel()
+        focusedItemJob = launch {
             updateViewState<FavoriteViewState.Content> {
                 copy(selectedItem = VideoDetailsUIState.Loading)
             }
