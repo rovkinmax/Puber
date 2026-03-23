@@ -11,4 +11,7 @@ interface ICryptoPreferenceRepository {
     fun saveUsername(userName: String)
     fun getUsername(): String?
     fun clearUsername()
+    fun getAndroidId(): String?
+    fun saveApiDomain(domain: String?)
+    fun getApiDomain(): String?
 }

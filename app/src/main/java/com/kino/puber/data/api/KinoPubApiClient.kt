@@ -25,7 +25,9 @@ import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemFiles
 import com.kino.puber.data.api.models.KCollection
 import com.kino.puber.data.api.models.MediaLinks
+import com.kino.puber.data.api.models.NotificationStatus
 import com.kino.puber.data.api.models.PaginatedResponse
+import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.data.api.models.QualityType
 import com.kino.puber.data.api.models.Season
 import com.kino.puber.data.api.models.ServerLocation
@@ -36,6 +38,9 @@ import com.kino.puber.data.api.models.UserInfo
 import com.kino.puber.data.api.models.VoiceAuthor
 import com.kino.puber.data.api.models.VoteResult
 import com.kino.puber.data.api.models.WatchingStatus
+import android.net.ConnectivityManager
+import com.kino.puber.data.api.network.DnsOverHttpsFactory
+import com.kino.puber.data.api.network.createConnectivityPlugin
 import com.kino.puber.data.repository.ICryptoPreferenceRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -61,9 +66,13 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
+import okhttp3.Cache
+import java.io.File
 
 
 class KinoPubApiClient(
+    private val cacheDir: File,
+    private val connectivityManager: ConnectivityManager,
     private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
 ) {
     private val json = Json {
@@ -74,6 +83,13 @@ class KinoPubApiClient(
     private val httpClient: HttpClient = createHttpClient()
 
     private fun createHttpClient(): HttpClient = HttpClient(OkHttp) {
+
+        engine {
+            config {
+                dns(DnsOverHttpsFactory.create())
+                cache(Cache(File(cacheDir, "okhttpcache"), CACHE_SIZE))
+            }
+        }
 
         // Authentication if token provided
         install(Auth) {
@@ -93,10 +109,9 @@ class KinoPubApiClient(
                     log("Attempting to refresh token with refresh token: $refreshToken")
 
                     val tokenUpdateResponse: Result<TokenResponse> = apiCall {
-                        client.post("${KinoPubConfig.OAUTH_BASE_URL}token") {
+                        client.post("${KinoPubConfig.OAUTH_BASE_URL}device") {
                             parameter("grant_type", KinoPubConfig.GRANT_TYPE_REFRESH_TOKEN)
                             parameter("refresh_token", refreshToken)
-                            log("Sending refresh token request with params: grant_type=${KinoPubConfig.GRANT_TYPE_REFRESH_TOKEN}, refresh_token=$refreshToken")
                         }
                     }
 
@@ -129,15 +144,17 @@ class KinoPubApiClient(
             }
         }
 
+        install(createConnectivityPlugin(connectivityManager))
         install(KinoPubParametersPlugin)
+        install(TrafficPaddingPlugin)
 
         if (BuildConfig.DEBUG) install(CurlLogger)
 
         // Request timeout configuration (Ktor level)
         install(HttpTimeout) {
-            connectTimeoutMillis = TIMEOUT
-            requestTimeoutMillis = TIMEOUT
-            socketTimeoutMillis = TIMEOUT
+            connectTimeoutMillis = CONNECT_TIMEOUT
+            requestTimeoutMillis = READ_TIMEOUT
+            socketTimeoutMillis = READ_TIMEOUT
         }
 
         // JSON serialization
@@ -149,7 +166,8 @@ class KinoPubApiClient(
         install(DefaultRequest) {
             headers {
                 val username = cryptoPreferenceRepository.getUsername()
-                append("User-Agent", UserAgentBuilder.build(username))
+                val androidId = cryptoPreferenceRepository.getAndroidId()
+                append("User-Agent", UserAgentBuilder.build(username, androidId))
                 append("Accept", "application/json")
                 contentType(ContentType.Application.Json)
             }
@@ -759,6 +777,42 @@ class KinoPubApiClient(
         httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}items/$itemId/seasons/$seasonNumber/episodes/$episodeNumber")
     }
 
+    // Subtitles API
+
+    suspend fun getSubtitles(): Result<List<SubtitleLink>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}subtitles")
+    }
+
+    // Notifications API (Extra API v1.1)
+
+    suspend fun addNotification(itemId: Int, deviceToken: String): Result<NotificationStatus> =
+        apiCall {
+            httpClient.get("${KinoPubConfig.EXTRA_API_BASE_URL}api2/v1.1/notifications/add/$itemId") {
+                parameter("device_token", deviceToken)
+            }
+        }
+
+    suspend fun checkNotificationStatus(
+        itemId: Int, deviceToken: String
+    ): Result<NotificationStatus> = apiCall {
+        httpClient.get("${KinoPubConfig.EXTRA_API_BASE_URL}api2/v1.1/notifications/$itemId") {
+            parameter("device_token", deviceToken)
+        }
+    }
+
+    suspend fun deleteNotification(itemId: Int, deviceToken: String): Result<NotificationStatus> =
+        apiCall {
+            httpClient.get("${KinoPubConfig.EXTRA_API_BASE_URL}api2/v1.1/notifications/delete/$itemId") {
+                parameter("device_token", deviceToken)
+            }
+        }
+
+    // Collections per item (Extra API v1.1)
+
+    suspend fun getItemCollections(itemId: Int): Result<List<KCollection>> = apiCall {
+        httpClient.get("${KinoPubConfig.EXTRA_API_BASE_URL}api2/v1.1/items/collections/$itemId")
+    }
+
     // Helper method for API calls
 
     suspend inline fun <reified T> apiCall(
@@ -791,7 +845,8 @@ class KinoPubApiClient(
         val response = httpClient.post("${KinoPubConfig.OAUTH_BASE_URL}device") {
             parameter("grant_type", KinoPubConfig.GRANT_TYPE_DEVICE_TOKEN)
             parameter("code", code)
-            // CLIENT_ID и CLIENT_SECRET добавляются автоматически через KinoPubParametersInterceptor
+            parameter("username", cryptoPreferenceRepository.getUsername().orEmpty())
+            parameter("timestamp", System.currentTimeMillis() / 1000)
         }
 
         handleApiResponse<TokenResponse>(response)
@@ -911,6 +966,8 @@ class KinoPubApiClient(
 
     companion object {
         private const val MAX_RETRIES = 3
-        private const val TIMEOUT = 60000L
+        private const val CONNECT_TIMEOUT = 60_000L
+        private const val READ_TIMEOUT = 120_000L
+        private const val CACHE_SIZE = 50L * 1024 * 1024 // 50 MB
     }
 }

@@ -1,6 +1,8 @@
 package com.kino.puber.data.repository
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -36,6 +38,14 @@ internal class CryptoPreferenceRepository(
     override fun getUsername(): String? = getString(USERNAME_KEY_NAME)
 
     override fun clearUsername() = saveString(USERNAME_KEY_NAME, null)
+
+    @SuppressLint("HardwareIds")
+    override fun getAndroidId(): String? =
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+
+    override fun saveApiDomain(domain: String?) = saveString(API_DOMAIN_KEY_NAME, domain)
+
+    override fun getApiDomain(): String? = getString(API_DOMAIN_KEY_NAME)
 
     private fun saveString(name: String, value: String?) {
         sharedPreferences.edit {
@@ -103,6 +113,7 @@ internal class CryptoPreferenceRepository(
         private const val ACCESS_TOKEN_KEY_NAME = "KINOPUBER_ACCESS_TOKEN"
         private const val REFRESH_TOKEN_KEY_NAME = "KINOPUBER_REFRESH_TOKEN"
         private const val USERNAME_KEY_NAME = "KINOPUBER_USERNAME_KEY_NAME"
+        private const val API_DOMAIN_KEY_NAME = "KINOPUBER_API_DOMAIN"
         private const val SECURITY_KEY_ALIAS = "SECURITY_KEY_ALIAS"
     }
 }

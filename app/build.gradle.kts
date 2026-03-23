@@ -200,6 +200,9 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.ktor)
 
+    // OkHttp extensions
+    implementation(libs.okhttp.doh)
+
     // Ktor HTTP client
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

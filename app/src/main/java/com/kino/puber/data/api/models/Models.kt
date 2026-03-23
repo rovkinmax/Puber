@@ -75,6 +75,13 @@ data class Item(
     val finished: Boolean? = null,
     val comments: Int? = null,
     val seasons: List<Season>? = null,
+    val videos: List<Video>? = null,
+    val bookmarks: List<Bookmark>? = null,
+    val total: Int? = null,
+    val watched: Int? = null,
+    val new: Int? = null,
+    val fps: Float? = null,
+    @SerialName("age_rating") val ageRating: String? = null,
 ) : java.io.Serializable
 
 @Serializable(with = ItemType.ItemTypeSerializer::class)
@@ -171,9 +178,18 @@ data class History(
 
 @Serializable
 data class Video(
-    val id: Int, val number: Int? = null,
+    val id: Int,
+    val number: Int? = null,
     val title: String? = null,
     val thumbnail: String? = null,
+    val duration: Int? = null,
+    val tracks: Int? = null,
+    val ac3: Int? = null,
+    val audios: List<Audio>? = null,
+    val watched: Int? = null,
+    val watching: WatchingInfo? = null,
+    val subtitles: List<SubtitleLink>? = null,
+    val files: List<VideoFile>? = null,
 )
 
 @Serializable
@@ -190,7 +206,13 @@ data class MediaFile(
 
 @Serializable
 data class Audio(
-    val id: Int, val lang: String? = null, val type: String? = null, val author: String? = null,
+    val id: Int,
+    val index: Int? = null,
+    val codec: String? = null,
+    val channels: Int? = null,
+    val lang: String? = null,
+    val type: String? = null,
+    val author: String? = null,
 )
 
 @Serializable
@@ -302,6 +324,7 @@ data class SubtitleLink(
     val lang: String,
     val url: String,
     val shift: Int? = null,
+    val embed: Boolean? = null,
 )
 
 @Serializable
@@ -427,7 +450,33 @@ data class ItemFiles(
 
 @Serializable
 data class VideoFile(
-    val url: String, val quality: String, val translation: Translation? = null,
+    val url: VideoUrl? = null,
+    val quality: String? = null,
+    @SerialName("quality_id") val qualityId: Int? = null,
+    val codec: String? = null,
+    val w: Int? = null,
+    val h: Int? = null,
+    val translation: Translation? = null,
+)
+
+@Serializable
+data class VideoUrl(
+    val http: String? = null,
+    val hls: String? = null,
+    val hls2: String? = null,
+    val hls4: String? = null,
+)
+
+@Serializable
+data class NotificationStatus(
+    val notification: NotificationInfo? = null,
+    val status: String? = null,
+)
+
+@Serializable
+data class NotificationInfo(
+    @SerialName("notification_added") val notificationAdded: Boolean? = null,
+    @SerialName("notification_type_id") val notificationTypeId: Int? = null,
 )
 
 @Serializable

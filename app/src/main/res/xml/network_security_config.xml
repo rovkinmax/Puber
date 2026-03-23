@@ -7,6 +7,9 @@
         <domain includeSubdomains="true">api.alador.space</domain>
         <!-- Другие KinoPub домены -->
         <domain includeSubdomains="true">kino.pub</domain>
+        <domain includeSubdomains="true">cdn-service.online</domain>
+        <domain includeSubdomains="true">api2.support-kp.com</domain>
+        <domain includeSubdomains="true">kpdl.link</domain>
         <!-- Эмулятор хосты -->
         <domain includeSubdomains="true">10.0.2.2</domain> <!-- Android emulator host -->
         <domain includeSubdomains="true">localhost</domain>
