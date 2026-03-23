@@ -1,4 +1,9 @@
 package com.kino.puber.ui.feature.details.model
 
-class DetailsScreenUIMapper {
+import com.kino.puber.core.ui.model.VideoItemUIMapper
+
+internal class DetailsScreenUIMapper(
+    private val itemMapper: VideoItemUIMapper,
+) {
+
 }
