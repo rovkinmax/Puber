@@ -5,6 +5,7 @@
 .idea/
 .kotlin/
 .DS_Store
+.mcp.json
 **/build
 /captures
 .externalNativeBuild
@@ -14,3 +15,4 @@
 /credentials/publisher.json
 /artifacts/dummy.pdf
 .todo
+.claude/
