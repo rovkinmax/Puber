@@ -43,6 +43,7 @@ internal class FavoriteVM(
         when (action) {
             is CommonAction.ItemSelected<*> -> onItemSelected(action.item as VideoItemUIState)
             is CommonAction.ItemFocused<*> -> onItemFocused(action.item as VideoItemUIState)
+            else -> super.onAction(action)
         }
     }
 

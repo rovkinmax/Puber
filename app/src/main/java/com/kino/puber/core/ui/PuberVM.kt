@@ -11,6 +11,8 @@ import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.BackButtonDispatcher
+import com.kino.puber.core.ui.uikit.model.CommonAction
+import com.kino.puber.core.ui.uikit.model.SnackbarMessage
 import com.kino.puber.core.ui.uikit.model.UIAction
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -18,6 +20,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.CoroutineContext
@@ -30,6 +33,7 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
     private val mutableViewState: MutableStateFlow<ViewState> by lazy {
         MutableStateFlow(initialViewState)
     }
+    private val snackBarMessageFlow = MutableStateFlow<SnackbarMessage?>(null)
     private val started = AtomicBoolean(false)
     private val viewState: Flow<ViewState> get() = mutableViewState
 
@@ -68,9 +72,33 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
     protected open fun dispatchError(error: ErrorEntity) {
     }
 
+    protected fun showMessage(message: String) {
+        showMessage(SnackbarMessage.Short(message))
+    }
+
+    protected fun showMessage(message: SnackbarMessage) {
+        snackBarMessageFlow.value = message
+    }
+
+    protected fun cleanMessage() {
+        snackBarMessageFlow.value = null
+    }
+
+    @Composable
+    fun collectMessage(initial: SnackbarMessage? = null): State<SnackbarMessage?> {
+        return snackBarMessageFlow
+            .asSharedFlow()
+            .collectAsStateWithLifecycle(initial)
+    }
+
     protected open fun onStart() {}
 
-    open fun onAction(action: UIAction) {}
+    open fun onAction(action: UIAction) {
+        when (action) {
+            is CommonAction.SnackBarDismissed -> cleanMessage()
+            is CommonAction.SnackBarActionPerformed -> cleanMessage()
+        }
+    }
 
     override fun onBackPressed() {
         router.back()
