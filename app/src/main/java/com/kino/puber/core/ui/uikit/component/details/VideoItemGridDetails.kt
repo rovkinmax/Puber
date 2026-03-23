@@ -71,7 +71,7 @@ fun VideoItemGridDetails(
 }
 
 @Composable
-private fun VideoDetailsDescription(
+fun VideoDetailsDescription(
     modifier: Modifier,
     state: VideoDetailsUIState
 ) {

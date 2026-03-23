@@ -75,7 +75,7 @@ data class Item(
     val finished: Boolean? = null,
     val comments: Int? = null,
     val seasons: List<Season>? = null,
-)
+) : java.io.Serializable
 
 @Serializable(with = ItemType.ItemTypeSerializer::class)
 enum class ItemType(val value: String) {
