@@ -18,6 +18,18 @@ import kotlin.text.Charsets.UTF_8
 
 private const val CLIENT_ID = "android"
 private const val CLIENT_SECRET = BuildConfig.CLIENT_SECRET
+private const val PADDING_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+private const val MAX_PADDING_LENGTH = 2048
+
+val TrafficPaddingPlugin = createClientPlugin("TrafficPaddingPlugin") {
+    onRequest { request, _ ->
+        val length = kotlin.random.Random.nextInt(MAX_PADDING_LENGTH)
+        val padding = buildString(length) {
+            repeat(length) { append(PADDING_CHARS[kotlin.random.Random.nextInt(PADDING_CHARS.length)]) }
+        }
+        request.headers.append("random", padding)
+    }
+}
 
 val KinoPubParametersPlugin = createClientPlugin("KinoPubParametersPlugin") {
     onRequest { request, _ ->
