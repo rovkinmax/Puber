@@ -16,9 +16,11 @@ class DeviceInfoInteractor(
 
     override fun getDeviceModel(): String = deviceInfoRepository.getDeviceModel()
 
+    override fun getAppName(): String = deviceInfoRepository.getAppName()
+
     override fun setDeviceInformation(): Flow<Unit> =
         deviceInfoRepository.saveDeviceInformation(
-            getDeviceModel(),
+            getAppName(),
             "${getDeviceBrand()} ${getDeviceModel()}",
             getAndroidVersion()
         )

@@ -8,5 +8,6 @@ interface IDeviceInfoInteractor {
     fun getAndroidVersion(): String
     fun getDeviceBrand(): String
     fun getDeviceModel(): String
+    fun getAppName(): String
     fun setDeviceInformation(): Flow<Unit>
 }

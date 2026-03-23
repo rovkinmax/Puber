@@ -11,5 +11,6 @@ interface IDeviceInfoRepository {
     fun getAndroidVersion(): String
     fun getDeviceBrand(): String
     fun getDeviceModel(): String
+    fun getAppName(): String
     fun saveDeviceInformation(title: String, hardware: String, software: String): Flow<Unit>
 }

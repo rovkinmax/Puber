@@ -6,6 +6,7 @@ import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.os.Build
 import android.view.Display
+import com.kino.puber.R
 import com.kino.puber.data.api.KinoPubApiClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -50,7 +51,7 @@ internal class DeviceInfoRepository(
         return try {
             val factory = SSLSocketFactory.getDefault() as? SSLSocketFactory
             val supported = factory?.supportedCipherSuites
-            supported != null && supported.isNotEmpty()
+            !supported.isNullOrEmpty()
         } catch (e: Exception) {
             false
         }
@@ -88,6 +89,8 @@ internal class DeviceInfoRepository(
     override fun getDeviceBrand(): String = "${Build.MANUFACTURER}"
 
     override fun getDeviceModel(): String = "${Build.MODEL}"
+
+    override fun getAppName(): String = context.getString(R.string.app_name)
 
     override fun saveDeviceInformation(title: String, hardware: String, software: String): Flow<Unit> = flow {
         val result = apiClient.updateDeviceInfo(title, hardware, software)
