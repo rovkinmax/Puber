@@ -9,7 +9,7 @@ import androidx.tv.material3.Text
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.ui.feature.auth.component.AuthScreen
-import com.kino.puber.ui.feature.device.settings.DeviceSettingsScreen
+import com.kino.puber.ui.feature.device.settings.flow.DeviceSettingsFlowScreen
 import com.kino.puber.ui.feature.favorites.content.FavoritesScreen
 import com.kino.puber.ui.feature.main.component.MainScreen
 import kotlinx.parcelize.Parcelize
@@ -28,7 +28,7 @@ internal object ScreensImpl : Screens {
     }
 
     override fun deviceSettings(): PuberScreen {
-        return DeviceSettingsScreen()
+        return DeviceSettingsFlowScreen()
     }
 
     override fun underDevelopment(): PuberScreen {

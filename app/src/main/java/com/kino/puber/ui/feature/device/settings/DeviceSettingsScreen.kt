@@ -1,9 +1,11 @@
 package com.kino.puber.ui.feature.device.settings
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
+import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
@@ -31,15 +33,23 @@ internal class DeviceSettingsScreen : PuberScreen {
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
         val viewModel = koinViewModel<DeviceSettingsVM>()
         val state by viewModel.collectViewState()
+        val message by viewModel.collectMessage()
 
-        DeviceSettingsContent(
-            state.state,
-            onValueSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingValue(it)) },
-            onListSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingList(it)) },
-            onRetry = { viewModel.onAction(CommonAction.RetryClicked) },
-        )
+        Box {
+            DeviceSettingsContent(
+                state = state.state,
+                onValueSettingUpdate = { viewModel.onAction(DeviceSettingsActions.ChangeSettingValue(it)) },
+                onToggleExpand = { viewModel.onAction(DeviceSettingsActions.ToggleListExpand(it)) },
+                onOptionSelect = { type, optionId ->
+                    viewModel.onAction(DeviceSettingsActions.SelectOption(type, optionId))
+                },
+                onRetry = { viewModel.onAction(CommonAction.RetryClicked) },
+            )
+
+            ScaffoldMessage(
+                message = message,
+                onAction = viewModel::onAction,
+            )
+        }
     }
 }
-
-
-

@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Badge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -25,14 +27,15 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.DrawerState
-import androidx.tv.material3.DrawerValue
 import androidx.tv.material3.Icon
-import androidx.tv.material3.ModalNavigationDrawer
 import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Text
-import androidx.tv.material3.rememberDrawerState
+import com.kino.puber.core.ui.uikit.component.drawer.DrawerState
+import com.kino.puber.core.ui.uikit.component.drawer.DrawerValue
+import com.kino.puber.core.ui.uikit.component.drawer.LocalDrawerState
+import com.kino.puber.core.ui.uikit.component.drawer.ModalNavigationDrawer
+import com.kino.puber.core.ui.uikit.component.drawer.rememberDrawerState
 import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
 import com.kino.puber.core.ui.navigation.component.TabComponent
 import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
@@ -55,24 +58,27 @@ internal fun MainScreenComponent() {
 private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val mainContentFocus = rememberFocusRequesterOnLaunch()
+    SideEffect { drawerState.contentFocusRequester = mainContentFocus }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        scrimBrush = Brush.horizontalGradient(
-            listOf(
-                MaterialTheme.colorScheme.scrim, Color.Transparent
-            )
-        ),
-        drawerContent = {
-            MainSideMenuContent(
-                state = state,
-                onAction = onAction,
-                drawerState = drawerState,
-                mainContentFocus = mainContentFocus,
-            )
-        },
-        content = { MainScreenContentBody(mainContentFocus) },
-    )
+    CompositionLocalProvider(LocalDrawerState provides drawerState) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            scrimBrush = Brush.horizontalGradient(
+                listOf(
+                    MaterialTheme.colorScheme.scrim, Color.Transparent
+                )
+            ),
+            drawerContent = {
+                MainSideMenuContent(
+                    state = state,
+                    onAction = onAction,
+                    drawerState = drawerState,
+                    mainContentFocus = mainContentFocus,
+                )
+            },
+            content = { MainScreenContentBody(mainContentFocus) },
+        )
+    }
 }
 
 @Composable
@@ -187,8 +193,8 @@ private fun MainScreenContentBody(
             Modifier
                 .padding(start = closeDrawerWidth)
                 .focusRequester(focusRequester)
+                .focusRestorer()
                 .focusGroup()
-
         ) {
             PuberCurrentTab()
         }

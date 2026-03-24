@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.kino.puber.core.coroutine.DefaultExceptionHandler
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.logger.log
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.BackButtonDispatcher
 import com.kino.puber.core.ui.uikit.model.CommonAction
@@ -67,6 +68,7 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
 
     private fun exceptionHandler(): CoroutineExceptionHandler = DefaultExceptionHandler {
         errorHandler?.proceedInvoke(it, ::dispatchError)
+        log(it)
     }
 
     protected open fun dispatchError(error: ErrorEntity) {
