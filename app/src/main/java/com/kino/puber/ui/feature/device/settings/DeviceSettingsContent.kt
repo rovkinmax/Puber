@@ -1,6 +1,8 @@
 package com.kino.puber.ui.feature.device.settings
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -15,28 +17,43 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Devices.TV_1080p
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kino.puber.R
+import com.kino.puber.core.ui.uikit.theme.PuberTheme
+import com.kino.puber.core.ui.uikit.theme.highlightOnFocus
+import com.kino.puber.domain.interactor.device.DeviceSettingType
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingUIModel
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
@@ -46,13 +63,14 @@ import com.kino.puber.ui.feature.device.settings.model.SettingOptionUi
 @Composable
 internal fun DeviceSettingsContent(
     state: DeviceSettingsState,
-    onValueSettingUpdate: (DeviceSettingUIModel.TypeValue) -> Unit,
-    onListSettingUpdate: (DeviceSettingUIModel.TypeList) -> Unit,
-    onRetry: () -> Unit,
+    onValueSettingUpdate: (DeviceSettingUIModel.TypeValue) -> Unit = {},
+    onToggleExpand: (DeviceSettingUIModel.TypeList) -> Unit = {},
+    onOptionSelect: (DeviceSettingType, Int) -> Unit = { _, _ -> },
+    onRetry: () -> Unit = {},
 ) {
     Box(
-        modifier = Modifier.Companion.fillMaxSize(),
-        contentAlignment = Alignment.Companion.Center
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
         when (state) {
             is DeviceSettingsState.Error -> ErrorView(state.error, onRetry)
@@ -60,8 +78,11 @@ internal fun DeviceSettingsContent(
             is DeviceSettingsState.Success -> DeviceSettingsList(
                 settings = state.settings,
                 device = state.device,
+                expandedType = state.expandedType,
+                savingOptionId = state.savingOptionId,
                 onValueSettingsUpdate = onValueSettingUpdate,
-                onListSettingsUpdate = onListSettingUpdate,
+                onToggleExpand = onToggleExpand,
+                onOptionSelect = onOptionSelect,
             )
         }
     }
@@ -78,16 +99,16 @@ private fun ErrorView(
     onRetry: () -> Unit,
 ) {
     Column(
-        horizontalAlignment = Alignment.Companion.CenterHorizontally,
+        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
             text = error,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.secondary,
-            textAlign = TextAlign.Companion.Center,
+            textAlign = TextAlign.Center,
         )
-        Spacer(modifier = Modifier.Companion.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = onRetry) {
             Text(stringResource(R.string.device_settings_retry))
         }
@@ -98,10 +119,18 @@ private fun ErrorView(
 private fun DeviceSettingsList(
     settings: DeviceSettingsListUi,
     device: DeviceUi?,
+    expandedType: DeviceSettingType?,
+    savingOptionId: Int?,
     onValueSettingsUpdate: (DeviceSettingUIModel.TypeValue) -> Unit,
-    onListSettingsUpdate: (DeviceSettingUIModel.TypeList) -> Unit,
+    onToggleExpand: (DeviceSettingUIModel.TypeList) -> Unit,
+    onOptionSelect: (DeviceSettingType, Int) -> Unit,
 ) {
+    val listState = rememberLazyListState()
+    // Header items count before settings: device info (if present) + spacer + title
+    val headerItemsCount = (if (device != null) 1 else 0) + 2
+
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .focusGroup()
             .fillMaxSize()
@@ -110,28 +139,24 @@ private fun DeviceSettingsList(
     ) {
         if (device != null) {
             item {
-                Column(
-                    modifier = Modifier.selectableGroup()
-                ) {
+                Column(modifier = Modifier.selectableGroup()) {
                     Text(
                         text = stringResource(R.string.device_settings_current_device),
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.primary,
                     )
-                    Spacer(modifier = Modifier.Companion.height(8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     DeviceInfoCard(
                         title = device.title,
                         hardware = device.hardware,
                         software = device.software,
                     )
-
                 }
-
             }
         }
 
         item {
-            Spacer(modifier = Modifier.Companion.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
         item {
@@ -142,10 +167,22 @@ private fun DeviceSettingsList(
             )
         }
 
-        items(settings.settingsList) { setting ->
+        itemsIndexed(settings.settingsList) { index, setting ->
             when (setting) {
-                is DeviceSettingUIModel.TypeValue -> SettingSwitchItem(setting, onValueSettingsUpdate)
-                is DeviceSettingUIModel.TypeList -> SettingListItem(setting, onListSettingsUpdate)
+                is DeviceSettingUIModel.TypeValue -> SettingSwitchItem(
+                    setting,
+                    onValueSettingsUpdate
+                )
+
+                is DeviceSettingUIModel.TypeList -> SettingListItem(
+                    setting = setting,
+                    isExpanded = setting.type == expandedType,
+                    savingOptionId = if (setting.type == expandedType) savingOptionId else null,
+                    onToggleExpand = { onToggleExpand(setting) },
+                    onOptionSelect = { optionId -> onOptionSelect(setting.type, optionId) },
+                    listState = listState,
+                    lazyItemIndex = headerItemsCount + index,
+                )
             }
         }
     }
@@ -161,9 +198,10 @@ private fun DeviceInfoCard(
         modifier = Modifier
             .fillMaxWidth()
             .selectable(true, interactionSource = null, indication = null) {}
-            .focusable(false)) {
+            .focusable(false)
+    ) {
         Column(
-            modifier = Modifier.Companion.padding(8.dp),
+            modifier = Modifier.padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
@@ -192,20 +230,14 @@ internal fun SettingSwitchItem(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val checked = setting.value == 1
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .focusable(interactionSource = interactionSource)
-            .background(if (isFocused) Color(MaterialTheme.colorScheme.primary.value).copy(alpha = 0.2f) else Color.Transparent)
+            .highlightOnFocus(isFocused)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = {
-                    val newValue = if (checked) 0 else 1
-                    onSettingUpdate(setting.copy(value = newValue))
-                }
+                onClick = { onSettingUpdate(setting.copy(value = !setting.value)) }
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -216,9 +248,8 @@ internal fun SettingSwitchItem(
             color = MaterialTheme.colorScheme.secondary,
             modifier = Modifier.weight(1f)
         )
-
         Switch(
-            checked = checked,
+            checked = setting.value,
             onCheckedChange = null,
             enabled = true,
         )
@@ -228,7 +259,94 @@ internal fun SettingSwitchItem(
 @Composable
 private fun SettingListItem(
     setting: DeviceSettingUIModel.TypeList,
-    onSettingUpdate: (DeviceSettingUIModel.TypeList) -> Unit
+    isExpanded: Boolean,
+    savingOptionId: Int?,
+    onToggleExpand: () -> Unit,
+    onOptionSelect: (Int) -> Unit,
+    listState: LazyListState? = null,
+    lazyItemIndex: Int = 0,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val headerFocusRequester = remember { FocusRequester() }
+    val optionsFocusRequester = remember { FocusRequester() }
+
+    Column(
+        modifier = Modifier
+            .focusRestorer(headerFocusRequester)
+            .focusGroup()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(headerFocusRequester)
+                .highlightOnFocus(isFocused)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onToggleExpand,
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = setting.label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = setting.values.find { it.selected }?.label.orEmpty(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Column(
+                modifier = Modifier
+                    .focusRequester(optionsFocusRequester)
+                    .onKeyEvent { event ->
+                        if (event.key == Key.Back && event.type == KeyEventType.KeyUp) {
+                            onToggleExpand()
+                            true
+                        } else false
+                    }
+                    .focusGroup()
+                    .padding(start = 32.dp, end = 16.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                setting.values.forEach { option ->
+                    OptionItem(
+                        option = option,
+                        isSaving = savingOptionId == option.id,
+                        onClick = {
+                            headerFocusRequester.requestFocus()
+                            onOptionSelect(option.id)
+                        },
+                    )
+                }
+            }
+        }
+
+        LaunchedEffect(isExpanded) {
+            if (isExpanded) {
+                listState?.animateScrollToItem(lazyItemIndex)
+                optionsFocusRequester.requestFocus()
+            }
+        }
+    }
+}
+
+@Composable
+private fun OptionItem(
+    option: SettingOptionUi,
+    isSaving: Boolean,
+    onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -236,51 +354,54 @@ private fun SettingListItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .focusable(interactionSource = interactionSource)
-            .background(
-                if (isFocused) Color(MaterialTheme.colorScheme.primary.value).copy(alpha = 0.2f)
-                else Color.Transparent
-            )
+            .highlightOnFocus(isFocused)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = { onSettingUpdate(setting) }
+                onClick = onClick,
             )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(40.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = setting.label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = setting.values.find { it.selected == 1 }?.label.orEmpty(),
+            text = option.label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.secondary,
         )
+        if (isSaving) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            RadioButton(
+                selected = option.selected,
+                onClick = onClick,
+            )
+        }
     }
 }
 
-
 @Preview(device = TV_1080p)
 @Composable
-internal fun DeviceSettingsContentPreview() {
+private fun DeviceSettingsContentPreview() = PuberTheme {
     DeviceSettingsContent(
         state = DeviceSettingsState.Success(
             settings = DeviceSettingsListUi(
                 listOf(
                     DeviceSettingUIModel.TypeValue(
                         label = "Setting 1",
-                        value = 1,
+                        value = true,
                     ),
                     DeviceSettingUIModel.TypeList(
-                        type = "Type",
-                        label = "Setting 2",
+                        type = DeviceSettingType.STREAMING_TYPE,
+                        label = "Streaming Type",
                         values = listOf(
-                            SettingOptionUi(1, "Option 1", "", selected = 1),
-                            SettingOptionUi(2, "Option 2", "", selected = 0),
+                            SettingOptionUi(1, "HLS", "", selected = true),
+                            SettingOptionUi(2, "HLS2", "", selected = false),
+                            SettingOptionUi(3, "HLS4", "", selected = false),
                         )
                     )
                 )
@@ -291,9 +412,65 @@ internal fun DeviceSettingsContentPreview() {
                 software = "Software Version",
             )
         ),
-        onValueSettingUpdate = {},
-        onListSettingUpdate = {},
-        onRetry = {}
     )
 }
 
+@Preview(device = TV_1080p)
+@Composable
+private fun DeviceSettingsExpandedPreview() = PuberTheme {
+    DeviceSettingsContent(
+        state = DeviceSettingsState.Success(
+            settings = DeviceSettingsListUi(
+                listOf(
+                    DeviceSettingUIModel.TypeValue(
+                        label = "Setting 1",
+                        value = true,
+                    ),
+                    DeviceSettingUIModel.TypeList(
+                        type = DeviceSettingType.STREAMING_TYPE,
+                        label = "Streaming Type",
+                        values = listOf(
+                            SettingOptionUi(1, "HLS", "", selected = true),
+                            SettingOptionUi(2, "HLS2", "", selected = false),
+                            SettingOptionUi(3, "HLS4", "", selected = false),
+                        )
+                    )
+                )
+            ),
+            device = DeviceUi(
+                title = "Device Title",
+                hardware = "Hardware Version",
+                software = "Software Version",
+            ),
+            expandedType = DeviceSettingType.STREAMING_TYPE,
+        ),
+    )
+}
+
+@Preview(device = TV_1080p)
+@Composable
+private fun DeviceSettingsSavingPreview() = PuberTheme {
+    DeviceSettingsContent(
+        state = DeviceSettingsState.Success(
+            settings = DeviceSettingsListUi(
+                listOf(
+                    DeviceSettingUIModel.TypeList(
+                        type = DeviceSettingType.STREAMING_TYPE,
+                        label = "Streaming Type",
+                        values = listOf(
+                            SettingOptionUi(1, "HLS", "", selected = true),
+                            SettingOptionUi(2, "HLS2", "", selected = false),
+                        )
+                    )
+                )
+            ),
+            device = DeviceUi(
+                title = "Test Device",
+                hardware = "Hardware",
+                software = "Software",
+            ),
+            expandedType = DeviceSettingType.STREAMING_TYPE,
+            savingOptionId = 2,
+        ),
+    )
+}

@@ -8,10 +8,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
+import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.kino.puber.core.ui.uikit.component.drawer.LocalDrawerState
 import cafe.adriel.voyager.core.screen.ScreenKey
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
@@ -93,6 +96,17 @@ fun FlowComponent(
             CurrentScreen("sheetScreen:$scopeName")
         },
     ) {
+        val drawerState = LocalDrawerState.current
+        val bottomSheetNav = LocalBottomSheetNavigator.current
+        LaunchedEffect(Unit) {
+            snapshotFlow { bottomSheetNav.isVisible }
+                .collect { isVisible ->
+                    if (!isVisible && drawerState?.isOverlayActive == true) {
+                        delay(OVERLAY_FOCUS_SETTLE_DELAY_MS)
+                        drawerState.isOverlayActive = false
+                    }
+                }
+        }
         Navigator(
             screen = screen,
             onBackPressed = { onBackPressed(router) },
@@ -112,6 +126,7 @@ private fun onBackPressed(router: AppRouter): Boolean {
 private fun FlowCommandRunner(router: AppRouter) {
     val navigator = LocalNavigator.currentOrThrow
     val bottomSheetNavigator = LocalBottomSheetNavigator.current
+    val drawerState = LocalDrawerState.current
     val context = LocalContext.current
     val activityNavigator = remember(context) { ActivityNavigator(context) }
     val diScope = LocalKoinScope.current
@@ -129,7 +144,10 @@ private fun FlowCommandRunner(router: AppRouter) {
             } else {
                 when (event) {
                     is Command.NavigateTo -> navigator.puberPush(event.screen)
-                    is Command.ShowOver -> bottomSheetNavigator.puberShow(event.screen)
+                    is Command.ShowOver -> {
+                        drawerState?.isOverlayActive = true
+                        bottomSheetNavigator.puberShow(event.screen)
+                    }
                     is Command.HideOver -> bottomSheetNavigator.puberHide()
                     is Command.Replace -> navigator.puberReplace(event.screen)
                     is Command.NewRoot -> navigator.puberReplaceAll(*event.screens.toTypedArray())
@@ -226,6 +244,9 @@ private fun CurrentScreen(key: String) {
         }
     }
 }
+
+/** Time to wait after overlay dismiss for focus bounces to settle before resetting the guard. */
+private const val OVERLAY_FOCUS_SETTLE_DELAY_MS = 300L
 
 @Parcelize
 object LoadingScreen : PuberScreen {
