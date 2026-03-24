@@ -11,7 +11,6 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceUi
 import com.kino.puber.ui.feature.device.settings.model.SettingOptionUi
 
 data class DeviceCapabilities(
-    val sslSupported: Boolean,
     val hevcSupported: Boolean,
     val hdrSupported: Boolean,
     val is4kSupported: Boolean,
@@ -21,7 +20,7 @@ internal class DeviceUiSettingsMapper {
 
     fun mapSettings(settings: SettingsResponse, capabilities: DeviceCapabilities): DeviceSettingsListUi {
         val settingsList = buildList {
-            add(mapToggle(settings.supportSsl, DeviceSettingType.SUPPORT_SSL, capabilities.sslSupported))
+            add(mapToggle(settings.supportSsl, DeviceSettingType.SUPPORT_SSL, true))
             add(mapToggle(settings.supportHevc, DeviceSettingType.SUPPORT_HEVC, capabilities.hevcSupported))
             add(mapToggle(settings.supportHdr, DeviceSettingType.SUPPORT_HDR, capabilities.hdrSupported))
             add(mapToggle(settings.support4k, DeviceSettingType.SUPPORT_4K, capabilities.is4kSupported))

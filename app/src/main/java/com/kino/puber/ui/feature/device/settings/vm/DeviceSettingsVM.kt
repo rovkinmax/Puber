@@ -27,7 +27,6 @@ internal class DeviceSettingsVM(
 
     private val capabilities by lazy {
         DeviceCapabilities(
-            sslSupported = deviceInfoInteractor.isSslSupported(),
             hevcSupported = deviceInfoInteractor.isHevcSupported(),
             hdrSupported = deviceInfoInteractor.isHdrSupported(),
             is4kSupported = deviceInfoInteractor.is4kSupported(),
