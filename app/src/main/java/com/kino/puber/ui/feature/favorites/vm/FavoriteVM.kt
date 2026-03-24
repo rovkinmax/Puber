@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.favorites.vm
 
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
@@ -15,6 +16,7 @@ internal class FavoriteVM(
     router: AppRouter,
     private val interactor: FavoritesInteractor,
     private val favoriteItemUIMapper: FavoriteItemUIMapper,
+    private val screens: Screens,
 ) : PuberVM<FavoriteViewState>(router) {
 
     override val initialViewState = FavoriteViewState.Loading
@@ -48,7 +50,7 @@ internal class FavoriteVM(
     }
 
     private fun onItemSelected(state: VideoItemUIState) {
-
+        router.navigateTo(screens.details(itemId = state.id))
     }
 
     private fun onItemFocused(selectedItem: VideoItemUIState) {

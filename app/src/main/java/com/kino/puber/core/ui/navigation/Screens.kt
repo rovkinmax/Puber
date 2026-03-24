@@ -10,4 +10,6 @@ interface Screens {
     fun deviceSettings(): PuberScreen
 
     fun underDevelopment(): PuberScreen
+
+    fun details(itemId: Int): PuberScreen
 }

@@ -119,7 +119,11 @@ fun FlowComponent(
 }
 
 private fun onBackPressed(router: AppRouter): Boolean {
-    return router.dispatchBackPressed()
+    val dispatched = router.dispatchBackPressed()
+    // Return false when dispatched: we handle pop via Command.Back,
+    // prevent Voyager's NavigatorBackHandler from doing a double pop.
+    // Return true when NOT dispatched: let Voyager pop the screen itself.
+    return !dispatched
 }
 
 @Composable
