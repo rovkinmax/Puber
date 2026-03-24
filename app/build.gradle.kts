@@ -189,6 +189,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.phosphor.icons)
     implementation(libs.androidx.security.crypto)
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
