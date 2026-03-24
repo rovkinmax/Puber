@@ -6,6 +6,8 @@ import com.kino.puber.data.api.auth.DeviceCodeResponse
 import com.kino.puber.data.api.auth.DeviceFlowResult
 import com.kino.puber.data.api.auth.OAuthError
 import com.kino.puber.data.api.auth.TokenResponse
+import com.kino.puber.core.session.SessionEvent
+import com.kino.puber.core.session.SessionEventBus
 import com.kino.puber.data.api.config.KinoPubConfig
 import com.kino.puber.data.api.config.UserAgentBuilder
 import com.kino.puber.data.api.models.ApiResponse
@@ -74,6 +76,7 @@ class KinoPubApiClient(
     private val cacheDir: File,
     private val connectivityManager: ConnectivityManager,
     private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
+    private val sessionEventBus: SessionEventBus,
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -108,37 +111,31 @@ class KinoPubApiClient(
                     val refreshToken = cryptoPreferenceRepository.getRefreshToken().orEmpty()
                     log("Attempting to refresh token with refresh token: $refreshToken")
 
-                    val tokenUpdateResponse: Result<TokenResponse> = apiCall {
-                        client.post("${KinoPubConfig.OAUTH_BASE_URL}device") {
+                    try {
+                        val response = client.post("${KinoPubConfig.OAUTH_BASE_URL}device") {
                             parameter("grant_type", KinoPubConfig.GRANT_TYPE_REFRESH_TOKEN)
                             parameter("refresh_token", refreshToken)
                         }
-                    }
 
-                    if (tokenUpdateResponse.isSuccess) {
-                        val newTokens = tokenUpdateResponse.getOrNull()
-                        if (newTokens != null) {
+                        if (response.status.isSuccess()) {
+                            val newTokens = response.body<TokenResponse>()
                             log("Successfully received new tokens")
                             cryptoPreferenceRepository.saveAccessToken(newTokens.accessToken)
                             cryptoPreferenceRepository.saveRefreshToken(newTokens.refreshToken)
-
-                            BearerTokens(
-                                newTokens.accessToken, newTokens.refreshToken
-                            )
+                            BearerTokens(newTokens.accessToken, newTokens.refreshToken)
                         } else {
-                            log("Failed to get new tokens")
-                            throw IllegalStateException("Failed to get new tokens")
+                            val errorBody = response.bodyAsText()
+                            log("Refresh token failed with ${response.status.value}: $errorBody")
+                            onSessionExpired()
+                            throw IllegalStateException("Failed to refresh token: $errorBody")
                         }
-                    } else {
-                        val error = tokenUpdateResponse.exceptionOrNull()
-                        log("Failed to refresh token: ${error?.message}")
-
-                        if (error?.message?.contains("invalid_refresh_token") == true) {
-                            cryptoPreferenceRepository.clearAccessToken()
-                            cryptoPreferenceRepository.clearRefreshToken()
+                    } catch (e: Exception) {
+                        if (e is IllegalStateException && e.message?.startsWith("Failed to refresh token:") == true) {
+                            throw e
                         }
-
-                        throw IllegalStateException("Failed to refresh token: ${error?.message}")
+                        log("Refresh token error: ${e.message}")
+                        onSessionExpired()
+                        throw IllegalStateException("Failed to refresh token: ${e.message}", e)
                     }
                 }
             }
@@ -185,6 +182,12 @@ class KinoPubApiClient(
 
     fun isAuthenticated(): Boolean =
         cryptoPreferenceRepository.getAccessToken().isNullOrEmpty().not()
+
+    private fun onSessionExpired() {
+        cryptoPreferenceRepository.clearAccessToken()
+        cryptoPreferenceRepository.clearRefreshToken()
+        sessionEventBus.emit(SessionEvent.Unauthorized)
+    }
 
     // Content API
 
@@ -702,26 +705,26 @@ class KinoPubApiClient(
      * Update device settings
      */
     suspend fun updateDeviceSettings(
-        supportSsl: Boolean? = null,
-        supportHevc: Boolean? = null,
-        supportHdr: Boolean? = null,
-        support4k: Boolean? = null,
-        mixedPlaylist: Boolean? = null,
+        deviceId: Long,
+        supportSsl: Int? = null,
+        supportHevc: Int? = null,
+        supportHdr: Int? = null,
+        support4k: Int? = null,
+        mixedPlaylist: Int? = null,
         streamingType: Int? = null,
         serverLocation: Int? = null
-    ): Result<DeviceSettings> = apiCall {
-        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}device/settings") {
-            val settings = mutableMapOf<String, Any>()
-            supportSsl?.let { settings["support_ssl"] = it }
-            supportHevc?.let { settings["support_hevc"] = it }
-            supportHdr?.let { settings["support_hdr"] = it }
-            support4k?.let { settings["support_4k"] = it }
-            mixedPlaylist?.let { settings["mixed_playlist"] = it }
-            streamingType?.let { settings["streaming_type"] = it }
-            serverLocation?.let { settings["server_location"] = it }
-
-            setBody(settings)
-            contentType(ContentType.Application.Json)
+    ): Result<Unit> = apiCall {
+        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}device/$deviceId/settings") {
+            val params = io.ktor.http.Parameters.build {
+                supportSsl?.let { append("supportSsl", it.toString()) }
+                supportHevc?.let { append("supportHevc", it.toString()) }
+                supportHdr?.let { append("supportHdr", it.toString()) }
+                support4k?.let { append("support4k", it.toString()) }
+                mixedPlaylist?.let { append("mixedPlaylist", it.toString()) }
+                streamingType?.let { append("streamingType", it.toString()) }
+                serverLocation?.let { append("serverLocation", it.toString()) }
+            }
+            setBody(io.ktor.client.request.forms.FormDataContent(params))
         }
     }
 
