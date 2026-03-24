@@ -25,9 +25,9 @@ fun PuberTheme(
     )
 
     val colorScheme = androidx.compose.material3.darkColorScheme(
-        primary = Purple40,
-        secondary = PurpleGrey40,
-        tertiary = Pink40,
+        primary = Purple80,
+        secondary = PurpleGrey80,
+        tertiary = Pink80,
         error = Error60,
         errorContainer = Error60,
     )

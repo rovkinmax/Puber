@@ -1,4 +1,4 @@
-package com.osome.module.core.system
+package com.kino.puber.core.system
 
 import java.util.concurrent.atomic.AtomicInteger
 

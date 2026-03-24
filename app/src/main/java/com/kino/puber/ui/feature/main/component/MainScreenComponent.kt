@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -31,13 +32,13 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Text
+import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
+import com.kino.puber.core.ui.navigation.component.TabComponent
 import com.kino.puber.core.ui.uikit.component.drawer.DrawerState
 import com.kino.puber.core.ui.uikit.component.drawer.DrawerValue
 import com.kino.puber.core.ui.uikit.component.drawer.LocalDrawerState
 import com.kino.puber.core.ui.uikit.component.drawer.ModalNavigationDrawer
 import com.kino.puber.core.ui.uikit.component.drawer.rememberDrawerState
-import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
-import com.kino.puber.core.ui.navigation.component.TabComponent
 import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -112,7 +113,8 @@ private fun NavigationDrawerScope.MainSideMenuContent(
             .focusGroup(),
         horizontalAlignment = Alignment.Start,
     ) {
-        state.tabs.forEachIndexed { index, tab ->
+        Spacer(Modifier.height(16.dp))
+        state.tabs.forEach { tab ->
             MainSideMenuItem(
                 tabFocusRequester = fallbackFocusItem,
                 tab = tab,
@@ -121,6 +123,7 @@ private fun NavigationDrawerScope.MainSideMenuContent(
                 mainContentFocus = mainContentFocus,
             )
         }
+        Spacer(Modifier.height(16.dp))
     }
 }
 
