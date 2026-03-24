@@ -10,7 +10,6 @@ import com.kino.puber.R
 import com.kino.puber.data.api.KinoPubApiClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import javax.net.ssl.SSLSocketFactory
 
 internal class DeviceInfoRepository(
     private val context: Context,
@@ -26,36 +25,34 @@ internal class DeviceInfoRepository(
     }
 
     override fun isHdrSupported(): Boolean {
-        val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
-        val codecs = codecList.codecInfos
+        return isDisplayHdrSupported() && isHdrCodecSupported()
+    }
 
-        for (codec in codecs) {
-            if (!codec.isEncoder) {
-                val types = codec.supportedTypes
-                for (type in types) {
-                    val caps = codec.getCapabilitiesForType(type)
-                    for (pl in caps.profileLevels) {
-                        if (pl.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10 ||
-                            pl.profile == MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvheSt
-                        ) {
-                            return true
-                        }
-                    }
+    private fun isDisplayHdrSupported(): Boolean {
+        val display = getPrimaryDisplay(context) ?: return false
+        val hdrTypes = display.hdrCapabilities?.supportedHdrTypes ?: return false
+        return hdrTypes.isNotEmpty()
+    }
+
+    private fun isHdrCodecSupported(): Boolean {
+        val codecList = MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos
+        for (codec in codecList) {
+            if (codec.isEncoder) continue
+            if (codec.supportedTypes.none { it.equals("video/hevc", ignoreCase = true) }) continue
+
+            val caps = codec.getCapabilitiesForType("video/hevc")
+            for (pl in caps.profileLevels) {
+                if (pl.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10 ||
+                    pl.profile == MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvheSt
+                ) {
+                    return true
                 }
             }
         }
         return false
     }
 
-    override fun isSslSupported(): Boolean {
-        return try {
-            val factory = SSLSocketFactory.getDefault() as? SSLSocketFactory
-            val supported = factory?.supportedCipherSuites
-            !supported.isNullOrEmpty()
-        } catch (e: Exception) {
-            false
-        }
-    }
+    override fun isSslSupported(): Boolean = true
 
     override fun isHevcHardwareDecodingSupported(): Boolean {
         val codecList = MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos
@@ -64,11 +61,9 @@ internal class DeviceInfoRepository(
             if (!codecInfo.isEncoder) {
                 codecInfo.supportedTypes.forEach { type ->
                     if (type.equals("video/hevc", ignoreCase = true)) {
-                        val capabilities = codecInfo.getCapabilitiesForType(type)
                         val isHardwareAccelerated = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                             codecInfo.isHardwareAccelerated
                         } else {
-                            // На API < 29 такой информации нет, считаем что true если не "OMX.google"
                             !codecInfo.name.contains("omx.google", ignoreCase = true)
                         }
 
