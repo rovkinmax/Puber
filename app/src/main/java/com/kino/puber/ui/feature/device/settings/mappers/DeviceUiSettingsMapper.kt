@@ -10,18 +10,25 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
 import com.kino.puber.ui.feature.device.settings.model.DeviceUi
 import com.kino.puber.ui.feature.device.settings.model.SettingOptionUi
 
-internal class DeviceUiSettingsMapper {
-    fun mapSettings(settings: SettingsResponse): DeviceSettingsListUi {
-        val settingsList = buildList {
-            add(settings.supportSsl.mapToUi())
-            add(settings.supportHevc.mapToUi())
-            add(settings.supportHdr.mapToUi())
-            add(settings.support4k.mapToUi())
-            add(settings.mixedPlaylist.mapToUi())
-            add(settings.serverLocation.mapToUi(DeviceSettingType.SERVER_LOCATION))
-            add(settings.streamingType.mapToUi(DeviceSettingType.STREAMING_TYPE))
-        }
+data class DeviceCapabilities(
+    val sslSupported: Boolean,
+    val hevcSupported: Boolean,
+    val hdrSupported: Boolean,
+    val is4kSupported: Boolean,
+)
 
+internal class DeviceUiSettingsMapper {
+
+    fun mapSettings(settings: SettingsResponse, capabilities: DeviceCapabilities): DeviceSettingsListUi {
+        val settingsList = buildList {
+            add(mapToggle(settings.supportSsl, DeviceSettingType.SUPPORT_SSL, capabilities.sslSupported))
+            add(mapToggle(settings.supportHevc, DeviceSettingType.SUPPORT_HEVC, capabilities.hevcSupported))
+            add(mapToggle(settings.supportHdr, DeviceSettingType.SUPPORT_HDR, capabilities.hdrSupported))
+            add(mapToggle(settings.support4k, DeviceSettingType.SUPPORT_4K, capabilities.is4kSupported))
+            add(mapToggle(settings.mixedPlaylist, DeviceSettingType.MIXED_PLAYLIST, true))
+            add(mapList(settings.serverLocation, DeviceSettingType.SERVER_LOCATION))
+            add(mapList(settings.streamingType, DeviceSettingType.STREAMING_TYPE))
+        }
         return DeviceSettingsListUi(settingsList)
     }
 
@@ -31,14 +38,23 @@ internal class DeviceUiSettingsMapper {
         software = device.software,
     )
 
-    private fun SettingValue.mapToUi() = DeviceSettingUIModel.TypeValue(
-        value = this.value == 1,
-        label = this.label,
+    private fun mapToggle(
+        setting: SettingValue,
+        type: DeviceSettingType,
+        supported: Boolean,
+    ) = DeviceSettingUIModel.TypeValue(
+        type = type,
+        value = setting.value == 1,
+        label = setting.label,
+        supported = supported,
     )
 
-    private fun SettingList.mapToUi(type: DeviceSettingType) = DeviceSettingUIModel.TypeList(
+    private fun mapList(
+        setting: SettingList,
+        type: DeviceSettingType,
+    ) = DeviceSettingUIModel.TypeList(
         type = type,
-        values = this.value.map {
+        values = setting.value.map {
             SettingOptionUi(
                 id = it.id,
                 label = it.label,
@@ -46,6 +62,6 @@ internal class DeviceUiSettingsMapper {
                 selected = it.selected == 1,
             )
         },
-        label = this.label,
+        label = setting.label,
     )
 }

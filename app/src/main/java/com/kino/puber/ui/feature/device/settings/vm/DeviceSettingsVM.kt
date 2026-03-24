@@ -7,7 +7,9 @@ import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.device.DeviceSettingType
+import com.kino.puber.domain.interactor.device.IDeviceInfoInteractor
 import com.kino.puber.domain.interactor.device.IDeviceSettingInteractor
+import com.kino.puber.ui.feature.device.settings.mappers.DeviceCapabilities
 import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingUIModel
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
@@ -17,10 +19,20 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
 
 internal class DeviceSettingsVM(
     private val deviceSettingInteractor: IDeviceSettingInteractor,
+    private val deviceInfoInteractor: IDeviceInfoInteractor,
     private val deviceUiSettingsMapper: DeviceUiSettingsMapper,
     override val errorHandler: ErrorHandler,
     router: AppRouter,
 ) : PuberVM<DeviceSettingsViewState>(router) {
+
+    private val capabilities by lazy {
+        DeviceCapabilities(
+            sslSupported = deviceInfoInteractor.isSslSupported(),
+            hevcSupported = deviceInfoInteractor.isHevcSupported(),
+            hdrSupported = deviceInfoInteractor.isHdrSupported(),
+            is4kSupported = deviceInfoInteractor.is4kSupported(),
+        )
+    }
 
     override val initialViewState: DeviceSettingsViewState
         get() = DeviceSettingsViewState()
@@ -34,11 +46,12 @@ internal class DeviceSettingsVM(
             updateViewState(stateValue.copy(state = DeviceSettingsState.Loading))
             deviceSettingInteractor.getCurrentDeviceSettings().collect { currentDevice ->
                 if (currentDevice.isSuccess) {
+                    val device = currentDevice.getOrThrow()
                     updateViewState(
                         stateValue.copy(
                             state = DeviceSettingsState.Success(
-                                deviceUiSettingsMapper.mapSettings(currentDevice.getOrThrow().device.settings),
-                                deviceUiSettingsMapper.mapDevice(currentDevice.getOrThrow().device)
+                                settings = deviceUiSettingsMapper.mapSettings(device.device.settings, capabilities),
+                                device = deviceUiSettingsMapper.mapDevice(device.device),
                             )
                         )
                     )
@@ -49,7 +62,7 @@ internal class DeviceSettingsVM(
 
     override fun onAction(action: UIAction) {
         when (action) {
-            is DeviceSettingsActions.ChangeSettingValue -> {}
+            is DeviceSettingsActions.ChangeSettingValue -> onChangeSettingValue(action.setting)
             is DeviceSettingsActions.ToggleListExpand -> onToggleListExpand(action.setting)
             is DeviceSettingsActions.SelectOption -> onSelectOption(action.type, action.optionId)
             DeviceSettingsActions.UnlinkDevice -> onUnlinkDevice()
@@ -62,10 +75,61 @@ internal class DeviceSettingsVM(
         val currentState = stateValue.state
         if (currentState is DeviceSettingsState.Success) {
             updateViewState(
-                stateValue.copy(state = currentState.copy(savingOptionId = null))
+                stateValue.copy(state = currentState.copy(savingOptionId = null, savingToggleType = null))
             )
         }
         showMessage(error.message)
+    }
+
+    private fun onChangeSettingValue(setting: DeviceSettingUIModel.TypeValue) {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        if (currentState.savingToggleType != null) return
+
+        // Optimistic update + show progress
+        updateViewState(
+            stateValue.copy(
+                state = applyToggle(currentState, setting).copy(savingToggleType = setting.type)
+            )
+        )
+
+        launch {
+            try {
+                val apiValue = if (setting.value) 1 else 0
+                deviceSettingInteractor.updateDeviceSetting(setting.type, apiValue)
+                // Clear progress on success
+                val successState = stateValue.state
+                if (successState is DeviceSettingsState.Success) {
+                    updateViewState(stateValue.copy(state = successState.copy(savingToggleType = null)))
+                }
+            } catch (e: Exception) {
+                // Revert on error + clear progress
+                val revertedSetting = setting.copy(value = !setting.value)
+                val revertState = stateValue.state
+                if (revertState is DeviceSettingsState.Success) {
+                    updateViewState(
+                        stateValue.copy(
+                            state = applyToggle(revertState, revertedSetting).copy(savingToggleType = null)
+                        )
+                    )
+                }
+                throw e // re-throw for dispatchError → showMessage
+            }
+        }
+    }
+
+    private fun applyToggle(
+        currentState: DeviceSettingsState.Success,
+        setting: DeviceSettingUIModel.TypeValue,
+    ): DeviceSettingsState.Success {
+        val updatedList = currentState.settings.settingsList.map { item ->
+            if (item is DeviceSettingUIModel.TypeValue && item.type == setting.type) {
+                item.copy(value = setting.value)
+            } else {
+                item
+            }
+        }
+        return currentState.copy(settings = DeviceSettingsListUi(updatedList))
     }
 
     private fun onToggleListExpand(setting: DeviceSettingUIModel.TypeList) {
@@ -89,11 +153,11 @@ internal class DeviceSettingsVM(
 
         launch {
             deviceSettingInteractor.updateDeviceSetting(type, optionId)
-            applySettingLocally(type, optionId)
+            applyListSettingLocally(type, optionId)
         }
     }
 
-    private fun applySettingLocally(type: DeviceSettingType, selectedOptionId: Int) {
+    private fun applyListSettingLocally(type: DeviceSettingType, selectedOptionId: Int) {
         val currentState = stateValue.state
         if (currentState !is DeviceSettingsState.Success) return
 

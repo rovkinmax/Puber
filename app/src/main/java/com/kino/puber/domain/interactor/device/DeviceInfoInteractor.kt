@@ -10,6 +10,10 @@ class DeviceInfoInteractor(
 
     override fun isHdrSupported(): Boolean = deviceInfoRepository.isHdrSupported()
 
+    override fun isSslSupported(): Boolean = deviceInfoRepository.isSslSupported()
+
+    override fun isHevcSupported(): Boolean = deviceInfoRepository.isHevcHardwareDecodingSupported()
+
     override fun getAndroidVersion(): String = deviceInfoRepository.getAndroidVersion()
 
     override fun getDeviceBrand(): String = deviceInfoRepository.getDeviceBrand()

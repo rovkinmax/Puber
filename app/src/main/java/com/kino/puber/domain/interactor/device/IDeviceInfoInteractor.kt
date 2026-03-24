@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.Flow
 interface IDeviceInfoInteractor {
     fun is4kSupported(): Boolean
     fun isHdrSupported(): Boolean
+    fun isSslSupported(): Boolean
+    fun isHevcSupported(): Boolean
     fun getAndroidVersion(): String
     fun getDeviceBrand(): String
     fun getDeviceModel(): String

@@ -14,5 +14,6 @@ internal sealed interface DeviceSettingsState {
         val device: DeviceUi,
         val expandedType: DeviceSettingType? = null,
         val savingOptionId: Int? = null,
+        val savingToggleType: DeviceSettingType? = null,
     ) : DeviceSettingsState
 }
