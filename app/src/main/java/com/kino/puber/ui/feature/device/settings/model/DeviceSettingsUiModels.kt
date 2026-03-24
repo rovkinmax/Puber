@@ -6,8 +6,10 @@ import com.kino.puber.domain.interactor.device.DeviceSettingType
 @Immutable
 sealed class DeviceSettingUIModel {
     data class TypeValue(
+        val type: DeviceSettingType,
         val value: Boolean,
-        val label: String
+        val label: String,
+        val supported: Boolean = true,
     ) : DeviceSettingUIModel()
 
     data class TypeList(
