@@ -1,6 +1,7 @@
 package com.kino.puber.data.di
 
 import android.net.ConnectivityManager
+import com.kino.puber.core.session.SessionEventBus
 import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.data.repository.CryptoPreferenceRepository
 import com.kino.puber.data.repository.DeviceInfoRepository
@@ -16,11 +17,13 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
 val apiModule = module {
+    single { SessionEventBus() }
     single {
         KinoPubApiClient(
             cacheDir = androidContext().cacheDir,
             connectivityManager = androidContext().getSystemService(ConnectivityManager::class.java),
             cryptoPreferenceRepository = get(),
+            sessionEventBus = get(),
         )
     }
 }
