@@ -10,6 +10,7 @@ import com.kino.puber.data.repository.ICryptoPreferenceRepository
 import com.kino.puber.data.repository.IDeviceInfoRepository
 import com.kino.puber.data.repository.IDeviceSettingsRepository
 import com.kino.puber.data.repository.IKinoPubRepository
+import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.KinoPubRepository
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
@@ -33,4 +34,5 @@ val repositoryModule = module {
     singleOf(::CryptoPreferenceRepository) { bind<ICryptoPreferenceRepository>() }
     singleOf(::DeviceInfoRepository) { bind<IDeviceInfoRepository>() }
     singleOf(::DeviceSettingsRepository) { bind<IDeviceSettingsRepository>() }
+    singleOf(::ItemDetailsRepository)
 }
