@@ -76,21 +76,12 @@ internal fun PlayerScreenContent(
         }
     }
 
+    // BACK is handled via Voyager's BackHandler → AppRouter.dispatchBackPressed() → PlayerVM.onBackPressed()
+    // Do NOT handle BACK in onPreviewKeyEvent — it would cause double-handling
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.scrim)
-            .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK) {
-                    // Consume BOTH ACTION_DOWN and ACTION_UP to prevent system BackHandler
-                    // from firing and popping the screen via Voyager
-                    if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                        onAction(PlayerAction.OnBackPressed)
-                    }
-                    return@onPreviewKeyEvent true
-                }
-                false
-            },
+            .background(MaterialTheme.colorScheme.scrim),
     ) {
         when (state) {
             is PlayerViewState.Loading -> {
@@ -159,10 +150,6 @@ internal fun PlayerScreenContent(
                                 }
                                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                                     onAction(PlayerAction.TogglePlayPause)
-                                    true
-                                }
-                                KeyEvent.KEYCODE_BACK -> {
-                                    onAction(PlayerAction.OnBackPressed)
                                     true
                                 }
                                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
