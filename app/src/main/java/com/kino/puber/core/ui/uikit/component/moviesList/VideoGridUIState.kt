@@ -26,14 +26,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.kino.puber.core.ui.uikit.component.modifier.createInitialFocusRestorerModifiers
-import com.kino.puber.core.ui.uikit.component.modifier.ifElse
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 
 @Immutable
@@ -126,22 +127,22 @@ private fun VideoGridItems(
             .fillMaxWidth(),
     ) {
         val listState = rememberLazyListState()
-        val focusRestorerModifier = createInitialFocusRestorerModifiers()
         var focusedItemIndex by rememberSaveable { mutableIntStateOf(0) }
+
+        val rowFocusRequester = remember { FocusRequester() }
+        val savedItemFocusRequester = remember { FocusRequester() }
 
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(focusRestorerModifier.parentModifier),
+                .focusRequester(rowFocusRequester)
+                .focusRestorer(savedItemFocusRequester),
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(16.dp),
         ) {
             itemsIndexed(items.items) { indexR, item ->
-                // childModifier = fallback focus target when focusRestorer can't restore.
-                // For the target row: point to the last focused item.
-                // For other rows: default behavior (item[0] of first row).
-                val isChildTarget = if (isTargetRow) {
+                val isFallbackTarget = if (isTargetRow) {
                     indexR == focusedItemIndex
                 } else {
                     indexR == 0 && columnIndex == 0
@@ -149,9 +150,9 @@ private fun VideoGridItems(
 
                 VideoItem(
                     modifier = Modifier
-                        .ifElse(
-                            isChildTarget,
-                            ifTrueModifier = focusRestorerModifier.childModifier,
+                        .then(
+                            if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
+                            else Modifier
                         )
                         .onFocusChanged { state ->
                             if (state.isFocused) {
@@ -160,7 +161,10 @@ private fun VideoGridItems(
                             }
                         },
                     state = item,
-                    onClick = { onItemClick(item) },
+                    onClick = {
+                        runCatching { rowFocusRequester.saveFocusedChild() }
+                        onItemClick(item)
+                    },
                 )
             }
         }
