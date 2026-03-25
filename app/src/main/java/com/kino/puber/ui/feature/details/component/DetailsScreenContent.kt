@@ -15,9 +15,13 @@ import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -106,19 +110,28 @@ private fun ActionButtonsRow(
     onAction: (UIAction) -> Unit,
 ) {
     val focusRequester = rememberFocusRequesterOnLaunch()
+    val firstButtonFocusRequester = remember { FocusRequester() }
+
+    // Re-request focus after navigation return (Player → Back).
+    // Safe: DetailsScreen has no drawer/tabs, no side effects.
+    LaunchedEffect(Unit) {
+        delay(100)
+        runCatching { focusRequester.requestFocus() }
+    }
 
     Row(
         modifier = Modifier
             .padding(horizontal = 16.dp)
             .focusRequester(focusRequester)
-            .focusRestorer(),
+            .focusRestorer(firstButtonFocusRequester),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        buttons.forEach { button ->
+        buttons.forEachIndexed { index, button ->
+            val buttonModifier = if (index == 0) Modifier.focusRequester(firstButtonFocusRequester) else Modifier
             when (button) {
                 is DetailsButtonUIState.TextButton -> {
-                    Button(onClick = { onAction(button.action) }) {
+                    Button(onClick = { onAction(button.action) }, modifier = buttonModifier) {
                         Icon(
                             imageVector = button.icon,
                             contentDescription = null,
@@ -129,7 +142,7 @@ private fun ActionButtonsRow(
                     }
                 }
                 is DetailsButtonUIState.IconOnly -> {
-                    IconButton(onClick = { onAction(button.action) }) {
+                    IconButton(onClick = { onAction(button.action) }, modifier = buttonModifier) {
                         Icon(
                             imageVector = button.icon,
                             contentDescription = stringResource(button.contentDescription),
