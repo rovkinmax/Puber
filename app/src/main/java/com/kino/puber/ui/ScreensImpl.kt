@@ -11,6 +11,8 @@ import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.ui.feature.auth.component.AuthScreen
 import com.kino.puber.ui.feature.details.component.DetailsScreen
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
+import com.kino.puber.ui.feature.player.component.PlayerScreen
+import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.device.settings.flow.DeviceSettingsFlowScreen
 import com.kino.puber.ui.feature.favorites.content.FavoritesScreen
 import com.kino.puber.ui.feature.main.component.MainScreen
@@ -39,6 +41,10 @@ internal object ScreensImpl : Screens {
 
     override fun details(itemId: Int): PuberScreen {
         return DetailsScreen(DetailsScreenParams(itemId))
+    }
+
+    override fun player(itemId: Int, seasonNumber: Int?, episodeNumber: Int?): PuberScreen {
+        return PlayerScreen(PlayerScreenParams(itemId, seasonNumber, episodeNumber))
     }
 
 

@@ -211,8 +211,22 @@ data class Audio(
     val codec: String? = null,
     val channels: Int? = null,
     val lang: String? = null,
-    val type: String? = null,
-    val author: String? = null,
+    val type: AudioType? = null,
+    val author: AudioAuthor? = null,
+)
+
+@Serializable
+data class AudioType(
+    val id: Int,
+    val title: String? = null,
+    @SerialName("short_title") val shortTitle: String? = null,
+)
+
+@Serializable
+data class AudioAuthor(
+    val id: Int,
+    val title: String? = null,
+    @SerialName("short_title") val shortTitle: String? = null,
 )
 
 @Serializable
@@ -432,7 +446,11 @@ data class Episode(
     val thumbnail: String? = null,
     val duration: Int? = null,
     val ac3: Int? = null,
-    val subtitles: List<SubtitleLink>? = null
+    val audios: List<Audio>? = null,
+    val subtitles: List<SubtitleLink>? = null,
+    val files: List<VideoFile>? = null,
+    val watched: Int? = null,
+    val watching: WatchingInfo? = null,
 )
 
 @Serializable

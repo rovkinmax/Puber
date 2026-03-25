@@ -12,6 +12,7 @@ import com.kino.puber.data.repository.IDeviceSettingsRepository
 import com.kino.puber.data.repository.IKinoPubRepository
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.KinoPubRepository
+import com.kino.puber.data.repository.PlayerPreferencesRepository
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -35,4 +36,5 @@ val repositoryModule = module {
     singleOf(::DeviceInfoRepository) { bind<IDeviceInfoRepository>() }
     singleOf(::DeviceSettingsRepository) { bind<IDeviceSettingsRepository>() }
     singleOf(::ItemDetailsRepository)
+    singleOf(::PlayerPreferencesRepository)
 }
