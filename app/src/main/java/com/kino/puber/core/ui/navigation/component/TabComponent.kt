@@ -13,16 +13,18 @@ import org.koin.compose.LocalKoinScope
 import org.koin.compose.koinInject
 
 @Composable
-fun TabComponent(content: @Composable () -> Unit) {
+fun TabComponent(
+    tabRouter: TabRouter = koinInject(),
+    content: @Composable () -> Unit,
+) {
     val scopeName = LocalKoinScope.current.id
     TabNavigator(
         tab = LoadingTab,
         key = scopeName,
     ) {
         val navigator = LocalTabNavigator.current
-        val router = koinInject<TabRouter>()
-        LaunchedEffect(scopeName) {
-            router.events()
+        LaunchedEffect(tabRouter) {
+            tabRouter.events()
                 .collect { event ->
                     when (event) {
                         is TabCommand.Open -> navigator.current = event.tab
