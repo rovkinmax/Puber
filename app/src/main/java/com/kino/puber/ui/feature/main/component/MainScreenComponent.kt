@@ -34,6 +34,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Text
+import com.kino.puber.core.ui.navigation.TabRouter
 import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
 import com.kino.puber.core.ui.navigation.component.TabComponent
 import com.kino.puber.core.ui.uikit.component.drawer.DrawerState
@@ -54,11 +55,11 @@ internal fun MainScreenComponent() {
     val vm = koinViewModel<MainVM>()
     val state by vm.collectViewState()
     val onAction: (UIAction) -> Unit = remember { vm::onAction }
-    MainScreenContent(state, onAction = onAction)
+    MainScreenContent(state, onAction = onAction, tabRouter = vm.tabRouter)
 }
 
 @Composable
-private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit) {
+private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit, tabRouter: TabRouter) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val mainContentFocus = rememberFocusRequesterOnLaunch()
     SideEffect { drawerState.contentFocusRequester = mainContentFocus }
@@ -79,7 +80,7 @@ private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit
                     mainContentFocus = mainContentFocus,
                 )
             },
-            content = { MainScreenContentBody(mainContentFocus) },
+            content = { MainScreenContentBody(mainContentFocus, tabRouter) },
         )
     }
 }
@@ -190,14 +191,18 @@ private fun mainSideMenuItemBadge(tab: MainTab): @Composable (() -> Unit)? {
 
 @Composable
 private fun MainScreenContentBody(
-    focusRequester: FocusRequester
+    focusRequester: FocusRequester,
+    tabRouter: TabRouter,
 ) {
     val closeDrawerWidth = 80.dp
+    // Re-request focus on content after navigation return (push/pop).
+    // MainScreenContentBody stays in composition during tab switches,
+    // so this only fires on push/pop — safe for tab switching.
     LaunchedEffect(Unit) {
         delay(100)
         focusRequester.requestFocus()
     }
-    TabComponent {
+    TabComponent(tabRouter = tabRouter) {
         Box(
             Modifier
                 .padding(start = closeDrawerWidth)

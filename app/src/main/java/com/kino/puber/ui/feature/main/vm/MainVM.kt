@@ -13,7 +13,7 @@ import com.kino.puber.ui.feature.main.model.TabType
 internal class MainVM(
     router: AppRouter,
     private val mainUIMapper: MainUIMapper,
-    private val tabRouter: TabRouter,
+    internal val tabRouter: TabRouter,
 ) : PuberVM<MainViewState>(router) {
     override val initialViewState = MainViewState()
 
