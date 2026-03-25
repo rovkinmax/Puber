@@ -63,13 +63,7 @@ internal fun PlayerControlsOverlay(
                     if (keyEvent.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
                     // Reset hide timer on any key press while controls are visible
                     onControlsInteraction()
-                    when (keyEvent.nativeKeyEvent.keyCode) {
-                        KeyEvent.KEYCODE_BACK -> {
-                            onBackPressed()
-                            true
-                        }
-                        else -> false // Let D-pad navigate between buttons naturally
-                    }
+                    false // Let D-pad navigate between buttons naturally; BACK handled by Voyager BackHandler
                 },
         ) {
             Column(

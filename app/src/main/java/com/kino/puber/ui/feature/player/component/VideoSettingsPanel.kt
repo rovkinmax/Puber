@@ -46,16 +46,7 @@ internal fun VideoSettingsPanel(
 ) {
     AnimatedVisibility(
         visible = visible,
-        modifier = modifier
-            .fillMaxSize()
-            .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN &&
-                    keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BACK
-                ) {
-                    onBackPressed?.invoke()
-                    true
-                } else false
-            },
+        modifier = modifier.fillMaxSize(),
         enter = slideInVertically(initialOffsetY = { it }),
         exit = slideOutVertically(targetOffsetY = { it }),
     ) {
