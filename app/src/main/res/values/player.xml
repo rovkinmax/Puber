@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Player Controls -->
+    <string name="player_button_episodes">Серии</string>
+    <string name="player_button_audio_subtitles">Аудио и субтитры</string>
+    <string name="player_button_video">Видео</string>
+
+    <!-- Audio & Subtitles Panel -->
+    <string name="player_panel_sound">ЗВУК</string>
+    <string name="player_panel_audio">АУДИО</string>
+    <string name="player_panel_subtitles">СУБТИТРЫ</string>
+    <string name="player_subtitles_off">Выкл.</string>
+    <string name="player_subtitle_size">Аа Размер</string>
+    <string name="player_subtitle_size_small">Маленький</string>
+    <string name="player_subtitle_size_medium">Средний</string>
+    <string name="player_subtitle_size_large">Крупный</string>
+
+    <!-- Video Settings Panel -->
+    <string name="player_panel_quality">КАЧЕСТВО</string>
+    <string name="player_panel_speed">СКОРОСТЬ</string>
+    <string name="player_panel_aspect_ratio">СООТНОШЕНИЕ</string>
+    <string name="player_speed_normal">Норм.</string>
+    <string name="player_aspect_auto">Авто</string>
+    <string name="player_aspect_stretch">Растянуть</string>
+
+    <!-- Next Episode -->
+    <string name="player_next_episode_countdown">Следующая серия через %d…</string>
+    <string name="player_series_completed">Сериал завершён</string>
+
+    <!-- Resume Dialog -->
+    <string name="player_resume_title">Продолжить просмотр с %s?</string>
+    <string name="player_resume_continue">Продолжить</string>
+    <string name="player_resume_from_start">Сначала</string>
+
+    <!-- Error State -->
+    <string name="player_error_playback">Ошибка воспроизведения</string>
+    <string name="player_error_retry">Повторить</string>
+    <string name="player_error_back">Назад</string>
+
+    <!-- Seek Indicator -->
+    <string name="player_seek_forward">+%dс</string>
+    <string name="player_seek_backward">−%dс</string>
+
+    <!-- Episode info in title -->
+    <string name="player_season_episode">%1$d сезон, %2$d серия</string>
+    <string name="player_season_episode_title">%1$d сезон, %2$d серия, %3$s</string>
+    <string name="player_season_episodes_count">%1$d сезон, %2$d серий</string>
+</resources>

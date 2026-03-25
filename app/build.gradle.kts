@@ -224,6 +224,13 @@ dependencies {
     implementation(libs.voyager.bottom.sheet.navigator)
     implementation(libs.voyager.koin)
 
+    // Media3 (Video Player)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.session)
+    implementation(libs.media3.common)
+
     // QR
     implementation(libs.chaintech.qrkit)
 

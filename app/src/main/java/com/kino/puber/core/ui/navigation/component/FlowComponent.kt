@@ -10,11 +10,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
-import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.kino.puber.core.ui.uikit.component.drawer.LocalDrawerState
 import cafe.adriel.voyager.core.screen.ScreenKey
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
@@ -36,7 +34,9 @@ import com.kino.puber.core.ui.navigation.puberReplace
 import com.kino.puber.core.ui.navigation.puberReplaceAll
 import com.kino.puber.core.ui.navigation.puberShow
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
+import com.kino.puber.core.ui.uikit.component.drawer.LocalDrawerState
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.parcelize.Parcelize
 import org.koin.compose.LocalKoinScope
 import org.koin.compose.currentKoinScope
@@ -152,6 +152,7 @@ private fun FlowCommandRunner(router: AppRouter) {
                         drawerState?.isOverlayActive = true
                         bottomSheetNavigator.puberShow(event.screen)
                     }
+
                     is Command.HideOver -> bottomSheetNavigator.puberHide()
                     is Command.Replace -> navigator.puberReplace(event.screen)
                     is Command.NewRoot -> navigator.puberReplaceAll(*event.screens.toTypedArray())

@@ -20,7 +20,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
@@ -53,6 +56,7 @@ fun VideoGrid(
     enableTopSideGradient: Boolean = true,
 ) {
     val lazyListState = rememberLazyListState()
+    var focusedColumnIndex by rememberSaveable { mutableIntStateOf(-1) }
 
     val showTopGradient by remember { derivedStateOf { lazyListState.firstVisibleItemScrollOffset > 0 } }
 
@@ -76,8 +80,12 @@ fun VideoGrid(
                     is VideoGridItemUIState.Items -> VideoGridItems(
                         items = columnItem,
                         columnIndex = indexC,
+                        isTargetRow = indexC == focusedColumnIndex,
                         onItemClick = onItemClick,
-                        onItemFocused = onItemFocused,
+                        onItemFocused = { item ->
+                            focusedColumnIndex = indexC
+                            onItemFocused(item)
+                        },
                     )
                 }
             }
@@ -108,6 +116,7 @@ fun VideoGrid(
 private fun VideoGridItems(
     items: VideoGridItemUIState.Items,
     columnIndex: Int,
+    isTargetRow: Boolean,
     onItemClick: (VideoItemUIState) -> Unit,
     onItemFocused: (VideoItemUIState) -> Unit,
 ) {
@@ -116,9 +125,10 @@ private fun VideoGridItems(
             .wrapContentHeight()
             .fillMaxWidth(),
     ) {
-
         val listState = rememberLazyListState()
         val focusRestorerModifier = createInitialFocusRestorerModifiers()
+        var focusedItemIndex by rememberSaveable { mutableIntStateOf(0) }
+
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
@@ -128,14 +138,24 @@ private fun VideoGridItems(
             contentPadding = PaddingValues(16.dp),
         ) {
             itemsIndexed(items.items) { indexR, item ->
+                // childModifier = fallback focus target when focusRestorer can't restore.
+                // For the target row: point to the last focused item.
+                // For other rows: default behavior (item[0] of first row).
+                val isChildTarget = if (isTargetRow) {
+                    indexR == focusedItemIndex
+                } else {
+                    indexR == 0 && columnIndex == 0
+                }
+
                 VideoItem(
                     modifier = Modifier
                         .ifElse(
-                            indexR == 0 && columnIndex == 0,
+                            isChildTarget,
                             ifTrueModifier = focusRestorerModifier.childModifier,
                         )
                         .onFocusChanged { state ->
-                            if (state.hasFocus) {
+                            if (state.isFocused) {
+                                focusedItemIndex = indexR
                                 onItemFocused(item)
                             }
                         },

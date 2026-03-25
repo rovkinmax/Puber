@@ -32,7 +32,7 @@ internal class DetailsVM(
 
     override fun onAction(action: UIAction) {
         when (action) {
-            is DetailsAction.PlayClicked -> { /* TODO: navigate to player */ }
+            is DetailsAction.PlayClicked -> router.navigateTo(router.screens.player(params.itemId))
             is DetailsAction.TrailerClicked -> { /* TODO: open trailer */ }
             is DetailsAction.SelectSeasonClicked -> { /* TODO: open season picker */ }
             is DetailsAction.WatchlistToggleClicked -> onWatchlistToggle()

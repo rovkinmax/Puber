@@ -12,4 +12,6 @@ interface Screens {
     fun underDevelopment(): PuberScreen
 
     fun details(itemId: Int): PuberScreen
+
+    fun player(itemId: Int, seasonNumber: Int? = null, episodeNumber: Int? = null): PuberScreen
 }
