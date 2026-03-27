@@ -24,7 +24,7 @@ internal data class MainTab(
 )
 
 @Parcelize
-internal enum class TabType(val title: Int) : Parcelable {
+enum class TabType(val title: Int) : Parcelable {
     Favourites(R.string.main_tabs_favorites),
     Bookmarks(R.string.main_tabs_bookmarks),
     History(R.string.main_tabs_history),

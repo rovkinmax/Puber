@@ -9,13 +9,15 @@ import androidx.tv.material3.Text
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.ui.feature.auth.component.AuthScreen
+import com.kino.puber.ui.feature.contentlist.ContentListScreen
 import com.kino.puber.ui.feature.details.component.DetailsScreen
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
+import com.kino.puber.ui.feature.device.settings.flow.DeviceSettingsFlowScreen
 import com.kino.puber.ui.feature.player.component.PlayerScreen
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
-import com.kino.puber.ui.feature.device.settings.flow.DeviceSettingsFlowScreen
 import com.kino.puber.ui.feature.favorites.content.FavoritesScreen
 import com.kino.puber.ui.feature.main.component.MainScreen
+import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.parcelize.Parcelize
 
 internal object ScreensImpl : Screens {
@@ -33,6 +35,10 @@ internal object ScreensImpl : Screens {
 
     override fun deviceSettings(): PuberScreen {
         return DeviceSettingsFlowScreen()
+    }
+
+    override fun contentList(tabType: TabType): PuberScreen {
+        return ContentListScreen(tabType)
     }
 
     override fun underDevelopment(): PuberScreen {
