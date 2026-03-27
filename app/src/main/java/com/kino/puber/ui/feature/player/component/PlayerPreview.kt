@@ -16,7 +16,7 @@ import com.kino.puber.ui.feature.player.model.QualityUIState
 import com.kino.puber.ui.feature.player.model.ResumeDialogState
 import com.kino.puber.ui.feature.player.model.SeekIndicatorState
 import com.kino.puber.ui.feature.player.model.SoundModeUIState
-import com.kino.puber.ui.feature.player.model.SubtitleSize
+import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 
 // region Preview Data
@@ -304,10 +304,79 @@ private fun NextEpisodeCountdownPreview() = PuberTheme {
 
 @Preview(name = "Series — paused with controls", device = TV_1080p)
 @Composable
-private fun PausedPreview() = PuberTheme {
+private fun SeriesPausedPreview() = PuberTheme {
     PlayerScreenContent(
         state = PlayerViewState.Content(
             previewSeriesContent().copy(isPlaying = false)
+        ),
+        onAction = {},
+        exoPlayer = { null },
+    )
+}
+
+@Preview(name = "Movie — paused with controls", device = TV_1080p)
+@Composable
+private fun MoviePausedPreview() = PuberTheme {
+    PlayerScreenContent(
+        state = PlayerViewState.Content(
+            previewMovieContent().copy(isPlaying = false)
+        ),
+        onAction = {},
+        exoPlayer = { null },
+    )
+}
+
+@Preview(name = "Controls hidden — clean playback", device = TV_1080p)
+@Composable
+private fun ControlsHiddenPreview() = PuberTheme {
+    PlayerScreenContent(
+        state = PlayerViewState.Content(
+            previewSeriesContent(controlsVisible = false)
+        ),
+        onAction = {},
+        exoPlayer = { null },
+    )
+}
+
+@Preview(name = "Series — last episode, no next", device = TV_1080p)
+@Composable
+private fun LastEpisodePreview() = PuberTheme {
+    PlayerScreenContent(
+        state = PlayerViewState.Content(
+            previewSeriesContent().copy(hasNextEpisode = false)
+        ),
+        onAction = {},
+        exoPlayer = { null },
+    )
+}
+
+@Preview(name = "Resume dialog — series", device = TV_1080p)
+@Composable
+private fun ResumeDialogSeriesPreview() = PuberTheme {
+    PlayerScreenContent(
+        state = PlayerViewState.Content(
+            previewSeriesContent(
+                controlsVisible = false,
+                resumeDialog = ResumeDialogState(
+                    savedPosition = 1_230_000L,
+                    formattedTime = "20:30",
+                ),
+            )
+        ),
+        onAction = {},
+        exoPlayer = { null },
+    )
+}
+
+@Preview(name = "Next episode — about to switch", device = TV_1080p)
+@Composable
+private fun NextEpisodeZeroPreview() = PuberTheme {
+    PlayerScreenContent(
+        state = PlayerViewState.Content(
+            previewSeriesContent(
+                controlsVisible = false,
+                nextEpisodeCountdown = 0,
+            )
         ),
         onAction = {},
         exoPlayer = { null },

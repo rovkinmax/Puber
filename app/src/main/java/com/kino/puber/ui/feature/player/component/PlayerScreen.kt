@@ -9,6 +9,8 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.player.PlayerInteractor
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerUIMapper
+import com.kino.puber.ui.feature.player.vm.ContentStateFactory
+import com.kino.puber.ui.feature.player.vm.PlaybackController
 import com.kino.puber.ui.feature.player.vm.PlayerVM
 import kotlinx.parcelize.Parcelize
 import org.koin.androidx.compose.koinViewModel
@@ -28,6 +30,8 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Puber
             scoped { params }
             scopedOf(::PlayerInteractor)
             scopedOf(::PlayerUIMapper)
+            scopedOf(::ContentStateFactory)
+            scopedOf(::PlaybackController)
             viewModelOf(::PlayerVM)
         }
     }
@@ -37,7 +41,6 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Puber
         val vm = koinViewModel<PlayerVM>()
         val state by vm.collectViewState()
         val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
-        val exoPlayer = remember(vm) { vm.getExoPlayer() }
 
         PlayerScreenContent(
             state = state,

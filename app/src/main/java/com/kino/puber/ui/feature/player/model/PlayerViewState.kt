@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.player.model
 
 import androidx.compose.runtime.Immutable
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
+import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.feature.player.model.FocusTarget
 
 @Immutable
@@ -67,11 +68,4 @@ internal enum class ActivePanel {
     AudioSubtitles,
     VideoSettings,
     Episodes,
-}
-
-@Immutable
-enum class SubtitleSize {
-    SMALL,
-    MEDIUM,
-    LARGE,
 }
