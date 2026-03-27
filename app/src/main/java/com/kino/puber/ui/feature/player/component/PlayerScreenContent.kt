@@ -114,16 +114,19 @@ internal fun PlayerScreenContent(
                         }
                     },
                     update = { view ->
-                        if (view.player != exoPlayer()) {
-                            view.player = exoPlayer()
+                        val currentPlayer = exoPlayer()
+                        if (view.player != currentPlayer) {
+                            view.player = currentPlayer
                         }
-                        val aspectMode = content.aspectRatios.getOrNull(content.selectedAspectRatioIndex)?.mode
-                        @UnstableApi
-                        view.resizeMode = when (aspectMode) {
-                            AspectRatioMode.AUTO -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            AspectRatioMode.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                            AspectRatioMode.CROP -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        if (currentPlayer != null) {
+                            val aspectMode = content.aspectRatios.getOrNull(content.selectedAspectRatioIndex)?.mode
+                            @UnstableApi
+                            view.resizeMode = when (aspectMode) {
+                                AspectRatioMode.AUTO -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                AspectRatioMode.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                AspectRatioMode.CROP -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            }
                         }
                     },
                     modifier = Modifier
@@ -254,7 +257,11 @@ internal fun PlayerScreenContent(
                 )
 
                 // Layer 5: Next episode countdown
-                NextEpisodeOverlay(countdown = content.nextEpisodeCountdown)
+                NextEpisodeOverlay(
+                    countdown = content.nextEpisodeCountdown,
+                    onNextEpisode = { onAction(PlayerAction.NextEpisode) },
+                    onCancel = { onAction(PlayerAction.CancelNextEpisodeCountdown) },
+                )
             }
         }
     }

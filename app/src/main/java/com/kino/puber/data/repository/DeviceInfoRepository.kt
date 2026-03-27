@@ -16,6 +16,7 @@ internal class DeviceInfoRepository(
     private val apiClient: KinoPubApiClient,
 ) : IDeviceInfoRepository {
     override fun is4kSupported(): Boolean {
+        //todo вот тут не правильно определяется результат, потому что у меня телик сяоми 4к, но на нем показывает что нет поддержки
         val display = getPrimaryDisplay(context)
         val modes = display?.supportedModes ?: return false
 
