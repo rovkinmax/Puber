@@ -37,6 +37,9 @@ internal fun PlayerButtonRow(
     onVideoSettingsClick: () -> Unit,
     onNextEpisodeClick: () -> Unit,
     firstButtonFocusRequester: FocusRequester,
+    episodesButtonFocusRequester: FocusRequester,
+    audioSubtitlesButtonFocusRequester: FocusRequester,
+    videoSettingsButtonFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -53,25 +56,31 @@ internal fun PlayerButtonRow(
                     text = stringResource(R.string.player_button_episodes),
                     icon = Icons.AutoMirrored.Filled.PlaylistPlay,
                     onClick = onEpisodesClick,
-                    modifier = Modifier.focusRequester(firstButtonFocusRequester),
+                    modifier = Modifier
+                        .focusRequester(firstButtonFocusRequester)
+                        .focusRequester(episodesButtonFocusRequester),
                 )
                 PlayerButton(
                     text = stringResource(R.string.player_button_audio_subtitles),
                     icon = Icons.Default.Subtitles,
                     onClick = onAudioSubtitlesClick,
+                    modifier = Modifier.focusRequester(audioSubtitlesButtonFocusRequester),
                 )
             } else {
                 PlayerButton(
                     text = stringResource(R.string.player_button_audio_subtitles),
                     icon = Icons.Default.Subtitles,
                     onClick = onAudioSubtitlesClick,
-                    modifier = Modifier.focusRequester(firstButtonFocusRequester),
+                    modifier = Modifier
+                        .focusRequester(firstButtonFocusRequester)
+                        .focusRequester(audioSubtitlesButtonFocusRequester),
                 )
             }
             PlayerButton(
                 text = stringResource(R.string.player_button_video),
                 icon = Icons.Default.Videocam,
                 onClick = onVideoSettingsClick,
+                modifier = Modifier.focusRequester(videoSettingsButtonFocusRequester),
             )
         }
 

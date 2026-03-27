@@ -85,7 +85,6 @@ internal fun AudioSubtitlesPanel(
                             selectedIndex = selectedSoundModeIndex,
                             onItemSelected = onSoundModeSelected,
                             modifier = Modifier.weight(1f),
-                            firstItemFocusRequester = panelFocusRequester,
                         )
                     }
 
@@ -96,7 +95,7 @@ internal fun AudioSubtitlesPanel(
                             selectedIndex = selectedAudioTrackIndex,
                             onItemSelected = onAudioTrackSelected,
                             modifier = Modifier.weight(1f),
-                            firstItemFocusRequester = if (soundModes.isEmpty()) panelFocusRequester else null,
+                            firstItemFocusRequester = panelFocusRequester,
                         )
                     }
 

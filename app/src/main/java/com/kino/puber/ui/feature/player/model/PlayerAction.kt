@@ -51,4 +51,7 @@ internal sealed class PlayerAction : UIAction {
 internal enum class FocusTarget {
     SeekBar,
     Buttons,
+    EpisodesButton,
+    AudioSubtitlesButton,
+    VideoSettingsButton,
 }

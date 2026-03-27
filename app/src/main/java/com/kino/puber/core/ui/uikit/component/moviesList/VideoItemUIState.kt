@@ -1,17 +1,27 @@
 package com.kino.puber.core.ui.uikit.component.moviesList
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -23,6 +33,7 @@ data class VideoItemUIState(
     val title: String,
     val imageUrl: String,
     val bigImageUrl: String,
+    val showTitle: Boolean = false,
 )
 
 @Composable
@@ -40,15 +51,41 @@ fun VideoItem(
         onClick = onClick,
         scale = CardDefaults.scale(pressedScale = 1F, focusedScale = 1.05F),
     ) {
-        AsyncImage(
-            modifier = Modifier.fillMaxSize(),
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(state.imageUrl)
-                .crossfade(true)
-                .build(),
-            placeholder = rememberVectorPainter(Icons.Default.LocalMovies),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                modifier = Modifier.fillMaxSize(),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(state.imageUrl)
+                    .crossfade(true)
+                    .build(),
+                placeholder = rememberVectorPainter(Icons.Default.LocalMovies),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+            )
+            if (state.showTitle && state.title.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.scrim.copy(alpha = 0f),
+                                    MaterialTheme.colorScheme.scrim.copy(alpha = 0.85f),
+                                ),
+                            )
+                        )
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = state.title,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 }
