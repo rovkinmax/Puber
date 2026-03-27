@@ -99,11 +99,17 @@ internal class PlayerUIMapper(private val context: Context) {
                 )
             )
             val items = season.episodes?.map { episode ->
+                val title = buildString {
+                    append(episode.number)
+                    append(". ")
+                    append(episode.title ?: context.getString(R.string.player_episode_untitled))
+                }
                 VideoItemUIState(
                     id = episode.id,
-                    title = "${episode.number}. ${episode.title ?: ""}",
+                    title = title,
                     imageUrl = episode.thumbnail ?: "",
                     bigImageUrl = episode.thumbnail ?: "",
+                    showTitle = true,
                 )
             } ?: emptyList()
             gridItems.add(VideoGridItemUIState.Items(items))

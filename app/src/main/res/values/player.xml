@@ -45,4 +45,5 @@
     <string name="player_season_episode">%1$d сезон, %2$d серия</string>
     <string name="player_season_episode_title">%1$d сезон, %2$d серия, %3$s</string>
     <string name="player_season_episodes_count">%1$d сезон, %2$d серий</string>
+    <string name="player_episode_untitled">Серия</string>
 </resources>

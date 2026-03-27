@@ -46,6 +46,9 @@ internal fun PlayerScreenContent(
 ) {
     val playerFocusRequester = remember { FocusRequester() }
     val firstButtonFocusRequester = remember { FocusRequester() }
+    val episodesButtonFocusRequester = remember { FocusRequester() }
+    val audioSubtitlesButtonFocusRequester = remember { FocusRequester() }
+    val videoSettingsButtonFocusRequester = remember { FocusRequester() }
     val seekBarFocusRequester = remember { FocusRequester() }
 
     val contentState = (state as? PlayerViewState.Content)?.content
@@ -71,6 +74,9 @@ internal fun PlayerScreenContent(
                 when (contentState.controlsFocusTarget) {
                     FocusTarget.SeekBar -> seekBarFocusRequester.requestFocus()
                     FocusTarget.Buttons -> firstButtonFocusRequester.requestFocus()
+                    FocusTarget.EpisodesButton -> episodesButtonFocusRequester.requestFocus()
+                    FocusTarget.AudioSubtitlesButton -> audioSubtitlesButtonFocusRequester.requestFocus()
+                    FocusTarget.VideoSettingsButton -> videoSettingsButtonFocusRequester.requestFocus()
                 }
             } catch (_: Exception) {}
         }
@@ -197,6 +203,9 @@ internal fun PlayerScreenContent(
                     onControlsInteraction = { onAction(PlayerAction.ResetControlsTimer) },
                     onBackPressed = { onAction(PlayerAction.HideControls) },
                     firstButtonFocusRequester = firstButtonFocusRequester,
+                    episodesButtonFocusRequester = episodesButtonFocusRequester,
+                    audioSubtitlesButtonFocusRequester = audioSubtitlesButtonFocusRequester,
+                    videoSettingsButtonFocusRequester = videoSettingsButtonFocusRequester,
                     seekBarFocusRequester = seekBarFocusRequester,
                 )
 

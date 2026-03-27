@@ -413,19 +413,44 @@ internal class PlayerVM(
         }
     }
 
+    private var lastPanelOpener: FocusTarget = FocusTarget.Buttons
+    private var wasPlayingBeforePanel = false
+
     private fun openPanel(panel: ActivePanel) {
         controlsHideJob?.cancel()
+
+        // Track which button opened the panel for focus return
+        lastPanelOpener = when (panel) {
+            ActivePanel.Episodes -> FocusTarget.EpisodesButton
+            ActivePanel.AudioSubtitles -> FocusTarget.AudioSubtitlesButton
+            ActivePanel.VideoSettings -> FocusTarget.VideoSettingsButton
+            ActivePanel.None -> FocusTarget.Buttons
+        }
+
+        // Pause playback when opening episodes panel
+        if (panel == ActivePanel.Episodes) {
+            wasPlayingBeforePanel = exoPlayer?.isPlaying == true
+            exoPlayer?.pause()
+        }
+
         updateViewState<PlayerViewState.Content> {
             PlayerViewState.Content(content.copy(activePanel = panel, controlsVisible = false))
         }
     }
 
     private fun closePanel() {
+        val closingPanel = (stateValue as? PlayerViewState.Content)?.content?.activePanel
+
+        // Resume playback if was playing before episodes panel
+        if (closingPanel == ActivePanel.Episodes && wasPlayingBeforePanel) {
+            exoPlayer?.play()
+        }
+
         updateViewState<PlayerViewState.Content> {
             PlayerViewState.Content(content.copy(
                 activePanel = ActivePanel.None,
                 controlsVisible = true,
-                controlsFocusTarget = FocusTarget.Buttons,
+                controlsFocusTarget = lastPanelOpener,
             ))
         }
         scheduleControlsHide()

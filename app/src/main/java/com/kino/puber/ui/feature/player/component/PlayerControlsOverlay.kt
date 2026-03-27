@@ -37,6 +37,9 @@ internal fun PlayerControlsOverlay(
     onControlsInteraction: () -> Unit,
     onBackPressed: () -> Unit,
     firstButtonFocusRequester: FocusRequester,
+    episodesButtonFocusRequester: FocusRequester,
+    audioSubtitlesButtonFocusRequester: FocusRequester,
+    videoSettingsButtonFocusRequester: FocusRequester,
     seekBarFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
@@ -94,6 +97,9 @@ internal fun PlayerControlsOverlay(
                         onVideoSettingsClick = onVideoSettingsClick,
                         onNextEpisodeClick = onNextEpisodeClick,
                         firstButtonFocusRequester = firstButtonFocusRequester,
+                        episodesButtonFocusRequester = episodesButtonFocusRequester,
+                        audioSubtitlesButtonFocusRequester = audioSubtitlesButtonFocusRequester,
+                        videoSettingsButtonFocusRequester = videoSettingsButtonFocusRequester,
                     )
                 }
             }
