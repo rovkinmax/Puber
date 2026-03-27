@@ -1,7 +1,7 @@
 package com.kino.puber.data.repository
 
 import android.content.Context
-import com.kino.puber.ui.feature.player.model.SubtitleSize
+import com.kino.puber.domain.model.SubtitleSize
 
 class PlayerPreferencesRepository(context: Context) {
 

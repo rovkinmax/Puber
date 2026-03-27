@@ -6,19 +6,11 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.data.api.models.Audio
-import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
-import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.SubtitleLink
-import com.kino.puber.data.api.models.Video
 import com.kino.puber.data.api.models.VideoFile
 
 internal class PlayerUIMapper(private val context: Context) {
-
-    fun isSeriesType(type: ItemType): Boolean = when (type) {
-        ItemType.SERIAL, ItemType.TV_SHOW, ItemType.DOCU_SERIAL -> true
-        else -> false
-    }
 
     fun mapAudioTracks(audios: List<Audio>?): List<AudioTrackUIState> {
         return audios?.mapIndexed { index, audio ->
@@ -130,64 +122,14 @@ internal class PlayerUIMapper(private val context: Context) {
         }
     }
 
-    fun findEpisode(item: Item, seasonNumber: Int, episodeNumber: Int): Episode? {
-        return item.seasons
-            ?.find { it.number == seasonNumber }
-            ?.episodes
-            ?.find { it.number == episodeNumber }
-    }
+    fun defaultSoundModeLabel(): String = context.getString(R.string.player_sound_stereo)
 
-    fun findFirstUnwatchedEpisode(item: Item): Pair<Int, Int>? {
-        val seasons = item.seasons ?: return null
-        for (season in seasons) {
-            val episodes = season.episodes ?: continue
-            for (episode in episodes) {
-                if (episode.watched != 1) {
-                    return season.number to episode.number
-                }
-            }
+    fun formatSeekOffset(isForward: Boolean, stepSeconds: Int): String {
+        return if (isForward) {
+            context.getString(R.string.player_seek_forward, stepSeconds)
+        } else {
+            context.getString(R.string.player_seek_backward, stepSeconds)
         }
-        return seasons.firstOrNull()?.let { season ->
-            season.episodes?.firstOrNull()?.let { episode ->
-                season.number to episode.number
-            }
-        }
-    }
-
-    fun findVideoForMovie(item: Item): Video? {
-        return item.videos?.firstOrNull()
-    }
-
-    fun findNextEpisode(item: Item, currentSeason: Int, currentEpisode: Int): Pair<Int, Int>? {
-        val seasons = item.seasons ?: return null
-        val season = seasons.find { it.number == currentSeason } ?: return null
-        val episodes = season.episodes ?: return null
-        val currentIndex = episodes.indexOfFirst { it.number == currentEpisode }
-        if (currentIndex >= 0 && currentIndex < episodes.size - 1) {
-            return currentSeason to episodes[currentIndex + 1].number
-        }
-        val seasonIndex = seasons.indexOf(season)
-        if (seasonIndex < seasons.size - 1) {
-            val nextSeason = seasons[seasonIndex + 1]
-            val firstEpisode = nextSeason.episodes?.firstOrNull() ?: return null
-            return nextSeason.number to firstEpisode.number
-        }
-        return null
-    }
-
-    fun selectStreamUrl(files: List<VideoFile>?, qualityIndex: Int): String? {
-        if (files.isNullOrEmpty()) return null
-        // qualityIndex 0 = "Авто" → use hls4 of first file (adaptive bitrate)
-        // qualityIndex > 0 → map to deduplicated quality list
-        if (qualityIndex == 0) {
-            val url = files.first().url ?: return null
-            return url.hls4 ?: url.hls ?: url.http
-        }
-        val uniqueFiles = files.distinctBy { it.quality ?: "${it.h}p" }
-            .sortedByDescending { it.qualityId ?: 0 }
-        val file = uniqueFiles.getOrNull(qualityIndex - 1) ?: files.first()
-        val url = file.url ?: return null
-        return url.hls4 ?: url.hls ?: url.http
     }
 
     fun formatTime(positionMs: Long): String {

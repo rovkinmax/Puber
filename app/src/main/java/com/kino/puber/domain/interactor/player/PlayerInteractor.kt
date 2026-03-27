@@ -1,12 +1,29 @@
 package com.kino.puber.domain.interactor.player
 
 import com.kino.puber.data.api.KinoPubApiClient
+import com.kino.puber.data.api.models.Audio
 import com.kino.puber.data.api.models.Item
-import com.kino.puber.data.api.models.ItemFiles
-import com.kino.puber.data.api.models.MediaLinks
+import com.kino.puber.data.api.models.ItemType
+import com.kino.puber.data.api.models.SubtitleLink
+import com.kino.puber.data.api.models.VideoFile
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
-import com.kino.puber.ui.feature.player.model.SubtitleSize
+import com.kino.puber.domain.model.SubtitleSize
+
+internal data class ResolvedMedia(
+    val files: List<VideoFile>?,
+    val audios: List<Audio>?,
+    val subtitles: List<SubtitleLink>?,
+    val watchingTime: Int?,
+    val duration: Int?,
+    val videoNumber: Int?,
+    val episodeId: Int?,
+    val episodeTitle: String?,
+    val isSeries: Boolean,
+    val hasNext: Boolean,
+    val seasonNumber: Int?,
+    val episodeNumber: Int?,
+)
 
 internal class PlayerInteractor(
     private val api: KinoPubApiClient,
@@ -18,20 +35,118 @@ internal class PlayerInteractor(
         return itemDetailsRepository.getItemDetails(id)
     }
 
-    suspend fun getMediaLinks(id: Int, season: Int? = null, episode: Int? = null): MediaLinks {
-        return api.getMediaLinks(id, season, episode).getOrThrow()
+    fun resolveMedia(item: Item, seasonNumber: Int?, episodeNumber: Int?): ResolvedMedia {
+        val isSeries = isSeriesType(item.type)
+
+        var resolvedSeason = seasonNumber
+        var resolvedEpisode = episodeNumber
+
+        if (isSeries && resolvedSeason == null) {
+            val firstUnwatched = findFirstUnwatchedEpisode(item)
+            resolvedSeason = firstUnwatched?.first
+            resolvedEpisode = firstUnwatched?.second
+        }
+
+        return if (isSeries) {
+            val episode = findEpisode(item, resolvedSeason ?: 1, resolvedEpisode ?: 1)
+            ResolvedMedia(
+                files = episode?.files,
+                audios = episode?.audios,
+                subtitles = episode?.subtitles,
+                watchingTime = episode?.watching?.time,
+                duration = episode?.duration,
+                videoNumber = episode?.number,
+                episodeId = episode?.id,
+                episodeTitle = episode?.title,
+                isSeries = true,
+                hasNext = resolvedSeason != null && resolvedEpisode != null &&
+                        findNextEpisode(item, resolvedSeason, resolvedEpisode) != null,
+                seasonNumber = resolvedSeason,
+                episodeNumber = resolvedEpisode,
+            )
+        } else {
+            val video = item.videos?.firstOrNull()
+            ResolvedMedia(
+                files = video?.files,
+                audios = video?.audios,
+                subtitles = video?.subtitles,
+                watchingTime = video?.watching?.time,
+                duration = video?.duration,
+                videoNumber = video?.number,
+                episodeId = null,
+                episodeTitle = null,
+                isSeries = false,
+                hasNext = false,
+                seasonNumber = null,
+                episodeNumber = null,
+            )
+        }
     }
 
-    suspend fun getItemFiles(id: Int, season: Int? = null, episode: Int? = null): ItemFiles {
-        return api.getItemFiles(id, season, episode).getOrThrow()
+    fun isSeriesType(type: ItemType): Boolean = when (type) {
+        ItemType.SERIAL, ItemType.TV_SHOW, ItemType.DOCU_SERIAL -> true
+        else -> false
     }
 
-    suspend fun saveWatchingTime(id: Int, videoId: Int, time: Int, season: Int? = null) {
-        api.setWatchingTime(id, videoId, time, season)
+    fun findEpisode(item: Item, seasonNumber: Int, episodeNumber: Int) =
+        item.seasons
+            ?.find { it.number == seasonNumber }
+            ?.episodes
+            ?.find { it.number == episodeNumber }
+
+    fun findNextEpisode(item: Item, currentSeason: Int, currentEpisode: Int): Pair<Int, Int>? {
+        val seasons = item.seasons ?: return null
+        val season = seasons.find { it.number == currentSeason } ?: return null
+        val episodes = season.episodes ?: return null
+        val currentIndex = episodes.indexOfFirst { it.number == currentEpisode }
+        if (currentIndex >= 0 && currentIndex < episodes.size - 1) {
+            return currentSeason to episodes[currentIndex + 1].number
+        }
+        val seasonIndex = seasons.indexOf(season)
+        if (seasonIndex < seasons.size - 1) {
+            val nextSeason = seasons[seasonIndex + 1]
+            val firstEpisode = nextSeason.episodes?.firstOrNull() ?: return null
+            return nextSeason.number to firstEpisode.number
+        }
+        return null
     }
 
-    suspend fun markAsWatched(id: Int, season: Int? = null, videoId: Int? = null) {
-        api.toggleWatchingStatus(id, status = 1, season = season, video = videoId)
+    fun selectStreamUrl(files: List<VideoFile>?, qualityIndex: Int): String? {
+        if (files.isNullOrEmpty()) return null
+        if (qualityIndex == 0) {
+            val url = files.first().url ?: return null
+            return url.hls4 ?: url.hls ?: url.http
+        }
+        val uniqueFiles = files.distinctBy { it.quality ?: "${it.h}p" }
+            .sortedByDescending { it.qualityId ?: 0 }
+        val file = uniqueFiles.getOrNull(qualityIndex - 1) ?: files.first()
+        val url = file.url ?: return null
+        return url.hls4 ?: url.hls ?: url.http
+    }
+
+    private fun findFirstUnwatchedEpisode(item: Item): Pair<Int, Int>? {
+        val seasons = item.seasons ?: return null
+        for (season in seasons) {
+            val episodes = season.episodes ?: continue
+            for (episode in episodes) {
+                if (episode.watched != 1) {
+                    return season.number to episode.number
+                }
+            }
+        }
+        return seasons.firstOrNull()?.let { season ->
+            season.episodes?.firstOrNull()?.let { episode ->
+                season.number to episode.number
+            }
+        }
+    }
+
+    suspend fun saveWatchingTime(id: Int, videoNumber: Int, time: Int, season: Int? = null) {
+        api.setWatchingTime(id, videoNumber, time, season)
+    }
+
+    suspend fun markAsWatched(id: Int, season: Int? = null, videoNumber: Int? = null) {
+        api.toggleWatchingStatus(id, status = 1, season = season, video = videoNumber)
     }
 
     fun getPreferredAudioTrackId(itemId: Int): Int? {

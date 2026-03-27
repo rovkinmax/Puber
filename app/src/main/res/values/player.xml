@@ -21,6 +21,7 @@
     <string name="player_panel_aspect_ratio">СООТНОШЕНИЕ</string>
     <string name="player_speed_normal">Норм.</string>
     <string name="player_aspect_auto">Авто</string>
+    <string name="player_sound_stereo">Стерео 2.0</string>
     <string name="player_aspect_stretch">Растянуть</string>
 
     <!-- Next Episode -->
