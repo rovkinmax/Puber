@@ -1,5 +1,7 @@
 package com.kino.puber.core.ui.navigation
 
+import com.kino.puber.ui.feature.main.model.TabType
+
 interface Screens {
     fun auth(): PuberScreen
 
@@ -8,6 +10,8 @@ interface Screens {
     fun favorites(): PuberScreen
 
     fun deviceSettings(): PuberScreen
+
+    fun contentList(tabType: TabType): PuberScreen
 
     fun underDevelopment(): PuberScreen
 

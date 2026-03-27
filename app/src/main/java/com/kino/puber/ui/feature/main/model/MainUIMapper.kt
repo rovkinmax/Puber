@@ -77,16 +77,16 @@ internal class MainUIMapper(
     private fun tabScreen(type: TabType): PuberScreen {
         return when (type) {
             TabType.Favourites -> screens.favorites()
+            TabType.Movies,
+            TabType.Series,
+            TabType.Cartoons,
+            TabType.For4k,
+            TabType.Concerts,
+            TabType.DocMovies,
+            TabType.DocSeries,
+            TabType.TvShows -> screens.contentList(type)
             TabType.Bookmarks -> screens.underDevelopment()
             TabType.History -> screens.underDevelopment()
-            TabType.Movies -> screens.underDevelopment()
-            TabType.Series -> screens.underDevelopment()
-            TabType.Cartoons -> screens.underDevelopment()
-            TabType.For4k -> screens.underDevelopment()
-            TabType.Concerts -> screens.underDevelopment()
-            TabType.DocMovies -> screens.underDevelopment()
-            TabType.DocSeries -> screens.underDevelopment()
-            TabType.TvShows -> screens.underDevelopment()
             TabType.Collections -> screens.underDevelopment()
             TabType.SportTV -> screens.underDevelopment()
             TabType.Settings -> screens.deviceSettings()
