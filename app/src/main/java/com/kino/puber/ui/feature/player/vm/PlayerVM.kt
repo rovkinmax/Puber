@@ -393,10 +393,10 @@ internal class PlayerVM(
     }
 
     private fun onPlaybackEnded() {
-        markCurrentAsWatched()
+        markCurrentAsWatched() //todo отметку о просмотре надо ставить так же раньше, например за 10% до конца или как-то так
         val state = stateValue as? PlayerViewState.Content ?: return
         when {
-            !state.content.isMovie && state.content.hasNextEpisode -> startNextEpisodeCountdown()
+            !state.content.isMovie && state.content.hasNextEpisode -> startNextEpisodeCountdown() // todo тут надо подумать как включать раньше это
             !state.content.isMovie -> updateContent { copy(controlsVisible = true) }
         }
     }

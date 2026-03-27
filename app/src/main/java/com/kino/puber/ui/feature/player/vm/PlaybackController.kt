@@ -33,8 +33,8 @@ internal class PlaybackController(private val context: Context) {
     val currentPosition: Long get() = exoPlayer?.currentPosition ?: 0L
     val duration: Long get() = exoPlayer?.duration?.coerceAtLeast(0) ?: 0L
     val isPlaying: Boolean get() = exoPlayer?.isPlaying == true
-    val bufferedPosition: Long get() = exoPlayer?.bufferedPosition ?: 0L
-
+    val bufferedPosition: Long get() = exoPlayer?.bufferedPosition ?: 0L //todo не используемая переменная, наверно где-то должна быть заюзана
+    
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             notifyPlaybackState()

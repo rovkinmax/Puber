@@ -384,11 +384,11 @@ class KinoPubApiClient(
      * Set watching time
      */
     suspend fun setWatchingTime(
-        id: Int, videoId: Int, time: Int, season: Int? = null
+        id: Int, videoNumber: Int, time: Int, season: Int? = null
     ): Result<WatchingStatus> = apiCall {
         httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}watching/marktime") {
             parameter("id", id)
-            parameter("video", videoId)
+            parameter("video", videoNumber)
             parameter("time", time)
             season?.let { parameter("season", it) }
         }

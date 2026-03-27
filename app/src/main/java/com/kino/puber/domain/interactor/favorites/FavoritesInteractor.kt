@@ -10,7 +10,7 @@ internal class FavoritesInteractor(
 ) {
 
     suspend fun getWatchlist(): List<Item> {
-        val result = api.getWatchingList(onlySubscribed = false)
+        val result = api.getWatchingList(onlySubscribed = true)
         return result.getOrThrow().items.orEmpty()
     }
 

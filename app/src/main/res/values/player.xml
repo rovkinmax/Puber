@@ -25,7 +25,8 @@
     <string name="player_aspect_stretch">Растянуть</string>
 
     <!-- Next Episode -->
-    <string name="player_next_episode_countdown">Следующая серия через %d…</string>
+    <string name="player_next_episode_countdown">Следующая серия %d</string>
+    <string name="player_next_episode_cancel">Отмена</string>
     <string name="player_series_completed">Сериал завершён</string>
 
     <!-- Resume Dialog -->
