@@ -16,7 +16,6 @@ import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.parcelize.Parcelize
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.module.dsl.scopedOf
-import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -40,7 +39,7 @@ internal class ContentListScreen(
             viewModelOf(::ContentListVM)
 
             sections.forEach { sec ->
-                viewModel(named(sec.id)) {
+                scoped(named(sec.id)) {
                     SectionVM(
                         paginator = Paginator.Store { old, new -> old.id == new.id },
                         config = sec,
