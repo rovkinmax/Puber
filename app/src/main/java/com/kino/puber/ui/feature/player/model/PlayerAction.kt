@@ -37,6 +37,11 @@ internal sealed class PlayerAction : UIAction {
     data object NextEpisode : PlayerAction()
     data object CancelNextEpisodeCountdown : PlayerAction()
 
+    // Skip segments
+    data object SkipSegmentClicked : PlayerAction()
+    data object CancelSkipSegment : PlayerAction()
+    data object SkipSegmentCountdownFinished : PlayerAction()
+
     // Resume dialog
     data object ResumeFromPosition : PlayerAction()
     data object StartFromBeginning : PlayerAction()

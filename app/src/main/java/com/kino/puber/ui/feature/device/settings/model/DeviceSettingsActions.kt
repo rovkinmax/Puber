@@ -9,4 +9,7 @@ internal sealed class DeviceSettingsActions : UIAction {
     data class ChangeSettingValue(val setting: DeviceSettingUIModel.TypeValue) : DeviceSettingsActions()
     data class ToggleListExpand(val setting: DeviceSettingUIModel.TypeList) : DeviceSettingsActions()
     data class SelectOption(val type: DeviceSettingType, val optionId: Int) : DeviceSettingsActions()
+    data object ToggleSkipIntro : DeviceSettingsActions()
+    data object ToggleSkipRecap : DeviceSettingsActions()
+    data object ToggleSkipCredits : DeviceSettingsActions()
 }

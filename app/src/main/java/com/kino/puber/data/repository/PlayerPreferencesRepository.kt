@@ -41,10 +41,25 @@ class PlayerPreferencesRepository(context: Context) {
         prefs.edit().putInt(KEY_SUBTITLE_SIZE, size.ordinal).apply()
     }
 
+    var skipIntroEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SKIP_INTRO, true)
+        set(value) = prefs.edit().putBoolean(KEY_SKIP_INTRO, value).apply()
+
+    var skipRecapEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SKIP_RECAP, true)
+        set(value) = prefs.edit().putBoolean(KEY_SKIP_RECAP, value).apply()
+
+    var skipCreditsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SKIP_CREDITS, true)
+        set(value) = prefs.edit().putBoolean(KEY_SKIP_CREDITS, value).apply()
+
     private companion object {
         const val PREFS_NAME = "player_preferences"
         const val KEY_AUDIO_TRACK_PREFIX = "audio_track_"
         const val KEY_SUBTITLE_LANG_PREFIX = "subtitle_lang_"
         const val KEY_SUBTITLE_SIZE = "subtitle_size"
+        const val KEY_SKIP_INTRO = "skip_intro_enabled"
+        const val KEY_SKIP_RECAP = "skip_recap_enabled"
+        const val KEY_SKIP_CREDITS = "skip_credits_enabled"
     }
 }

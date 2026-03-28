@@ -1,4 +1,5 @@
 import java.io.FileInputStream
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -37,6 +38,19 @@ fun getClientSecret(): String {
     return ""
 }
 
+fun getTmdbReadAccessToken(): String {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        val localProperties = Properties()
+        localProperties.load(FileInputStream(localPropertiesFile))
+        val token = localProperties.getProperty("TMDB_READ_ACCESS_TOKEN")
+        if (!token.isNullOrEmpty()) return token
+    }
+    val envToken = System.getenv("TMDB_READ_ACCESS_TOKEN")
+    if (!envToken.isNullOrEmpty()) return envToken
+    return ""
+}
+
 android {
     namespace = "com.kino.puber"
     compileSdk = Versions.CompileSdk
@@ -50,6 +64,11 @@ android {
 
         // Add CLIENT_SECRET to BuildConfig
         buildConfigField("String", "CLIENT_SECRET", "\"${getClientSecret()}\"")
+        buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"${getTmdbReadAccessToken()}\"")
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildFeatures {
@@ -78,29 +97,38 @@ android {
         }
 
         create("release") {
-            try {
-                val keystorePropertiesFile = file("keystore.properties")
-                if (keystorePropertiesFile.exists()) {
+            val keystorePropertiesFile = file("keystore.properties")
+            when {
+                // 1. Local: keystore.properties file
+                keystorePropertiesFile.exists() -> {
                     val keystoreProperties = Properties()
                     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-
                     keyAlias = keystoreProperties["keyAlias"] as String
                     keyPassword = keystoreProperties["keyPassword"] as String
                     storePassword = keystoreProperties["storePassword"] as String
                     storeFile = file("release.jks")
-                } else {
-                    // option for CI
-                    val storePassEnv = System.getenv("STOREPASS")
-                    if (storePassEnv != null && storePassEnv.isNotEmpty()) {
-                        storePassword = storePassEnv
-                        keyAlias = System.getenv("KEYALIAS")
-                        keyPassword = System.getenv("KEYPASS")
-                        storeFile = file("release.jks")
-                    }
                 }
-            } catch (e: Exception) {
-                println(e)
-                storeFile = file("debug.jks")
+                // 2. CI: base64-encoded keystore from RELEASE_KEYSTORE_BASE64 env var
+                !System.getenv("RELEASE_KEYSTORE_BASE64").isNullOrEmpty() -> {
+                    val decoded = Base64.getDecoder().decode(System.getenv("RELEASE_KEYSTORE_BASE64"))
+                    val keystoreFile = file("release.jks")
+                    keystoreFile.writeBytes(decoded)
+                    storeFile = keystoreFile
+                    storePassword = System.getenv("STOREPASS")
+                    keyAlias = System.getenv("KEYALIAS") ?: "puber"
+                    keyPassword = System.getenv("STOREPASS")
+                }
+                // 3. CI: release.jks already present (e.g. copied in CI step) + env vars
+                !System.getenv("STOREPASS").isNullOrEmpty() -> {
+                    storePassword = System.getenv("STOREPASS")
+                    keyAlias = System.getenv("KEYALIAS") ?: "puber"
+                    keyPassword = System.getenv("KEYPASS") ?: System.getenv("STOREPASS")
+                    storeFile = file("release.jks")
+                }
+                // 4. Fallback: debug signing (allows build without release keys)
+                else -> {
+                    storeFile = file("debug.jks")
+                }
             }
         }
     }
@@ -108,7 +136,8 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -230,9 +259,6 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     implementation(libs.media3.common)
-
-    // QR
-    implementation(libs.chaintech.qrkit)
 
     // Logging
     implementation(libs.timber)

@@ -251,14 +251,23 @@ internal fun PlayerScreenContent(
                     onBackPressed = { onAction(PlayerAction.ClosePanel) },
                 )
 
-                // Layer 4: Resume dialog
+                // Layer 4: Skip segment overlay
+                if (content.nextEpisodeCountdown == null && content.resumeDialog == null) {
+                    SkipSegmentOverlay(
+                        state = content.activeSkipSegment,
+                        onSkip = { onAction(PlayerAction.SkipSegmentClicked) },
+                        onCancel = { onAction(PlayerAction.CancelSkipSegment) },
+                    )
+                }
+
+                // Layer 5: Resume dialog
                 ResumeDialog(
                     state = content.resumeDialog,
                     onResume = { onAction(PlayerAction.ResumeFromPosition) },
                     onStartFromBeginning = { onAction(PlayerAction.StartFromBeginning) },
                 )
 
-                // Layer 5: Next episode countdown
+                // Layer 6: Next episode countdown
                 NextEpisodeOverlay(
                     countdown = content.nextEpisodeCountdown,
                     onNextEpisode = { onAction(PlayerAction.NextEpisode) },

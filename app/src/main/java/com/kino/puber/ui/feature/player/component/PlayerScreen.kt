@@ -10,6 +10,7 @@ import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.player.PlayerInteractor
+import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerUIMapper
 import com.kino.puber.ui.feature.player.vm.ContentStateFactory
@@ -32,6 +33,7 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Puber
         scope(named(scopeId)) {
             scoped { params }
             scopedOf(::PlayerInteractor)
+            scopedOf(::SkipSegmentInteractor)
             scopedOf(::PlayerUIMapper)
             scopedOf(::ContentStateFactory)
             scopedOf(::PlaybackController)

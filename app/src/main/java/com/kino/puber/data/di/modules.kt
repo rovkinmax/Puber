@@ -13,6 +13,11 @@ import com.kino.puber.data.repository.IKinoPubRepository
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.KinoPubRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
+import com.kino.puber.data.repository.SkipSegmentRepository
+import com.kino.puber.data.repository.SkipSegmentService
+import com.kino.puber.data.repository.TmdbIdRepository
+import com.kino.puber.data.api.TheIntroDbApiClient
+import com.kino.puber.data.api.TmdbApiClient
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -28,6 +33,8 @@ val apiModule = module {
             sessionEventBus = get(),
         )
     }
+    singleOf(::TmdbApiClient)
+    singleOf(::TheIntroDbApiClient)
 }
 
 val repositoryModule = module {
@@ -37,4 +44,7 @@ val repositoryModule = module {
     singleOf(::DeviceSettingsRepository) { bind<IDeviceSettingsRepository>() }
     singleOf(::ItemDetailsRepository)
     singleOf(::PlayerPreferencesRepository)
+    singleOf(::TmdbIdRepository)
+    singleOf(::SkipSegmentRepository)
+    singleOf(::SkipSegmentService)
 }

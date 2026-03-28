@@ -7,6 +7,7 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.data.api.models.Audio
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.data.api.models.VideoFile
 
@@ -129,6 +130,15 @@ internal class PlayerUIMapper(private val context: Context) {
             context.getString(R.string.player_seek_forward, stepSeconds)
         } else {
             context.getString(R.string.player_seek_backward, stepSeconds)
+        }
+    }
+
+    fun mapSkipSegmentLabel(type: SkipSegmentType): String {
+        return when (type) {
+            SkipSegmentType.INTRO -> context.getString(R.string.skip_intro)
+            SkipSegmentType.RECAP -> context.getString(R.string.skip_recap)
+            SkipSegmentType.CREDITS -> context.getString(R.string.skip_credits)
+            SkipSegmentType.PREVIEW -> context.getString(R.string.skip_preview)
         }
     }
 

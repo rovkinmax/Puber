@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Skip Segment Overlay -->
+    <string name="skip_intro">Пропустить заставку</string>
+    <string name="skip_recap">Пропустить пересказ</string>
+    <string name="skip_credits">Пропустить титры</string>
+    <string name="skip_preview">Пропустить превью</string>
+    <string name="skip_cancel">Отмена</string>
+
+    <!-- Settings -->
+    <string name="settings_skip_segments_title">Пропуск сегментов</string>
+    <string name="settings_skip_segments_subtitle">"Экспериментальная функция.\nДанные о заставках и титрах берутся из открытых сервисов\nTheIntroDB и TMDB — они могут быть неточными или отсутствовать для некоторых фильмов.\nНастройки хранятся только на этом устройстве."</string>
+    <string name="settings_skip_intro">Заставки (intro)</string>
+    <string name="settings_skip_recap">Пересказ (recap)</string>
+    <string name="settings_skip_credits">Титры (credits)</string>
+</resources>
