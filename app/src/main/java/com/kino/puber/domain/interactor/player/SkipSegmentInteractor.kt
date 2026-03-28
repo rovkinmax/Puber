@@ -1,5 +1,6 @@
 package com.kino.puber.domain.interactor.player
 
+import com.kino.puber.core.logger.log
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.SkipSegment
 import com.kino.puber.data.api.models.SkipSegmentType
@@ -12,8 +13,15 @@ class SkipSegmentInteractor(
 ) {
 
     suspend fun loadSegments(item: Item, season: Int?, episode: Int?): List<SkipSegment> {
-        val imdbId = item.imdb ?: return emptyList()
-        return service.getSegments(imdbId, season, episode)
+        val imdbId = item.imdb
+        if (imdbId == null) {
+            log("SkipSegments: item.imdb is null for '${item.title}', skipping")
+            return emptyList()
+        }
+        log("SkipSegments: loading for imdb=$imdbId, s=$season, e=$episode")
+        val result = service.getSegments(imdbId, season, episode)
+        log("SkipSegments: loaded ${result.size} segments: ${result.map { "${it.type}(${it.startMs}-${it.endMs})" }}")
+        return result
     }
 
     fun findActiveSegment(segments: List<SkipSegment>, positionMs: Long): SkipSegment? {

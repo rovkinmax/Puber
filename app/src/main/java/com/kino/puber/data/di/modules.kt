@@ -16,6 +16,7 @@ import com.kino.puber.data.repository.PlayerPreferencesRepository
 import com.kino.puber.data.repository.SkipSegmentRepository
 import com.kino.puber.data.repository.SkipSegmentService
 import com.kino.puber.data.repository.TmdbIdRepository
+import com.kino.puber.data.api.IntroDbAppApiClient
 import com.kino.puber.data.api.TheIntroDbApiClient
 import com.kino.puber.data.api.TmdbApiClient
 import org.koin.android.ext.koin.androidContext
@@ -35,6 +36,7 @@ val apiModule = module {
     }
     singleOf(::TmdbApiClient)
     singleOf(::TheIntroDbApiClient)
+    singleOf(::IntroDbAppApiClient)
 }
 
 val repositoryModule = module {

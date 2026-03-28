@@ -41,6 +41,28 @@ data class TheIntroDbSegment(
 
 // endregion
 
+// region IntroDB.app API models
+
+@Serializable
+data class IntroDbAppResponse(
+    @SerialName("imdb_id") val imdbId: String? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+    val intro: IntroDbAppSegment? = null,
+    val recap: IntroDbAppSegment? = null,
+    val outro: IntroDbAppSegment? = null,
+)
+
+@Serializable
+data class IntroDbAppSegment(
+    @SerialName("start_ms") val startMs: Long? = null,
+    @SerialName("end_ms") val endMs: Long? = null,
+    val confidence: Double? = null,
+    @SerialName("submission_count") val submissionCount: Int? = null,
+)
+
+// endregion
+
 // region TMDB API models
 
 @Serializable

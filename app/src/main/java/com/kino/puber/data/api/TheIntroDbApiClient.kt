@@ -31,15 +31,19 @@ class TheIntroDbApiClient {
     }
 
     suspend fun getSegments(tmdbId: Int, season: Int?, episode: Int?): Result<List<SkipSegment>> = runCatching {
+        log("TheIntroDB: GET /media?tmdb_id=$tmdbId&season=$season&episode=$episode")
         val response = httpClient.get("media") {
             parameter("tmdb_id", tmdbId)
             if (season != null) parameter("season", season)
             if (episode != null) parameter("episode", episode)
         }
+        log("TheIntroDB: status=${response.status}")
         when (response.status) {
             HttpStatusCode.OK -> {
                 val body = response.body<TheIntroDbMediaResponse>()
-                mapToSegments(body)
+                val segments = mapToSegments(body)
+                log("TheIntroDB: parsed ${segments.size} segments")
+                segments
             }
             HttpStatusCode.NoContent, HttpStatusCode.NotFound -> emptyList()
             HttpStatusCode.TooManyRequests -> {
