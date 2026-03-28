@@ -65,7 +65,7 @@ fun VideoGrid(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = PuberTheme.Defaults.VideoItemHeight),
         ) {
-            itemsIndexed(state.list) { indexC, columnItem ->
+            itemsIndexed(state.list, key = { index, _ -> index }) { indexC, columnItem ->
                 when (columnItem) {
 
                     is VideoGridItemUIState.Title -> Text(
@@ -139,7 +139,7 @@ private fun VideoGridItems(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(16.dp),
         ) {
-            itemsIndexed(items.items) { indexR, item ->
+            itemsIndexed(items.items, key = { _, item -> item.id }) { indexR, item ->
                 val isFallbackTarget = if (isTargetRow) {
                     indexR == focusedItemIndex
                 } else {

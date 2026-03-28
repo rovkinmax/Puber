@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -46,6 +47,13 @@ internal fun PlayerButtonRow(
     videoSettingsButtonFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
+    val transparentButtonColors = ButtonDefaults.colors(
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        focusedContainerColor = MaterialTheme.colorScheme.primary,
+        focusedContentColor = MaterialTheme.colorScheme.onPrimary,
+    )
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -58,12 +66,7 @@ internal fun PlayerButtonRow(
             Button(
                 onClick = onTogglePlayPause,
                 modifier = Modifier.focusRequester(firstButtonFocusRequester),
-                colors = ButtonDefaults.colors(
-                    containerColor = Color.Transparent,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    focusedContainerColor = MaterialTheme.colorScheme.primary,
-                    focusedContentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
+                colors = transparentButtonColors,
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -105,12 +108,7 @@ internal fun PlayerButtonRow(
         if (!isMovie && hasNextEpisode) {
             Button(
                 onClick = onNextEpisodeClick,
-                colors = ButtonDefaults.colors(
-                    containerColor = Color.Transparent,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    focusedContainerColor = MaterialTheme.colorScheme.primary,
-                    focusedContentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
+                colors = transparentButtonColors,
             ) {
                 Icon(
                     imageVector = Icons.Default.SkipNext,
@@ -129,15 +127,16 @@ private fun PlayerButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val transparentButtonColors = ButtonDefaults.colors(
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        focusedContainerColor = MaterialTheme.colorScheme.primary,
+        focusedContentColor = MaterialTheme.colorScheme.onPrimary,
+    )
     Button(
         onClick = onClick,
         modifier = modifier,
-        colors = ButtonDefaults.colors(
-            containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            focusedContainerColor = MaterialTheme.colorScheme.primary,
-            focusedContentColor = MaterialTheme.colorScheme.onPrimary,
-        ),
+        colors = transparentButtonColors,
     ) {
         Icon(
             imageVector = icon,

@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
@@ -36,6 +38,7 @@ import androidx.tv.material3.Text
 import com.kino.puber.core.logger.log
 import com.kino.puber.core.ui.uikit.component.FadeGradient
 import com.kino.puber.core.ui.uikit.component.LoadMoreHandler
+import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItem
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
@@ -57,10 +60,12 @@ internal fun SectionRowContent(
     onShowAll: (() -> Unit)? = null,
 ) {
     val scope = LocalKoinScope.current
-    scope.log(
-        "resolve id='${config.id}' scope.id='${scope.id}' scope.qualifier='${scope.scopeQualifier}' scope.closed=${scope.closed}",
-        "Puber: SectionRow"
-    )
+    SideEffect {
+        scope.log(
+            "resolve id='${config.id}' scope.id='${scope.id}' scope.qualifier='${scope.scopeQualifier}' scope.closed=${scope.closed}",
+            "Puber: SectionRow"
+        )
+    }
     val sectionVm = koinInject<SectionVM>(qualifier = named(config.id))
     val state by sectionVm.collectViewState()
 
@@ -113,7 +118,7 @@ private fun ContentSectionCards(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(16.dp),
         ) {
-            itemsIndexed(state.items) { index, item ->
+            itemsIndexed(state.items, key = { _, item -> item.id }) { index, item ->
                 val isFallbackTarget = if (isTargetRow) {
                     index == focusedItemIndex
                 } else {
@@ -150,7 +155,7 @@ private fun ContentSectionCards(
                             onClick = { onShowAll() },
                         ) {
                             Text(
-                                "Показать\nвсе",
+                                stringResource(R.string.show_all),
                                 style = MaterialTheme.typography.labelLarge,
                                 textAlign = TextAlign.Center,
                             )
@@ -187,7 +192,7 @@ private fun ErrorSectionContent(
         )
         Spacer(modifier = Modifier.width(16.dp))
         Button(onClick = onRetry) {
-            Text("Повторить")
+            Text(stringResource(R.string.error_button_retry))
         }
     }
 }

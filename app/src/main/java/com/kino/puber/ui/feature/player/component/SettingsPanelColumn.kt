@@ -53,7 +53,7 @@ internal fun SettingsPanelColumn(
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            itemsIndexed(items) { index, item ->
+            itemsIndexed(items, key = { index, _ -> index }) { index, item ->
                 val isSelected = index == selectedIndex
                 val itemModifier = if (index == 0 && firstItemFocusRequester != null) {
                     Modifier.focusRequester(firstItemFocusRequester)

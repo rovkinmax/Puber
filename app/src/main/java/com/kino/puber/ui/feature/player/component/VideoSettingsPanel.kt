@@ -1,6 +1,5 @@
 package com.kino.puber.ui.feature.player.component
 
-import android.view.KeyEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -20,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -73,10 +71,14 @@ internal fun VideoSettingsPanel(
                         .padding(top = 24.dp, bottom = 16.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
+                    val qualityLabels = remember(qualities) { qualities.map { it.label } }
+                    val speedLabels = remember(speeds) { speeds.map { it.label } }
+                    val aspectRatioLabels = remember(aspectRatios) { aspectRatios.map { it.label } }
+
                     if (qualities.isNotEmpty()) {
                         SettingsPanelColumn(
                             header = stringResource(R.string.player_panel_quality),
-                            items = qualities.map { it.label },
+                            items = qualityLabels,
                             selectedIndex = selectedQualityIndex,
                             onItemSelected = onQualitySelected,
                             modifier = Modifier.weight(1f),
@@ -86,7 +88,7 @@ internal fun VideoSettingsPanel(
 
                     SettingsPanelColumn(
                         header = stringResource(R.string.player_panel_speed),
-                        items = speeds.map { it.label },
+                        items = speedLabels,
                         selectedIndex = selectedSpeedIndex,
                         onItemSelected = onSpeedSelected,
                         modifier = Modifier.weight(1f),
@@ -94,7 +96,7 @@ internal fun VideoSettingsPanel(
 
                     SettingsPanelColumn(
                         header = stringResource(R.string.player_panel_aspect_ratio),
-                        items = aspectRatios.map { it.label },
+                        items = aspectRatioLabels,
                         selectedIndex = selectedAspectRatioIndex,
                         onItemSelected = onAspectRatioSelected,
                         modifier = Modifier.weight(1f),

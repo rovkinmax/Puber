@@ -42,6 +42,7 @@ internal sealed class DetailsButtonUIState {
     ) : DetailsButtonUIState()
 }
 
+@Immutable
 internal sealed class DetailsAction : UIAction {
     data object PlayClicked : DetailsAction()
     data object TrailerClicked : DetailsAction()

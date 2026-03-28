@@ -9,7 +9,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.tv.material3.Text
+import com.kino.puber.R
+import com.kino.puber.core.ui.uikit.component.FullScreenError
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
@@ -32,15 +35,13 @@ internal fun FavoriteScreenContent(
                 Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("Empty")
+                Text(stringResource(R.string.empty_state))
             }
 
-            is FavoriteViewState.Error -> Box(
-                Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(state.message)
-            }
+            is FavoriteViewState.Error -> FullScreenError(
+                error = state.message,
+                onClick = { onAction(CommonAction.RetryClicked) },
+            )
 
             FavoriteViewState.Loading -> FullScreenProgressIndicator()
             is FavoriteViewState.Content -> FavoriteScreenContentBody(
@@ -57,27 +58,25 @@ private fun FavoriteScreenContentBody(
     onAction: (UIAction) -> Unit,
 ) {
     val mainContentFocus = rememberFocusRequesterOnLaunch()
-    Box {
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .focusRequester(mainContentFocus)
+    ) {
+        VideoItemGridDetails(
             modifier = Modifier
-                .fillMaxSize()
-                .focusRequester(mainContentFocus)
-        ) {
-            VideoItemGridDetails(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(PuberTheme.Defaults.DetailsWeight),
-                state = state.selectedItem,
-            )
+                .fillMaxWidth()
+                .weight(PuberTheme.Defaults.DetailsWeight),
+            state = state.selectedItem,
+        )
 
-            Row(Modifier.weight(PuberTheme.Defaults.ContentWeight)) {
-                VideoGrid(
-                    modifier = Modifier.fillMaxWidth(),
-                    state = state.gridState,
-                    onItemClick = { onAction(CommonAction.ItemSelected(it)) },
-                    onItemFocused = { onAction(CommonAction.ItemFocused(it)) },
-                )
-            }
+        Row(Modifier.weight(PuberTheme.Defaults.ContentWeight)) {
+            VideoGrid(
+                modifier = Modifier.fillMaxWidth(),
+                state = state.gridState,
+                onItemClick = { onAction(CommonAction.ItemSelected(it)) },
+                onItemFocused = { onAction(CommonAction.ItemFocused(it)) },
+            )
         }
     }
 }

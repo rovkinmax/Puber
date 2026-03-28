@@ -1,6 +1,8 @@
 package com.kino.puber.ui.feature.contentlist
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import cafe.adriel.voyager.core.screen.ScreenKey
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.model.VideoItemUIMapper
@@ -56,9 +58,12 @@ internal class ContentListScreen(
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
         val contentListVm = koinViewModel<ContentListVM>()
+        val state by contentListVm.collectViewState()
+        val onAction = remember(contentListVm) { contentListVm::onAction }
         ContentListScreenContent(
-            contentListVm = contentListVm,
+            state = state,
             sections = sections,
+            onAction = onAction,
         )
     }
 }

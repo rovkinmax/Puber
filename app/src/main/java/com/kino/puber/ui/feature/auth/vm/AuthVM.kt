@@ -9,9 +9,6 @@ import com.kino.puber.domain.interactor.device.IDeviceInfoInteractor
 import com.kino.puber.ui.feature.auth.model.AuthViewState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapConcat
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -25,9 +22,6 @@ internal class AuthVM(
 ) : PuberVM<AuthViewState>(router) {
 
     override val initialViewState = AuthViewState.Loading
-
-    private val _timeLeft = MutableStateFlow("")
-    val timeLeft: StateFlow<String> = _timeLeft.asStateFlow()
 
     private var timerJob: Job? = null
 
@@ -70,7 +64,8 @@ internal class AuthVM(
             for (i in expireTimeSeconds downTo 0) {
                 val minutes = i / 60
                 val seconds = i % 60
-                _timeLeft.value = String.format(Locale.US, "%02d:%02d", minutes, seconds)
+                val formatted = String.format(Locale.US, "%02d:%02d", minutes, seconds)
+                updateViewState<AuthViewState.Content> { copy(timeLeft = formatted) }
                 delay(1000)
             }
         }

@@ -199,6 +199,16 @@ internal fun PlayerScreenContent(
                 }
 
                 // Layer 2: Controls overlay
+                val onEpisodesClick = remember(onAction) { { onAction(PlayerAction.OpenEpisodesPanel) } }
+                val onAudioSubtitlesClick = remember(onAction) { { onAction(PlayerAction.OpenAudioSubtitlesPanel) } }
+                val onVideoSettingsClick = remember(onAction) { { onAction(PlayerAction.OpenVideoSettingsPanel) } }
+                val onNextEpisodeClick = remember(onAction) { { onAction(PlayerAction.NextEpisode) } }
+                val onSeekForward = remember(onAction) { { onAction(PlayerAction.SeekForward) } }
+                val onSeekBackward = remember(onAction) { { onAction(PlayerAction.SeekBackward) } }
+                val onTogglePlayPause = remember(onAction) { { onAction(PlayerAction.TogglePlayPause) } }
+                val onControlsInteraction = remember(onAction) { { onAction(PlayerAction.ResetControlsTimer) } }
+                val onHideControls = remember(onAction) { { onAction(PlayerAction.HideControls) } }
+
                 PlayerControlsOverlay(
                     visible = content.controlsVisible,
                     title = content.title,
@@ -209,15 +219,15 @@ internal fun PlayerScreenContent(
                     isMovie = content.isMovie,
                     isPlaying = content.isPlaying,
                     hasNextEpisode = content.hasNextEpisode,
-                    onEpisodesClick = { onAction(PlayerAction.OpenEpisodesPanel) },
-                    onAudioSubtitlesClick = { onAction(PlayerAction.OpenAudioSubtitlesPanel) },
-                    onVideoSettingsClick = { onAction(PlayerAction.OpenVideoSettingsPanel) },
-                    onNextEpisodeClick = { onAction(PlayerAction.NextEpisode) },
-                    onSeekForward = { onAction(PlayerAction.SeekForward) },
-                    onSeekBackward = { onAction(PlayerAction.SeekBackward) },
-                    onTogglePlayPause = { onAction(PlayerAction.TogglePlayPause) },
-                    onControlsInteraction = { onAction(PlayerAction.ResetControlsTimer) },
-                    onBackPressed = { onAction(PlayerAction.HideControls) },
+                    onEpisodesClick = onEpisodesClick,
+                    onAudioSubtitlesClick = onAudioSubtitlesClick,
+                    onVideoSettingsClick = onVideoSettingsClick,
+                    onNextEpisodeClick = onNextEpisodeClick,
+                    onSeekForward = onSeekForward,
+                    onSeekBackward = onSeekBackward,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onControlsInteraction = onControlsInteraction,
+                    onBackPressed = onHideControls,
                     firstButtonFocusRequester = firstButtonFocusRequester,
                     episodesButtonFocusRequester = episodesButtonFocusRequester,
                     audioSubtitlesButtonFocusRequester = audioSubtitlesButtonFocusRequester,
@@ -226,6 +236,15 @@ internal fun PlayerScreenContent(
                 )
 
                 // Layer 3: Settings panels
+                val onClosePanel = remember(onAction) { { onAction(PlayerAction.ClosePanel) } }
+                val onCycleSubtitleSize = remember(onAction) { { onAction(PlayerAction.CycleSubtitleSize) } }
+                val onSoundModeSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectSoundMode(index)) } }
+                val onAudioTrackSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectAudioTrack(index)) } }
+                val onSubtitleSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectSubtitle(index)) } }
+                val onQualitySelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectQuality(index)) } }
+                val onSpeedSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectSpeed(index)) } }
+                val onAspectRatioSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectAspectRatio(index)) } }
+
                 AudioSubtitlesPanel(
                     visible = content.activePanel == ActivePanel.AudioSubtitles,
                     soundModes = content.soundModes,
@@ -234,11 +253,11 @@ internal fun PlayerScreenContent(
                     selectedAudioTrackIndex = content.selectedAudioTrackIndex,
                     subtitleTracks = content.subtitleTracks,
                     selectedSubtitleIndex = content.selectedSubtitleIndex,
-                    onSoundModeSelected = { onAction(PlayerAction.SelectSoundMode(it)) },
-                    onAudioTrackSelected = { onAction(PlayerAction.SelectAudioTrack(it)) },
-                    onSubtitleSelected = { onAction(PlayerAction.SelectSubtitle(it)) },
-                    onSubtitleSizeClick = { onAction(PlayerAction.CycleSubtitleSize) },
-                    onBackPressed = { onAction(PlayerAction.ClosePanel) },
+                    onSoundModeSelected = onSoundModeSelected,
+                    onAudioTrackSelected = onAudioTrackSelected,
+                    onSubtitleSelected = onSubtitleSelected,
+                    onSubtitleSizeClick = onCycleSubtitleSize,
+                    onBackPressed = onClosePanel,
                 )
 
                 VideoSettingsPanel(
@@ -249,40 +268,46 @@ internal fun PlayerScreenContent(
                     selectedSpeedIndex = content.selectedSpeedIndex,
                     aspectRatios = content.aspectRatios,
                     selectedAspectRatioIndex = content.selectedAspectRatioIndex,
-                    onQualitySelected = { onAction(PlayerAction.SelectQuality(it)) },
-                    onSpeedSelected = { onAction(PlayerAction.SelectSpeed(it)) },
-                    onAspectRatioSelected = { onAction(PlayerAction.SelectAspectRatio(it)) },
-                    onBackPressed = { onAction(PlayerAction.ClosePanel) },
+                    onQualitySelected = onQualitySelected,
+                    onSpeedSelected = onSpeedSelected,
+                    onAspectRatioSelected = onAspectRatioSelected,
+                    onBackPressed = onClosePanel,
                 )
 
                 EpisodesPanel(
                     visible = content.activePanel == ActivePanel.Episodes,
                     episodes = content.episodes,
                     onEpisodeSelected = { item -> onAction(PlayerAction.SelectEpisodeById(item.id)) },
-                    onBackPressed = { onAction(PlayerAction.ClosePanel) },
+                    onBackPressed = onClosePanel,
                 )
 
                 // Layer 4: Skip segment overlay
+                val onSkipSegment = remember(onAction) { { onAction(PlayerAction.SkipSegmentClicked) } }
+                val onCancelSkipSegment = remember(onAction) { { onAction(PlayerAction.CancelSkipSegment) } }
+                val onResumeFromPosition = remember(onAction) { { onAction(PlayerAction.ResumeFromPosition) } }
+                val onStartFromBeginning = remember(onAction) { { onAction(PlayerAction.StartFromBeginning) } }
+                val onCancelNextEpisode = remember(onAction) { { onAction(PlayerAction.CancelNextEpisodeCountdown) } }
+
                 if (content.nextEpisodeCountdown == null && content.resumeDialog == null) {
                     SkipSegmentOverlay(
                         state = content.activeSkipSegment,
-                        onSkip = { onAction(PlayerAction.SkipSegmentClicked) },
-                        onCancel = { onAction(PlayerAction.CancelSkipSegment) },
+                        onSkip = onSkipSegment,
+                        onCancel = onCancelSkipSegment,
                     )
                 }
 
                 // Layer 5: Resume dialog
                 ResumeDialog(
                     state = content.resumeDialog,
-                    onResume = { onAction(PlayerAction.ResumeFromPosition) },
-                    onStartFromBeginning = { onAction(PlayerAction.StartFromBeginning) },
+                    onResume = onResumeFromPosition,
+                    onStartFromBeginning = onStartFromBeginning,
                 )
 
                 // Layer 6: Next episode countdown
                 NextEpisodeOverlay(
                     countdown = content.nextEpisodeCountdown,
-                    onNextEpisode = { onAction(PlayerAction.NextEpisode) },
-                    onCancel = { onAction(PlayerAction.CancelNextEpisodeCountdown) },
+                    onNextEpisode = onNextEpisodeClick,
+                    onCancel = onCancelNextEpisode,
                 )
             }
         }

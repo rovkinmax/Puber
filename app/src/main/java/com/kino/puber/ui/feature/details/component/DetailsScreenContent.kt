@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.VerticalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -103,16 +101,7 @@ private fun DetailsContentBody(
     state: DetailsScreenState.Content,
     onAction: (UIAction) -> Unit,
 ) {
-    val pagerState = rememberPagerState { 1 }
-
-    VerticalPager(
-        state = pagerState,
-        modifier = Modifier.fillMaxSize(),
-    ) { page ->
-        when (page) {
-            0 -> DetailsMainPage(state = state, onAction = onAction, seasonsPanelVisible = state.seasonsPanelVisible)
-        }
-    }
+    DetailsMainPage(state = state, onAction = onAction, seasonsPanelVisible = state.seasonsPanelVisible)
 }
 
 @Composable

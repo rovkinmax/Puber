@@ -20,16 +20,17 @@ import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
 import com.kino.puber.core.ui.uikit.model.CommonAction
+import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.contentlist.model.ContentListAction
+import com.kino.puber.ui.feature.contentlist.model.ContentListViewState
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
-import com.kino.puber.ui.feature.contentlist.vm.ContentListVM
 
 @Composable
 internal fun ContentListScreenContent(
-    contentListVm: ContentListVM,
+    state: ContentListViewState,
     sections: List<SectionConfig>,
+    onAction: (UIAction) -> Unit,
 ) {
-    val state by contentListVm.collectViewState()
     val mainContentFocus = rememberFocusRequesterOnLaunch()
     var focusedSectionIndex by rememberSaveable { mutableIntStateOf(0) }
 
@@ -69,16 +70,16 @@ internal fun ContentListScreenContent(
                         config = config,
                         isTargetRow = index == focusedSectionIndex,
                         onItemClick = { item ->
-                            contentListVm.onAction(CommonAction.ItemSelected(item))
+                            onAction(CommonAction.ItemSelected(item))
                         },
                         onItemFocused = { item ->
-                            contentListVm.onAction(CommonAction.ItemFocused(item))
+                            onAction(CommonAction.ItemFocused(item))
                         },
                         onSectionFocused = {
                             focusedSectionIndex = index
                         },
                         onShowAll = if (isLastSection) {
-                            { contentListVm.onAction(ContentListAction.ShowAll(config)) }
+                            { onAction(ContentListAction.ShowAll(config)) }
                         } else {
                             null
                         },

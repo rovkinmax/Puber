@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -24,8 +25,10 @@ internal fun PlayPauseIndicator(
     modifier: Modifier = Modifier,
 ) {
     val lastState = remember { mutableStateOf(state) }
-    if (state != null) {
-        lastState.value = state
+    SideEffect {
+        if (state != null) {
+            lastState.value = state
+        }
     }
     AnimatedVisibility(
         visible = state != null,

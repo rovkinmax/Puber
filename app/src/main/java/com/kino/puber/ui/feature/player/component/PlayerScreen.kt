@@ -1,10 +1,8 @@
 package com.kino.puber.ui.feature.player.component
 
-import android.R.id.message
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
@@ -56,7 +54,7 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Puber
         val message by vm.collectMessage()
         ScaffoldMessage(
             message = message,
-            onAction = vm::onAction,
+            onAction = onAction,
         )
     }
 }

@@ -1,6 +1,5 @@
 package com.kino.puber.ui.feature.player.component
 
-import android.view.KeyEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -21,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
@@ -78,10 +76,14 @@ internal fun AudioSubtitlesPanel(
                         .padding(top = 24.dp, bottom = 16.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
+                    val soundModeLabels = remember(soundModes) { soundModes.map { it.label } }
+                    val audioTrackLabels = remember(audioTracks) { audioTracks.map { it.label } }
+                    val subtitleTrackLabels = remember(subtitleTracks) { subtitleTracks.map { it.label } }
+
                     if (soundModes.isNotEmpty()) {
                         SettingsPanelColumn(
                             header = stringResource(R.string.player_panel_sound),
-                            items = soundModes.map { it.label },
+                            items = soundModeLabels,
                             selectedIndex = selectedSoundModeIndex,
                             onItemSelected = onSoundModeSelected,
                             modifier = Modifier.weight(1f),
@@ -91,7 +93,7 @@ internal fun AudioSubtitlesPanel(
                     if (audioTracks.isNotEmpty()) {
                         SettingsPanelColumn(
                             header = stringResource(R.string.player_panel_audio),
-                            items = audioTracks.map { it.label },
+                            items = audioTrackLabels,
                             selectedIndex = selectedAudioTrackIndex,
                             onItemSelected = onAudioTrackSelected,
                             modifier = Modifier.weight(1f),
@@ -101,7 +103,7 @@ internal fun AudioSubtitlesPanel(
 
                     SettingsPanelColumn(
                         header = stringResource(R.string.player_panel_subtitles),
-                        items = subtitleTracks.map { it.label },
+                        items = subtitleTrackLabels,
                         selectedIndex = selectedSubtitleIndex,
                         onItemSelected = onSubtitleSelected,
                         modifier = Modifier.weight(1f),

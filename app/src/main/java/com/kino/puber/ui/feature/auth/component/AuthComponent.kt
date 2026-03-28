@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -16,13 +15,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import com.kino.puber.R
+import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.ui.feature.auth.model.AuthViewState
 import com.kino.puber.ui.feature.auth.vm.AuthVM
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
@@ -34,14 +31,18 @@ internal fun AuthScreenComponent() {
         contentAlignment = Alignment.Center,
     ) {
         when (val state = viewState) {
-            is AuthViewState.Content -> CodeInfo(state.code, state.url, vm.timeLeft)
-            AuthViewState.Loading -> CircularProgressIndicator()
+            is AuthViewState.Content -> CodeInfo(
+                code = state.code,
+                url = state.url,
+                timeLeft = state.timeLeft,
+            )
+            AuthViewState.Loading -> FullScreenProgressIndicator()
         }
     }
 }
 
 @Composable
-internal fun CodeInfo(code: String, url: String, timeLeftState: StateFlow<String>) {
+internal fun CodeInfo(code: String, url: String, timeLeft: String) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -55,18 +56,12 @@ internal fun CodeInfo(code: String, url: String, timeLeftState: StateFlow<String
         Spacer(modifier = Modifier.height(20.dp))
         Text(url)
         Spacer(modifier = Modifier.height(16.dp))
-        TimerText(timeLeftState)
+        Text(timeLeft)
     }
-}
-
-@Composable
-private fun TimerText(timeLeftState: StateFlow<String>) {
-    val timeLeft by timeLeftState.collectAsStateWithLifecycle("")
-    Text(timeLeft)
 }
 
 @Preview
 @Composable
 internal fun CodeInfoPreview() {
-    CodeInfo(code = "123456", url = "https://www.example.com", timeLeftState = MutableStateFlow("02:00"))
+    CodeInfo(code = "123456", url = "https://www.example.com", timeLeft = "02:00")
 }
