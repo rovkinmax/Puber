@@ -20,6 +20,7 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
             imageUrl = item.posters?.medium.orEmpty(),
             bigImageUrl = item.posters?.big.orEmpty(),
             unwatchedCount = item.new,
+            ratings = buildRatings(item),
         )
     }
 
@@ -39,17 +40,23 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
     }
 
     private fun buildRatings(item: Item): List<RatingUIState> = buildList {
-        if (item.kinopoiskRating != null) {
-            add(RatingUIState.KP(item.kinopoiskRating))
+        if (item.kinopoiskRating.isValidRating()) {
+            add(RatingUIState.KP(item.kinopoiskRating!!))
         }
 
-        if (item.imdbRating != null) {
-            add(RatingUIState.IMDB(item.imdbRating))
+        if (item.imdbRating.isValidRating()) {
+            add(RatingUIState.IMDB(item.imdbRating!!))
         }
 
-        item.ratingPercentage?.let { rating ->
+        item.ratingPercentage?.takeIf { it > 0 }?.let { rating ->
             add(RatingUIState.PUB((rating.toFloat() / 10).toString()))
         }
+    }
+
+    private fun String?.isValidRating(): Boolean {
+        if (this == null) return false
+        val value = toFloatOrNull() ?: return false
+        return value > 0f
     }
 
     private fun buildDuration(item: Item): String {

@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.tv.material3.Text
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
+import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
 import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGrid
@@ -65,11 +66,11 @@ private fun FavoriteScreenContentBody(
             VideoItemGridDetails(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(3F),
+                    .weight(PuberTheme.Defaults.DetailsWeight),
                 state = state.selectedItem,
             )
 
-            Row(Modifier.weight(2F)) {
+            Row(Modifier.weight(PuberTheme.Defaults.ContentWeight)) {
                 VideoGrid(
                     modifier = Modifier.fillMaxWidth(),
                     state = state.gridState,

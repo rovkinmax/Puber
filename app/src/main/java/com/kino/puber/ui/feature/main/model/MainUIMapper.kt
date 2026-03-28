@@ -29,7 +29,7 @@ internal class MainUIMapper(
 
     fun buildViewState(): MainViewState {
         return MainViewState(
-            tabs = TabType.entries.map { type ->
+            tabs = TabType.entries.filter { it.enabled }.map { type ->
                 MainTab(
                     type = type,
                     label = resources.getString(type.title),
