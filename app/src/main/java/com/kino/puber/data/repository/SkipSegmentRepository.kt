@@ -10,12 +10,12 @@ class SkipSegmentRepository {
     private val cache: TypedTtlCache<String, List<SkipSegment>> = TypedTtlCacheImpl(defaultTtl = 24.hours)
 
     suspend fun getOrLoad(
-        tmdbId: Int,
+        imdbId: String,
         season: Int?,
         episode: Int?,
         loader: suspend () -> List<SkipSegment>,
     ): List<SkipSegment> {
-        val key = buildKey(tmdbId, season, episode)
+        val key = buildKey(imdbId, season, episode)
         return cache.getOrPut(key) {
             val result = loader()
             if (result.isEmpty()) {
@@ -31,11 +31,11 @@ class SkipSegmentRepository {
         cache.clear()
     }
 
-    private fun buildKey(tmdbId: Int, season: Int?, episode: Int?): String {
+    private fun buildKey(imdbId: String, season: Int?, episode: Int?): String {
         return if (season != null && episode != null) {
-            "${tmdbId}_s${season}_e${episode}"
+            "${imdbId}_s${season}_e${episode}"
         } else {
-            tmdbId.toString()
+            imdbId
         }
     }
 }
