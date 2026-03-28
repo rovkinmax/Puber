@@ -69,6 +69,7 @@ internal fun DetailsScreenContent(
             val seasonsPanelFocusRequester = remember { FocusRequester() }
             LaunchedEffect(state.seasonsPanelVisible) {
                 if (state.seasonsPanelVisible) {
+                    delay(150)
                     try {
                         seasonsPanelFocusRequester.requestFocus()
                     } catch (_: Exception) {
@@ -109,7 +110,7 @@ private fun DetailsContentBody(
         modifier = Modifier.fillMaxSize(),
     ) { page ->
         when (page) {
-            0 -> DetailsMainPage(state = state, onAction = onAction)
+            0 -> DetailsMainPage(state = state, onAction = onAction, seasonsPanelVisible = state.seasonsPanelVisible)
         }
     }
 }
@@ -118,6 +119,7 @@ private fun DetailsContentBody(
 private fun DetailsMainPage(
     state: DetailsScreenState.Content,
     onAction: (UIAction) -> Unit,
+    seasonsPanelVisible: Boolean,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         VideoItemGridDetails(
@@ -133,6 +135,7 @@ private fun DetailsMainPage(
             buttons = state.buttons,
             isInWatchlist = state.isInWatchlist,
             onAction = onAction,
+            seasonsPanelVisible = seasonsPanelVisible,
         )
 
         Spacer(modifier = Modifier.weight(1F))
@@ -146,15 +149,18 @@ private fun ActionButtonsRow(
     buttons: List<DetailsButtonUIState>,
     isInWatchlist: Boolean,
     onAction: (UIAction) -> Unit,
+    seasonsPanelVisible: Boolean,
 ) {
     val focusRequester = rememberFocusRequesterOnLaunch()
     val firstButtonFocusRequester = remember { FocusRequester() }
 
     // Re-request focus after navigation return (Player → Back).
-    // Safe: DetailsScreen has no drawer/tabs, no side effects.
+    // Skip when seasons panel is visible — it owns focus in that case.
     LaunchedEffect(Unit) {
         delay(100)
-        runCatching { focusRequester.requestFocus() }
+        if (!seasonsPanelVisible) {
+            runCatching { focusRequester.requestFocus() }
+        }
     }
 
     Row(
