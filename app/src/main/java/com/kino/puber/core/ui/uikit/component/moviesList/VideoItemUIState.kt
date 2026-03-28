@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.runtime.Composable
@@ -34,6 +35,7 @@ data class VideoItemUIState(
     val imageUrl: String,
     val bigImageUrl: String,
     val showTitle: Boolean = false,
+    val unwatchedCount: Int? = null,
 )
 
 @Composable
@@ -62,6 +64,25 @@ fun VideoItem(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
             )
+            val count = state.unwatchedCount
+            if (count != null && count > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .background(
+                            MaterialTheme.colorScheme.primary,
+                            RoundedCornerShape(4.dp),
+                        )
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = count.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            }
             if (state.showTitle && state.title.isNotEmpty()) {
                 Box(
                     modifier = Modifier

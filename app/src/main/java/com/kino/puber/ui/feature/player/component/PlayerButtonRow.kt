@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Videocam
@@ -31,7 +33,9 @@ import com.kino.puber.R
 @Composable
 internal fun PlayerButtonRow(
     isMovie: Boolean,
+    isPlaying: Boolean,
     hasNextEpisode: Boolean,
+    onTogglePlayPause: () -> Unit,
     onEpisodesClick: () -> Unit,
     onAudioSubtitlesClick: () -> Unit,
     onVideoSettingsClick: () -> Unit,
@@ -51,14 +55,28 @@ internal fun PlayerButtonRow(
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Button(
+                onClick = onTogglePlayPause,
+                modifier = Modifier.focusRequester(firstButtonFocusRequester),
+                colors = ButtonDefaults.colors(
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    focusedContainerColor = MaterialTheme.colorScheme.primary,
+                    focusedContentColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
             if (!isMovie) {
                 PlayerButton(
                     text = stringResource(R.string.player_button_episodes),
                     icon = Icons.AutoMirrored.Filled.PlaylistPlay,
                     onClick = onEpisodesClick,
-                    modifier = Modifier
-                        .focusRequester(firstButtonFocusRequester)
-                        .focusRequester(episodesButtonFocusRequester),
+                    modifier = Modifier.focusRequester(episodesButtonFocusRequester),
                 )
                 PlayerButton(
                     text = stringResource(R.string.player_button_audio_subtitles),
@@ -71,9 +89,7 @@ internal fun PlayerButtonRow(
                     text = stringResource(R.string.player_button_audio_subtitles),
                     icon = Icons.Default.Subtitles,
                     onClick = onAudioSubtitlesClick,
-                    modifier = Modifier
-                        .focusRequester(firstButtonFocusRequester)
-                        .focusRequester(audioSubtitlesButtonFocusRequester),
+                    modifier = Modifier.focusRequester(audioSubtitlesButtonFocusRequester),
                 )
             }
             PlayerButton(

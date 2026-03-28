@@ -20,4 +20,6 @@
     <string name="video_details_button_select_season">Выбрать сезон</string>
     <string name="video_details_button_add_to_watchlist">Буду смотреть</string>
     <string name="video_details_button_add_to_bookmarks">В закладки</string>
+    <string name="video_details_watchlist_added">Добавлено в «Я смотрю»</string>
+    <string name="video_details_watchlist_removed">Удалено из «Я смотрю»</string>
 </resources>

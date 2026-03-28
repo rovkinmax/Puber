@@ -26,6 +26,7 @@ internal fun PlayerControlsOverlay(
     duration: Long,
     bufferedPosition: Long,
     isMovie: Boolean,
+    isPlaying: Boolean,
     hasNextEpisode: Boolean,
     onEpisodesClick: () -> Unit,
     onAudioSubtitlesClick: () -> Unit,
@@ -91,7 +92,9 @@ internal fun PlayerControlsOverlay(
 
                     PlayerButtonRow(
                         isMovie = isMovie,
+                        isPlaying = isPlaying,
                         hasNextEpisode = hasNextEpisode,
+                        onTogglePlayPause = onTogglePlayPause,
                         onEpisodesClick = onEpisodesClick,
                         onAudioSubtitlesClick = onAudioSubtitlesClick,
                         onVideoSettingsClick = onVideoSettingsClick,

@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
+import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.details.DetailsInteractor
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
@@ -39,5 +40,11 @@ internal data class DetailsScreen(private val params: DetailsScreenParams) : Pub
         val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
 
         DetailsScreenContent(state = state, onAction = onAction)
+
+        val message by vm.collectMessage()
+        ScaffoldMessage(
+            message = message,
+            onAction = vm::onAction,
+        )
     }
 }

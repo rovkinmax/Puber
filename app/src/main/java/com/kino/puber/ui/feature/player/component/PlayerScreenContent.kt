@@ -184,6 +184,7 @@ internal fun PlayerScreenContent(
                     contentAlignment = Alignment.Center,
                 ) {
                     SeekIndicator(state = content.seekIndicator)
+                    PlayPauseIndicator(state = content.playPauseIndicator)
                 }
 
                 // Layer 2: Controls overlay
@@ -195,6 +196,7 @@ internal fun PlayerScreenContent(
                     duration = content.duration,
                     bufferedPosition = content.bufferedPosition,
                     isMovie = content.isMovie,
+                    isPlaying = content.isPlaying,
                     hasNextEpisode = content.hasNextEpisode,
                     onEpisodesClick = { onAction(PlayerAction.OpenEpisodesPanel) },
                     onAudioSubtitlesClick = { onAction(PlayerAction.OpenAudioSubtitlesPanel) },

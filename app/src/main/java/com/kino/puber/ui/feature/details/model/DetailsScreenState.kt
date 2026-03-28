@@ -3,6 +3,8 @@ package com.kino.puber.ui.feature.details.model
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.UIAction
 
 @Immutable
@@ -13,6 +15,9 @@ internal sealed class DetailsScreenState {
         val details: VideoDetailsUIState,
         val buttons: List<DetailsButtonUIState>,
         val isInWatchlist: Boolean,
+        val seasonsPanelVisible: Boolean = false,
+        val episodes: VideoGridUIState? = null,
+        val trailerUrl: String? = null,
     ) : DetailsScreenState()
 }
 
@@ -22,13 +27,18 @@ internal sealed class DetailsButtonUIState {
         val textRes: Int,
         val icon: ImageVector,
         val action: DetailsAction,
+        val textOverride: String? = null,
     ) : DetailsButtonUIState()
 
     data class IconOnly(
         val icon: ImageVector,
         val contentDescription: Int,
         val action: DetailsAction,
-        val isActive: Boolean = false,
+    ) : DetailsButtonUIState()
+
+    data class WatchlistToggle(
+        val contentDescription: Int,
+        val action: DetailsAction,
     ) : DetailsButtonUIState()
 }
 
@@ -37,4 +47,7 @@ internal sealed class DetailsAction : UIAction {
     data object TrailerClicked : DetailsAction()
     data object SelectSeasonClicked : DetailsAction()
     data object WatchlistToggleClicked : DetailsAction()
+    data class EpisodeSelected(val item: VideoItemUIState) : DetailsAction()
+    data object CloseSeasonsPanel : DetailsAction()
+    data object CloseTrailer : DetailsAction()
 }
