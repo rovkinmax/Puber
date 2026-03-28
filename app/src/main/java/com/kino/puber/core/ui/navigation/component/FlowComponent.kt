@@ -1,23 +1,17 @@
 package com.kino.puber.core.ui.navigation.component
 
 import android.content.Context
-import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.ScreenKey
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
-import cafe.adriel.voyager.navigator.bottomSheet.BottomSheetNavigator
-import cafe.adriel.voyager.navigator.bottomSheet.LocalBottomSheetNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.logger.log
@@ -26,17 +20,13 @@ import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.Command
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreenActivity
-import com.kino.puber.core.ui.navigation.puberHide
 import com.kino.puber.core.ui.navigation.puberPop
 import com.kino.puber.core.ui.navigation.puberPopUntil
 import com.kino.puber.core.ui.navigation.puberPush
 import com.kino.puber.core.ui.navigation.puberReplace
 import com.kino.puber.core.ui.navigation.puberReplaceAll
-import com.kino.puber.core.ui.navigation.puberShow
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
-import com.kino.puber.core.ui.uikit.component.drawer.LocalDrawerState
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.parcelize.Parcelize
 import org.koin.compose.LocalKoinScope
 import org.koin.compose.currentKoinScope
@@ -83,37 +73,12 @@ fun FlowComponent(
 ) {
     val router by currentKoinScope().inject<AppRouter>()
 
-    BottomSheetNavigator(
-        sheetBackgroundColor = Color.Unspecified,
-        sheetElevation = 0.dp,
-        hideOnBackPress = false,
-        sheetContent = { navigator ->
-            BackHandler(enabled = navigator.isVisible) {
-                navigator.items.lastOrNull()?.let {
-                    onBackPressed(router)
-                }
-            }
-            CurrentScreen("sheetScreen:$scopeName")
-        },
+    Navigator(
+        screen = screen,
+        onBackPressed = { onBackPressed(router) },
     ) {
-        val drawerState = LocalDrawerState.current
-        val bottomSheetNav = LocalBottomSheetNavigator.current
-        LaunchedEffect(Unit) {
-            snapshotFlow { bottomSheetNav.isVisible }
-                .collect { isVisible ->
-                    if (!isVisible && drawerState?.isOverlayActive == true) {
-                        delay(OVERLAY_FOCUS_SETTLE_DELAY_MS)
-                        drawerState.isOverlayActive = false
-                    }
-                }
-        }
-        Navigator(
-            screen = screen,
-            onBackPressed = { onBackPressed(router) },
-        ) {
-            CurrentScreen("currentScreen$scopeName")
-            FlowCommandRunner(router)
-        }
+        CurrentScreen("currentScreen$scopeName")
+        FlowCommandRunner(router)
     }
     content()
 }
@@ -129,8 +94,6 @@ private fun onBackPressed(router: AppRouter): Boolean {
 @Composable
 private fun FlowCommandRunner(router: AppRouter) {
     val navigator = LocalNavigator.currentOrThrow
-    val bottomSheetNavigator = LocalBottomSheetNavigator.current
-    val drawerState = LocalDrawerState.current
     val context = LocalContext.current
     val activityNavigator = remember(context) { ActivityNavigator(context) }
     val diScope = LocalKoinScope.current
@@ -139,21 +102,11 @@ private fun FlowCommandRunner(router: AppRouter) {
     LaunchedEffect(scopeName) {
         router.events().collect { event ->
             router.log("router command: $event")
-            if (event !is Command.ShowOver) {
-                bottomSheetNavigator.puberHide()
-            }
-
             if (event.screen is PuberScreenActivity) {
                 activityNavigator.navigateTo(event.screen as PuberScreenActivity)
             } else {
                 when (event) {
                     is Command.NavigateTo -> navigator.puberPush(event.screen)
-                    is Command.ShowOver -> {
-                        drawerState?.isOverlayActive = true
-                        bottomSheetNavigator.puberShow(event.screen)
-                    }
-
-                    is Command.HideOver -> bottomSheetNavigator.puberHide()
                     is Command.Replace -> navigator.puberReplace(event.screen)
                     is Command.NewRoot -> navigator.puberReplaceAll(*event.screens.toTypedArray())
                     is Command.BackTo -> onBackTo(navigator, event)
@@ -164,10 +117,9 @@ private fun FlowCommandRunner(router: AppRouter) {
                         )
                     } ?: appLauncher.finish()
 
-                    is Command.Back -> onBackEvent(
+                    is Command.Back -> onBackEventNavigator(
                         navigator = navigator,
                         appLauncher = appLauncher,
-                        sheetNavigator = bottomSheetNavigator,
                     )
                 }
             }
@@ -183,28 +135,6 @@ private fun onBackTo(
         navigator.puberPopUntil { it.key == event.screen.key }
     } else {
         navigator.puberReplaceAll(event.screen)
-    }
-}
-
-private fun onBackEvent(
-    navigator: Navigator,
-    appLauncher: AppLauncher?,
-    sheetNavigator: BottomSheetNavigator,
-) {
-    if (sheetNavigator.isVisible) {
-        onBackEvenSheetNavigator(sheetNavigator = sheetNavigator)
-    } else {
-        onBackEventNavigator(navigator, appLauncher)
-    }
-}
-
-private fun onBackEvenSheetNavigator(
-    sheetNavigator: BottomSheetNavigator,
-) {
-    if (sheetNavigator.canPop) {
-        sheetNavigator.puberPop()
-    } else {
-        sheetNavigator.puberHide()
     }
 }
 
@@ -249,9 +179,6 @@ private fun CurrentScreen(key: String) {
         }
     }
 }
-
-/** Time to wait after overlay dismiss for focus bounces to settle before resetting the guard. */
-private const val OVERLAY_FOCUS_SETTLE_DELAY_MS = 300L
 
 @Parcelize
 object LoadingScreen : PuberScreen {

@@ -51,23 +51,8 @@ class AppRouter(
         runCommand(Command.Replace(screen))
     }
 
-    fun showOver(screen: PuberScreen) {
-        runCommand(Command.ShowOver(screen))
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    fun <T : Any> showOver(screen: PuberScreen, resultCode: Int, listener: OnResult<T>) {
-        onceListeners[resultCode] = listener as OnResult<Any>
-        runCommand(Command.ShowOver(screen))
-    }
-
     fun back(resultCode: Int? = null, result: Any? = null) {
         runCommand(Command.Back)
-        resultCode?.let { dispatchResult(it, result) }
-    }
-
-    fun hideBottomSheet(resultCode: Int? = null, result: Any? = null) {
-        runCommand(Command.HideOver)
         resultCode?.let { dispatchResult(it, result) }
     }
 
@@ -118,8 +103,6 @@ class AppRouter(
 
 sealed class Command(open val screen: PuberScreen? = null) {
     data class NavigateTo(override val screen: PuberScreen) : Command(screen)
-    data class ShowOver(override val screen: PuberScreen) : Command()
-    data object HideOver : Command()
     data class NewRoot(val screens: List<PuberScreen>) : Command(screens.lastOrNull())
     data class Replace(override val screen: PuberScreen) : Command(screen)
     data object Back : Command()

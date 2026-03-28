@@ -71,12 +71,10 @@ class DrawerState(initialValue: DrawerValue = DrawerValue.Closed) {
      * before any external mechanism can intercept it.
      *
      * ## Solution
-     * Set to `true` when showing an overlay (`Command.ShowOver` in `FlowCommandRunner`).
+     * Set to `true` when showing a full-screen overlay.
      * While active, [DrawerSheet] swallows all focus events and redirects `hasFocus=true`
      * to [contentFocusRequester]. The flag stays active through focus bounces (the TV focus
      * system may bounce focus between drawer and content several times before settling).
-     * Reset to `false` by a delayed `snapshotFlow` in `FlowComponent` after the overlay
-     * is fully dismissed (~300ms for focus to settle).
      *
      * ## Related issues
      * - `focusRestorer()` does not save focus state when focus jumps to an overlay
