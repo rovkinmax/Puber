@@ -29,6 +29,7 @@ internal data class PlayerContentState(
     val controlsFocusTarget: FocusTarget?,
     val activePanel: ActivePanel,
     val seekIndicator: SeekIndicatorState?,
+    val playPauseIndicator: PlayPauseIndicatorState?,
 
     // Audio & Subtitles
     val audioTracks: List<AudioTrackUIState>,

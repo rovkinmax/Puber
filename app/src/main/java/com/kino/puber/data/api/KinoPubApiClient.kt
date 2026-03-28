@@ -40,6 +40,7 @@ import com.kino.puber.data.api.models.UserInfo
 import com.kino.puber.data.api.models.VoiceAuthor
 import com.kino.puber.data.api.models.VoteResult
 import com.kino.puber.data.api.models.WatchingStatus
+import com.kino.puber.data.api.models.WatchlistToggleResponse
 import android.net.ConnectivityManager
 import com.kino.puber.data.api.network.DnsOverHttpsFactory
 import com.kino.puber.data.api.network.createConnectivityPlugin
@@ -397,7 +398,7 @@ class KinoPubApiClient(
     /**
      * Toggle watchlist
      */
-    suspend fun toggleWatchlist(id: Int): Result<WatchingStatus> = apiCall {
+    suspend fun toggleWatchlist(id: Int): Result<WatchlistToggleResponse> = apiCall {
         httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}watching/togglewatchlist") {
             parameter("id", id)
         }

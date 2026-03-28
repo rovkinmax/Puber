@@ -1,6 +1,7 @@
 package com.kino.puber.ui.feature.player.vm
 
 import android.content.Context
+import androidx.annotation.OptIn
 import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -16,7 +17,6 @@ import com.kino.puber.R
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 
-@UnstableApi
 internal class PlaybackController(private val context: Context) {
 
     interface Callback {
@@ -33,7 +33,7 @@ internal class PlaybackController(private val context: Context) {
     val currentPosition: Long get() = exoPlayer?.currentPosition ?: 0L
     val duration: Long get() = exoPlayer?.duration?.coerceAtLeast(0) ?: 0L
     val isPlaying: Boolean get() = exoPlayer?.isPlaying == true
-    val bufferedPosition: Long get() = exoPlayer?.bufferedPosition ?: 0L //todo не используемая переменная, наверно где-то должна быть заюзана
+    val bufferedPosition: Long get() = exoPlayer?.bufferedPosition ?: 0L
     
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -172,6 +172,7 @@ internal class PlaybackController(private val context: Context) {
         return builder.build()
     }
 
+    @OptIn(UnstableApi::class)
     private fun setMediaSource(player: ExoPlayer, mediaItem: MediaItem, streamUrl: String) {
         if (streamUrl.contains(".m3u8") || streamUrl.contains("hls")) {
             val dataSourceFactory = DefaultDataSource.Factory(context)

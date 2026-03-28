@@ -16,6 +16,7 @@ import com.kino.puber.ui.feature.player.model.ActivePanel
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.FocusTarget
 import com.kino.puber.ui.feature.player.model.PlayerAction
+import com.kino.puber.ui.feature.player.model.PlayPauseIndicatorState
 import com.kino.puber.ui.feature.player.model.PlayerContentState
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerUIMapper
@@ -25,8 +26,8 @@ import com.kino.puber.ui.feature.player.model.SeekIndicatorState
 import com.kino.puber.domain.model.SubtitleSize
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
-@UnstableApi
 internal class PlayerVM(
     router: AppRouter,
     override val errorHandler: ErrorHandler,
@@ -60,7 +61,9 @@ internal class PlayerVM(
 
     private var controlsHideJob: Job? = null
     private var seekIndicatorHideJob: Job? = null
+    private var playPauseHideJob: Job? = null
     private var countdownJob: Job? = null
+    private var positionUpdateJob: Job? = null
 
     private val seekHandler = SeekHandler()
     private val controlsStateMachine = ControlsStateMachine()
@@ -69,14 +72,8 @@ internal class PlayerVM(
     private val playbackCallback = object : PlaybackController.Callback {
         override fun onPlaybackStateChanged(isPlaying: Boolean, position: Long, duration: Long, buffered: Long) {
             updateContent {
-                copy(
-                    isPlaying = isPlaying,
-                    currentPosition = position,
-                    duration = duration,
-                    bufferedPosition = buffered,
-                )
+                copy(isPlaying = isPlaying)
             }
-            checkAutoMarkWatched()
         }
 
         override fun onTracksUpdated(audioTracks: List<AudioTrackUIState>, selectedIndex: Int) {
@@ -132,9 +129,14 @@ internal class PlayerVM(
     private fun buildResumeDialog(watchingTime: Int?): ResumeDialogState? {
         val savedPosition = watchingTime?.toLong()?.times(1000) ?: 0L
         if (savedPosition <= 0) return null
+        val media = currentMedia
+        val episodeInfo = if (media?.seasonNumber != null && media.episodeNumber != null) {
+            mapper.buildSubtitle(media.item, media.seasonNumber, media.episodeNumber, null)
+        } else null
         return ResumeDialogState(
             savedPosition = savedPosition,
             formattedTime = mapper.formatTime(savedPosition),
+            episodeInfo = episodeInfo,
         )
     }
 
@@ -206,8 +208,23 @@ internal class PlayerVM(
         if (playbackController.isPlaying) {
             playbackController.pause()
             saveCurrentPosition()
+            updateContent { copy(isPlaying = false) }
+            showPlayPauseIndicator(isPlaying = false)
         } else {
             playbackController.play()
+            updateContent { copy(isPlaying = true) }
+            showPlayPauseIndicator(isPlaying = true)
+        }
+    }
+
+    private fun showPlayPauseIndicator(isPlaying: Boolean) {
+        updateContent {
+            copy(playPauseIndicator = PlayPauseIndicatorState(isPlaying = isPlaying))
+        }
+        playPauseHideJob?.cancel()
+        playPauseHideJob = launch {
+            delay(PLAY_PAUSE_INDICATOR_HIDE_DELAY_MS)
+            updateContent { copy(playPauseIndicator = null) }
         }
     }
 
@@ -378,6 +395,7 @@ internal class PlayerVM(
         playbackController.release()
         countdownJob?.cancel()
         seekIndicatorHideJob?.cancel()
+        positionUpdateJob?.cancel()
         progressTracker.reset()
 
         updateViewState(PlayerViewState.Loading)
@@ -393,11 +411,12 @@ internal class PlayerVM(
     }
 
     private fun onPlaybackEnded() {
-        markCurrentAsWatched() //todo отметку о просмотре надо ставить так же раньше, например за 10% до конца или как-то так
+        markCurrentAsWatched()
         val state = stateValue as? PlayerViewState.Content ?: return
+        val content = state.content
         when {
-            !state.content.isMovie && state.content.hasNextEpisode -> startNextEpisodeCountdown() // todo тут надо подумать как включать раньше это
-            !state.content.isMovie -> updateContent { copy(controlsVisible = true) }
+            !content.isMovie && content.hasNextEpisode && content.nextEpisodeCountdown == null -> startNextEpisodeCountdown()
+            !content.isMovie -> updateContent { copy(controlsVisible = true) }
         }
     }
 
@@ -431,7 +450,7 @@ internal class PlayerVM(
         playbackController.seekTo(position)
         playbackController.play()
         updateContent {
-            copy(resumeDialog = null)
+            copy(resumeDialog = null, isPlaying = true)
         }
         scheduleControlsHide()
     }
@@ -440,7 +459,7 @@ internal class PlayerVM(
         playbackController.seekTo(0)
         playbackController.play()
         updateContent {
-            copy(resumeDialog = null)
+            copy(resumeDialog = null, isPlaying = true)
         }
         scheduleControlsHide()
     }
@@ -488,6 +507,39 @@ internal class PlayerVM(
             isPlaying = { playbackController.isPlaying },
             onSave = { saveCurrentPosition() },
         )
+        startPositionUpdates()
+    }
+
+    private fun startPositionUpdates() {
+        positionUpdateJob?.cancel()
+        positionUpdateJob = launch {
+            while (isActive) {
+                delay(POSITION_UPDATE_INTERVAL_MS)
+                if (playbackController.isPlaying) {
+                    updateContent {
+                        copy(
+                            currentPosition = playbackController.currentPosition,
+                            duration = playbackController.duration,
+                            bufferedPosition = playbackController.bufferedPosition,
+                        )
+                    }
+                    checkAutoMarkWatched()
+                    checkEarlyNextEpisode()
+                }
+            }
+        }
+    }
+
+    private fun checkEarlyNextEpisode() {
+        val state = (stateValue as? PlayerViewState.Content)?.content ?: return
+        if (state.isMovie || !state.hasNextEpisode) return
+        if (state.nextEpisodeCountdown != null) return
+        val duration = playbackController.duration
+        if (duration <= 0) return
+        val remaining = duration - playbackController.currentPosition
+        if (remaining < duration * EARLY_NEXT_EPISODE_THRESHOLD) {
+            startNextEpisodeCountdown()
+        }
     }
 
     private fun saveCurrentPosition() {
@@ -539,7 +591,9 @@ internal class PlayerVM(
         progressTracker.stopSync()
         controlsHideJob?.cancel()
         seekIndicatorHideJob?.cancel()
+        playPauseHideJob?.cancel()
         countdownJob?.cancel()
+        positionUpdateJob?.cancel()
         super.onCleared()
     }
 
@@ -547,7 +601,10 @@ internal class PlayerVM(
         const val CONTROLS_HIDE_DELAY_MS = 3000L
         const val SEEK_INDICATOR_HIDE_DELAY_MS = 1500L
         const val PROGRESS_SYNC_INTERVAL_MS = 30_000L
+        const val POSITION_UPDATE_INTERVAL_MS = 500L
         const val NEXT_EPISODE_COUNTDOWN_SEC = 7
-        const val AUTO_MARK_WATCHED_THRESHOLD = 0.05
+        const val AUTO_MARK_WATCHED_THRESHOLD = 0.10
+        const val PLAY_PAUSE_INDICATOR_HIDE_DELAY_MS = 1500L
+        const val EARLY_NEXT_EPISODE_THRESHOLD = 0.05
     }
 }

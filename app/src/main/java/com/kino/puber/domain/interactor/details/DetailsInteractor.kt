@@ -1,9 +1,11 @@
 package com.kino.puber.domain.interactor.details
 
+import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.repository.ItemDetailsRepository
 
 internal class DetailsInteractor(
+    private val api: KinoPubApiClient,
     private val itemDetailsRepository: ItemDetailsRepository,
 ) {
 
@@ -12,7 +14,7 @@ internal class DetailsInteractor(
     }
 
     suspend fun toggleWatchlist(id: Int): Item {
-        // TODO: call api.toggleWatchlist(id) before refresh
+        api.toggleWatchlist(id).getOrThrow()
         return itemDetailsRepository.refresh(id)
     }
 }

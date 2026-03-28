@@ -60,7 +60,13 @@ internal data class SeekIndicatorState(
 )
 
 @Immutable
+internal data class PlayPauseIndicatorState(
+    val isPlaying: Boolean,
+)
+
+@Immutable
 internal data class ResumeDialogState(
     val savedPosition: Long,
     val formattedTime: String,
+    val episodeInfo: String? = null,
 )

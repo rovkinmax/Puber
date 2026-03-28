@@ -9,8 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import com.kino.puber.R
 
 
@@ -37,17 +37,17 @@ fun FullScreenError(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier,
             text = error,
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onBackground,
         )
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        TextButton(
-            modifier = Modifier
-                .fillMaxWidth(),
+        Button(
+            modifier = Modifier,
             onClick = onClick,
         ) {
             Text(text = retryButtonText)
@@ -72,7 +72,7 @@ fun ListItemError(modifier: Modifier = Modifier, error: String, onClick: () -> U
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        TextButton(
+        Button(
             modifier = Modifier,
             onClick = onClick,
         ) {

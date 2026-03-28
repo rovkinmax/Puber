@@ -127,6 +127,11 @@ enum class ItemType(val value: String) {
     }
 }
 
+fun ItemType.isSeriesLike(): Boolean = when (this) {
+    ItemType.SERIAL, ItemType.DOCU_SERIAL, ItemType.TV_SHOW -> true
+    else -> false
+}
+
 @Serializable
 data class Genre(
     val id: Int,
@@ -155,7 +160,9 @@ data class Posters(
 
 @Serializable
 data class Trailer(
+    val id: Int? = null,
     val url: String? = null,
+    val file: String? = null,
     val quality: String? = null,
 )
 
@@ -299,6 +306,12 @@ data class WatchingStatus(
     val time: Int? = null,
     val season: Int? = null,
     val episode: Int? = null
+)
+
+@Serializable
+data class WatchlistToggleResponse(
+    val status: Int,
+    val watching: Boolean,
 )
 
 // Additional models based on official API documentation

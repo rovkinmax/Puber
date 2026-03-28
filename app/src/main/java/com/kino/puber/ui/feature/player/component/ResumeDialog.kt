@@ -19,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
@@ -44,7 +43,10 @@ internal fun ResumeDialog(
     ) {
         val resumeButtonFocusRequester = remember { FocusRequester() }
         LaunchedEffect(Unit) {
-            try { resumeButtonFocusRequester.requestFocus() } catch (_: Exception) {}
+            try {
+                resumeButtonFocusRequester.requestFocus()
+            } catch (_: Exception) {
+            }
         }
 
         Box(
@@ -62,6 +64,13 @@ internal fun ResumeDialog(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
+                    if (it.episodeInfo != null) {
+                        Text(
+                            text = it.episodeInfo,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        )
+                    }
                     Text(
                         text = stringResource(R.string.player_resume_title, it.formattedTime),
                         style = MaterialTheme.typography.titleLarge,
@@ -74,24 +83,12 @@ internal fun ResumeDialog(
                         Button(
                             onClick = onResume,
                             modifier = Modifier.focusRequester(resumeButtonFocusRequester),
-                            colors = ButtonDefaults.colors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                focusedContentColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
                         ) {
                             Text(text = stringResource(R.string.player_resume_continue))
                         }
 
                         Button(
                             onClick = onStartFromBeginning,
-                            colors = ButtonDefaults.colors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                focusedContainerColor = MaterialTheme.colorScheme.primary,
-                                focusedContentColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
                         ) {
                             Text(text = stringResource(R.string.player_resume_from_start))
                         }

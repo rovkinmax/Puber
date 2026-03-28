@@ -20,7 +20,7 @@ internal class ContentStateFactory(private val mapper: PlayerUIMapper) {
     ): PlayerContentState = PlayerContentState(
         title = mapper.buildTitle(item, resolved.seasonNumber, resolved.episodeNumber),
         subtitle = mapper.buildSubtitle(item, resolved.seasonNumber, resolved.episodeNumber, resolved.episodeTitle),
-        isPlaying = false,
+        isPlaying = resumeDialog == null,
         currentPosition = 0L,
         duration = resolved.duration?.toLong()?.times(1000) ?: 0L,
         bufferedPosition = 0L,
@@ -28,6 +28,7 @@ internal class ContentStateFactory(private val mapper: PlayerUIMapper) {
         controlsFocusTarget = if (resumeDialog == null) FocusTarget.Buttons else null,
         activePanel = ActivePanel.None,
         seekIndicator = null,
+        playPauseIndicator = null,
         audioTracks = mapper.mapAudioTracks(resolved.audios),
         selectedAudioTrackIndex = 0,
         subtitleTracks = mapper.mapSubtitleTracks(resolved.subtitles),
