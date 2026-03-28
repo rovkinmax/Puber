@@ -184,6 +184,47 @@ internal class PlaybackController(private val context: Context) {
         }
     }
 
+    data class DebugInfo(
+        val videoResolution: String,
+        val videoCodec: String,
+        val videoBitrate: String,
+        val audioCodec: String,
+        val audioChannels: String,
+        val droppedFrames: String,
+        val bufferedDuration: String,
+    )
+
+    @OptIn(UnstableApi::class)
+    fun getDebugInfo(): DebugInfo? {
+        val player = exoPlayer ?: return null
+        val videoFormat = player.videoFormat
+        val audioFormat = player.audioFormat
+
+        val decoderCounters = player.videoDecoderCounters
+        val dropped = decoderCounters?.droppedBufferCount ?: 0
+
+        val bufferedMs = player.bufferedPosition - player.currentPosition
+        val bufferedSec = (bufferedMs / 1000.0).coerceAtLeast(0.0)
+
+        return DebugInfo(
+            videoResolution = if (videoFormat != null) "${videoFormat.width}x${videoFormat.height}" else "—",
+            videoCodec = videoFormat?.codecs ?: videoFormat?.sampleMimeType?.substringAfter("/") ?: "—",
+            videoBitrate = if (videoFormat?.bitrate != null && videoFormat.bitrate > 0) {
+                "%.1f Mbps".format(videoFormat.bitrate / 1_000_000.0)
+            } else "—",
+            audioCodec = audioFormat?.codecs ?: audioFormat?.sampleMimeType?.substringAfter("/") ?: "—",
+            audioChannels = when (audioFormat?.channelCount) {
+                1 -> "mono"
+                2 -> "stereo"
+                6 -> "5.1"
+                8 -> "7.1"
+                else -> audioFormat?.channelCount?.toString() ?: "—"
+            },
+            droppedFrames = dropped.toString(),
+            bufferedDuration = "%.1fs".format(bufferedSec),
+        )
+    }
+
     private fun notifyPlaybackState() {
         val player = exoPlayer ?: return
         callback?.onPlaybackStateChanged(

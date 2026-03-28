@@ -18,5 +18,6 @@ internal sealed interface DeviceSettingsState {
         val skipIntroEnabled: Boolean = true,
         val skipRecapEnabled: Boolean = true,
         val skipCreditsEnabled: Boolean = true,
+        val debugOverlayEnabled: Boolean = false,
     ) : DeviceSettingsState
 }
