@@ -2,6 +2,7 @@ package com.kino.puber.core.ui.navigation.component
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabNavigator
@@ -40,8 +41,10 @@ fun PuberCurrentTab() {
     val tabNavigator = LocalTabNavigator.current
     val currentTab = tabNavigator.current
 
-    tabNavigator.saveableState("currentTab") {
-        currentTab.Content()
+    key(currentTab.key) {
+        tabNavigator.saveableState("currentTab") {
+            currentTab.Content()
+        }
     }
 }
 
