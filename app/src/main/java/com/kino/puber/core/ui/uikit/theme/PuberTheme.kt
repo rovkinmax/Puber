@@ -7,8 +7,10 @@ import androidx.tv.material3.darkColorScheme
 
 data object PuberTheme {
     data object Defaults {
-        val VideoItemWidth = 100.dp
-        val VideoItemHeight = 150.dp
+        val VideoItemWidth = 120.dp
+        val VideoItemHeight = 180.dp
+        const val DetailsWeight = 1F
+        const val ContentWeight = 1F
     }
 }
 

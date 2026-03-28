@@ -24,10 +24,10 @@ internal data class MainTab(
 )
 
 @Parcelize
-enum class TabType(val title: Int) : Parcelable {
+enum class TabType(val title: Int, val enabled: Boolean = true) : Parcelable {
     Favourites(R.string.main_tabs_favorites),
-    Bookmarks(R.string.main_tabs_bookmarks),
-    History(R.string.main_tabs_history),
+    Bookmarks(R.string.main_tabs_bookmarks, enabled = false),
+    History(R.string.main_tabs_history, enabled = false),
     Movies(R.string.main_tabs_movies),
     Series(R.string.main_tabs_series),
     Cartoons(R.string.main_tabs_cartoons),
@@ -36,7 +36,7 @@ enum class TabType(val title: Int) : Parcelable {
     DocMovies(R.string.main_tabs_docmovies),
     DocSeries(R.string.main_tabs_docseries),
     TvShows(R.string.main_tabs_tvshows),
-    Collections(R.string.main_tabs_collections),
-    SportTV(R.string.main_tabs_sport_tv),
+    Collections(R.string.main_tabs_collections, enabled = false),
+    SportTV(R.string.main_tabs_sport_tv, enabled = false),
     Settings(R.string.main_tabs_settings),
 }

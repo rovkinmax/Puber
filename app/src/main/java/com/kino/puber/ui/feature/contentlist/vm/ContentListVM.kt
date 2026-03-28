@@ -40,6 +40,6 @@ internal class ContentListVM(
     }
 
     private fun onItemSelected(item: VideoItemUIState) {
-        // TODO: navigate to details screen
+        router.navigateTo(router.screens.details(item.id))
     }
 }

@@ -27,6 +27,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
@@ -47,7 +48,7 @@ import org.koin.compose.koinInject
 import org.koin.core.qualifier.named
 
 @Composable
-internal fun SectionRow(
+internal fun SectionRowContent(
     config: SectionConfig,
     isTargetRow: Boolean,
     onItemClick: (VideoItemUIState) -> Unit,
@@ -64,18 +65,13 @@ internal fun SectionRow(
     val state by sectionVm.collectViewState()
 
     when (val s = state) {
-        is SectionState.Loading -> ShimmerSectionRow(title = config.title)
-        is SectionState.Empty -> { /* hidden */
-        }
-
-        is SectionState.Error -> ErrorSectionRow(
-            title = config.title,
+        is SectionState.Loading -> ShimmerSectionCards()
+        is SectionState.Empty -> { /* hidden */ }
+        is SectionState.Error -> ErrorSectionContent(
             message = s.message,
             onRetry = { sectionVm.onAction(CommonAction.RetryClicked) },
         )
-
-        is SectionState.Content -> ContentSectionRow(
-            config = config,
+        is SectionState.Content -> ContentSectionCards(
             state = s,
             isTargetRow = isTargetRow,
             onItemClick = onItemClick,
@@ -89,8 +85,7 @@ internal fun SectionRow(
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun ContentSectionRow(
-    config: SectionConfig,
+private fun ContentSectionCards(
     state: SectionState.Content,
     isTargetRow: Boolean,
     onItemClick: (VideoItemUIState) -> Unit,
@@ -99,118 +94,100 @@ private fun ContentSectionRow(
     onLoadMore: () -> Unit,
     onShowAll: (() -> Unit)?,
 ) {
-    Column {
-        Text(
+    val listState = rememberLazyListState()
+    val savedItemFocusRequester = remember { FocusRequester() }
+    var focusedItemIndex by rememberSaveable { mutableIntStateOf(0) }
+
+    Box(
+        modifier = Modifier
+            .wrapContentHeight()
+            .fillMaxWidth()
+            .graphicsLayer { clip = false },
+    ) {
+        LazyRow(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            text = config.title,
-            style = MaterialTheme.typography.titleLarge,
-        )
-
-        val listState = rememberLazyListState()
-        val savedItemFocusRequester = remember { FocusRequester() }
-        var focusedItemIndex by rememberSaveable { mutableIntStateOf(0) }
-
-        Box(
-            modifier = Modifier
-                .wrapContentHeight()
-                .fillMaxWidth(),
+                .graphicsLayer { clip = false }
+                .focusRestorer(savedItemFocusRequester),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(16.dp),
         ) {
-            LazyRow(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRestorer(savedItemFocusRequester),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(16.dp),
-            ) {
-                itemsIndexed(state.items) { index, item ->
-                    val isFallbackTarget = if (isTargetRow) {
-                        index == focusedItemIndex
-                    } else {
-                        index == 0
-                    }
-                    VideoItem(
-                        modifier = Modifier
-                            .then(
-                                if (isFallbackTarget) Modifier.focusRequester(
-                                    savedItemFocusRequester
-                                )
-                                else Modifier
-                            )
-                            .onFocusChanged { focusState ->
-                                if (focusState.isFocused) {
-                                    focusedItemIndex = index
-                                    onSectionFocused()
-                                    onItemFocused(item)
-                                }
-                            },
-                        state = item,
-                        onClick = { onItemClick(item) },
-                    )
+            itemsIndexed(state.items) { index, item ->
+                val isFallbackTarget = if (isTargetRow) {
+                    index == focusedItemIndex
+                } else {
+                    index == 0
                 }
-                if (onShowAll != null) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .size(
-                                    width = PuberTheme.Defaults.VideoItemWidth,
-                                    height = PuberTheme.Defaults.VideoItemHeight,
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Button(
-                                modifier = Modifier,
-                                onClick = { onShowAll() },
-                            ) {
-                                Text(
-                                    "Показать\nвсе",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    textAlign = TextAlign.Center,
-                                )
+                VideoItem(
+                    modifier = Modifier
+                        .then(
+                            if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
+                            else Modifier
+                        )
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                focusedItemIndex = index
+                                onSectionFocused()
+                                onItemFocused(item)
                             }
+                        },
+                    state = item,
+                    onClick = { onItemClick(item) },
+                )
+            }
+            if (onShowAll != null) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .size(
+                                width = PuberTheme.Defaults.VideoItemWidth,
+                                height = PuberTheme.Defaults.VideoItemHeight,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Button(
+                            onClick = { onShowAll() },
+                        ) {
+                            Text(
+                                "Показать\nвсе",
+                                style = MaterialTheme.typography.labelLarge,
+                                textAlign = TextAlign.Center,
+                            )
                         }
                     }
                 }
             }
-            FadeGradient(listState)
         }
+        FadeGradient(listState)
+    }
 
-        if (onShowAll == null) {
-            LoadMoreHandler(
-                lazyListState = listState,
-                loadMoreAtEnd = onLoadMore,
-            )
-        }
+    if (onShowAll == null) {
+        LoadMoreHandler(
+            lazyListState = listState,
+            loadMoreAtEnd = onLoadMore,
+        )
     }
 }
 
 @Composable
-private fun ErrorSectionRow(
-    title: String,
+private fun ErrorSectionContent(
     message: String,
     onRetry: () -> Unit,
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
         )
-        Spacer(modifier = Modifier.width(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Button(onClick = onRetry) {
-                Text("Повторить")
-            }
+        Spacer(modifier = Modifier.width(16.dp))
+        Button(onClick = onRetry) {
+            Text("Повторить")
         }
     }
 }
