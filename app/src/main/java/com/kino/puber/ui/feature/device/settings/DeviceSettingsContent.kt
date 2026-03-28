@@ -199,6 +199,25 @@ private fun DeviceSettingsList(
                 onToggle = { onAction(DeviceSettingsActions.ToggleSkipCredits) },
             )
         }
+
+        // Debug section
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        item {
+            Text(
+                text = stringResource(R.string.settings_debug_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        item {
+            LocalToggleItem(
+                label = stringResource(R.string.settings_debug_overlay),
+                checked = state.debugOverlayEnabled,
+                onToggle = { onAction(DeviceSettingsActions.ToggleDebugOverlay) },
+            )
+        }
     }
 }
 

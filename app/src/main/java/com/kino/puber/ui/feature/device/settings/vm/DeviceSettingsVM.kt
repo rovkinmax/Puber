@@ -56,6 +56,7 @@ internal class DeviceSettingsVM(
                                 skipIntroEnabled = playerPreferencesRepository.skipIntroEnabled,
                                 skipRecapEnabled = playerPreferencesRepository.skipRecapEnabled,
                                 skipCreditsEnabled = playerPreferencesRepository.skipCreditsEnabled,
+                                debugOverlayEnabled = playerPreferencesRepository.debugOverlayEnabled,
                             )
                         )
                     )
@@ -73,6 +74,7 @@ internal class DeviceSettingsVM(
             DeviceSettingsActions.ToggleSkipIntro -> toggleSkipPref { it.copy(skipIntroEnabled = !it.skipIntroEnabled) }
             DeviceSettingsActions.ToggleSkipRecap -> toggleSkipPref { it.copy(skipRecapEnabled = !it.skipRecapEnabled) }
             DeviceSettingsActions.ToggleSkipCredits -> toggleSkipPref { it.copy(skipCreditsEnabled = !it.skipCreditsEnabled) }
+            DeviceSettingsActions.ToggleDebugOverlay -> toggleDebugOverlay()
             CommonAction.RetryClicked -> onRetry()
             else -> super.onAction(action)
         }
@@ -198,6 +200,14 @@ internal class DeviceSettingsVM(
         playerPreferencesRepository.skipRecapEnabled = newState.skipRecapEnabled
         playerPreferencesRepository.skipCreditsEnabled = newState.skipCreditsEnabled
         updateViewState(stateValue.copy(state = newState))
+    }
+
+    private fun toggleDebugOverlay() {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        val newValue = !currentState.debugOverlayEnabled
+        playerPreferencesRepository.debugOverlayEnabled = newValue
+        updateViewState(stateValue.copy(state = currentState.copy(debugOverlayEnabled = newValue)))
     }
 
     private fun onUnlinkDevice() {

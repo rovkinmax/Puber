@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.player.vm
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.kino.puber.core.logger.log
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
@@ -79,6 +80,7 @@ internal class PlayerVM(
     private val seekHandler = SeekHandler()
     private val controlsStateMachine = ControlsStateMachine()
     private val progressTracker = ProgressTracker()
+    private val debugOverlayEnabled = interactor.isDebugOverlayEnabled()
 
     private val playbackCallback = object : PlaybackController.Callback {
         override fun onPlaybackStateChanged(isPlaying: Boolean, position: Long, duration: Long, buffered: Long) {
@@ -539,11 +541,13 @@ internal class PlayerVM(
             while (isActive) {
                 delay(POSITION_UPDATE_INTERVAL_MS)
                 if (playbackController.isPlaying) {
+                    val debugInfo = if (debugOverlayEnabled) playbackController.getDebugInfo() else null
                     updateContent {
                         copy(
                             currentPosition = playbackController.currentPosition,
                             duration = playbackController.duration,
                             bufferedPosition = playbackController.bufferedPosition,
+                            debugInfo = debugInfo,
                         )
                     }
                     checkAutoMarkWatched()
@@ -575,6 +579,7 @@ internal class PlayerVM(
     }
 
     private fun loadSkipSegments(item: Item, season: Int?, episode: Int?) {
+        log("loadSkipSegments called: title='${item.title}', imdb=${item.imdb}, s=$season, e=$episode")
         launch {
             segments = skipSegmentInteractor.loadSegments(item, season, episode)
             creditsSegment = skipSegmentInteractor.findCreditsSegment(segments)

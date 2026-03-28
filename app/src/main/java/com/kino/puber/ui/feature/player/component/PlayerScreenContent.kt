@@ -187,6 +187,17 @@ internal fun PlayerScreenContent(
                     PlayPauseIndicator(state = content.playPauseIndicator)
                 }
 
+                // Debug overlay (top-right corner)
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.TopEnd,
+                ) {
+                    DebugOverlay(
+                        debugInfo = content.debugInfo,
+                        modifier = Modifier.padding(top = 12.dp, end = 16.dp),
+                    )
+                }
+
                 // Layer 2: Controls overlay
                 PlayerControlsOverlay(
                     visible = content.controlsVisible,

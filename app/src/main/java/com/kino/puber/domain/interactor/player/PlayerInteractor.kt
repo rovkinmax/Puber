@@ -114,14 +114,16 @@ internal class PlayerInteractor(
     fun selectStreamUrl(files: List<VideoFile>?, qualityIndex: Int): String? {
         if (files.isNullOrEmpty()) return null
         if (qualityIndex == 0) {
+            // Auto: prefer adaptive hls4 playlist
             val url = files.first().url ?: return null
             return url.hls4 ?: url.hls ?: url.http
         }
+        // Specific quality: prefer single-bitrate hls (unique per quality)
         val uniqueFiles = files.distinctBy { it.quality ?: "${it.h}p" }
             .sortedByDescending { it.qualityId ?: 0 }
         val file = uniqueFiles.getOrNull(qualityIndex - 1) ?: files.first()
         val url = file.url ?: return null
-        return url.hls4 ?: url.hls ?: url.http
+        return url.hls ?: url.hls4 ?: url.http
     }
 
     private fun findFirstUnwatchedEpisode(item: Item): Pair<Int, Int>? {
@@ -159,6 +161,10 @@ internal class PlayerInteractor(
 
     fun saveTrackPreferences(itemId: Int, audioTrackId: Int?, subtitleLang: String?) {
         playerPreferencesRepository.saveTrackPreferences(itemId, audioTrackId, subtitleLang)
+    }
+
+    fun isDebugOverlayEnabled(): Boolean {
+        return playerPreferencesRepository.debugOverlayEnabled
     }
 
     fun getSubtitleSize(): SubtitleSize {
