@@ -26,10 +26,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import org.koin.androidx.compose.koinViewModel
-import qrgenerator.qrkitpainter.QrKitBrush
-import qrgenerator.qrkitpainter.QrKitColors
-import qrgenerator.qrkitpainter.rememberQrKitPainter
-import qrgenerator.qrkitpainter.solidBrush
+import androidx.compose.ui.res.painterResource
+import com.kino.puber.R
 import java.util.Locale
 
 @Composable
@@ -69,21 +67,13 @@ internal fun CodeInfo(code: String, url: String, expireTimeSeconds: Int) {
             timeLeft.value = it
         }
     }
-    val painter = rememberQrKitPainter(data = url) {
-        colors = QrKitColors(
-            darkBrush = QrKitBrush.solidBrush(Color.White),
-            lightBrush = QrKitBrush.solidBrush(Color.Black),
-            frameBrush = QrKitBrush.solidBrush(Color.White),
-            ballBrush = QrKitBrush.solidBrush(Color.White)
-        )
-    }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(code, fontSize = 32.sp)
         Spacer(modifier = Modifier.height(20.dp))
         Image(
-            painter = painter,
+            painter = painterResource(R.drawable.qr_device),
             contentDescription = null,
             modifier = Modifier.size(200.dp),
         )

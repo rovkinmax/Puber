@@ -9,9 +9,13 @@ import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.SkipSegment
+import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.data.api.models.VideoFile
 import com.kino.puber.domain.interactor.player.PlayerInteractor
+import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
+import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
 import com.kino.puber.ui.feature.player.model.ActivePanel
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.FocusTarget
@@ -34,6 +38,7 @@ internal class PlayerVM(
     private val params: PlayerScreenParams,
     private val mapper: PlayerUIMapper,
     private val interactor: PlayerInteractor,
+    private val skipSegmentInteractor: SkipSegmentInteractor,
     private val contentStateFactory: ContentStateFactory,
     private val playbackController: PlaybackController,
 ) : PuberVM<PlayerViewState>(router) {
@@ -64,6 +69,12 @@ internal class PlayerVM(
     private var playPauseHideJob: Job? = null
     private var countdownJob: Job? = null
     private var positionUpdateJob: Job? = null
+    private var skipCountdownJob: Job? = null
+
+    private var segments: List<SkipSegment> = emptyList()
+    private var creditsSegment: SkipSegment? = null
+    private var dismissedSegmentType: SkipSegmentType? = null
+    private var lastPositionMs: Long = 0L
 
     private val seekHandler = SeekHandler()
     private val controlsStateMachine = ControlsStateMachine()
@@ -124,6 +135,7 @@ internal class PlayerVM(
         startProgressSync()
         if (resumeDialog == null) scheduleControlsHide()
         restoreTrackPreferences()
+        loadSkipSegments(item, resolved.seasonNumber, resolved.episodeNumber)
     }
 
     private fun buildResumeDialog(watchingTime: Int?): ResumeDialogState? {
@@ -196,6 +208,9 @@ internal class PlayerVM(
             is PlayerAction.SelectEpisodeById -> selectEpisodeById(action.episodeId)
             is PlayerAction.NextEpisode -> playNextEpisode()
             is PlayerAction.CancelNextEpisodeCountdown -> cancelCountdown()
+            is PlayerAction.SkipSegmentClicked -> performSkipSegment()
+            is PlayerAction.CancelSkipSegment -> cancelSkipSegment()
+            is PlayerAction.SkipSegmentCountdownFinished -> performSkipSegment()
             is PlayerAction.ResumeFromPosition -> resumeFromSavedPosition()
             is PlayerAction.StartFromBeginning -> startFromBeginning()
             is PlayerAction.RetryPlayback -> retryPlayback()
@@ -394,9 +409,13 @@ internal class PlayerVM(
         saveCurrentPosition()
         playbackController.release()
         countdownJob?.cancel()
+        skipCountdownJob?.cancel()
         seekIndicatorHideJob?.cancel()
         positionUpdateJob?.cancel()
         progressTracker.reset()
+        segments = emptyList()
+        creditsSegment = null
+        dismissedSegmentType = null
 
         updateViewState(PlayerViewState.Loading)
         launch { preparePlayback(seasonNumber, episodeNumber, forceFromBeginning = true) }
@@ -486,6 +505,10 @@ internal class PlayerVM(
             router.back()
             return true
         }
+        if (state.content.activeSkipSegment != null) {
+            cancelSkipSegment()
+            return false
+        }
         if (state.content.nextEpisodeCountdown != null) {
             cancelCountdown()
             return false
@@ -525,6 +548,7 @@ internal class PlayerVM(
                     }
                     checkAutoMarkWatched()
                     checkEarlyNextEpisode()
+                    checkSkipSegment()
                 }
             }
         }
@@ -536,10 +560,116 @@ internal class PlayerVM(
         if (state.nextEpisodeCountdown != null) return
         val duration = playbackController.duration
         if (duration <= 0) return
-        val remaining = duration - playbackController.currentPosition
-        if (remaining < duration * EARLY_NEXT_EPISODE_THRESHOLD) {
-            startNextEpisodeCountdown()
+
+        val creditsStart = creditsSegment?.startMs
+        if (creditsStart != null) {
+            if (playbackController.currentPosition >= creditsStart) {
+                startNextEpisodeCountdown()
+            }
+        } else {
+            val remaining = duration - playbackController.currentPosition
+            if (remaining < duration * EARLY_NEXT_EPISODE_THRESHOLD) {
+                startNextEpisodeCountdown()
+            }
         }
+    }
+
+    private fun loadSkipSegments(item: Item, season: Int?, episode: Int?) {
+        launch {
+            segments = skipSegmentInteractor.loadSegments(item, season, episode)
+            creditsSegment = skipSegmentInteractor.findCreditsSegment(segments)
+            dismissedSegmentType = null
+            // Late arrival check: if credits segment exists and position already past it
+            if (creditsSegment != null) {
+                val state = (stateValue as? PlayerViewState.Content)?.content ?: return@launch
+                if (!state.isMovie && state.hasNextEpisode && state.nextEpisodeCountdown == null) {
+                    if (playbackController.currentPosition >= creditsSegment!!.startMs) {
+                        startNextEpisodeCountdown()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun checkSkipSegment() {
+        val state = (stateValue as? PlayerViewState.Content)?.content ?: return
+        if (state.nextEpisodeCountdown != null || state.resumeDialog != null) return
+
+        val currentPos = playbackController.currentPosition
+        // Detect seek: if position jumped more than 2s in one 500ms tick, skip detection
+        val positionDelta = kotlin.math.abs(currentPos - lastPositionMs)
+        lastPositionMs = currentPos
+        if (positionDelta > 2000) {
+            // Position jumped — clear dismissed state, don't show overlay this tick
+            dismissedSegmentType = null
+            updateContent { copy(activeSkipSegment = null) }
+            skipCountdownJob?.cancel()
+            skipCountdownJob = null
+            return
+        }
+
+        val activeSegment = skipSegmentInteractor.findActiveSegment(segments, currentPos)
+        if (activeSegment == null) {
+            // Left segment zone — clear dismissed state
+            if (state.activeSkipSegment != null) {
+                updateContent { copy(activeSkipSegment = null) }
+                skipCountdownJob?.cancel()
+                skipCountdownJob = null
+            }
+            dismissedSegmentType = null
+            return
+        }
+
+        // Don't show for credits when it's a series with next episode (NextEpisodeOverlay handles it)
+        if (activeSegment.type == SkipSegmentType.CREDITS && !state.isMovie && state.hasNextEpisode) return
+
+        // Don't re-show dismissed segment
+        if (activeSegment.type == dismissedSegmentType) return
+
+        // Already showing this segment
+        if (state.activeSkipSegment?.type == activeSegment.type) return
+
+        startSkipSegmentCountdown(activeSegment)
+    }
+
+    private fun startSkipSegmentCountdown(segment: SkipSegment) {
+        skipCountdownJob?.cancel()
+        val uiState = SkipSegmentUIState(
+            label = mapper.mapSkipSegmentLabel(segment.type),
+            targetPositionMs = segment.endMs ?: playbackController.duration,
+            type = segment.type,
+            countdown = SKIP_COUNTDOWN_SEC,
+        )
+        updateContent { copy(activeSkipSegment = uiState) }
+        skipCountdownJob = launch {
+            for (i in SKIP_COUNTDOWN_SEC - 1 downTo 0) {
+                delay(1000)
+                updateContent { copy(activeSkipSegment = activeSkipSegment?.copy(countdown = i)) }
+            }
+            performSkipSegment()
+        }
+    }
+
+    private fun performSkipSegment() {
+        val state = (stateValue as? PlayerViewState.Content)?.content ?: return
+        val skipState = state.activeSkipSegment ?: return
+
+        if (skipState.type == SkipSegmentType.CREDITS && !state.isMovie && state.hasNextEpisode) {
+            markCurrentAsWatched()
+            playNextEpisode()
+        } else {
+            playbackController.seekTo(skipState.targetPositionMs)
+        }
+        updateContent { copy(activeSkipSegment = null) }
+        skipCountdownJob = null
+    }
+
+    private fun cancelSkipSegment() {
+        val currentType = (stateValue as? PlayerViewState.Content)?.content?.activeSkipSegment?.type
+        dismissedSegmentType = currentType
+        skipCountdownJob?.cancel()
+        skipCountdownJob = null
+        updateContent { copy(activeSkipSegment = null) }
     }
 
     private fun saveCurrentPosition() {
@@ -593,6 +723,7 @@ internal class PlayerVM(
         seekIndicatorHideJob?.cancel()
         playPauseHideJob?.cancel()
         countdownJob?.cancel()
+        skipCountdownJob?.cancel()
         positionUpdateJob?.cancel()
         super.onCleared()
     }
@@ -606,5 +737,6 @@ internal class PlayerVM(
         const val AUTO_MARK_WATCHED_THRESHOLD = 0.10
         const val PLAY_PAUSE_INDICATOR_HIDE_DELAY_MS = 1500L
         const val EARLY_NEXT_EPISODE_THRESHOLD = 0.05
+        const val SKIP_COUNTDOWN_SEC = 7
     }
 }

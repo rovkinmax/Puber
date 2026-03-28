@@ -5,11 +5,15 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -19,8 +23,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -29,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.core.ui.uikit.theme.highlightOnFocus
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingUIModel
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
@@ -149,6 +157,82 @@ private fun DeviceSettingsList(
                 )
             }
         }
+
+        // Skip segments section (local-only preferences)
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        item {
+            Column {
+                Text(
+                    text = stringResource(R.string.settings_skip_segments_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = stringResource(R.string.settings_skip_segments_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        item {
+            LocalToggleItem(
+                label = stringResource(R.string.settings_skip_intro),
+                checked = state.skipIntroEnabled,
+                onToggle = { onAction(DeviceSettingsActions.ToggleSkipIntro) },
+            )
+        }
+        item {
+            LocalToggleItem(
+                label = stringResource(R.string.settings_skip_recap),
+                checked = state.skipRecapEnabled,
+                onToggle = { onAction(DeviceSettingsActions.ToggleSkipRecap) },
+            )
+        }
+        item {
+            LocalToggleItem(
+                label = stringResource(R.string.settings_skip_credits),
+                checked = state.skipCreditsEnabled,
+                onToggle = { onAction(DeviceSettingsActions.ToggleSkipCredits) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun LocalToggleItem(
+    label: String,
+    checked: Boolean,
+    onToggle: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .highlightOnFocus(isFocused)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onToggle,
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.weight(1f),
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+        )
     }
 }
 

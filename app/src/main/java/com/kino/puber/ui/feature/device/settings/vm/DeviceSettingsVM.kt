@@ -16,11 +16,13 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
+import com.kino.puber.data.repository.PlayerPreferencesRepository
 
 internal class DeviceSettingsVM(
     private val deviceSettingInteractor: IDeviceSettingInteractor,
     private val deviceInfoInteractor: IDeviceInfoInteractor,
     private val deviceUiSettingsMapper: DeviceUiSettingsMapper,
+    private val playerPreferencesRepository: PlayerPreferencesRepository,
     override val errorHandler: ErrorHandler,
     router: AppRouter,
 ) : PuberVM<DeviceSettingsViewState>(router) {
@@ -51,6 +53,9 @@ internal class DeviceSettingsVM(
                             state = DeviceSettingsState.Success(
                                 settings = deviceUiSettingsMapper.mapSettings(device.device.settings, capabilities),
                                 device = deviceUiSettingsMapper.mapDevice(device.device),
+                                skipIntroEnabled = playerPreferencesRepository.skipIntroEnabled,
+                                skipRecapEnabled = playerPreferencesRepository.skipRecapEnabled,
+                                skipCreditsEnabled = playerPreferencesRepository.skipCreditsEnabled,
                             )
                         )
                     )
@@ -65,6 +70,9 @@ internal class DeviceSettingsVM(
             is DeviceSettingsActions.ToggleListExpand -> onToggleListExpand(action.setting)
             is DeviceSettingsActions.SelectOption -> onSelectOption(action.type, action.optionId)
             DeviceSettingsActions.UnlinkDevice -> onUnlinkDevice()
+            DeviceSettingsActions.ToggleSkipIntro -> toggleSkipPref { it.copy(skipIntroEnabled = !it.skipIntroEnabled) }
+            DeviceSettingsActions.ToggleSkipRecap -> toggleSkipPref { it.copy(skipRecapEnabled = !it.skipRecapEnabled) }
+            DeviceSettingsActions.ToggleSkipCredits -> toggleSkipPref { it.copy(skipCreditsEnabled = !it.skipCreditsEnabled) }
             CommonAction.RetryClicked -> onRetry()
             else -> super.onAction(action)
         }
@@ -180,6 +188,16 @@ internal class DeviceSettingsVM(
                 )
             )
         )
+    }
+
+    private fun toggleSkipPref(update: (DeviceSettingsState.Success) -> DeviceSettingsState.Success) {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        val newState = update(currentState)
+        playerPreferencesRepository.skipIntroEnabled = newState.skipIntroEnabled
+        playerPreferencesRepository.skipRecapEnabled = newState.skipRecapEnabled
+        playerPreferencesRepository.skipCreditsEnabled = newState.skipCreditsEnabled
+        updateViewState(stateValue.copy(state = newState))
     }
 
     private fun onUnlinkDevice() {
