@@ -6,8 +6,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.retryWhen
 
 class KinoPubRepository(
     private val client: KinoPubApiClient,
@@ -20,36 +18,37 @@ class KinoPubRepository(
             return@channelFlow
         }
 
-        val codeResult = client.getDeviceLoginCode().first()
-        if (codeResult.isFailure) throw codeResult.exceptionOrNull()!!
+        while (true) {
+            val codeResult = client.getDeviceLoginCode().first()
+            if (codeResult.isFailure) throw codeResult.exceptionOrNull()!!
 
-        val deviceCode = codeResult.getOrThrow().deviceCode
-        send(AuthState.Code(deviceCode.userCode, deviceCode.verificationUri, deviceCode.expiresIn))
+            val deviceCode = codeResult.getOrThrow().deviceCode
+            send(AuthState.Code(deviceCode.userCode, deviceCode.verificationUri, deviceCode.expiresIn))
 
-        flow {
-            while (true) {
+            val deadline = System.currentTimeMillis() + deviceCode.expiresIn * 1000L
+            var authenticated = false
+
+            while (System.currentTimeMillis() < deadline) {
                 delay(deviceCode.interval * 1000L)
-                val result = client.getDeviceLoginStatus(deviceCode).first()
-                if (result.isFailure) throw result.exceptionOrNull()!!
-
-                val token = result.getOrThrow().token
-                if (token != null) {
-                    cryptoPreferenceRepository.saveAccessToken(token.accessToken)
-                    cryptoPreferenceRepository.saveRefreshToken(token.refreshToken)
-                    emit(token)
-                    break
-                } else {
-                    throw IllegalStateException("Token is still null")
+                try {
+                    val result = client.getDeviceLoginStatus(deviceCode).first()
+                    val token = result.getOrNull()?.token
+                    if (token != null) {
+                        cryptoPreferenceRepository.saveAccessToken(token.accessToken)
+                        cryptoPreferenceRepository.saveRefreshToken(token.refreshToken)
+                        authenticated = true
+                        break
+                    }
+                } catch (_: Exception) {
+                    // Polling error — continue until deadline
                 }
             }
-        }.retryWhen { cause, attempt ->
-            attempt < MAX_RETRIES
-        }.collect { token ->
-            send(AuthState.Success)
-        }
-    }
 
-    companion object {
-        private const val MAX_RETRIES = 500L
+            if (authenticated) {
+                send(AuthState.Success)
+                return@channelFlow
+            }
+            // Code expired → loop restarts with new device code
+        }
     }
 }
