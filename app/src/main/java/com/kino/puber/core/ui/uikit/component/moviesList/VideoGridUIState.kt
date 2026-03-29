@@ -22,8 +22,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
@@ -111,6 +114,7 @@ fun VideoGrid(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun VideoGridItems(
     items: VideoGridItemUIState.Items,
@@ -134,6 +138,16 @@ private fun VideoGridItems(
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(rowFocusRequester)
+                .focusProperties {
+                    onEnter = {
+                        if (requestedFocusDirection == FocusDirection.Down ||
+                            requestedFocusDirection == FocusDirection.Up
+                        ) {
+                            savedItemFocusRequester.requestFocus()
+                            cancelFocusChange()
+                        }
+                    }
+                }
                 .focusRestorer(savedItemFocusRequester),
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -143,7 +157,7 @@ private fun VideoGridItems(
                 val isFallbackTarget = if (isTargetRow) {
                     indexR == focusedItemIndex
                 } else {
-                    indexR == 0 && columnIndex == 0
+                    indexR == 0
                 }
 
                 VideoItem(

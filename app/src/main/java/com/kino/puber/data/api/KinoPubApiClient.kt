@@ -99,10 +99,8 @@ class KinoPubApiClient(
         install(Auth) {
             bearer {
                 loadTokens {
-                    println("Loading tokens") // для отладки
                     val accessToken = cryptoPreferenceRepository.getAccessToken()
                     val refreshToken = cryptoPreferenceRepository.getRefreshToken()
-                    println("Access token: $accessToken")
                     BearerTokens(accessToken.orEmpty(), refreshToken.orEmpty())
                 }
 

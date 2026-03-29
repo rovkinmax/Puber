@@ -9,6 +9,8 @@ import com.kino.puber.core.error.ErrorEntity
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import java.util.Collections
@@ -645,9 +647,11 @@ object Paginator {
 
     class Store<T>(private val comparator: EquallyFunction<T>) :
         CoroutineScope by CoroutineScope(
-            Dispatchers.Default + CoroutineName("Paginator.State"),
+            Dispatchers.Default.limitedParallelism(1) + CoroutineName("Paginator.State"),
         ) {
         private var state: State = State.Empty
+        private val actions = Channel<Action>(Channel.UNLIMITED)
+
         var render: (State) -> Unit = {}
             set(value) {
                 field = value
@@ -656,16 +660,27 @@ object Paginator {
 
         val sideEffects = MutableSharedFlow<SideEffect>()
 
-        fun proceed(action: Action) {
-            val newState = reducer(action, state, comparator) { sideEffect ->
-                launch { sideEffects.emit(sideEffect) }
+        init {
+            launch {
+                for (action in actions) {
+                    val newState = reducer(action, state, comparator) { sideEffect ->
+                        launch { sideEffects.emit(sideEffect) }
+                    }
+                    if (state != newState) {
+                        state = newState
+                        render(newState)
+                    }
+                }
             }
+        }
 
-            if (state != newState) {
-                //log("action: $action oldState: $state newState: $newState")
-                state = newState
-                render(newState)
-            }
+        fun proceed(action: Action) {
+            actions.trySend(action)
+        }
+
+        fun close() {
+            actions.close()
+            cancel()
         }
     }
 }

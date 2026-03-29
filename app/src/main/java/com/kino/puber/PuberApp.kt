@@ -7,7 +7,7 @@ import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.request.CachePolicy
 import coil3.request.crossfade
-import coil3.video.VideoFrameDecoder
+import coil3.memory.MemoryCache
 import com.kino.puber.core.error.DefaultErrorHandler
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.logger.LinkingDebugTree
@@ -65,13 +65,16 @@ class PuberApp : Application(), SingletonImageLoader.Factory {
             .networkCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizePercent(context, 0.15)
+                    .build()
+            }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache").toOkioPath(normalize = true))
+                    .maxSizeBytes(100L * 1024 * 1024)
                     .build()
-            }
-            .components {
-                add(VideoFrameDecoder.Factory())
             }
             .build()
     }

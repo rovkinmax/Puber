@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -62,12 +63,16 @@ fun VideoItem(
         scale = CardDefaults.scale(pressedScale = 1F, focusedScale = 1.05F),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                modifier = Modifier.fillMaxSize(),
-                model = ImageRequest.Builder(LocalContext.current)
+            val context = LocalContext.current
+            val imageRequest = remember(state.imageUrl) {
+                ImageRequest.Builder(context)
                     .data(state.imageUrl)
                     .crossfade(true)
-                    .build(),
+                    .build()
+            }
+            AsyncImage(
+                modifier = Modifier.fillMaxSize(),
+                model = imageRequest,
                 placeholder = rememberVectorPainter(Icons.Default.LocalMovies),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
@@ -94,18 +99,20 @@ fun VideoItem(
             val hasRatings = state.ratings.isNotEmpty()
             val hasTitle = state.showTitle && state.title.isNotEmpty()
             if (hasRatings || hasTitle) {
+                val scrimColor = MaterialTheme.colorScheme.scrim
+                val gradientBrush = remember(scrimColor) {
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            scrimColor.copy(alpha = 0f),
+                            scrimColor.copy(alpha = 0.85f),
+                        ),
+                    )
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.scrim.copy(alpha = 0f),
-                                    MaterialTheme.colorScheme.scrim.copy(alpha = 0.85f),
-                                ),
-                            )
-                        )
+                        .background(gradientBrush)
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                 ) {
                     if (hasRatings) {

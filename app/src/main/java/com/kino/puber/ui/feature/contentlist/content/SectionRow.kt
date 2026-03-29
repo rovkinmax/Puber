@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -24,7 +24,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
@@ -35,7 +37,6 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.kino.puber.core.logger.log
 import com.kino.puber.core.ui.uikit.component.FadeGradient
 import com.kino.puber.core.ui.uikit.component.LoadMoreHandler
 import com.kino.puber.R
@@ -47,7 +48,6 @@ import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.contentlist.model.SectionState
 import com.kino.puber.ui.feature.contentlist.vm.SectionVM
 import org.koin.compose.LocalKoinScope
-import org.koin.compose.koinInject
 import org.koin.core.qualifier.named
 
 @Composable
@@ -60,31 +60,39 @@ internal fun SectionRowContent(
     onShowAll: (() -> Unit)? = null,
 ) {
     val scope = LocalKoinScope.current
-    SideEffect {
-        scope.log(
-            "resolve id='${config.id}' scope.id='${scope.id}' scope.qualifier='${scope.scopeQualifier}' scope.closed=${scope.closed}",
-            "Puber: SectionRow"
-        )
-    }
-    val sectionVm = koinInject<SectionVM>(qualifier = named(config.id))
+    val sectionVm = remember(config.id) { scope.get<SectionVM>(named(config.id)) }
     val state by sectionVm.collectViewState()
 
-    when (val s = state) {
-        is SectionState.Loading -> ShimmerSectionCards()
-        is SectionState.Empty -> { /* hidden */ }
-        is SectionState.Error -> ErrorSectionContent(
-            message = s.message,
-            onRetry = { sectionVm.onAction(CommonAction.RetryClicked) },
-        )
-        is SectionState.Content -> ContentSectionCards(
-            state = s,
-            isTargetRow = isTargetRow,
-            onItemClick = onItemClick,
-            onItemFocused = onItemFocused,
-            onSectionFocused = onSectionFocused,
-            onLoadMore = { sectionVm.onAction(CommonAction.LoadMore) },
-            onShowAll = onShowAll,
-        )
+    val contentFocusRequester = remember { FocusRequester() }
+    val hasFocusRef = remember { booleanArrayOf(false) }
+
+    Box(modifier = Modifier.onFocusChanged { hasFocusRef[0] = it.hasFocus }) {
+        when (val s = state) {
+            is SectionState.Loading -> ShimmerSectionCards()
+            is SectionState.Empty -> { /* hidden */ }
+            is SectionState.Error -> ErrorSectionContent(
+                message = s.message,
+                onRetry = { sectionVm.onAction(CommonAction.RetryClicked) },
+            )
+            is SectionState.Content -> {
+                val shouldTransferFocus = hasFocusRef[0]
+                ContentSectionCards(
+                    state = s,
+                    isTargetRow = isTargetRow,
+                    contentFocusRequester = contentFocusRequester,
+                    onItemClick = onItemClick,
+                    onItemFocused = onItemFocused,
+                    onSectionFocused = onSectionFocused,
+                    onLoadMore = { sectionVm.onAction(CommonAction.LoadMore) },
+                    onShowAll = onShowAll,
+                )
+                LaunchedEffect(Unit) {
+                    if (shouldTransferFocus) {
+                        contentFocusRequester.requestFocus()
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -93,6 +101,7 @@ internal fun SectionRowContent(
 private fun ContentSectionCards(
     state: SectionState.Content,
     isTargetRow: Boolean,
+    contentFocusRequester: FocusRequester,
     onItemClick: (VideoItemUIState) -> Unit,
     onItemFocused: (VideoItemUIState) -> Unit,
     onSectionFocused: () -> Unit,
@@ -106,14 +115,24 @@ private fun ContentSectionCards(
     Box(
         modifier = Modifier
             .wrapContentHeight()
-            .fillMaxWidth()
-            .graphicsLayer { clip = false },
+            .fillMaxWidth(),
     ) {
         LazyRow(
             state = listState,
             modifier = Modifier
                 .fillMaxWidth()
                 .graphicsLayer { clip = false }
+                .focusRequester(contentFocusRequester)
+                .focusProperties {
+                    onEnter = {
+                        if (requestedFocusDirection == FocusDirection.Down ||
+                            requestedFocusDirection == FocusDirection.Up
+                        ) {
+                            savedItemFocusRequester.requestFocus()
+                            cancelFocusChange()
+                        }
+                    }
+                }
                 .focusRestorer(savedItemFocusRequester),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(16.dp),
@@ -124,21 +143,25 @@ private fun ContentSectionCards(
                 } else {
                     index == 0
                 }
+                val focusModifier = remember(index, item.id) {
+                    Modifier.onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            focusedItemIndex = index
+                            onSectionFocused()
+                            onItemFocused(item)
+                        }
+                    }
+                }
+                val clickCallback = remember(item.id) { { onItemClick(item) } }
                 VideoItem(
                     modifier = Modifier
                         .then(
                             if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
                             else Modifier
                         )
-                        .onFocusChanged { focusState ->
-                            if (focusState.isFocused) {
-                                focusedItemIndex = index
-                                onSectionFocused()
-                                onItemFocused(item)
-                            }
-                        },
+                        .then(focusModifier),
                     state = item,
-                    onClick = { onItemClick(item) },
+                    onClick = clickCallback,
                 )
             }
             if (onShowAll != null) {

@@ -26,6 +26,8 @@ internal class ShowAllVM(
 
     private var currentPage = 0
     private var focusedItemJob: Job? = null
+    private var cachedInput: List<Item>? = null
+    private var cachedOutput: List<VideoItemUIState> = emptyList()
 
     override val initialViewState = ShowAllViewState.Loading
 
@@ -72,6 +74,14 @@ internal class ShowAllVM(
         }
     }
 
+    private fun mapItems(items: List<Item>): List<VideoItemUIState> {
+        if (items === cachedInput) return cachedOutput
+        return mapper.mapShortItemList(items).also {
+            cachedInput = items
+            cachedOutput = it
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     override fun dispatchListState(state: Paginator.State) {
         val newState = when (state) {
@@ -79,20 +89,20 @@ internal class ShowAllVM(
             is Paginator.State.Empty -> ShowAllViewState.Empty
             is Paginator.State.ErrorEmpty -> ShowAllViewState.Error(state.error.message)
             is Paginator.State.Data<*> -> ShowAllViewState.Content(
-                items = mapper.mapShortItemList(state.data as List<Item>),
+                items = mapItems(state.data as List<Item>),
             )
             is Paginator.State.LoadingNext<*> -> ShowAllViewState.Content(
-                items = mapper.mapShortItemList(state.data as List<Item>),
+                items = mapItems(state.data as List<Item>),
                 isLoadingMore = true,
             )
             is Paginator.State.Error<*> -> ShowAllViewState.Content(
-                items = mapper.mapShortItemList(state.data as List<Item>),
+                items = mapItems(state.data as List<Item>),
             )
             is Paginator.State.PageErrorNext<*> -> ShowAllViewState.Content(
-                items = mapper.mapShortItemList(state.data as List<Item>),
+                items = mapItems(state.data as List<Item>),
             )
             is Paginator.State.Refreshing<*> -> ShowAllViewState.Content(
-                items = mapper.mapShortItemList(state.data as List<Item>),
+                items = mapItems(state.data as List<Item>),
             )
             is Paginator.State.LoadingPrev<*>,
             is Paginator.State.PageErrorPrev<*> -> return

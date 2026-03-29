@@ -8,6 +8,7 @@ import com.kino.puber.core.ui.navigation.AppRouter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
@@ -24,7 +25,7 @@ abstract class PagingVM<T, VS>(
 ) : PuberVM<VS>(router) {
 
     private val pagingJob = SupervisorJob()
-    private val pagingScope = CoroutineScope(coroutineContext + pagingJob)
+    private val pagingScope = CoroutineScope(Dispatchers.Default + pagingJob)
     protected var isFullDataNext = false
     protected var isFullDataPrev = false
     protected open val errorHandlerGeneral by lazy { errorHandler.handler(::setGeneralError) }
@@ -140,6 +141,12 @@ abstract class PagingVM<T, VS>(
         } else {
             paginator.restartWithKey(key)
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        pagingJob.cancel()
+        paginator.close()
     }
 
     private fun cancelLoading() {

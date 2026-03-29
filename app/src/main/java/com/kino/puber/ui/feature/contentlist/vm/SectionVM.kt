@@ -10,6 +10,7 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.ui.feature.contentlist.model.SectionState
 
 internal class SectionVM(
@@ -22,6 +23,8 @@ internal class SectionVM(
 ) : PagingVM<Item, SectionState>(paginator, router, errorHandler) {
 
     private var currentPage = 0
+    private var cachedInput: List<Item>? = null
+    private var cachedOutput: List<VideoItemUIState> = emptyList()
 
     override val initialViewState = SectionState.Loading
 
@@ -53,6 +56,14 @@ internal class SectionVM(
         }
     }
 
+    private fun mapItems(items: List<Item>): List<VideoItemUIState> {
+        if (items === cachedInput) return cachedOutput
+        return mapper.mapShortItemList(items).also {
+            cachedInput = items
+            cachedOutput = it
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     override fun dispatchListState(state: Paginator.State) {
         val newState = when (state) {
@@ -60,20 +71,20 @@ internal class SectionVM(
             is Paginator.State.Empty -> SectionState.Empty
             is Paginator.State.ErrorEmpty -> SectionState.Error(state.error.message)
             is Paginator.State.Data<*> -> SectionState.Content(
-                items = mapper.mapShortItemList(state.data as List<Item>),
+                items = mapItems(state.data as List<Item>),
             )
             is Paginator.State.LoadingNext<*> -> SectionState.Content(
-                items = mapper.mapShortItemList(state.data as List<Item>),
+                items = mapItems(state.data as List<Item>),
                 isLoadingMore = true,
             )
             is Paginator.State.Error<*> -> SectionState.Content(
-                items = mapper.mapShortItemList(state.data as List<Item>),
+                items = mapItems(state.data as List<Item>),
             )
             is Paginator.State.PageErrorNext<*> -> SectionState.Content(
-                items = mapper.mapShortItemList(state.data as List<Item>),
+                items = mapItems(state.data as List<Item>),
             )
             is Paginator.State.Refreshing<*> -> SectionState.Content(
-                items = mapper.mapShortItemList(state.data as List<Item>),
+                items = mapItems(state.data as List<Item>),
             )
             is Paginator.State.LoadingPrev<*>,
             is Paginator.State.PageErrorPrev<*> -> return
