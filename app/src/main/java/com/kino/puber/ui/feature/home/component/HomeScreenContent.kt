@@ -24,6 +24,7 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.home.model.HomeSectionState
+import com.kino.puber.ui.feature.home.model.HomeSectionType
 import com.kino.puber.ui.feature.home.model.HomeViewState
 
 @Composable
@@ -31,6 +32,7 @@ internal fun HomeScreenContent(
     state: HomeViewState,
     onAction: (UIAction) -> Unit,
     onHeroClick: (Int) -> Unit,
+    onCollectionClick: (Int, String) -> Unit,
 ) {
     when (state) {
         is HomeViewState.Loading -> {
@@ -42,7 +44,12 @@ internal fun HomeScreenContent(
             }
         }
         is HomeViewState.Content -> {
-            HomeContent(state = state, onAction = onAction, onHeroClick = onHeroClick)
+            HomeContent(
+                state = state,
+                onAction = onAction,
+                onHeroClick = onHeroClick,
+                onCollectionClick = onCollectionClick,
+            )
         }
     }
 }
@@ -52,6 +59,7 @@ private fun HomeContent(
     state: HomeViewState.Content,
     onAction: (UIAction) -> Unit,
     onHeroClick: (Int) -> Unit,
+    onCollectionClick: (Int, String) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -81,7 +89,13 @@ private fun HomeContent(
             item(key = "content_${section.type.name}") {
                 HomeSectionRow(
                     items = section.items,
-                    onItemClick = { item -> onAction(CommonAction.ItemSelected(item)) },
+                    onItemClick = { item ->
+                        if (section.type == HomeSectionType.Collections) {
+                            onCollectionClick(item.id, item.title)
+                        } else {
+                            onAction(CommonAction.ItemSelected(item))
+                        }
+                    },
                 )
             }
         }

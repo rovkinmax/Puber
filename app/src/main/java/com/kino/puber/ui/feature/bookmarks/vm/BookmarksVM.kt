@@ -1,5 +1,7 @@
 package com.kino.puber.ui.feature.bookmarks.vm
 
+import com.kino.puber.core.error.ErrorEntity
+import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
@@ -13,9 +15,22 @@ internal class BookmarksVM(
     router: AppRouter,
     private val interactor: BookmarkInteractor,
     private val mapper: VideoItemUIMapper,
+    override val errorHandler: ErrorHandler,
 ) : PuberVM<BookmarksViewState>(router) {
 
     override val initialViewState: BookmarksViewState = BookmarksViewState.Loading
+
+    override fun dispatchError(error: ErrorEntity) {
+        when (val state = stateValue) {
+            is BookmarksViewState.Content -> {
+                showMessage(error.message)
+                if (state.isLoadingItems) {
+                    updateViewState<BookmarksViewState.Content> { copy(isLoadingItems = false) }
+                }
+            }
+            else -> updateViewState(BookmarksViewState.Error(error.message))
+        }
+    }
 
     override fun onStart() {
         loadBookmarks()
@@ -40,35 +55,29 @@ internal class BookmarksVM(
 
     private fun loadBookmarks() {
         launch {
-            interactor.getBookmarks().onSuccess { folders ->
-                val firstFolder = folders.firstOrNull()
-                updateViewState(
-                    BookmarksViewState.Content(
-                        folders = folders,
-                        selectedFolderId = firstFolder?.id,
-                        isLoadingItems = firstFolder != null,
-                    )
+            val folders = interactor.getBookmarks()
+            val firstFolder = folders.firstOrNull()
+            updateViewState(
+                BookmarksViewState.Content(
+                    folders = folders,
+                    selectedFolderId = firstFolder?.id,
+                    isLoadingItems = firstFolder != null,
                 )
-                if (firstFolder != null) {
-                    loadFolderItems(firstFolder.id)
-                }
-            }.onFailure { error ->
-                updateViewState(BookmarksViewState.Error(error.message ?: "Error"))
+            )
+            if (firstFolder != null) {
+                loadFolderItems(firstFolder.id)
             }
         }
     }
 
     private fun loadFolderItems(folderId: Int) {
         launch {
-            interactor.getBookmarkItems(folderId, page = 1).onSuccess { response ->
-                updateViewState<BookmarksViewState.Content> {
-                    copy(
-                        items = mapper.mapShortItemList(response.items),
-                        isLoadingItems = false,
-                    )
-                }
-            }.onFailure {
-                updateViewState<BookmarksViewState.Content> { copy(isLoadingItems = false) }
+            val response = interactor.getBookmarkItems(folderId, page = 1)
+            updateViewState<BookmarksViewState.Content> {
+                copy(
+                    items = mapper.mapShortItemList(response.items),
+                    isLoadingItems = false,
+                )
             }
         }
     }

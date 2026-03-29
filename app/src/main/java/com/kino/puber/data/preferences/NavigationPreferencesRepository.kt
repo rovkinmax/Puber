@@ -48,15 +48,14 @@ class NavigationPreferencesRepository(context: Context) {
 
     private fun ensureRequiredTabs(mode: NavigationMode, tabs: List<TabType>): List<TabType> {
         val result = tabs.toMutableList()
-        if (TabType.Settings !in result) {
-            result.add(TabType.Settings)
-        }
         if (mode == NavigationMode.TopTabs) {
-            // Home tab will be enforced once it exists in TabType
-            val homeName = "Home"
-            val homeTab = TabType.entries.find { it.name == homeName }
-            if (homeTab != null && homeTab !in result) {
-                result.add(0, homeTab)
+            result.removeAll { it == TabType.Search || it == TabType.Settings }
+            if (TabType.Home !in result) {
+                result.add(0, TabType.Home)
+            }
+        } else {
+            if (TabType.Settings !in result) {
+                result.add(TabType.Settings)
             }
         }
         return result
@@ -106,8 +105,6 @@ class NavigationPreferencesRepository(context: Context) {
             "Movies",
             "Series",
             "Collections",
-            "Search",
-            "Settings",
         )
     }
 }

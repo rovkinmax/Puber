@@ -1,5 +1,7 @@
 package com.kino.puber.ui.feature.collections.vm
 
+import com.kino.puber.core.error.ErrorEntity
+import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -11,11 +13,20 @@ import com.kino.puber.ui.feature.collections.model.CollectionsViewState
 internal class CollectionsVM(
     router: AppRouter,
     private val interactor: CollectionInteractor,
+    override val errorHandler: ErrorHandler,
 ) : PuberVM<CollectionsViewState>(router) {
 
     override val initialViewState: CollectionsViewState = CollectionsViewState.Loading
     private var currentPage = 1
     private var hasMore = true
+
+    override fun dispatchError(error: ErrorEntity) {
+        if (stateValue is CollectionsViewState.Content) {
+            showMessage(error.message)
+        } else {
+            updateViewState(CollectionsViewState.Error(error.message))
+        }
+    }
 
     override fun onStart() {
         loadCollections()
@@ -36,32 +47,23 @@ internal class CollectionsVM(
 
     private fun loadCollections() {
         launch {
-            interactor.getCollections(currentPage).onSuccess { response ->
-                val items = response.items.map { c ->
-                    CollectionUIState(
-                        id = c.id,
-                        title = c.title,
-                        imageUrl = c.posters?.medium.orEmpty(),
-                        wideImageUrl = c.posters?.wide.orEmpty(),
-                        count = c.count ?: 0,
-                    )
-                }
-                hasMore = response.pagination.current < response.pagination.total
-                currentPage++
+            val response = interactor.getCollections(currentPage)
+            val items = response.items.map { c ->
+                CollectionUIState(
+                    id = c.id,
+                    title = c.title,
+                    imageUrl = c.posters?.medium.orEmpty(),
+                    wideImageUrl = c.posters?.wide.orEmpty(),
+                    count = c.count ?: 0,
+                )
+            }
+            hasMore = response.pagination.current < response.pagination.total
+            currentPage++
 
-                val currentState = when (val s = initialViewState) {
-                    is CollectionsViewState.Content -> s
-                    else -> CollectionsViewState.Content()
-                }
-                updateViewState<CollectionsViewState> {
-                    when (this) {
-                        is CollectionsViewState.Content -> copy(collections = collections + items)
-                        else -> CollectionsViewState.Content(collections = items)
-                    }
-                }
-            }.onFailure { error ->
-                if (currentPage == 1) {
-                    updateViewState(CollectionsViewState.Error(error.message ?: "Error"))
+            updateViewState<CollectionsViewState> {
+                when (this) {
+                    is CollectionsViewState.Content -> copy(collections = collections + items)
+                    else -> CollectionsViewState.Content(collections = items)
                 }
             }
         }

@@ -7,11 +7,11 @@ import com.kino.puber.data.api.models.PaginatedResponse
 
 class CollectionInteractor(private val api: KinoPubApiClient) {
 
-    suspend fun getCollections(page: Int): Result<PaginatedResponse<KCollection>> {
-        return api.getCollections(page = page)
+    suspend fun getCollections(page: Int): PaginatedResponse<KCollection> {
+        return api.getCollections(page = page).getOrThrow()
     }
 
-    suspend fun getCollectionItems(id: Int): Result<PaginatedResponse<Item>> {
-        return api.getCollectionItems(id)
+    suspend fun getCollectionItems(id: Int): List<Item> {
+        return api.getCollectionItems(id).getOrThrow().items
     }
 }

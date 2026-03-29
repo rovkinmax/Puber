@@ -1,24 +1,35 @@
 package com.kino.puber.ui.feature.home.vm
 
+import com.kino.puber.core.error.ErrorEntity
+import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.home.HomeInteractor
+import com.kino.puber.ui.feature.collections.detail.CollectionDetailScreen
 import com.kino.puber.ui.feature.home.model.HomeSectionState
 import com.kino.puber.ui.feature.home.model.HomeSectionType
 import com.kino.puber.ui.feature.home.model.HomeUIMapper
 import com.kino.puber.ui.feature.home.model.HomeViewState
-import kotlinx.coroutines.async
 
 internal class HomeVM(
     router: AppRouter,
     private val interactor: HomeInteractor,
     private val mapper: HomeUIMapper,
+    override val errorHandler: ErrorHandler,
 ) : PuberVM<HomeViewState>(router) {
 
     override val initialViewState: HomeViewState = HomeViewState.Loading
+
+    override fun dispatchError(error: ErrorEntity) {
+        if (stateValue is HomeViewState.Content) {
+            showMessage(error.message)
+        } else {
+            updateViewState(HomeViewState.Error(error.message))
+        }
+    }
 
     override fun onStart() {
         loadHome()
@@ -30,6 +41,7 @@ internal class HomeVM(
                 val item = action.item as VideoItemUIState
                 router.navigateTo(router.screens.details(item.id))
             }
+            is CommonAction.RetryClicked -> loadHome()
             else -> super.onAction(action)
         }
     }
@@ -38,55 +50,46 @@ internal class HomeVM(
         router.navigateTo(router.screens.details(itemId))
     }
 
+    fun onCollectionClick(id: Int, title: String) {
+        router.navigateTo(CollectionDetailScreen(id, title))
+    }
+
     private fun loadHome() {
-        updateViewState(HomeViewState.Loading)
+        updateViewState(HomeViewState.Content())
+
         launch {
-            val hero = async { interactor.getHotItems() }
-            val cw = async { interactor.getContinueWatchingMovies() }
-            val fresh = async { interactor.getFreshItems() }
-            val popMovies = async { interactor.getPopularByType("movie") }
-            val popSeries = async { interactor.getPopularByType("serial") }
-            val bookmarks = async { interactor.getBookmarkFolders() }
-            val collections = async { interactor.getCollections() }
-            val hot = async { interactor.getHotItems(20) }
-
-            val content = HomeViewState.Content()
-            updateViewState(content)
-
-            hero.await().onSuccess { items ->
-                updateViewState<HomeViewState.Content> { copy(heroItems = mapper.mapHeroItems(items)) }
-            }
-
-            cw.await().onSuccess { items ->
-                mapper.mapItemSection(items, HomeSectionType.ContinueWatching)?.let { addSection(it) }
-            }
-
-            fresh.await().onSuccess { items ->
-                mapper.mapItemSection(items, HomeSectionType.Fresh)?.let { addSection(it) }
-            }
-
-            popMovies.await().onSuccess { items ->
-                mapper.mapItemSection(items, HomeSectionType.PopularMovies)?.let { addSection(it) }
-            }
-
-            popSeries.await().onSuccess { items ->
-                mapper.mapItemSection(items, HomeSectionType.PopularSeries)?.let { addSection(it) }
-            }
-
-            bookmarks.await().onSuccess { folders ->
-                val firstFolder = folders.firstOrNull() ?: return@onSuccess
-                interactor.getBookmarkItems(firstFolder.id).onSuccess { items ->
-                    mapper.mapItemSection(items, HomeSectionType.Bookmarks)?.let { addSection(it) }
-                }
-            }
-
-            collections.await().onSuccess { items ->
-                mapper.mapCollectionSection(items)?.let { addSection(it) }
-            }
-
-            hot.await().onSuccess { items ->
-                mapper.mapItemSection(items, HomeSectionType.Hot)?.let { addSection(it) }
-            }
+            val items = interactor.getHotItems()
+            updateViewState<HomeViewState.Content> { copy(heroItems = mapper.mapHeroItems(items)) }
+        }
+        launch {
+            val items = interactor.getWatchingItems()
+            mapper.mapItemSection(items, HomeSectionType.ContinueWatching)?.let { addSection(it) }
+        }
+        launch {
+            val items = interactor.getFreshItems()
+            mapper.mapItemSection(items, HomeSectionType.Fresh)?.let { addSection(it) }
+        }
+        launch {
+            val items = interactor.getPopularByType("movie")
+            mapper.mapItemSection(items, HomeSectionType.PopularMovies)?.let { addSection(it) }
+        }
+        launch {
+            val items = interactor.getPopularByType("serial")
+            mapper.mapItemSection(items, HomeSectionType.PopularSeries)?.let { addSection(it) }
+        }
+        launch {
+            val folders = interactor.getBookmarkFolders()
+            val firstFolder = folders.firstOrNull() ?: return@launch
+            val items = interactor.getBookmarkItems(firstFolder.id)
+            mapper.mapItemSection(items, HomeSectionType.Bookmarks)?.let { addSection(it) }
+        }
+        launch {
+            val items = interactor.getCollections()
+            mapper.mapCollectionSection(items)?.let { addSection(it) }
+        }
+        launch {
+            val items = interactor.getHotItems(20)
+            mapper.mapItemSection(items, HomeSectionType.Hot)?.let { addSection(it) }
         }
     }
 
