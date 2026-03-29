@@ -25,6 +25,7 @@ internal data class MainTab(
 
 @Parcelize
 enum class TabType(val title: Int, val enabled: Boolean = true) : Parcelable {
+    Search(R.string.main_tabs_search),
     Favourites(R.string.main_tabs_favorites),
     Bookmarks(R.string.main_tabs_bookmarks, enabled = false),
     History(R.string.main_tabs_history, enabled = false),

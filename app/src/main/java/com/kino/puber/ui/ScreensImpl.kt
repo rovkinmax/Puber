@@ -19,6 +19,7 @@ import com.kino.puber.ui.feature.player.component.PlayerScreen
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.favorites.content.FavoritesScreen
 import com.kino.puber.ui.feature.main.component.MainScreen
+import com.kino.puber.ui.feature.search.SearchScreen
 import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.parcelize.Parcelize
 
@@ -29,6 +30,10 @@ internal object ScreensImpl : Screens {
 
     override fun main(): PuberScreen {
         return MainScreen()
+    }
+
+    override fun search(): PuberScreen {
+        return SearchScreen()
     }
 
     override fun favorites(): PuberScreen {

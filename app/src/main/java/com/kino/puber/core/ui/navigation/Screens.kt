@@ -7,6 +7,8 @@ interface Screens {
 
     fun main(): PuberScreen
 
+    fun search(): PuberScreen
+
     fun favorites(): PuberScreen
 
     fun deviceSettings(): PuberScreen

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_hint">Введите название…</string>
+    <string name="search_no_results">Ничего не найдено</string>
+    <string name="search_min_query">Введите минимум 3 символа</string>
+</resources>

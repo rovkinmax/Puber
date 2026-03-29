@@ -15,6 +15,7 @@ import com.adamglin.phosphoricons.duotone.MicrophoneStage
 import com.adamglin.phosphoricons.duotone.MonitorPlay
 import com.adamglin.phosphoricons.duotone.Playlist
 import com.adamglin.phosphoricons.duotone.TelevisionSimple
+import com.adamglin.phosphoricons.duotone.MagnifyingGlass
 import com.adamglin.phosphoricons.duotone.Trophy
 import com.kino.puber.R
 import com.kino.puber.core.system.ResourceProvider
@@ -43,6 +44,7 @@ internal class MainUIMapper(
     private val TabType.icon: ImageVector
         get() {
             return when (this) {
+                TabType.Search -> PhosphorIcons.Duotone.MagnifyingGlass
                 TabType.Favourites -> PhosphorIcons.Duotone.Heart
                 TabType.Bookmarks -> PhosphorIcons.Duotone.BookmarkSimple
                 TabType.History -> PhosphorIcons.Duotone.ClockCounterClockwise
@@ -76,6 +78,7 @@ internal class MainUIMapper(
 
     private fun tabScreen(type: TabType): PuberScreen {
         return when (type) {
+            TabType.Search -> screens.search()
             TabType.Favourites -> screens.favorites()
             TabType.Movies,
             TabType.Series,
