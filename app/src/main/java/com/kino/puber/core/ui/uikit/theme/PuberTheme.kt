@@ -9,6 +9,8 @@ data object PuberTheme {
     data object Defaults {
         val VideoItemWidth = 120.dp
         val VideoItemHeight = 180.dp
+        val HorizontalVideoItemHeight = 150.dp
+        const val HorizontalVideoItemAspectRatio = 16f / 9f
         const val DetailsWeight = 1F
         const val ContentWeight = 1F
     }

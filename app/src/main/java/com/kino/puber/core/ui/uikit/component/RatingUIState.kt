@@ -1,5 +1,6 @@
 package com.kino.puber.core.ui.uikit.component
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -84,6 +85,43 @@ fun Rating(
     }
 }
 
+@Composable
+fun RatingVertical(
+    state: RatingUIState,
+    modifier: Modifier = Modifier,
+) {
+    val iconResource = when (state) {
+        is RatingUIState.KP -> R.drawable.ic_kinopoisk
+        is RatingUIState.IMDB -> R.drawable.ic_imdb
+        is RatingUIState.PUB -> R.drawable.ic_kinopub
+    }
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            modifier = Modifier.size(16.dp),
+            painter = painterResource(iconResource),
+            contentDescription = "Rating",
+            tint = Color.Unspecified,
+        )
+
+        Box(modifier = Modifier.placeholder(visible = state.isLoading)) {
+            Text(
+                modifier = Modifier
+                    .drawWithContent {
+                        if (state.isLoading.not()) {
+                            drawContent()
+                        }
+                    },
+                text = state.value,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 fun RatingPreview() = PuberTheme {
@@ -91,5 +129,15 @@ fun RatingPreview() = PuberTheme {
         Rating(RatingUIState.IMDB(value = "7.5"))
         Rating(RatingUIState.KP(value = "7.5"))
         Rating(RatingUIState.PUB(value = "7.5"))
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun RatingVerticalPreview() = PuberTheme {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        RatingVertical(RatingUIState.KP(value = "8.2"))
+        RatingVertical(RatingUIState.IMDB(value = "7.5"))
+        RatingVertical(RatingUIState.PUB(value = "9.1"))
     }
 }

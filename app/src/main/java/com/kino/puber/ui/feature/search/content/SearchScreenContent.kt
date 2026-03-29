@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -40,7 +42,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.modifier.placeholder
-import com.kino.puber.core.ui.uikit.component.moviesList.VideoItem
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.core.ui.uikit.model.CommonAction
@@ -51,7 +53,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.size
 import kotlinx.coroutines.delay
 
-private const val GRID_COLUMNS = 5
+private const val GRID_COLUMNS = 3
 private const val SHIMMER_ITEM_COUNT = 15
 private const val SEARCH_TAG = "search_query"
 private const val FOCUS_TARGET_TEXT_FIELD = 0
@@ -207,10 +209,10 @@ private fun SearchResultsGrid(
             .focusRestorer(),
         contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(32.dp),
     ) {
         itemsIndexed(state.items, key = { _, item -> item.id }) { _, item ->
-            VideoItem(
+            VideoItemHorizontal(
                 state = item.copy(showTitle = true),
                 onClick = { onItemClick(item) },
             )
@@ -225,16 +227,14 @@ private fun ShimmerSearchGrid() {
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(32.dp),
         userScrollEnabled = false,
     ) {
         items(SHIMMER_ITEM_COUNT, contentType = { "shimmer" }) {
             Box(
                 modifier = Modifier
-                    .size(
-                        width = PuberTheme.Defaults.VideoItemWidth,
-                        height = PuberTheme.Defaults.VideoItemHeight,
-                    )
+                    .height(PuberTheme.Defaults.HorizontalVideoItemHeight)
+                    .aspectRatio(PuberTheme.Defaults.HorizontalVideoItemAspectRatio)
                     .placeholder(visible = true)
                     .focusable(),
             )

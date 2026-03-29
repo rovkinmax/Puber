@@ -4,8 +4,9 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -38,10 +39,8 @@ internal fun ShimmerSectionCards() {
 private fun ShimmerVideoItem() {
     Box(
         modifier = Modifier
-            .size(
-                width = PuberTheme.Defaults.VideoItemWidth,
-                height = PuberTheme.Defaults.VideoItemHeight,
-            )
+            .height(PuberTheme.Defaults.HorizontalVideoItemHeight)
+            .aspectRatio(PuberTheme.Defaults.HorizontalVideoItemAspectRatio)
             .placeholder(visible = true)
             .focusable(),
     )

@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Badge
@@ -110,7 +112,15 @@ private fun NavigationDrawerScope.MainSideMenuContent(
         Modifier
             .background(backgroundColor.value)
             .fillMaxHeight()
-            .padding(horizontal = 12.dp)
+            .then(
+                if (drawerState.isOpen) {
+                    Modifier.padding(horizontal = 12.dp)
+                } else {
+                    Modifier
+                        .requiredWidth(0.dp)
+                        .clipToBounds()
+                }
+            )
             .verticalScroll(rememberScrollState())
             .focusRestorer(fallbackFocusItem)
             .focusGroup(),
@@ -194,7 +204,6 @@ private fun MainScreenContentBody(
     focusRequester: FocusRequester,
     tabRouter: TabRouter,
 ) {
-    val closeDrawerWidth = 80.dp
     // Re-request focus on content after navigation return (push/pop).
     // MainScreenContentBody stays in composition during tab switches,
     // so this only fires on push/pop — safe for tab switching.
@@ -205,7 +214,6 @@ private fun MainScreenContentBody(
     TabComponent(tabRouter = tabRouter) {
         Box(
             Modifier
-                .padding(start = closeDrawerWidth)
                 .focusRequester(focusRequester)
                 .focusRestorer()
                 .focusGroup()

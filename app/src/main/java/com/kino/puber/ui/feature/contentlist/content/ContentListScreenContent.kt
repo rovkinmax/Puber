@@ -52,7 +52,7 @@ internal fun ContentListScreenContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(PuberTheme.Defaults.ContentWeight),
-            contentPadding = PaddingValues(bottom = PuberTheme.Defaults.VideoItemHeight),
+            contentPadding = PaddingValues(bottom = PuberTheme.Defaults.HorizontalVideoItemHeight),
         ) {
             sections.forEachIndexed { index, config ->
                 val isLastSection = index == sections.lastIndex

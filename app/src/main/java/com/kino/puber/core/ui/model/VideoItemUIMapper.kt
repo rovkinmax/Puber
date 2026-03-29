@@ -19,6 +19,7 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
             title = item.title,
             imageUrl = item.posters?.medium.orEmpty(),
             bigImageUrl = item.posters?.big.orEmpty(),
+            wideImageUrl = item.posters?.wide.orEmpty(),
             unwatchedCount = item.new,
             ratings = buildRatings(item),
         )

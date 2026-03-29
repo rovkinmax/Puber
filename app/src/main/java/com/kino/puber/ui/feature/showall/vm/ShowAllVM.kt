@@ -5,7 +5,6 @@ import com.kino.puber.core.paginator.PagingVM
 import com.kino.puber.core.paginator.Paginator
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
-import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -13,7 +12,6 @@ import com.kino.puber.data.api.models.Item
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.showall.model.ShowAllViewState
-import kotlinx.coroutines.Job
 
 internal class ShowAllVM(
     paginator: Paginator.Store<Item>,
@@ -25,7 +23,6 @@ internal class ShowAllVM(
 ) : PagingVM<Item, ShowAllViewState>(paginator, router, errorHandler) {
 
     private var currentPage = 0
-    private var focusedItemJob: Job? = null
     private var cachedInput: List<Item>? = null
     private var cachedOutput: List<VideoItemUIState> = emptyList()
 
@@ -56,21 +53,7 @@ internal class ShowAllVM(
         when (action) {
             is CommonAction.LoadMore -> notifyLoadNextPage()
             is CommonAction.RetryClicked -> resetPaging()
-            is CommonAction.ItemFocused<*> -> onItemFocused(action.item as VideoItemUIState)
             is CommonAction.ItemSelected<*> -> { /* TODO: navigate to details */ }
-        }
-    }
-
-    private fun onItemFocused(item: VideoItemUIState) {
-        focusedItemJob?.cancel()
-        focusedItemJob = launch {
-            updateViewState<ShowAllViewState.Content> {
-                copy(selectedItem = VideoDetailsUIState.Loading)
-            }
-            val details = interactor.getItemDetails(item.id)
-            updateViewState<ShowAllViewState.Content> {
-                copy(selectedItem = mapper.mapDetailedItem(details))
-            }
         }
     }
 

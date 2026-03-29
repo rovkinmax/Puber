@@ -42,6 +42,7 @@ data class VideoItemUIState(
     val title: String,
     val imageUrl: String,
     val bigImageUrl: String,
+    val wideImageUrl: String = "",
     val showTitle: Boolean = false,
     val unwatchedCount: Int? = null,
     val ratings: List<RatingUIState> = emptyList(),
