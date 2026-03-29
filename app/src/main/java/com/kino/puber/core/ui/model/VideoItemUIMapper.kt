@@ -17,9 +17,9 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
         return VideoItemUIState(
             id = item.id,
             title = item.title,
-            imageUrl = item.posters?.medium.orEmpty(),
-            bigImageUrl = item.posters?.big.orEmpty(),
-            wideImageUrl = item.posters?.wide.orEmpty(),
+            imageUrl = item.posters?.medium.orEmpty().ensureHttps(),
+            bigImageUrl = item.posters?.big.orEmpty().ensureHttps(),
+            wideImageUrl = item.posters?.wide.orEmpty().ensureHttps(),
             unwatchedCount = item.new,
             ratings = buildRatings(item),
         )
@@ -30,7 +30,7 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
             id = item.id,
             title = item.title.formatTitle(),
             description = item.plot.orEmpty(),
-            imageUrl = item.posters?.wide.orEmpty(),
+            imageUrl = item.posters?.wide.orEmpty().ensureHttps(),
             trailerUrl = item.trailer?.url.orEmpty(),
             ratings = buildRatings(item),
             genres = item.genres.orEmpty().joinToString(", ") { it.title },
@@ -100,5 +100,9 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
 
     private fun String.formatTitle(): String {
         return split("/").joinToString(separator = "\n") { it.trim() }
+    }
+
+    private fun String.ensureHttps(): String {
+        return if (startsWith("http://")) replaceFirst("http://", "https://") else this
     }
 }

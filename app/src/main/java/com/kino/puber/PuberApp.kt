@@ -5,6 +5,7 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
+import coil3.util.DebugLogger
 import coil3.request.CachePolicy
 import coil3.request.crossfade
 import coil3.memory.MemoryCache
@@ -61,6 +62,11 @@ class PuberApp : Application(), SingletonImageLoader.Factory {
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(this)
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    logger(DebugLogger())
+                }
+            }
             .crossfade(false)
             .networkCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)

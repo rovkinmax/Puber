@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,8 +34,8 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.kino.puber.core.ui.uikit.component.Rating
 import com.kino.puber.core.ui.uikit.component.RatingUIState
-import com.kino.puber.core.ui.uikit.component.RatingVertical
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 
 @Composable
@@ -59,27 +58,29 @@ fun VideoItemHorizontal(
                     .filter { it.isNotEmpty() }
             }
             var urlIndex by remember(state.id) { mutableIntStateOf(0) }
-            val currentUrl = fallbackUrls.getOrElse(urlIndex) { "" }
+            val currentUrl = fallbackUrls.getOrNull(urlIndex)
 
-            val imageRequest = remember(currentUrl) {
-                ImageRequest.Builder(context)
-                    .data(currentUrl)
-                    .crossfade(true)
-                    .build()
+            if (currentUrl != null) {
+                val imageRequest = remember(currentUrl) {
+                    ImageRequest.Builder(context)
+                        .data(currentUrl)
+                        .crossfade(true)
+                        .build()
+                }
+                AsyncImage(
+                    modifier = Modifier.fillMaxSize(),
+                    model = imageRequest,
+                    placeholder = rememberVectorPainter(Icons.Default.LocalMovies),
+                    error = rememberVectorPainter(Icons.Default.LocalMovies),
+                    onError = {
+                        if (urlIndex < fallbackUrls.lastIndex) {
+                            urlIndex++
+                        }
+                    },
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                )
             }
-            AsyncImage(
-                modifier = Modifier.fillMaxSize(),
-                model = imageRequest,
-                placeholder = rememberVectorPainter(Icons.Default.LocalMovies),
-                error = rememberVectorPainter(Icons.Default.LocalMovies),
-                onError = {
-                    if (urlIndex < fallbackUrls.lastIndex) {
-                        urlIndex++
-                    }
-                },
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-            )
 
             val scrimColor = MaterialTheme.colorScheme.scrim
             val gradientBrush = remember(scrimColor) {
@@ -114,9 +115,20 @@ fun VideoItemHorizontal(
                             color = MaterialTheme.colorScheme.onPrimary,
                         )
                     }
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.weight(1f))
                 }
 
+                if (state.ratings.isNotEmpty()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        state.ratings.forEach { rating ->
+                            Rating(state = rating)
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
                 Text(
                     text = state.title,
                     style = MaterialTheme.typography.titleSmall,
@@ -125,17 +137,6 @@ fun VideoItemHorizontal(
                     overflow = TextOverflow.Ellipsis,
                 )
 
-                if (state.ratings.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        state.ratings.forEach { rating ->
-                            RatingVertical(state = rating)
-                        }
-                    }
-                }
             }
         }
     }
