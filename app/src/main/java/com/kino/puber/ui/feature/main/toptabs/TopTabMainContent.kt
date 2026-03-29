@@ -40,13 +40,14 @@ internal fun TopTabMainContent(
     // Track the last user-selected tab to avoid onFocus-triggered switching
     var userSelectedIndex by remember { mutableIntStateOf(selectedIndex) }
 
-    BackHandler {
-        val selectedTab = state.tabs.getOrNull(selectedIndex)
-        if (selectedTab?.type != TabType.Home) {
-            val homeTab = state.tabs.firstOrNull { it.type == TabType.Home }
-            if (homeTab != null) {
-                onAction(CommonAction.ItemSelected(homeTab))
-            }
+    val isOnHome = state.tabs.getOrNull(selectedIndex)?.type == TabType.Home
+
+    // Only intercept Back when NOT on Home — switch to Home tab.
+    // When on Home, don't set BackHandler at all — system handles exit.
+    BackHandler(enabled = !isOnHome) {
+        val homeTab = state.tabs.firstOrNull { it.type == TabType.Home }
+        if (homeTab != null) {
+            onAction(CommonAction.ItemSelected(homeTab))
         }
     }
 
