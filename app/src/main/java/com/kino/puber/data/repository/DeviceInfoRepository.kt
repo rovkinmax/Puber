@@ -16,13 +16,37 @@ internal class DeviceInfoRepository(
     private val apiClient: KinoPubApiClient,
 ) : IDeviceInfoRepository {
     override fun is4kSupported(): Boolean {
-        //todo вот тут не правильно определяется результат, потому что у меня телик сяоми 4к, но на нем показывает что нет поддержки
+        return isDisplay4kSupported() || is4kHardwareDecoderSupported()
+    }
+
+    private fun isDisplay4kSupported(): Boolean {
         val display = getPrimaryDisplay(context)
         val modes = display?.supportedModes ?: return false
-
         return modes.any { mode ->
             mode.physicalWidth >= 3840 && mode.physicalHeight >= 2160
         }
+    }
+
+    private fun is4kHardwareDecoderSupported(): Boolean {
+        val codecList = MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos
+        for (codec in codecList) {
+            if (codec.isEncoder) continue
+            if (codec.supportedTypes.none { it.equals("video/hevc", ignoreCase = true) }) continue
+
+            val isHardware = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                codec.isHardwareAccelerated
+            } else {
+                !codec.name.contains("omx.google", ignoreCase = true)
+            }
+            if (!isHardware) continue
+
+            val caps = codec.getCapabilitiesForType("video/hevc")
+            val videoCaps = caps.videoCapabilities ?: continue
+            if (videoCaps.isSizeSupported(3840, 2160)) {
+                return true
+            }
+        }
+        return false
     }
 
     override fun isHdrSupported(): Boolean {
