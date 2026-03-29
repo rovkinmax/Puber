@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -17,6 +18,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import com.kino.puber.core.ui.navigation.TabRouter
 import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
 import com.kino.puber.core.ui.navigation.component.TabComponent
@@ -37,17 +39,24 @@ internal fun TopTabMainContent(
     val contentFocus = rememberFocusRequesterOnLaunch()
     val selectedIndex = state.tabs.indexOfFirst { it.isSelected }.coerceAtLeast(0)
 
-    // Track the last user-selected tab to avoid onFocus-triggered switching
     var userSelectedIndex by remember { mutableIntStateOf(selectedIndex) }
+    var isContentFocused by remember { mutableStateOf(true) }
 
     val isOnHome = state.tabs.getOrNull(selectedIndex)?.type == TabType.Home
 
-    // Only intercept Back when NOT on Home — switch to Home tab.
-    // When on Home, don't set BackHandler at all — system handles exit.
-    BackHandler(enabled = !isOnHome) {
-        val homeTab = state.tabs.firstOrNull { it.type == TabType.Home }
-        if (homeTab != null) {
-            onAction(CommonAction.ItemSelected(homeTab))
+    // Back logic:
+    // Content focused → move focus to TabRow
+    // TabRow focused, not Home → switch to Home
+    // TabRow focused, Home → system exit (BackHandler disabled)
+    BackHandler(enabled = isContentFocused || !isOnHome) {
+        if (isContentFocused) {
+            tabBarFocus.requestFocus()
+        } else {
+            // TabRow focused, not Home → switch to Home
+            val homeTab = state.tabs.firstOrNull { it.type == TabType.Home }
+            if (homeTab != null) {
+                onAction(CommonAction.ItemSelected(homeTab))
+            }
         }
     }
 
@@ -63,18 +72,21 @@ internal fun TopTabMainContent(
                         onAction(CommonAction.ItemSelected(tab))
                     }
                 },
-                modifier = Modifier.focusRequester(tabBarFocus),
+                modifier = Modifier
+                    .focusRequester(tabBarFocus)
+                    .onFocusChanged { if (it.hasFocus) isContentFocused = false },
             )
 
             Box(
                 Modifier
                     .weight(1f)
                     .focusRequester(contentFocus)
+                    .onFocusChanged { if (it.hasFocus) isContentFocused = true }
                     .focusProperties {
                         exit = { direction ->
-                            // Block upward focus escape from content to TabRow
                             if (direction == FocusDirection.Up) {
-                                FocusRequester.Cancel
+                                // Up from content → go to TabRow
+                                tabBarFocus
                             } else {
                                 FocusRequester.Default
                             }
