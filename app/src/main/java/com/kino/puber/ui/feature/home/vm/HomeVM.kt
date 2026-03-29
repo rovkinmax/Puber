@@ -42,7 +42,7 @@ internal class HomeVM(
         updateViewState(HomeViewState.Loading)
         launch {
             val hero = async { interactor.getHotItems() }
-            val cw = async { interactor.getContinueWatching() }
+            val cw = async { interactor.getContinueWatchingMovies() }
             val fresh = async { interactor.getFreshItems() }
             val popMovies = async { interactor.getPopularByType("movie") }
             val popSeries = async { interactor.getPopularByType("serial") }
@@ -58,7 +58,7 @@ internal class HomeVM(
             }
 
             cw.await().onSuccess { items ->
-                mapper.mapHistorySection(items)?.let { addSection(it) }
+                mapper.mapItemSection(items, HomeSectionType.ContinueWatching)?.let { addSection(it) }
             }
 
             fresh.await().onSuccess { items ->

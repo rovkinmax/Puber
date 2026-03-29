@@ -552,8 +552,10 @@ class KinoPubApiClient(
     /**
      * Get genres
      */
-    suspend fun getGenres(): Result<List<Genre>> = apiCall {
-        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}genres")
+    suspend fun getGenres(type: String? = null): Result<List<Genre>> = apiCall {
+        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}genres") {
+            type?.let { parameter("type", it) }
+        }
     }
 
     /**

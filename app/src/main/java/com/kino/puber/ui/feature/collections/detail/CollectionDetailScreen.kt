@@ -23,6 +23,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.model.VideoItemUIMapper
+import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
@@ -54,6 +55,7 @@ internal class CollectionDetailScreen(
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
         val interactor = koinInject<CollectionInteractor>()
         val mapper = koinInject<VideoItemUIMapper>()
+        val router = koinInject<AppRouter>()
 
         var items by remember { mutableStateOf<List<VideoItemUIState>?>(null) }
 
@@ -90,7 +92,7 @@ internal class CollectionDetailScreen(
                     itemsIndexed(currentItems, key = { _, item -> item.id }) { _, item ->
                         VideoItemHorizontal(
                             state = item,
-                            onClick = { },
+                            onClick = { router.navigateTo(router.screens.details(item.id)) },
                         )
                     }
                 }

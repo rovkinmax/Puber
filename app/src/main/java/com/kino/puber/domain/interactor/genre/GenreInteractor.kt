@@ -5,22 +5,20 @@ import com.kino.puber.data.api.models.Genre
 
 class GenreInteractor(private val api: KinoPubApiClient) {
 
-    private var cachedGenres: List<Genre>? = null
-    private var cacheTimestamp: Long = 0L
+    private val cache = mutableMapOf<String?, CacheEntry>()
 
-    suspend fun getGenres(): Result<List<Genre>> {
-        val cached = cachedGenres
-        if (cached != null && !isCacheExpired()) {
-            return Result.success(cached)
+    suspend fun getGenres(type: String? = null): Result<List<Genre>> {
+        val cached = cache[type]
+        if (cached != null && !cached.isExpired()) {
+            return Result.success(cached.genres)
         }
-        return api.getGenres().onSuccess { genres ->
-            cachedGenres = genres
-            cacheTimestamp = System.currentTimeMillis()
+        return api.getGenres(type).onSuccess { genres ->
+            cache[type] = CacheEntry(genres, System.currentTimeMillis())
         }
     }
 
-    private fun isCacheExpired(): Boolean {
-        return System.currentTimeMillis() - cacheTimestamp > CACHE_TTL_MS
+    private data class CacheEntry(val genres: List<Genre>, val timestamp: Long) {
+        fun isExpired(): Boolean = System.currentTimeMillis() - timestamp > CACHE_TTL_MS
     }
 
     private companion object {

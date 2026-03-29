@@ -18,6 +18,7 @@ import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.parcelize.Parcelize
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.module.dsl.scopedOf
+import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -38,7 +39,16 @@ internal class ContentListScreen(
         scope(named(scopeId)) {
             scopedOf(::ContentListInteractor)
             scoped { VideoItemUIMapper(get()) }
-            viewModelOf(::ContentListVM)
+            viewModel {
+                ContentListVM(
+                    router = get(),
+                    interactor = get(),
+                    mapper = get(),
+                    genreInteractor = get(),
+                    navPrefs = get(),
+                    contentType = sections.firstOrNull()?.type,
+                )
+            }
 
             sections.forEach { sec ->
                 scoped(named(sec.id)) {
