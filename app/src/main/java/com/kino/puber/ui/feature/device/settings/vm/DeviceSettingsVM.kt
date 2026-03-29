@@ -1,12 +1,16 @@
 package com.kino.puber.ui.feature.device.settings.vm
 
+import com.kino.puber.R
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.model.NavigationMode
+import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.data.preferences.NavigationPreferencesRepository
+import com.kino.puber.data.repository.PlayerPreferencesRepository
 import com.kino.puber.domain.interactor.device.DeviceSettingType
 import com.kino.puber.domain.interactor.device.IDeviceInfoInteractor
 import com.kino.puber.domain.interactor.device.IDeviceSettingInteractor
@@ -17,8 +21,6 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
-import com.kino.puber.data.preferences.NavigationPreferencesRepository
-import com.kino.puber.data.repository.PlayerPreferencesRepository
 
 internal class DeviceSettingsVM(
     private val deviceSettingInteractor: IDeviceSettingInteractor,
@@ -27,6 +29,7 @@ internal class DeviceSettingsVM(
     private val playerPreferencesRepository: PlayerPreferencesRepository,
     private val navigationPreferencesRepository: NavigationPreferencesRepository,
     override val errorHandler: ErrorHandler,
+    private val resources: ResourceProvider,
     router: AppRouter,
 ) : PuberVM<DeviceSettingsViewState>(router) {
 
@@ -54,7 +57,10 @@ internal class DeviceSettingsVM(
                     updateViewState(
                         stateValue.copy(
                             state = DeviceSettingsState.Success(
-                                settings = deviceUiSettingsMapper.mapSettings(device.device.settings, capabilities),
+                                settings = deviceUiSettingsMapper.mapSettings(
+                                    device.device.settings,
+                                    capabilities
+                                ),
                                 device = deviceUiSettingsMapper.mapDevice(device.device),
                                 skipIntroEnabled = playerPreferencesRepository.skipIntroEnabled,
                                 skipRecapEnabled = playerPreferencesRepository.skipRecapEnabled,
@@ -89,7 +95,12 @@ internal class DeviceSettingsVM(
         val currentState = stateValue.state
         if (currentState is DeviceSettingsState.Success) {
             updateViewState(
-                stateValue.copy(state = currentState.copy(savingOptionId = null, savingToggleType = null))
+                stateValue.copy(
+                    state = currentState.copy(
+                        savingOptionId = null,
+                        savingToggleType = null
+                    )
+                )
             )
         }
         showMessage(error.message)
@@ -123,7 +134,10 @@ internal class DeviceSettingsVM(
                 if (revertState is DeviceSettingsState.Success) {
                     updateViewState(
                         stateValue.copy(
-                            state = applyToggle(revertState, revertedSetting).copy(savingToggleType = null)
+                            state = applyToggle(
+                                revertState,
+                                revertedSetting
+                            ).copy(savingToggleType = null)
                         )
                     )
                 }
@@ -218,8 +232,9 @@ internal class DeviceSettingsVM(
     private fun onChangeNavigationMode(mode: NavigationMode) {
         val currentState = stateValue.state
         if (currentState !is DeviceSettingsState.Success) return
+        if (currentState.navigationMode == mode) return
         navigationPreferencesRepository.setNavigationMode(mode)
-        updateViewState(stateValue.copy(state = currentState.copy(navigationMode = mode)))
+        showMessage(resources.getString(R.string.device_settings_restart_required))
     }
 
     private fun onUnlinkDevice() {
