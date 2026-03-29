@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -28,6 +27,7 @@ import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.model.TabType
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -43,8 +43,8 @@ internal fun TopTabMainContent(
     val selectedIndex = state.tabs.indexOfFirst { it.isSelected }.coerceAtLeast(0)
     val scope = rememberCoroutineScope()
 
-    var userSelectedIndex by remember { mutableIntStateOf(selectedIndex) }
     var isContentFocused by remember { mutableStateOf(true) }
+    var pendingSelectionJob by remember { mutableStateOf<Job?>(null) }
 
     val isOnHome = state.tabs.getOrNull(selectedIndex)?.type == TabType.Home
 
@@ -69,15 +69,15 @@ internal fun TopTabMainContent(
                 tabs = state.tabs,
                 selectedIndex = selectedIndex,
                 onTabSelected = { index ->
-                    if (index != userSelectedIndex) {
-                        userSelectedIndex = index
-                        val tab = state.tabs.getOrNull(index) ?: return@TopTabBar
-                        onAction(CommonAction.ItemSelected(tab))
-                        // New content screen will try to auto-focus via rememberFocusRequesterOnLaunch (100ms delay).
-                        // Re-claim focus on TabRow after content's auto-focus fires.
-                        scope.launch {
-                            delay(150)
-                            tabBarFocus.requestFocus()
+                    // Debounce: only switch tab if focus stays on it for 300ms.
+                    // Prevents bouncing when scrolling through tabs quickly
+                    // and when content auto-focus triggers onFocus on wrong tab.
+                    pendingSelectionJob?.cancel()
+                    if (index != selectedIndex) {
+                        pendingSelectionJob = scope.launch {
+                            delay(TAB_SELECTION_DEBOUNCE_MS)
+                            val tab = state.tabs.getOrNull(index) ?: return@launch
+                            onAction(CommonAction.ItemSelected(tab))
                         }
                     }
                 },
@@ -108,3 +108,5 @@ internal fun TopTabMainContent(
         }
     }
 }
+
+private const val TAB_SELECTION_DEBOUNCE_MS = 300L
