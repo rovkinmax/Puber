@@ -5,6 +5,7 @@ import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.uikit.component.RatingUIState
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.data.api.models.History
 import com.kino.puber.data.api.models.Item
 
 class VideoItemUIMapper(private val resources: ResourceProvider) {
@@ -23,6 +24,13 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
             unwatchedCount = item.new,
             ratings = buildRatings(item),
         )
+    }
+
+    fun mapHistoryItem(history: History): VideoItemUIState {
+        val progress = history.video?.watching?.let { w ->
+            if (w.duration > 0) w.time.toFloat() / w.duration.toFloat() else null
+        }
+        return mapShortItem(history.item).copy(progressPercent = progress)
     }
 
     fun mapDetailedItem(item: Item): VideoDetailsUIState {

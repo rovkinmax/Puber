@@ -17,6 +17,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.kino.puber.core.ui.uikit.component.GenreChipBar
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
@@ -41,17 +42,27 @@ internal fun ContentListScreenContent(
             .fillMaxSize()
             .focusRequester(mainContentFocus),
     ) {
-        VideoItemGridDetails(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(PuberTheme.Defaults.DetailsWeight),
-            state = state.selectedItem,
-        )
+        if (state.showDetailPanel) {
+            VideoItemGridDetails(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(PuberTheme.Defaults.DetailsWeight),
+                state = state.selectedItem,
+            )
+        }
+
+        if (state.showGenreChips && state.genres.isNotEmpty()) {
+            GenreChipBar(
+                genres = state.genres,
+                selectedGenreId = state.selectedGenreId,
+                onGenreSelected = { genreId -> onAction(ContentListAction.GenreSelected(genreId)) },
+            )
+        }
 
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(PuberTheme.Defaults.ContentWeight),
+                .weight(if (state.showDetailPanel) PuberTheme.Defaults.ContentWeight else 1f),
             contentPadding = PaddingValues(bottom = PuberTheme.Defaults.HorizontalVideoItemHeight),
         ) {
             sections.forEachIndexed { index, config ->

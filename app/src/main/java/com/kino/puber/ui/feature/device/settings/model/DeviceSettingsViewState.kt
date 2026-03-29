@@ -1,5 +1,6 @@
 package com.kino.puber.ui.feature.device.settings.model
 
+import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.domain.interactor.device.DeviceSettingType
 
 internal data class DeviceSettingsViewState(
@@ -19,5 +20,6 @@ internal sealed interface DeviceSettingsState {
         val skipRecapEnabled: Boolean = true,
         val skipCreditsEnabled: Boolean = true,
         val debugOverlayEnabled: Boolean = false,
+        val navigationMode: NavigationMode = NavigationMode.SideDrawer,
     ) : DeviceSettingsState
 }

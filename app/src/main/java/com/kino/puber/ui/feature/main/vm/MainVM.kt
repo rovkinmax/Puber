@@ -5,6 +5,7 @@ import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.TabRouter
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.MainUIMapper
 import com.kino.puber.ui.feature.main.model.MainViewState
@@ -18,12 +19,14 @@ internal class MainVM(
     override val initialViewState = MainViewState()
 
     override fun onStart() {
-        updateViewState(mainUIMapper.buildViewState())
-        tabRouter.openTab(mainUIMapper.buildTabContent(getStartTab()))
-    }
-
-    private fun getStartTab(): TabType {
-        return TabType.Favourites
+        val state = mainUIMapper.buildViewState()
+        updateViewState(state)
+        val startTab = if (state.navigationMode == NavigationMode.TopTabs) {
+            TabType.Home
+        } else {
+            TabType.Favourites
+        }
+        tabRouter.openTab(mainUIMapper.buildTabContent(startTab))
     }
 
     override fun onAction(action: UIAction) {

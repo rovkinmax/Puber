@@ -34,6 +34,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.kino.puber.R
+import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.core.ui.uikit.theme.highlightOnFocus
@@ -200,6 +201,33 @@ private fun DeviceSettingsList(
             )
         }
 
+        // Navigation mode section
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        item {
+            Column {
+                Text(
+                    text = stringResource(R.string.settings_navigation_mode),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = stringResource(R.string.settings_navigation_restart_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        item {
+            NavigationModeRadioGroup(
+                currentMode = state.navigationMode,
+                onModeSelected = { mode ->
+                    onAction(DeviceSettingsActions.ChangeNavigationMode(mode))
+                },
+            )
+        }
+
         // Debug section
         item {
             Spacer(modifier = Modifier.height(16.dp))
@@ -252,6 +280,53 @@ private fun LocalToggleItem(
             checked = checked,
             onCheckedChange = null,
         )
+    }
+}
+
+@Composable
+private fun NavigationModeRadioGroup(
+    currentMode: NavigationMode,
+    onModeSelected: (NavigationMode) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectableGroup(),
+    ) {
+        NavigationMode.entries.forEach { mode ->
+            val label = when (mode) {
+                NavigationMode.SideDrawer -> stringResource(R.string.settings_navigation_drawer)
+                NavigationMode.TopTabs -> stringResource(R.string.settings_navigation_top_tabs)
+            }
+            val isSelected = mode == currentMode
+            val interactionSource = remember { MutableInteractionSource() }
+            val isFocused by interactionSource.collectIsFocusedAsState()
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .highlightOnFocus(isFocused)
+                    .selectable(
+                        selected = isSelected,
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = { onModeSelected(mode) },
+                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.RadioButton(
+                    selected = isSelected,
+                    onClick = null,
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
+            }
+        }
     }
 }
 
