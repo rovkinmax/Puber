@@ -42,6 +42,7 @@ private fun ShimmerVideoItem() {
             .height(PuberTheme.Defaults.HorizontalVideoItemHeight)
             .aspectRatio(PuberTheme.Defaults.HorizontalVideoItemAspectRatio)
             .placeholder(visible = true)
+            // focusable intentionally: prevents vertical scroll lag between section rows
             .focusable(),
     )
 }

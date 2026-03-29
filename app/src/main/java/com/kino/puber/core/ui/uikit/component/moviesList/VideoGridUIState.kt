@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kino.puber.core.ui.uikit.component.FadeGradient
+import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 
 @Immutable
@@ -134,53 +135,55 @@ private fun VideoGridItems(
         val rowFocusRequester = remember { FocusRequester() }
         val savedItemFocusRequester = remember { FocusRequester() }
 
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(rowFocusRequester)
-                .focusProperties {
-                    onEnter = {
-                        if (requestedFocusDirection == FocusDirection.Down ||
-                            requestedFocusDirection == FocusDirection.Up
-                        ) {
-                            savedItemFocusRequester.requestFocus()
-                            cancelFocusChange()
+        PositionFocusedItemInLazyLayout {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(rowFocusRequester)
+                    .focusProperties {
+                        onEnter = {
+                            if (requestedFocusDirection == FocusDirection.Down ||
+                                requestedFocusDirection == FocusDirection.Up
+                            ) {
+                                savedItemFocusRequester.requestFocus()
+                                cancelFocusChange()
+                            }
                         }
                     }
-                }
-                .focusRestorer(savedItemFocusRequester),
-            state = listState,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(16.dp),
-        ) {
-            itemsIndexed(items.items, key = { _, item -> item.id }) { indexR, item ->
-                val isFallbackTarget = if (isTargetRow) {
-                    indexR == focusedItemIndex
-                } else {
-                    indexR == 0
-                }
+                    .focusRestorer(savedItemFocusRequester),
+                state = listState,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(16.dp),
+            ) {
+                itemsIndexed(items.items, key = { _, item -> item.id }) { indexR, item ->
+                    val isFallbackTarget = if (isTargetRow) {
+                        indexR == focusedItemIndex
+                    } else {
+                        indexR == 0
+                    }
 
-                VideoItem(
-                    modifier = Modifier
-                        .then(
-                            if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
-                            else Modifier
-                        )
-                        .onFocusChanged { state ->
-                            if (state.isFocused) {
-                                focusedItemIndex = indexR
-                                onItemFocused(item)
-                            }
+                    VideoItem(
+                        modifier = Modifier
+                            .then(
+                                if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
+                                else Modifier
+                            )
+                            .onFocusChanged { state ->
+                                if (state.isFocused) {
+                                    focusedItemIndex = indexR
+                                    onItemFocused(item)
+                                }
+                            },
+                        state = item,
+                        onClick = {
+                            runCatching { rowFocusRequester.saveFocusedChild() }
+                            onItemClick(item)
                         },
-                    state = item,
-                    onClick = {
-                        runCatching { rowFocusRequester.saveFocusedChild() }
-                        onItemClick(item)
-                    },
-                )
+                    )
+                }
             }
+            FadeGradient(listState)
         }
-        FadeGradient(listState)
     }
 }
 

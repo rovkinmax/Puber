@@ -40,6 +40,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kino.puber.core.ui.uikit.component.FadeGradient
 import com.kino.puber.core.ui.uikit.component.LoadMoreHandler
+import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
 import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
@@ -118,75 +119,77 @@ private fun ContentSectionCards(
             .wrapContentHeight()
             .fillMaxWidth(),
     ) {
-        LazyRow(
-            state = listState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .graphicsLayer { clip = false }
-                .focusRequester(contentFocusRequester)
-                .focusProperties {
-                    onEnter = {
-                        if (requestedFocusDirection == FocusDirection.Down ||
-                            requestedFocusDirection == FocusDirection.Up
-                        ) {
-                            savedItemFocusRequester.requestFocus()
-                            cancelFocusChange()
+        PositionFocusedItemInLazyLayout {
+            LazyRow(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer { clip = false }
+                    .focusRequester(contentFocusRequester)
+                    .focusProperties {
+                        onEnter = {
+                            if (requestedFocusDirection == FocusDirection.Down ||
+                                requestedFocusDirection == FocusDirection.Up
+                            ) {
+                                savedItemFocusRequester.requestFocus()
+                                cancelFocusChange()
+                            }
                         }
                     }
-                }
-                .focusRestorer(savedItemFocusRequester),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(16.dp),
-        ) {
-            itemsIndexed(state.items, key = { _, item -> item.id }) { index, item ->
-                val isFallbackTarget = if (isTargetRow) {
-                    index == focusedItemIndex
-                } else {
-                    index == 0
-                }
-                val focusModifier = remember(index, item.id) {
-                    Modifier.onFocusChanged { focusState ->
-                        if (focusState.isFocused) {
-                            focusedItemIndex = index
-                            onSectionFocused()
-                            onItemFocused(item)
+                    .focusRestorer(savedItemFocusRequester),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(16.dp),
+            ) {
+                itemsIndexed(state.items, key = { _, item -> item.id }) { index, item ->
+                    val isFallbackTarget = if (isTargetRow) {
+                        index == focusedItemIndex
+                    } else {
+                        index == 0
+                    }
+                    val focusModifier = remember(index, item.id) {
+                        Modifier.onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                focusedItemIndex = index
+                                onSectionFocused()
+                                onItemFocused(item)
+                            }
                         }
                     }
-                }
-                val clickCallback = remember(item.id) { { onItemClick(item) } }
-                VideoItemHorizontal(
-                    modifier = Modifier
-                        .then(
-                            if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
-                            else Modifier
-                        )
-                        .then(focusModifier),
-                    state = item,
-                    onClick = clickCallback,
-                )
-            }
-            if (onShowAll != null) {
-                item {
-                    Box(
+                    val clickCallback = remember(item.id) { { onItemClick(item) } }
+                    VideoItemHorizontal(
                         modifier = Modifier
-                            .height(PuberTheme.Defaults.HorizontalVideoItemHeight)
-                            .aspectRatio(PuberTheme.Defaults.HorizontalVideoItemAspectRatio),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Button(
-                            onClick = { onShowAll() },
-                        ) {
-                            Text(
-                                stringResource(R.string.show_all),
-                                style = MaterialTheme.typography.labelLarge,
-                                textAlign = TextAlign.Center,
+                            .then(
+                                if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
+                                else Modifier
                             )
+                            .then(focusModifier),
+                        state = item,
+                        onClick = clickCallback,
+                    )
+                }
+                if (onShowAll != null) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .height(PuberTheme.Defaults.HorizontalVideoItemHeight)
+                                .aspectRatio(PuberTheme.Defaults.HorizontalVideoItemAspectRatio),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Button(
+                                onClick = { onShowAll() },
+                            ) {
+                                Text(
+                                    stringResource(R.string.show_all),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
                         }
                     }
                 }
             }
+            FadeGradient(listState)
         }
-        FadeGradient(listState)
     }
 
     if (onShowAll == null) {

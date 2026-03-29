@@ -1,6 +1,9 @@
 package com.kino.puber.ui.feature.player.component
 
 import android.view.KeyEvent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -191,17 +194,6 @@ internal fun PlayerScreenContent(
                     PlayPauseIndicator(state = content.playPauseIndicator)
                 }
 
-                // Debug overlay (top-right corner)
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.TopEnd,
-                ) {
-                    DebugOverlay(
-                        debugInfo = content.debugInfo,
-                        modifier = Modifier.padding(top = 12.dp, end = 16.dp),
-                    )
-                }
-
                 // Layer 2: Controls overlay
                 val onEpisodesClick = remember(onAction) { { onAction(PlayerAction.OpenEpisodesPanel) } }
                 val onAudioSubtitlesClick = remember(onAction) { { onAction(PlayerAction.OpenAudioSubtitlesPanel) } }
@@ -298,6 +290,24 @@ internal fun PlayerScreenContent(
                         onSkip = onSkipSegment,
                         onCancel = onCancelSkipSegment,
                     )
+                }
+
+                // Debug overlay (top-right corner, synced with controls)
+                AnimatedVisibility(
+                    visible = content.controlsVisible && content.debugInfo != null,
+                    modifier = Modifier.fillMaxSize(),
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.TopEnd,
+                    ) {
+                        DebugOverlay(
+                            debugInfo = content.debugInfo,
+                            modifier = Modifier.padding(top = 12.dp, end = 16.dp),
+                        )
+                    }
                 }
 
                 // Layer 5: Resume dialog
