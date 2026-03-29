@@ -8,4 +8,5 @@
     <string name="device_settings_retry">Повторить</string>
     <string name="device_settings_unlink">Отвязать устройство</string>
     <string name="device_settings_not_supported">Не поддерживается устройством</string>
+    <string name="device_settings_restart_required">Нужно перезапустить приложение</string>
 </resources>
