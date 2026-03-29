@@ -34,6 +34,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Text
+import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.navigation.TabRouter
 import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
 import com.kino.puber.core.ui.navigation.component.TabComponent
@@ -47,6 +48,7 @@ import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.MainViewState
+import com.kino.puber.ui.feature.main.toptabs.TopTabMainContent
 import com.kino.puber.ui.feature.main.vm.MainVM
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -55,11 +57,14 @@ internal fun MainScreenComponent() {
     val vm = koinViewModel<MainVM>()
     val state by vm.collectViewState()
     val onAction: (UIAction) -> Unit = remember { vm::onAction }
-    MainScreenContent(state, onAction = onAction, tabRouter = vm.tabRouter)
+    when (state.navigationMode) {
+        NavigationMode.SideDrawer -> DrawerMainContent(state, onAction = onAction, tabRouter = vm.tabRouter)
+        NavigationMode.TopTabs -> TopTabMainContent(state, onAction = onAction, tabRouter = vm.tabRouter)
+    }
 }
 
 @Composable
-private fun MainScreenContent(state: MainViewState, onAction: (UIAction) -> Unit, tabRouter: TabRouter) {
+private fun DrawerMainContent(state: MainViewState, onAction: (UIAction) -> Unit, tabRouter: TabRouter) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val mainContentFocus = rememberFocusRequesterOnLaunch()
     SideEffect { drawerState.contentFocusRequester = mainContentFocus }

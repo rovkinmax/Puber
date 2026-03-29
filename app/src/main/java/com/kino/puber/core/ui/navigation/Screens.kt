@@ -9,6 +9,12 @@ interface Screens {
 
     fun search(): PuberScreen
 
+    fun home(): PuberScreen
+
+    fun collections(): PuberScreen
+
+    fun bookmarks(): PuberScreen
+
     fun favorites(): PuberScreen
 
     fun deviceSettings(): PuberScreen

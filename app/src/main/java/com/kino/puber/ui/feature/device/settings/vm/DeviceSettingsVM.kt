@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.device.settings.vm
 
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.CommonAction
@@ -16,6 +17,7 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
+import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
 
 internal class DeviceSettingsVM(
@@ -23,6 +25,7 @@ internal class DeviceSettingsVM(
     private val deviceInfoInteractor: IDeviceInfoInteractor,
     private val deviceUiSettingsMapper: DeviceUiSettingsMapper,
     private val playerPreferencesRepository: PlayerPreferencesRepository,
+    private val navigationPreferencesRepository: NavigationPreferencesRepository,
     override val errorHandler: ErrorHandler,
     router: AppRouter,
 ) : PuberVM<DeviceSettingsViewState>(router) {
@@ -57,6 +60,7 @@ internal class DeviceSettingsVM(
                                 skipRecapEnabled = playerPreferencesRepository.skipRecapEnabled,
                                 skipCreditsEnabled = playerPreferencesRepository.skipCreditsEnabled,
                                 debugOverlayEnabled = playerPreferencesRepository.debugOverlayEnabled,
+                                navigationMode = navigationPreferencesRepository.getNavigationMode(),
                             )
                         )
                     )
@@ -75,6 +79,7 @@ internal class DeviceSettingsVM(
             DeviceSettingsActions.ToggleSkipRecap -> toggleSkipPref { it.copy(skipRecapEnabled = !it.skipRecapEnabled) }
             DeviceSettingsActions.ToggleSkipCredits -> toggleSkipPref { it.copy(skipCreditsEnabled = !it.skipCreditsEnabled) }
             DeviceSettingsActions.ToggleDebugOverlay -> toggleDebugOverlay()
+            is DeviceSettingsActions.ChangeNavigationMode -> onChangeNavigationMode(action.mode)
             CommonAction.RetryClicked -> onRetry()
             else -> super.onAction(action)
         }
@@ -208,6 +213,13 @@ internal class DeviceSettingsVM(
         val newValue = !currentState.debugOverlayEnabled
         playerPreferencesRepository.debugOverlayEnabled = newValue
         updateViewState(stateValue.copy(state = currentState.copy(debugOverlayEnabled = newValue)))
+    }
+
+    private fun onChangeNavigationMode(mode: NavigationMode) {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        navigationPreferencesRepository.setNavigationMode(mode)
+        updateViewState(stateValue.copy(state = currentState.copy(navigationMode = mode)))
     }
 
     private fun onUnlinkDevice() {

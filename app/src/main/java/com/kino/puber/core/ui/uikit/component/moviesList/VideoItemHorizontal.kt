@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.runtime.Composable
@@ -138,6 +140,19 @@ fun VideoItemHorizontal(
                 )
 
             }
+
+            val progressValue = state.progressPercent
+            if (progressValue != null) {
+                LinearProgressIndicator(
+                    progress = { progressValue.coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .align(Alignment.BottomCenter),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                )
+            }
         }
     }
 }
@@ -159,6 +174,7 @@ private fun previewState(
     title: String = "Рик и Морти / Rick and Morty",
     unwatchedCount: Int? = null,
     ratings: List<RatingUIState> = emptyList(),
+    progressPercent: Float? = null,
 ) = VideoItemUIState(
     id = 1,
     title = title,
@@ -167,6 +183,7 @@ private fun previewState(
     showTitle = true,
     unwatchedCount = unwatchedCount,
     ratings = ratings,
+    progressPercent = progressPercent,
 )
 
 @Preview(name = "Horizontal - All ratings")

@@ -1,5 +1,6 @@
 package com.kino.puber.ui.feature.device.settings.model
 
+import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.device.DeviceSettingType
 
@@ -13,4 +14,5 @@ internal sealed class DeviceSettingsActions : UIAction {
     data object ToggleSkipRecap : DeviceSettingsActions()
     data object ToggleSkipCredits : DeviceSettingsActions()
     data object ToggleDebugOverlay : DeviceSettingsActions()
+    data class ChangeNavigationMode(val mode: NavigationMode) : DeviceSettingsActions()
 }

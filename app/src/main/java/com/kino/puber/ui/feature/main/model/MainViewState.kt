@@ -4,12 +4,14 @@ import android.os.Parcelable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.kino.puber.R
+import com.kino.puber.core.model.NavigationMode
 import kotlinx.parcelize.Parcelize
 
 @Immutable
 internal data class MainViewState(
     val tabs: List<MainTab> = emptyList(),
     val selectedTab: TabType = TabType.Favourites,
+    val navigationMode: NavigationMode = NavigationMode.SideDrawer,
 )
 
 
@@ -25,6 +27,7 @@ internal data class MainTab(
 
 @Parcelize
 enum class TabType(val title: Int, val enabled: Boolean = true) : Parcelable {
+    Home(R.string.main_tabs_home, enabled = false),
     Search(R.string.main_tabs_search),
     Favourites(R.string.main_tabs_favorites),
     Bookmarks(R.string.main_tabs_bookmarks, enabled = false),

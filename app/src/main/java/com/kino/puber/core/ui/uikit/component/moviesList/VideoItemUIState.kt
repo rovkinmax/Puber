@@ -46,6 +46,7 @@ data class VideoItemUIState(
     val showTitle: Boolean = false,
     val unwatchedCount: Int? = null,
     val ratings: List<RatingUIState> = emptyList(),
+    val progressPercent: Float? = null,
 )
 
 @Composable
@@ -162,6 +163,7 @@ private fun previewState(
     showTitle: Boolean = false,
     unwatchedCount: Int? = null,
     ratings: List<RatingUIState> = emptyList(),
+    progressPercent: Float? = null,
 ) = VideoItemUIState(
     id = 1,
     title = title,
@@ -170,6 +172,7 @@ private fun previewState(
     showTitle = showTitle,
     unwatchedCount = unwatchedCount,
     ratings = ratings,
+    progressPercent = progressPercent,
 )
 
 @Preview(name = "Ratings only (3)")
