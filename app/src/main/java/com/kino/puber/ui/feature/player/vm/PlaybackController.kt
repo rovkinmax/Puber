@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.player.vm
 import android.content.Context
 import androidx.annotation.OptIn
 import androidx.core.net.toUri
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -11,8 +12,11 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.kino.puber.R
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
@@ -20,7 +24,7 @@ import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 internal class PlaybackController(private val context: Context) {
 
     interface Callback {
-        fun onPlaybackStateChanged(isPlaying: Boolean, position: Long, duration: Long, buffered: Long)
+        fun onPlaybackStateChanged(isPlaying: Boolean, isBuffering: Boolean, position: Long, duration: Long, buffered: Long)
         fun onTracksUpdated(audioTracks: List<AudioTrackUIState>, selectedIndex: Int)
         fun onPlaybackEnded()
         fun onError(message: String)
@@ -61,12 +65,49 @@ internal class PlaybackController(private val context: Context) {
         this.callback = callback
     }
 
+    @OptIn(UnstableApi::class)
     fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?) {
         release()
 
-        val player = ExoPlayer.Builder(context).build().apply {
-            addListener(playerListener)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 30_000,
+                /* maxBufferMs = */ 120_000,
+                /* bufferForPlaybackMs = */ 5_000,
+                /* bufferForPlaybackAfterRebufferMs = */ 10_000,
+            )
+            .setBackBuffer(
+                /* backBufferDurationMs = */ 30_000,
+                /* retainBackBufferFromKeyframe = */ true,
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
+        val bandwidthMeter = DefaultBandwidthMeter.Builder(context)
+            .setInitialBitrateEstimate(1_500_000L)
+            .build()
+
+        val trackSelector = DefaultTrackSelector(context).apply {
+            parameters = buildUponParameters()
+                .setExceedVideoConstraintsIfNecessary(true)
+                .setExceedRendererCapabilitiesIfNecessary(false)
+                .setTunnelingEnabled(true)
+                .build()
         }
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
+
+        val player = ExoPlayer.Builder(context)
+            .setLoadControl(loadControl)
+            .setBandwidthMeter(bandwidthMeter)
+            .setTrackSelector(trackSelector)
+            .setHandleAudioBecomingNoisy(true)
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            .build()
+            .apply { addListener(playerListener) }
         exoPlayer = player
 
         val mediaItem = buildMediaItem(streamUrl, subtitles)
@@ -85,12 +126,14 @@ internal class PlaybackController(private val context: Context) {
         val player = exoPlayer ?: return
         val savedPosition = player.currentPosition
         val wasPlaying = player.isPlaying
+        val savedTrackParams = player.trackSelectionParameters
 
         player.stop()
 
         val mediaItem = buildMediaItem(streamUrl, subtitles)
         setMediaSource(player, mediaItem, streamUrl)
 
+        player.trackSelectionParameters = savedTrackParams
         player.prepare()
         player.seekTo(savedPosition)
         player.playWhenReady = wasPlaying
@@ -177,6 +220,7 @@ internal class PlaybackController(private val context: Context) {
         if (streamUrl.contains(".m3u8") || streamUrl.contains("hls")) {
             val dataSourceFactory = DefaultDataSource.Factory(context)
             val hlsSource = HlsMediaSource.Factory(dataSourceFactory)
+                .setAllowChunklessPreparation(true)
                 .createMediaSource(mediaItem)
             player.setMediaSource(hlsSource)
         } else {
@@ -229,6 +273,7 @@ internal class PlaybackController(private val context: Context) {
         val player = exoPlayer ?: return
         callback?.onPlaybackStateChanged(
             isPlaying = player.isPlaying,
+            isBuffering = player.playbackState == Player.STATE_BUFFERING,
             position = player.currentPosition,
             duration = player.duration.coerceAtLeast(0),
             buffered = player.bufferedPosition,

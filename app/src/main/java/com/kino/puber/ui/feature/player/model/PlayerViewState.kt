@@ -22,9 +22,11 @@ internal data class PlayerContentState(
 
     // Playback
     val isPlaying: Boolean,
+    val isBuffering: Boolean = false,
     val currentPosition: Long,
     val duration: Long,
     val bufferedPosition: Long,
+    val bufferingSpeedBps: Long = 0,
 
     // Controls
     val controlsVisible: Boolean,

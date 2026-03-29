@@ -1,12 +1,17 @@
 package com.kino.puber.ui.feature.player.component
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.domain.interactor.player.PlayerInteractor
 import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
@@ -44,6 +49,17 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Puber
         val vm = koinViewModel<PlayerVM>()
         val state by vm.collectViewState()
         val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
+
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP) {
+                    onAction(PlayerAction.OnBackground)
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
 
         PlayerScreenContent(
             state = state,

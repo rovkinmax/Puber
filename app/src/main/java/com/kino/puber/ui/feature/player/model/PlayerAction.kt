@@ -49,6 +49,9 @@ internal sealed class PlayerAction : UIAction {
     // Error
     data object RetryPlayback : PlayerAction()
 
+    // Lifecycle
+    data object OnBackground : PlayerAction()
+
     // Navigation
     data object OnBackPressed : PlayerAction()
 }

@@ -178,11 +178,15 @@ internal fun PlayerScreenContent(
                         },
                 )
 
-                // Layer 1: Seek indicator
+                // Layer 1: Buffering indicator + Seek indicator
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
+                    BufferingIndicator(
+                        visible = content.isBuffering,
+                        speedBps = content.bufferingSpeedBps,
+                    )
                     SeekIndicator(state = content.seekIndicator)
                     PlayPauseIndicator(state = content.playPauseIndicator)
                 }

@@ -83,9 +83,16 @@ internal class PlayerVM(
     private val debugOverlayEnabled = interactor.isDebugOverlayEnabled()
 
     private val playbackCallback = object : PlaybackController.Callback {
-        override fun onPlaybackStateChanged(isPlaying: Boolean, position: Long, duration: Long, buffered: Long) {
+        override fun onPlaybackStateChanged(isPlaying: Boolean, isBuffering: Boolean, position: Long, duration: Long, buffered: Long) {
+            val wasBuffering = (stateValue as? PlayerViewState.Content)?.content?.isBuffering == true
             updateContent {
-                copy(isPlaying = isPlaying)
+                copy(isPlaying = isPlaying, isBuffering = isBuffering)
+            }
+            if (isBuffering && !wasBuffering) {
+                controlsHideJob?.cancel()
+            } else if (!isBuffering && wasBuffering) {
+                val controlsVisible = (stateValue as? PlayerViewState.Content)?.content?.controlsVisible == true
+                if (controlsVisible) scheduleControlsHide()
             }
         }
 
@@ -216,6 +223,7 @@ internal class PlayerVM(
             is PlayerAction.ResumeFromPosition -> resumeFromSavedPosition()
             is PlayerAction.StartFromBeginning -> startFromBeginning()
             is PlayerAction.RetryPlayback -> retryPlayback()
+            is PlayerAction.OnBackground -> pauseForBackground()
             is PlayerAction.OnBackPressed -> handleBackAndCheckExit()
             else -> super.onAction(action)
         }
@@ -485,6 +493,14 @@ internal class PlayerVM(
         scheduleControlsHide()
     }
 
+    private fun pauseForBackground() {
+        if (playbackController.isPlaying) {
+            playbackController.pause()
+            saveCurrentPosition()
+            updateContent { copy(isPlaying = false) }
+        }
+    }
+
     private fun retryPlayback() {
         updateViewState(PlayerViewState.Loading)
         playbackController.release()
@@ -535,24 +551,41 @@ internal class PlayerVM(
         startPositionUpdates()
     }
 
+    private var lastBufferedPosition: Long = 0L
+
     private fun startPositionUpdates() {
         positionUpdateJob?.cancel()
+        lastBufferedPosition = 0L
         positionUpdateJob = launch {
             while (isActive) {
                 delay(POSITION_UPDATE_INTERVAL_MS)
-                if (playbackController.isPlaying) {
+                val isPlaying = playbackController.isPlaying
+                val isBuffering = (stateValue as? PlayerViewState.Content)?.content?.isBuffering == true
+                if (isPlaying || isBuffering) {
+                    val currentBuffered = playbackController.bufferedPosition
+                    val speedBps = if (isBuffering) {
+                        val deltaBytes = (currentBuffered - lastBufferedPosition).coerceAtLeast(0)
+                        // Convert ms delta to bytes/sec estimate (rough: 1ms buffered ≈ bitrate-dependent)
+                        // Use buffered position delta in ms, scale to approximate bytes/sec
+                        (deltaBytes * 1000 / POSITION_UPDATE_INTERVAL_MS)
+                    } else 0L
+                    lastBufferedPosition = currentBuffered
+
                     val debugInfo = if (debugOverlayEnabled) playbackController.getDebugInfo() else null
                     updateContent {
                         copy(
                             currentPosition = playbackController.currentPosition,
                             duration = playbackController.duration,
-                            bufferedPosition = playbackController.bufferedPosition,
+                            bufferedPosition = currentBuffered,
+                            bufferingSpeedBps = speedBps,
                             debugInfo = debugInfo,
                         )
                     }
-                    checkAutoMarkWatched()
-                    checkEarlyNextEpisode()
-                    checkSkipSegment()
+                    if (isPlaying) {
+                        checkAutoMarkWatched()
+                        checkEarlyNextEpisode()
+                        checkSkipSegment()
+                    }
                 }
             }
         }
