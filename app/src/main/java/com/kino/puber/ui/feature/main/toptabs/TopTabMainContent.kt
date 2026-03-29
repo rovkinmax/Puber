@@ -6,10 +6,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -22,14 +23,11 @@ import androidx.compose.ui.focus.onFocusChanged
 import com.kino.puber.core.ui.navigation.TabRouter
 import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
 import com.kino.puber.core.ui.navigation.component.TabComponent
-import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
+import com.kino.puber.core.ui.uikit.component.modifier.LocalAutoFocusOnLaunchEnabled
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.model.TabType
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -37,24 +35,24 @@ internal fun TopTabMainContent(
     state: MainViewState,
     onAction: (UIAction) -> Unit,
     tabRouter: TabRouter,
+    onSearchClick: () -> Unit,
+    onSettingsClick: () -> Unit,
 ) {
-    val tabBarFocus = remember { FocusRequester() }
-    val contentFocus = rememberFocusRequesterOnLaunch()
+    val tabRowFocus = remember { FocusRequester() }
+    val contentFocus = remember { FocusRequester() }
     val selectedIndex = state.tabs.indexOfFirst { it.isSelected }.coerceAtLeast(0)
-    val scope = rememberCoroutineScope()
 
-    var isContentFocused by remember { mutableStateOf(true) }
-    var pendingSelectionJob by remember { mutableStateOf<Job?>(null) }
+    var isContentFocused by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        tabRowFocus.requestFocus()
+    }
     val isOnHome = state.tabs.getOrNull(selectedIndex)?.type == TabType.Home
 
-    // Back logic:
-    // Content focused → move focus to TabRow
-    // TabRow focused, not Home → switch to Home
-    // TabRow focused, Home → system exit (BackHandler disabled)
+    // Back: content → TabRow, TabRow(not Home) → Home, TabRow(Home) → exit
     BackHandler(enabled = isContentFocused || !isOnHome) {
         if (isContentFocused) {
-            tabBarFocus.requestFocus()
+            tabRowFocus.requestFocus()
         } else {
             val homeTab = state.tabs.firstOrNull { it.type == TabType.Home }
             if (homeTab != null) {
@@ -68,45 +66,39 @@ internal fun TopTabMainContent(
             TopTabBar(
                 tabs = state.tabs,
                 selectedIndex = selectedIndex,
-                onTabSelected = { index ->
-                    // Debounce: only switch tab if focus stays on it for 300ms.
-                    // Prevents bouncing when scrolling through tabs quickly
-                    // and when content auto-focus triggers onFocus on wrong tab.
-                    pendingSelectionJob?.cancel()
+                onTabFocused = { index ->
                     if (index != selectedIndex) {
-                        pendingSelectionJob = scope.launch {
-                            delay(TAB_SELECTION_DEBOUNCE_MS)
-                            val tab = state.tabs.getOrNull(index) ?: return@launch
-                            onAction(CommonAction.ItemSelected(tab))
-                        }
+                        val tab = state.tabs.getOrNull(index) ?: return@TopTabBar
+                        onAction(CommonAction.ItemSelected(tab))
                     }
                 },
+                onTabClick = { contentFocus.requestFocus() },
+                onSearchClick = onSearchClick,
+                onSettingsClick = onSettingsClick,
                 modifier = Modifier
-                    .focusRequester(tabBarFocus)
                     .onFocusChanged { if (it.hasFocus) isContentFocused = false },
+                tabRowModifier = Modifier.focusRequester(tabRowFocus),
             )
 
-            Box(
-                Modifier
-                    .weight(1f)
-                    .focusRequester(contentFocus)
-                    .onFocusChanged { if (it.hasFocus) isContentFocused = true }
-                    .focusProperties {
-                        exit = { direction ->
-                            if (direction == FocusDirection.Up) {
-                                tabBarFocus
-                            } else {
-                                FocusRequester.Default
+            CompositionLocalProvider(LocalAutoFocusOnLaunchEnabled provides false) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .focusRequester(contentFocus)
+                        .onFocusChanged { if (it.hasFocus) isContentFocused = true }
+                        .focusProperties {
+                            @Suppress("DEPRECATION")
+                            exit = { direction ->
+                                if (direction == FocusDirection.Up) tabRowFocus
+                                else FocusRequester.Default
                             }
                         }
-                    }
-                    .focusRestorer()
-                    .focusGroup()
-            ) {
-                PuberCurrentTab()
+                        .focusRestorer()
+                        .focusGroup()
+                ) {
+                    PuberCurrentTab()
+                }
             }
         }
     }
 }
-
-private const val TAB_SELECTION_DEBOUNCE_MS = 300L

@@ -43,4 +43,11 @@ internal class MainVM(
         tabRouter.openTab(mainUIMapper.buildTabContent(item.type))
     }
 
+    fun onSearchClick() {
+        router.navigateTo(router.screens.search())
+    }
+
+    fun onSettingsClick() {
+        router.navigateTo(router.screens.deviceSettings())
+    }
 }

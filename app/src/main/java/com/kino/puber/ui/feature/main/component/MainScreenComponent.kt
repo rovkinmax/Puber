@@ -59,7 +59,13 @@ internal fun MainScreenComponent() {
     val onAction: (UIAction) -> Unit = remember { vm::onAction }
     when (state.navigationMode) {
         NavigationMode.SideDrawer -> DrawerMainContent(state, onAction = onAction, tabRouter = vm.tabRouter)
-        NavigationMode.TopTabs -> TopTabMainContent(state, onAction = onAction, tabRouter = vm.tabRouter)
+        NavigationMode.TopTabs -> TopTabMainContent(
+            state = state,
+            onAction = onAction,
+            tabRouter = vm.tabRouter,
+            onSearchClick = vm::onSearchClick,
+            onSettingsClick = vm::onSettingsClick,
+        )
     }
 }
 

@@ -7,10 +7,8 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Duotone
 import com.adamglin.phosphoricons.duotone.FilmSlate
 import com.adamglin.phosphoricons.duotone.House
-import com.adamglin.phosphoricons.duotone.MagnifyingGlass
 import com.adamglin.phosphoricons.duotone.Playlist
 import com.adamglin.phosphoricons.duotone.TelevisionSimple
-import com.adamglin.phosphoricons.duotone.GearSix
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.TabType
@@ -20,8 +18,6 @@ private val previewTabs = listOf(
     MainTab(type = TabType.Movies, label = "Фильмы", icon = PhosphorIcons.Duotone.FilmSlate),
     MainTab(type = TabType.Series, label = "Сериалы", icon = PhosphorIcons.Duotone.TelevisionSimple),
     MainTab(type = TabType.Collections, label = "Подборки", icon = PhosphorIcons.Duotone.Playlist),
-    MainTab(type = TabType.Search, label = "Поиск", icon = PhosphorIcons.Duotone.MagnifyingGlass),
-    MainTab(type = TabType.Settings, label = "Настройки", icon = PhosphorIcons.Duotone.GearSix),
 )
 
 @Preview(name = "TopTabBar — Home selected", device = TV_1080p)
@@ -30,7 +26,10 @@ private fun TopTabBarHomePreview() = PuberTheme {
     TopTabBar(
         tabs = previewTabs,
         selectedIndex = 0,
-        onTabSelected = {},
+        onTabFocused = {},
+        onTabClick = {},
+        onSearchClick = {},
+        onSettingsClick = {},
     )
 }
 
@@ -40,6 +39,9 @@ private fun TopTabBarMoviesPreview() = PuberTheme {
     TopTabBar(
         tabs = previewTabs,
         selectedIndex = 1,
-        onTabSelected = {},
+        onTabFocused = {},
+        onTabClick = {},
+        onSearchClick = {},
+        onSettingsClick = {},
     )
 }

@@ -17,7 +17,7 @@
     <string name="main_tabs_search">Поиск</string>
     <string name="main_tabs_home">Главная</string>
 
-    <string name="home_section_continue_watching">Продолжить просмотр</string>
+    <string name="home_section_continue_watching">Я смотрю</string>
     <string name="home_section_fresh">Новинки</string>
     <string name="home_section_popular_movies">Популярные фильмы</string>
     <string name="home_section_popular_series">Популярные сериалы</string>

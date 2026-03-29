@@ -7,11 +7,11 @@ import com.kino.puber.data.api.models.PaginatedResponse
 
 class BookmarkInteractor(private val api: KinoPubApiClient) {
 
-    suspend fun getBookmarks(): Result<List<Bookmark>> {
-        return api.getBookmarks()
+    suspend fun getBookmarks(): List<Bookmark> {
+        return api.getBookmarks().getOrThrow()
     }
 
-    suspend fun getBookmarkItems(id: Int, page: Int): Result<PaginatedResponse<Item>> {
-        return api.getBookmarkItems(id, page)
+    suspend fun getBookmarkItems(id: Int, page: Int): PaginatedResponse<Item> {
+        return api.getBookmarkItems(id, page).getOrThrow()
     }
 }

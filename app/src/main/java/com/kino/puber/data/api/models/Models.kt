@@ -29,11 +29,17 @@ data class PaginatedResponse<T>(
 )
 
 @Serializable
+data class CollectionViewResponse(
+    val collection: KCollection? = null,
+    val items: List<Item> = emptyList(),
+)
+
+@Serializable
 data class Pagination(
     val current: Int,
     val perpage: Int,
     val total: Int,
-    @SerialName("total_items") val totalItems: Int,
+    @SerialName("total_items") val totalItems: Int = 0,
 )
 
 @Serializable

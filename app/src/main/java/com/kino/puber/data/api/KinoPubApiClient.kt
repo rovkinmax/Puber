@@ -28,6 +28,7 @@ import com.kino.puber.data.api.models.ItemFiles
 import com.kino.puber.data.api.models.KCollection
 import com.kino.puber.data.api.models.MediaLinks
 import com.kino.puber.data.api.models.NotificationStatus
+import com.kino.puber.data.api.models.CollectionViewResponse
 import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.data.api.models.QualityType
@@ -487,7 +488,7 @@ class KinoPubApiClient(
     /**
      * Get collection items
      */
-    suspend fun getCollectionItems(id: Int): Result<PaginatedResponse<Item>> = apiCall {
+    suspend fun getCollectionItems(id: Int): Result<CollectionViewResponse> = apiCall {
         httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}collections/view") {
             parameter("id", id)
         }

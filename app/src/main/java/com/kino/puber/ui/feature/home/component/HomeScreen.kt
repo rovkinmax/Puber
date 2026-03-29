@@ -40,6 +40,7 @@ internal class HomeScreen : PuberScreen {
             state = state,
             onAction = onAction,
             onHeroClick = vm::onHeroClick,
+            onCollectionClick = vm::onCollectionClick,
         )
     }
 }

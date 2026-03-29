@@ -65,6 +65,7 @@ private fun HomeLoadingPreview() = PuberTheme {
         state = HomeViewState.Loading,
         onAction = {},
         onHeroClick = {},
+        onCollectionClick = { _, _ -> },
     )
 }
 
@@ -75,6 +76,7 @@ private fun HomeErrorPreview() = PuberTheme {
         state = HomeViewState.Error("Не удалось загрузить данные"),
         onAction = {},
         onHeroClick = {},
+        onCollectionClick = { _, _ -> },
     )
 }
 
@@ -88,6 +90,7 @@ private fun HomeContentPreview() = PuberTheme {
         ),
         onAction = {},
         onHeroClick = {},
+        onCollectionClick = { _, _ -> },
     )
 }
 
@@ -101,5 +104,6 @@ private fun HomeContentNoHeroPreview() = PuberTheme {
         ),
         onAction = {},
         onHeroClick = {},
+        onCollectionClick = { _, _ -> },
     )
 }
