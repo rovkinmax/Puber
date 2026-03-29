@@ -22,6 +22,7 @@ internal class ContentListVM(
     private val mapper: VideoItemUIMapper,
     private val genreInteractor: GenreInteractor,
     private val navPrefs: NavigationPreferencesRepository,
+    private val contentType: String? = null,
 ) : PuberVM<ContentListViewState>(router) {
 
     override val initialViewState = ContentListViewState()
@@ -51,7 +52,7 @@ internal class ContentListVM(
 
     private fun loadGenres() {
         launch {
-            genreInteractor.getGenres().onSuccess { genres ->
+            genreInteractor.getGenres(type = contentType).onSuccess { genres ->
                 updateViewState<ContentListViewState> { copy(genres = genres) }
             }
         }

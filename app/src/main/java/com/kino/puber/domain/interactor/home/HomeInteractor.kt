@@ -2,7 +2,6 @@ package com.kino.puber.domain.interactor.home
 
 import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.data.api.models.Bookmark
-import com.kino.puber.data.api.models.History
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.KCollection
 
@@ -12,8 +11,8 @@ class HomeInteractor(private val api: KinoPubApiClient) {
         return api.getItemsByShortcut("hot").map { it.items.take(limit) }
     }
 
-    suspend fun getContinueWatching(): Result<List<History>> {
-        return api.getHistoryData(page = 1).map { it.items }
+    suspend fun getContinueWatchingMovies(): Result<List<Item>> {
+        return api.getWatchingList(onlySubscribed = false).map { it.items.orEmpty() }
     }
 
     suspend fun getFreshItems(): Result<List<Item>> {

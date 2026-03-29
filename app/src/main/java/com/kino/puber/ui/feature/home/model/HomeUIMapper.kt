@@ -5,7 +5,6 @@ import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.uikit.component.HeroItemState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
-import com.kino.puber.data.api.models.History
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.KCollection
 
@@ -28,18 +27,10 @@ internal class HomeUIMapper(
         }
     }
 
-    fun mapHistorySection(items: List<History>): HomeSectionState? {
-        if (items.isEmpty()) return null
-        return HomeSectionState(
-            title = resources.getString(R.string.home_section_continue_watching),
-            items = items.map { videoItemMapper.mapHistoryItem(it) },
-            type = HomeSectionType.ContinueWatching,
-        )
-    }
-
     fun mapItemSection(items: List<Item>, type: HomeSectionType): HomeSectionState? {
         if (items.isEmpty()) return null
         val title = when (type) {
+            HomeSectionType.ContinueWatching -> resources.getString(R.string.home_section_continue_watching)
             HomeSectionType.Fresh -> resources.getString(R.string.home_section_fresh)
             HomeSectionType.PopularMovies -> resources.getString(R.string.home_section_popular_movies)
             HomeSectionType.PopularSeries -> resources.getString(R.string.home_section_popular_series)
