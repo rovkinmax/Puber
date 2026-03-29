@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -27,6 +28,8 @@ import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.model.TabType
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -38,6 +41,7 @@ internal fun TopTabMainContent(
     val tabBarFocus = remember { FocusRequester() }
     val contentFocus = rememberFocusRequesterOnLaunch()
     val selectedIndex = state.tabs.indexOfFirst { it.isSelected }.coerceAtLeast(0)
+    val scope = rememberCoroutineScope()
 
     var userSelectedIndex by remember { mutableIntStateOf(selectedIndex) }
     var isContentFocused by remember { mutableStateOf(true) }
@@ -52,7 +56,6 @@ internal fun TopTabMainContent(
         if (isContentFocused) {
             tabBarFocus.requestFocus()
         } else {
-            // TabRow focused, not Home → switch to Home
             val homeTab = state.tabs.firstOrNull { it.type == TabType.Home }
             if (homeTab != null) {
                 onAction(CommonAction.ItemSelected(homeTab))
@@ -70,6 +73,12 @@ internal fun TopTabMainContent(
                         userSelectedIndex = index
                         val tab = state.tabs.getOrNull(index) ?: return@TopTabBar
                         onAction(CommonAction.ItemSelected(tab))
+                        // New content screen will try to auto-focus via rememberFocusRequesterOnLaunch (100ms delay).
+                        // Re-claim focus on TabRow after content's auto-focus fires.
+                        scope.launch {
+                            delay(150)
+                            tabBarFocus.requestFocus()
+                        }
                     }
                 },
                 modifier = Modifier
@@ -85,7 +94,6 @@ internal fun TopTabMainContent(
                     .focusProperties {
                         exit = { direction ->
                             if (direction == FocusDirection.Up) {
-                                // Up from content → go to TabRow
                                 tabBarFocus
                             } else {
                                 FocusRequester.Default
