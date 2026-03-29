@@ -6,9 +6,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import com.kino.puber.core.ui.navigation.TabRouter
@@ -20,6 +26,7 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.model.TabType
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun TopTabMainContent(
     state: MainViewState,
@@ -30,16 +37,17 @@ internal fun TopTabMainContent(
     val contentFocus = rememberFocusRequesterOnLaunch()
     val selectedIndex = state.tabs.indexOfFirst { it.isSelected }.coerceAtLeast(0)
 
+    // Track the last user-selected tab to avoid onFocus-triggered switching
+    var userSelectedIndex by remember { mutableIntStateOf(selectedIndex) }
+
     BackHandler {
         val selectedTab = state.tabs.getOrNull(selectedIndex)
         if (selectedTab?.type != TabType.Home) {
-            // Switch to Home tab
             val homeTab = state.tabs.firstOrNull { it.type == TabType.Home }
             if (homeTab != null) {
                 onAction(CommonAction.ItemSelected(homeTab))
             }
         }
-        // If already on Home — let system handle back (exit)
     }
 
     TabComponent(tabRouter = tabRouter) {
@@ -48,8 +56,11 @@ internal fun TopTabMainContent(
                 tabs = state.tabs,
                 selectedIndex = selectedIndex,
                 onTabSelected = { index ->
-                    val tab = state.tabs.getOrNull(index) ?: return@TopTabBar
-                    onAction(CommonAction.ItemSelected(tab))
+                    if (index != userSelectedIndex) {
+                        userSelectedIndex = index
+                        val tab = state.tabs.getOrNull(index) ?: return@TopTabBar
+                        onAction(CommonAction.ItemSelected(tab))
+                    }
                 },
                 modifier = Modifier.focusRequester(tabBarFocus),
             )
@@ -58,6 +69,16 @@ internal fun TopTabMainContent(
                 Modifier
                     .weight(1f)
                     .focusRequester(contentFocus)
+                    .focusProperties {
+                        exit = { direction ->
+                            // Block upward focus escape from content to TabRow
+                            if (direction == FocusDirection.Up) {
+                                FocusRequester.Cancel
+                            } else {
+                                FocusRequester.Default
+                            }
+                        }
+                    }
                     .focusRestorer()
                     .focusGroup()
             ) {
