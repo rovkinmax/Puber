@@ -35,7 +35,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.kino.puber.R
 
-private const val COUNTDOWN_TOTAL_SEC = 7
+private const val COUNTDOWN_TOTAL_SEC = 15
 
 @Composable
 internal fun NextEpisodeOverlay(

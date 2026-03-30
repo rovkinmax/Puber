@@ -108,8 +108,7 @@ internal class PlaybackController(private val context: Context) : PlaybackContro
         val trackSelector = DefaultTrackSelector(context).apply {
             parameters = buildUponParameters()
                 .setExceedVideoConstraintsIfNecessary(true)
-                .setExceedRendererCapabilitiesIfNecessary(false)
-                .setTunnelingEnabled(true)
+                .setExceedRendererCapabilitiesIfNecessary(true)
                 .build()
         }
 
@@ -215,7 +214,6 @@ internal class PlaybackController(private val context: Context) : PlaybackContro
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.release()
         exoPlayer = null
-        callback = null
     }
 
     private fun buildMediaItem(streamUrl: String, subtitles: List<SubtitleLink>?): MediaItem {

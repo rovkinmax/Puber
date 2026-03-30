@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
@@ -36,11 +37,13 @@ internal fun PlayerButtonRow(
     isMovie: Boolean,
     isPlaying: Boolean,
     hasNextEpisode: Boolean,
+    hasPreviousEpisode: Boolean,
     onTogglePlayPause: () -> Unit,
     onEpisodesClick: () -> Unit,
     onAudioSubtitlesClick: () -> Unit,
     onVideoSettingsClick: () -> Unit,
     onNextEpisodeClick: () -> Unit,
+    onPreviousEpisodeClick: () -> Unit,
     firstButtonFocusRequester: FocusRequester,
     episodesButtonFocusRequester: FocusRequester,
     audioSubtitlesButtonFocusRequester: FocusRequester,
@@ -105,16 +108,30 @@ internal fun PlayerButtonRow(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        if (!isMovie && hasNextEpisode) {
-            Button(
-                onClick = onNextEpisodeClick,
-                colors = transparentButtonColors,
-            ) {
-                Icon(
-                    imageVector = Icons.Default.SkipNext,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                )
+        if (!isMovie) {
+            if (hasPreviousEpisode) {
+                Button(
+                    onClick = onPreviousEpisodeClick,
+                    colors = transparentButtonColors,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+            if (hasNextEpisode) {
+                Button(
+                    onClick = onNextEpisodeClick,
+                    colors = transparentButtonColors,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
         }
     }

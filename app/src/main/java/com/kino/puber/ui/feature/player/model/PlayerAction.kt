@@ -35,6 +35,7 @@ internal sealed class PlayerAction : UIAction {
     data class SelectEpisode(val seasonNumber: Int, val episodeNumber: Int) : PlayerAction()
     data class SelectEpisodeById(val episodeId: Int) : PlayerAction()
     data object NextEpisode : PlayerAction()
+    data object PreviousEpisode : PlayerAction()
     data object CancelNextEpisodeCountdown : PlayerAction()
 
     // Skip segments

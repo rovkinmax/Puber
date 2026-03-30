@@ -77,6 +77,7 @@ internal class PlayerVM(
     private var dismissedSegmentType: SkipSegmentType? = null
     private var countdownDismissed = false
     private var tracksRestoredForCurrentMedia = false
+    private var episodeSwitchInProgress = false
     private var lastPositionMs: Long = 0L
 
     private val seekHandler = SeekHandler()
@@ -146,6 +147,7 @@ internal class PlayerVM(
         val contentState = contentStateFactory.build(item, resolved, resumeDialog, interactor.getSubtitleSize())
 
         updateViewState(PlayerViewState.Content(contentState))
+        episodeSwitchInProgress = false
         initializePlayer(savedPosition = if (resumeDialog != null) null else 0L)
         startProgressSync()
         if (resumeDialog == null) scheduleControlsHide()
@@ -221,6 +223,7 @@ internal class PlayerVM(
             is PlayerAction.SelectEpisode -> switchEpisode(action.seasonNumber, action.episodeNumber)
             is PlayerAction.SelectEpisodeById -> selectEpisodeById(action.episodeId)
             is PlayerAction.NextEpisode -> playNextEpisode()
+            is PlayerAction.PreviousEpisode -> playPreviousEpisode()
             is PlayerAction.CancelNextEpisodeCountdown -> cancelCountdown()
             is PlayerAction.SkipSegmentClicked -> performSkipSegment()
             is PlayerAction.CancelSkipSegment -> cancelSkipSegment()
@@ -262,6 +265,7 @@ internal class PlayerVM(
         val step = seekHandler.nextStep()
         val newPosition = (playbackController.currentPosition + step * 1000L).coerceAtMost(playbackController.duration)
         playbackController.seekTo(newPosition)
+        updateContent { copy(currentPosition = newPosition) }
         showSeekIndicator(isForward = true, stepSeconds = step, targetPosition = newPosition)
     }
 
@@ -269,6 +273,7 @@ internal class PlayerVM(
         val step = seekHandler.nextStep()
         val newPosition = (playbackController.currentPosition - step * 1000L).coerceAtLeast(0)
         playbackController.seekTo(newPosition)
+        updateContent { copy(currentPosition = newPosition) }
         showSeekIndicator(isForward = false, stepSeconds = step, targetPosition = newPosition)
     }
 
@@ -421,6 +426,8 @@ internal class PlayerVM(
     }
 
     private fun switchEpisode(seasonNumber: Int, episodeNumber: Int) {
+        if (episodeSwitchInProgress) return
+        episodeSwitchInProgress = true
         saveCurrentPosition()
         playbackController.release()
         countdownJob?.cancel()
@@ -439,11 +446,21 @@ internal class PlayerVM(
     }
 
     private fun playNextEpisode() {
+        if (episodeSwitchInProgress) return
         val media = currentMedia ?: return
         val season = media.seasonNumber ?: return
         val episode = media.episodeNumber ?: return
         val next = interactor.findNextEpisode(media.item, season, episode) ?: return
         switchEpisode(next.first, next.second)
+    }
+
+    private fun playPreviousEpisode() {
+        if (episodeSwitchInProgress) return
+        val media = currentMedia ?: return
+        val season = media.seasonNumber ?: return
+        val episode = media.episodeNumber ?: return
+        val prev = interactor.findPreviousEpisode(media.item, season, episode) ?: return
+        switchEpisode(prev.first, prev.second)
     }
 
     private fun onPlaybackEnded() {

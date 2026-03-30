@@ -15,7 +15,12 @@ import com.kino.puber.ui.feature.player.model.PlayerContentState
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerUIMapper
 import com.kino.puber.ui.feature.player.model.PlayerViewState
+import com.kino.puber.ui.feature.player.model.ResumeDialogState
+import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
+import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
+import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.util.MainDispatcherExtension
+import org.junit.jupiter.api.Assertions.assertFalse
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.every
@@ -83,6 +88,7 @@ class PlayerVMTest {
         every { interactor.getSubtitleSize() } returns SubtitleSize.MEDIUM
         every { interactor.saveTrackPreferences(any(), any(), any()) } returns Unit
         every { interactor.findNextEpisode(any(), any(), any()) } returns null
+        every { interactor.findPreviousEpisode(any(), any(), any()) } returns null
         coEvery { skipSegmentInteractor.loadSegments(any(), any(), any()) } returns emptyList()
         every { skipSegmentInteractor.findCreditsSegment(any()) } returns null
         every { skipSegmentInteractor.findActiveSegment(any(), any()) } returns null
@@ -384,12 +390,250 @@ class PlayerVMTest {
 
     // endregion
 
+    // region Seek
+
+    @Test
+    fun seekForward_updatesCurrentPosition() {
+        val vm = startedVM()
+        vm.onAction(PlayerAction.SeekForward)
+        assertTrue(contentState(vm).currentPosition > 0)
+    }
+
+    @Test
+    fun seekBackward_updatesCurrentPosition() {
+        every { playbackController.currentPosition } returns 30_000L
+        val vm = startedVM()
+        vm.onAction(PlayerAction.SeekBackward)
+        assertTrue(contentState(vm).currentPosition < 30_000L)
+    }
+
+    // endregion
+
+    // region Race condition
+
+    @Test
+    fun nextEpisode_cancelsCountdown_and_switches() {
+        every { interactor.findNextEpisode(any(), any(), any()) } returns (1 to 2)
+        val vm = startedVM()
+
+        // Playback ends → starts countdown
+        callbackSlot.captured.onPlaybackEnded()
+        assertNotNull(contentState(vm).nextEpisodeCountdown)
+
+        // User manually triggers next episode during countdown
+        vm.onAction(PlayerAction.NextEpisode)
+
+        verify { playbackController.release() }
+        assertTrue(vm.testStateValue is PlayerViewState.Content)
+    }
+
+    @Test
+    fun nextEpisode_doesNothing_whenNoNextEpisode() {
+        val vm = startedVM()
+        vm.onAction(PlayerAction.NextEpisode)
+        verify(exactly = 0) { playbackController.release() }
+    }
+
+    // endregion
+
+    // region Previous episode
+
+    @Test
+    fun previousEpisode_switchesEpisode() {
+        every { interactor.findPreviousEpisode(any(), any(), any()) } returns (1 to 1)
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.PreviousEpisode)
+
+        verify { playbackController.release() }
+    }
+
+    @Test
+    fun previousEpisode_doesNothing_whenNoPrevious() {
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.PreviousEpisode)
+
+        verify(exactly = 0) { playbackController.release() }
+    }
+
+    // endregion
+
+    // region Resume dialog
+
+    @Test
+    fun resumeFromPosition_seeksToSavedPosition_clearsDialog() {
+        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+            resumeDialog = ResumeDialogState(savedPosition = 120_000L, formattedTime = "2:00", episodeInfo = null),
+            isPlaying = false,
+        )
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.ResumeFromPosition)
+
+        verify { playbackController.seekTo(120_000L) }
+        verify { playbackController.play() }
+        assertNull(contentState(vm).resumeDialog)
+        assertTrue(contentState(vm).isPlaying)
+    }
+
+    @Test
+    fun startFromBeginning_seeksToZero_clearsDialog() {
+        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+            resumeDialog = ResumeDialogState(savedPosition = 120_000L, formattedTime = "2:00", episodeInfo = null),
+            isPlaying = false,
+        )
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.StartFromBeginning)
+
+        verify { playbackController.seekTo(0) }
+        verify { playbackController.play() }
+        assertNull(contentState(vm).resumeDialog)
+    }
+
+    // endregion
+
+    // region Subtitle selection
+
+    @Test
+    fun selectSubtitle_updatesStateAndDelegates() {
+        val vm = startedVM()
+        vm.onAction(PlayerAction.SelectSubtitle(1))
+        assertEquals(1, contentState(vm).selectedSubtitleIndex)
+        verify { playbackController.selectSubtitle(1) }
+    }
+
+    // endregion
+
+    // region Subtitle size
+
+    @Test
+    fun cycleSubtitleSize_cyclesThrough() {
+        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+            subtitleSize = SubtitleSize.SMALL,
+        )
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.CycleSubtitleSize)
+        assertEquals(SubtitleSize.MEDIUM, contentState(vm).subtitleSize)
+
+        vm.onAction(PlayerAction.CycleSubtitleSize)
+        assertEquals(SubtitleSize.LARGE, contentState(vm).subtitleSize)
+
+        vm.onAction(PlayerAction.CycleSubtitleSize)
+        assertEquals(SubtitleSize.SMALL, contentState(vm).subtitleSize)
+
+        verify(exactly = 3) { interactor.saveSubtitleSize(any()) }
+    }
+
+    // endregion
+
+    // region Quality
+
+    @Test
+    fun selectQuality_switchesStreamUrl() {
+        val vm = startedVM()
+        vm.onAction(PlayerAction.SelectQuality(1))
+        assertEquals(1, contentState(vm).selectedQualityIndex)
+        verify { playbackController.switchStream(any(), any()) }
+    }
+
+    @Test
+    fun selectQuality_doesNothing_whenSameIndex() {
+        val vm = startedVM()
+        vm.onAction(PlayerAction.SelectQuality(0))
+        verify(exactly = 0) { playbackController.switchStream(any(), any()) }
+    }
+
+    // endregion
+
+    // region Skip segments
+
+    @Test
+    fun skipSegmentClicked_seeksToTarget() {
+        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+            activeSkipSegment = SkipSegmentUIState("Skip Intro", 30_000L, SkipSegmentType.INTRO, 5),
+        )
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.SkipSegmentClicked)
+
+        verify { playbackController.seekTo(30_000L) }
+        assertNull(contentState(vm).activeSkipSegment)
+    }
+
+    @Test
+    fun cancelSkipSegment_clearsOverlay() {
+        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+            activeSkipSegment = SkipSegmentUIState("Skip Intro", 30_000L, SkipSegmentType.INTRO, 5),
+        )
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.CancelSkipSegment)
+
+        assertNull(contentState(vm).activeSkipSegment)
+    }
+
+    // endregion
+
+    // region Episodes panel
+
+    @Test
+    fun openEpisodesPanel_setsActivePanel() {
+        val vm = startedVM()
+        vm.onAction(PlayerAction.OpenEpisodesPanel)
+        assertEquals(ActivePanel.Episodes, contentState(vm).activePanel)
+    }
+
+    @Test
+    fun openVideoSettingsPanel_setsActivePanel() {
+        val vm = startedVM()
+        vm.onAction(PlayerAction.OpenVideoSettingsPanel)
+        assertEquals(ActivePanel.VideoSettings, contentState(vm).activePanel)
+    }
+
+    // endregion
+
+    // region Back navigation (additional branches)
+
+    @Test
+    fun backPressed_cancelsSkipSegment_whenActive() {
+        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+            activeSkipSegment = SkipSegmentUIState("Skip", 30_000L, SkipSegmentType.INTRO, 5),
+        )
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.OnBackPressed)
+
+        assertNull(contentState(vm).activeSkipSegment)
+    }
+
+    // endregion
+
+    // region PlaybackEnded edge cases
+
+    @Test
+    fun playbackEnded_showsControls_forSeriesWithoutNextEpisode() {
+        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+            hasNextEpisode = false,
+        )
+        val vm = startedVM()
+
+        callbackSlot.captured.onPlaybackEnded()
+
+        assertNull(contentState(vm).nextEpisodeCountdown)
+        assertTrue(contentState(vm).controlsVisible)
+    }
+
+    // endregion
+
     private val testItem = Item(id = 42, title = "Breaking Bad", type = ItemType.SERIAL, watched = 5, new = 3)
 
     private val testResolvedMedia = ResolvedMedia(
         files = emptyList(), audios = emptyList(), subtitles = emptyList(),
         watchingTime = null, duration = 2400, videoNumber = 1, episodeId = 101,
-        episodeTitle = "Pilot", isSeries = true, hasNext = true, seasonNumber = 1, episodeNumber = 1,
+        episodeTitle = "Pilot", isSeries = true, hasNext = true, hasPrevious = true, seasonNumber = 1, episodeNumber = 1,
     )
 
     private val testContentState = PlayerContentState(
@@ -403,7 +647,7 @@ class PlayerVMTest {
         qualities = emptyList(), selectedQualityIndex = 0,
         speeds = emptyList(), selectedSpeedIndex = 0,
         aspectRatios = emptyList(), selectedAspectRatioIndex = 0,
-        isMovie = false, hasNextEpisode = true, nextEpisodeCountdown = null,
+        isMovie = false, hasNextEpisode = true, hasPreviousEpisode = true, nextEpisodeCountdown = null,
         resumeDialog = null, episodes = null, currentEpisodeId = 101,
     )
 }

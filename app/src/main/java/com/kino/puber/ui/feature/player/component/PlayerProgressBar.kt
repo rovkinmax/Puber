@@ -43,7 +43,7 @@ internal fun PlayerProgressBar(
     }
     val currentTimeText = remember(currentPosition) { formatTimeMs(currentPosition) }
     val remainingTimeText = remember(currentPosition, duration) {
-        if (duration > 0) "-${formatTimeMs(duration - currentPosition)}" else "-0:00"
+        if (duration > 0) "-${formatTimeMs((duration - currentPosition).coerceAtLeast(0))}" else "-0:00"
     }
 
     val primaryColor = MaterialTheme.colorScheme.primary

@@ -21,6 +21,7 @@ internal data class ResolvedMedia(
     val episodeTitle: String?,
     val isSeries: Boolean,
     val hasNext: Boolean,
+    val hasPrevious: Boolean,
     val seasonNumber: Int?,
     val episodeNumber: Int?,
 )
@@ -61,6 +62,8 @@ internal class PlayerInteractor(
                 isSeries = true,
                 hasNext = resolvedSeason != null && resolvedEpisode != null &&
                         findNextEpisode(item, resolvedSeason, resolvedEpisode) != null,
+                hasPrevious = resolvedSeason != null && resolvedEpisode != null &&
+                        findPreviousEpisode(item, resolvedSeason, resolvedEpisode) != null,
                 seasonNumber = resolvedSeason,
                 episodeNumber = resolvedEpisode,
             )
@@ -77,6 +80,7 @@ internal class PlayerInteractor(
                 episodeTitle = null,
                 isSeries = false,
                 hasNext = false,
+                hasPrevious = false,
                 seasonNumber = null,
                 episodeNumber = null,
             )
@@ -107,6 +111,23 @@ internal class PlayerInteractor(
             val nextSeason = seasons[seasonIndex + 1]
             val firstEpisode = nextSeason.episodes?.firstOrNull() ?: return null
             return nextSeason.number to firstEpisode.number
+        }
+        return null
+    }
+
+    fun findPreviousEpisode(item: Item, currentSeason: Int, currentEpisode: Int): Pair<Int, Int>? {
+        val seasons = item.seasons ?: return null
+        val season = seasons.find { it.number == currentSeason } ?: return null
+        val episodes = season.episodes ?: return null
+        val currentIndex = episodes.indexOfFirst { it.number == currentEpisode }
+        if (currentIndex > 0) {
+            return currentSeason to episodes[currentIndex - 1].number
+        }
+        val seasonIndex = seasons.indexOf(season)
+        if (seasonIndex > 0) {
+            val prevSeason = seasons[seasonIndex - 1]
+            val lastEpisode = prevSeason.episodes?.lastOrNull() ?: return null
+            return prevSeason.number to lastEpisode.number
         }
         return null
     }

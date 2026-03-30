@@ -44,6 +44,7 @@ internal class ContentStateFactory(private val mapper: PlayerUIMapper) {
         selectedAspectRatioIndex = PlayerUIMapper.DEFAULT_ASPECT_RATIO_INDEX,
         isMovie = !resolved.isSeries,
         hasNextEpisode = resolved.hasNext,
+        hasPreviousEpisode = resolved.hasPrevious,
         nextEpisodeCountdown = null,
         resumeDialog = resumeDialog,
         episodes = if (resolved.isSeries) mapper.mapEpisodes(item) else null,

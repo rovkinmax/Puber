@@ -199,6 +199,7 @@ internal fun PlayerScreenContent(
                 val onAudioSubtitlesClick = remember(onAction) { { onAction(PlayerAction.OpenAudioSubtitlesPanel) } }
                 val onVideoSettingsClick = remember(onAction) { { onAction(PlayerAction.OpenVideoSettingsPanel) } }
                 val onNextEpisodeClick = remember(onAction) { { onAction(PlayerAction.NextEpisode) } }
+                val onPreviousEpisodeClick = remember(onAction) { { onAction(PlayerAction.PreviousEpisode) } }
                 val onSeekForward = remember(onAction) { { onAction(PlayerAction.SeekForward) } }
                 val onSeekBackward = remember(onAction) { { onAction(PlayerAction.SeekBackward) } }
                 val onTogglePlayPause = remember(onAction) { { onAction(PlayerAction.TogglePlayPause) } }
@@ -215,10 +216,12 @@ internal fun PlayerScreenContent(
                     isMovie = content.isMovie,
                     isPlaying = content.isPlaying,
                     hasNextEpisode = content.hasNextEpisode,
+                    hasPreviousEpisode = content.hasPreviousEpisode,
                     onEpisodesClick = onEpisodesClick,
                     onAudioSubtitlesClick = onAudioSubtitlesClick,
                     onVideoSettingsClick = onVideoSettingsClick,
                     onNextEpisodeClick = onNextEpisodeClick,
+                    onPreviousEpisodeClick = onPreviousEpisodeClick,
                     onSeekForward = onSeekForward,
                     onSeekBackward = onSeekBackward,
                     onTogglePlayPause = onTogglePlayPause,

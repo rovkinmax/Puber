@@ -55,6 +55,7 @@ internal data class PlayerContentState(
     // Content type
     val isMovie: Boolean,
     val hasNextEpisode: Boolean,
+    val hasPreviousEpisode: Boolean,
 
     // Next episode countdown
     val nextEpisodeCountdown: Int?,
