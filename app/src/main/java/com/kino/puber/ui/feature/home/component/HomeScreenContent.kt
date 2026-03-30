@@ -19,6 +19,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.core.ui.uikit.component.HeroCarousel
+import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
@@ -61,42 +62,44 @@ private fun HomeContent(
     onHeroClick: (Int) -> Unit,
     onCollectionClick: (Int, String) -> Unit,
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 32.dp),
-    ) {
-        if (state.heroItems.isNotEmpty()) {
-            item(key = "hero") {
-                HeroCarousel(
-                    items = state.heroItems,
-                    onItemClick = onHeroClick,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-
-        state.sections.forEach { section ->
-            item(key = "title_${section.type.name}") {
-                Text(
-                    text = section.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+    PositionFocusedItemInLazyLayout {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 32.dp),
+        ) {
+            if (state.heroItems.isNotEmpty()) {
+                item(key = "hero") {
+                    HeroCarousel(
+                        items = state.heroItems,
+                        onItemClick = onHeroClick,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
-            item(key = "content_${section.type.name}") {
-                HomeSectionRow(
-                    items = section.items,
-                    onItemClick = { item ->
-                        if (section.type == HomeSectionType.Collections) {
-                            onCollectionClick(item.id, item.title)
-                        } else {
-                            onAction(CommonAction.ItemSelected(item))
-                        }
-                    },
-                )
+            state.sections.forEach { section ->
+                item(key = "title_${section.type.name}") {
+                    Text(
+                        text = section.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+
+                item(key = "content_${section.type.name}") {
+                    HomeSectionRow(
+                        items = section.items,
+                        onItemClick = { item ->
+                            if (section.type == HomeSectionType.Collections) {
+                                onCollectionClick(item.id, item.title)
+                            } else {
+                                onAction(CommonAction.ItemSelected(item))
+                            }
+                        },
+                    )
+                }
             }
         }
     }

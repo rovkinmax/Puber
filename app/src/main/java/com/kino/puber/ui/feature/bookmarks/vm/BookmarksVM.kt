@@ -57,16 +57,19 @@ internal class BookmarksVM(
         launch {
             val folders = interactor.getBookmarks()
             val firstFolder = folders.firstOrNull()
+            val items = if (firstFolder != null) {
+                interactor.getBookmarkItems(firstFolder.id, page = 1).items
+            } else {
+                emptyList()
+            }
             updateViewState(
                 BookmarksViewState.Content(
                     folders = folders,
                     selectedFolderId = firstFolder?.id,
-                    isLoadingItems = firstFolder != null,
+                    items = mapper.mapShortItemList(items),
+                    isLoadingItems = false,
                 )
             )
-            if (firstFolder != null) {
-                loadFolderItems(firstFolder.id)
-            }
         }
     }
 

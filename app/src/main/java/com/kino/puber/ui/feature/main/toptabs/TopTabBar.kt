@@ -8,8 +8,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -26,6 +31,7 @@ import com.adamglin.phosphoricons.duotone.GearSix
 import com.adamglin.phosphoricons.duotone.MagnifyingGlass
 import com.kino.puber.ui.feature.main.model.MainTab
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun TopTabBar(
     tabs: List<MainTab>,
@@ -37,6 +43,10 @@ internal fun TopTabBar(
     modifier: Modifier = Modifier,
     tabRowModifier: Modifier = Modifier,
 ) {
+    val tabFocusRequesters = remember(tabs.size) {
+        List(tabs.size) { FocusRequester() }
+    }
+
     Row(
         modifier = modifier.padding(horizontal = 24.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -51,7 +61,11 @@ internal fun TopTabBar(
 
         TabRow(
             selectedTabIndex = selectedIndex,
-            modifier = tabRowModifier.weight(1f),
+            modifier = tabRowModifier
+                .focusRestorer {
+                    tabFocusRequesters.getOrElse(selectedIndex) { tabFocusRequesters.first() }
+                }
+                .weight(1f),
         ) {
             tabs.forEachIndexed { index, tab ->
                 key(tab.type) {
@@ -59,6 +73,7 @@ internal fun TopTabBar(
                         selected = index == selectedIndex,
                         onFocus = { onTabFocused(index) },
                         onClick = onTabClick,
+                        modifier = Modifier.focusRequester(tabFocusRequesters[index]),
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),

@@ -23,11 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
@@ -98,7 +95,6 @@ internal fun SectionRowContent(
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ContentSectionCards(
     state: SectionState.Content,
@@ -126,16 +122,6 @@ private fun ContentSectionCards(
                     .fillMaxWidth()
                     .graphicsLayer { clip = false }
                     .focusRequester(contentFocusRequester)
-                    .focusProperties {
-                        onEnter = {
-                            if (requestedFocusDirection == FocusDirection.Down ||
-                                requestedFocusDirection == FocusDirection.Up
-                            ) {
-                                savedItemFocusRequester.requestFocus()
-                                cancelFocusChange()
-                            }
-                        }
-                    }
                     .focusRestorer(savedItemFocusRequester),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(16.dp),

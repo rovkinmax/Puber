@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - run: chmod +x gradlew
+
+      - name: Run unit tests
+        run: ./gradlew testProdReleaseUnitTest
+
+  release:
+    name: Build & Publish
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - run: chmod +x gradlew
+
+      - name: Build release APK
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.STOREPASS }}
+          KEYALIAS: ${{ secrets.KEYALIAS }}
+          PUBER_CLIENT_SECRET: ${{ secrets.PUBER_CLIENT_SECRET }}
+          TMDB_READ_ACCESS_TOKEN: ${{ secrets.TMDB_READ_ACCESS_TOKEN }}
+        run: ./gradlew assembleProdRelease
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: puber-${{ github.ref_name }}
+          path: app/build/outputs/apk/prod/release/*.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+          files: app/build/outputs/apk/prod/release/*.apk
