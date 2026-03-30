@@ -57,7 +57,7 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
         return newEpisodes == null || newEpisodes == 0
     }
 
-    private fun buildRatings(item: Item): List<RatingUIState> = buildList {
+    fun buildRatings(item: Item): List<RatingUIState> = buildList {
         if (item.kinopoiskRating.isValidRating()) {
             add(RatingUIState.KP(item.kinopoiskRating!!))
         }
@@ -77,7 +77,7 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
         return value > 0f
     }
 
-    private fun buildDuration(item: Item): String {
+    fun buildDuration(item: Item): String {
         return item.seasons?.let { seasons ->
             resources.getString(R.string.video_details_label_seasons, seasons.size)
         } ?: resources.getString(

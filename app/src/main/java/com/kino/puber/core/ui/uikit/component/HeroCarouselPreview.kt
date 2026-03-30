@@ -12,8 +12,10 @@ private val previewHeroItems = listOf(
         wideImageUrl = "",
         fallbackImageUrl = "",
         year = "2025",
-        rating = "8.9",
+        ratings = listOf(RatingUIState.KP("8.9"), RatingUIState.IMDB("8.8")),
         genres = "Драма, Фантастика, Приключение",
+        country = "США",
+        duration = "Сезонов: 2",
     ),
     HeroItemState(
         id = 2,
@@ -21,8 +23,10 @@ private val previewHeroItems = listOf(
         wideImageUrl = "",
         fallbackImageUrl = "",
         year = "2014",
-        rating = "8.6",
+        ratings = listOf(RatingUIState.KP("8.6"), RatingUIState.IMDB("8.7")),
         genres = "Фантастика, Драма",
+        country = "США, Великобритания",
+        duration = "Длительность: 2 ч 49 мин",
     ),
     HeroItemState(
         id = 3,
@@ -30,8 +34,10 @@ private val previewHeroItems = listOf(
         wideImageUrl = "",
         fallbackImageUrl = "",
         year = "2024",
-        rating = "8.3",
+        ratings = listOf(RatingUIState.IMDB("8.3"), RatingUIState.PUB("9.0")),
         genres = "Фантастика, Приключение",
+        country = "США, Канада",
+        duration = "Длительность: 2 ч 46 мин",
     ),
 )
 

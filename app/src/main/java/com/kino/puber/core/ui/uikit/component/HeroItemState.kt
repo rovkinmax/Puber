@@ -9,6 +9,8 @@ data class HeroItemState(
     val wideImageUrl: String,
     val fallbackImageUrl: String,
     val year: String,
-    val rating: String,
+    val ratings: List<RatingUIState> = emptyList(),
     val genres: String,
+    val country: String = "",
+    val duration: String = "",
 )

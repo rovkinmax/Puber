@@ -7,6 +7,7 @@ import com.kino.puber.core.ui.uikit.component.HeroItemState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.KCollection
+import com.kino.puber.data.api.models.isSeriesLike
 
 internal class HomeUIMapper(
     private val videoItemMapper: VideoItemUIMapper,
@@ -21,8 +22,16 @@ internal class HomeUIMapper(
                 wideImageUrl = item.posters?.wide.orEmpty(),
                 fallbackImageUrl = item.posters?.big.orEmpty(),
                 year = item.year?.toString().orEmpty(),
-                rating = item.imdbRating?.toString().orEmpty(),
+                ratings = videoItemMapper.buildRatings(item),
                 genres = item.genres?.joinToString(", ") { it.title }.orEmpty(),
+                country = item.countries?.joinToString(", ") { it.title }.orEmpty(),
+                duration = if (item.type.isSeriesLike()) {
+                    item.seasons?.size?.let {
+                        resources.getString(R.string.video_details_label_seasons, it)
+                    }.orEmpty()
+                } else {
+                    videoItemMapper.buildDuration(item)
+                },
             )
         }
     }

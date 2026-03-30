@@ -1,5 +1,10 @@
 package com.kino.puber.core.ui.uikit.component
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -29,11 +34,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
@@ -128,7 +135,8 @@ private fun HeroItem(
     Card(
         onClick = onClick,
         modifier = modifier,
-        scale = CardDefaults.scale(pressedScale = 1f, focusedScale = 1.02f),
+        scale = CardDefaults.scale(pressedScale = 1f, focusedScale = 1f),
+        border = CardDefaults.border(focusedBorder = Border.None, pressedBorder = Border.None),
     ) {
         Box(Modifier.fillMaxSize()) {
             val context = LocalContext.current
@@ -145,14 +153,41 @@ private fun HeroItem(
                         .crossfade(true)
                         .build()
                 }
+                val driftDirection = remember(state.id) { if ((state.id % 2) == 0) 1f else -1f }
+                val infiniteTransition = rememberInfiniteTransition(label = "kenBurns")
+                val scale by infiniteTransition.animateFloat(
+                    initialValue = 1.0f,
+                    targetValue = 1.08f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 10_000, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                    label = "kenBurnsScale",
+                )
+                val translateX by infiniteTransition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 20f * driftDirection,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 10_000, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                    label = "kenBurnsTranslateX",
+                )
                 AsyncImage(
                     model = imageRequest,
                     placeholder = rememberVectorPainter(Icons.Default.LocalMovies),
                     error = rememberVectorPainter(Icons.Default.LocalMovies),
                     onError = { if (urlIndex < urls.lastIndex) urlIndex++ },
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+                    alignment = Alignment.TopCenter,
+                    contentScale = ContentScale.FillWidth,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            translationX = translateX
+                        },
                 )
             }
 
@@ -173,9 +208,28 @@ private fun HeroItem(
                     .padding(horizontal = 24.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.Bottom,
             ) {
-                if (state.rating.isNotEmpty()) {
+                if (state.ratings.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        state.ratings.forEach { rating ->
+                            Rating(rating)
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+                val infoLine = listOf(state.year, state.genres, state.country)
+                    .filter { it.isNotEmpty() }
+                    .joinToString(", ")
+                if (infoLine.isNotEmpty()) {
                     Text(
-                        text = "\u2605 ${state.rating}  \u00b7  ${state.year}  \u00b7  ${state.genres}",
+                        text = infoLine,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
+                if (state.duration.isNotEmpty()) {
+                    Text(
+                        text = state.duration,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
                     )
