@@ -171,6 +171,79 @@ All exact versions are in `gradle/libs.versions.toml` — always read from there
 | QR | chaintech/qr-kit |
 | Logging | Timber |
 
+## Strings and Resources
+
+- All user-visible strings must be in `res/values/strings.xml`
+- Use `stringResource(R.string.xxx)` in Composable functions
+- Use `ResourceProvider` for strings in non-Composable context (ViewModels, Mappers)
+- Create UIMapper classes for API model → UI state transformations with localized strings
+
+## Questions & Clarifications
+
+- When you need to ask the user **2 or more** clarifying questions, ALWAYS use the `AskUserQuestion` tool. It provides a structured UI with selectable options instead of a wall of inline text. A single simple question can be asked as plain text, but multiple questions — only via the tool.
+
+## Build
+
+- For build errors use: `./gradlew :app:compileDevDebugKotlin 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3` — catches Kotlin compiler errors, Java errors, and Gradle failures in one pass
+- App module has flavors: use `:app:compileDevDebugKotlin` (NOT `:app:compileDebugKotlin`)
+
+## Feature Workflow
+
+Commands in `.claude/commands/`, recipes in `.claude/recipes/`, feature data cached in `.todo/` (gitignored).
+
+### Pipeline: `/feature-start` → `/feature-implement` → `/feature-review`
+
+1. **Prepare** — `/feature-start` (or manually: init → design → spec → plan)
+2. **Implement** — `/feature-implement` per step (auto-loads recipes + design + spec for current step)
+3. **Review** — `/feature-review` → `/feature-fix` (maker-checker, up to 3 iterations)
+
+Standalone commands (plan AND execute in one go): `/refactor-start`, `/migration-start`
+
+### Parallel execution
+
+Plan steps tagged with `parallel-group: <letter>` are executed simultaneously by worker agents:
+- `/feature-plan` identifies independent steps (no shared files, no mutual dependencies) and assigns group letters
+- `/feature-implement` detects groups → delegates to `feature-parallel-orchestrator` agent
+- Orchestrator prepares self-contained prompts → launches `feature-step-worker` agents in parallel → compiles after all finish
+- Workers do NOT compile (other agents edit code simultaneously) — orchestrator compiles once and fixes errors
+- Shared files (strings.xml, PuberApp.kt, ScreensImpl.kt) are handled via "Needs external change" reports — orchestrator merges them after workers complete
+
+### Auto-detection (no /slash-command needed)
+
+When `.todo/.current` exists, the agent recognizes intent from natural language:
+
+| User says / does | Agent action |
+|------------------|--------------|
+| Shares a Figma URL | `/feature-design` |
+| "new feature", "start feature" | `/feature-start` |
+| Shares a spec file/URL | `/feature-spec` |
+| "next step", "let's code", "implement step 3" | `/feature-implement` |
+| "status", "where are we", "progress" | Show plan progress |
+| "load context", "remind me" | `/feature-context` |
+| "review", "check against design" | `/feature-review` |
+| "update mockup", "refresh design" | `/feature-design --refresh` |
+
+### Session rules
+- Check `.todo/.current` at session start — if exists, mention the active feature
+- Reference cached design/spec from `.todo/` instead of calling Figma MCP
+- After completing a plan step, update `[ ]` → `[x]` in `plan.md`
+
+## MCP Mobile Testing
+
+**Tool priority (cheap → expensive):**
+1. `assert_visible` / `assert_not_exists` — check element presence
+2. `analyze_screen` — screen structure without screenshot
+3. `get_ui` — full UI tree for navigation
+4. `screenshot` — visual bugs only. Always `maxWidth: 800, maxHeight: 1400`
+
+**Key tips:** `tap(hints: true)` saves a separate get_ui call, `wait_for_element` instead of `wait(ms)`, `get_logs(package: "com.kino.puber.stage")` for filtering.
+
+### Before ANY Device Testing (MANDATORY)
+
+```bash
+./gradlew installDevDebug && adb shell am start -n com.kino.puber.stage/com.kino.puber.ui.StartActivity
+```
+
 ## Testing
 No tests exist yet. JUnit dependency present but unused.
 
