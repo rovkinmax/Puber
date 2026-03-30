@@ -11,8 +11,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.tv.material3.MaterialTheme
 import com.eygraber.compose.placeholder.PlaceholderHighlight
+import com.eygraber.compose.placeholder.fade
 import com.eygraber.compose.placeholder.placeholder
-import com.eygraber.compose.placeholder.shimmer
 import com.kino.puber.core.ui.uikit.theme.PurpleGrey40
 
 private const val PROGRESS_FOR_MAX_ALPHA: Float = 0.1F
@@ -29,12 +29,11 @@ fun Modifier.placeholder(
     visible = visible,
     shape = shape,
     color = color,
-    highlight = PlaceholderHighlight.shimmer(
+    highlight = PlaceholderHighlight.fade(
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, delayMillis = 0),
-            repeatMode = RepeatMode.Restart
+            animation = tween(durationMillis = 1200),
+            repeatMode = RepeatMode.Reverse
         ),
-        progressForMaxAlpha = progressForMaxAlpha,
-        highlightColor = MaterialTheme.colorScheme.onBackground,
+        highlightColor = MaterialTheme.colorScheme.onBackground.copy(alpha = progressForMaxAlpha),
     ),
 )
