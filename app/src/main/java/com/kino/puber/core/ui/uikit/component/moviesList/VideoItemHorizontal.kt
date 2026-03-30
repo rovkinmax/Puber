@@ -28,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
@@ -36,6 +37,7 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.Rating
 import com.kino.puber.core.ui.uikit.component.RatingUIState
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
@@ -141,8 +143,23 @@ fun VideoItemHorizontal(
 
             }
 
+            if (state.isWatched) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.video_item_watched),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+
             val progressValue = state.progressPercent
-            if (progressValue != null) {
+            if (progressValue != null && !state.isWatched) {
                 LinearProgressIndicator(
                     progress = { progressValue.coerceIn(0f, 1f) },
                     modifier = Modifier

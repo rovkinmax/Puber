@@ -41,7 +41,7 @@ internal class PlayerVM(
     private val interactor: PlayerInteractor,
     private val skipSegmentInteractor: SkipSegmentInteractor,
     private val contentStateFactory: ContentStateFactory,
-    private val playbackController: PlaybackController,
+    private val playbackController: PlaybackControl,
 ) : PuberVM<PlayerViewState>(router) {
 
     override val initialViewState: PlayerViewState = PlayerViewState.Loading
@@ -75,6 +75,8 @@ internal class PlayerVM(
     private var segments: List<SkipSegment> = emptyList()
     private var creditsSegment: SkipSegment? = null
     private var dismissedSegmentType: SkipSegmentType? = null
+    private var countdownDismissed = false
+    private var tracksRestoredForCurrentMedia = false
     private var lastPositionMs: Long = 0L
 
     private val seekHandler = SeekHandler()
@@ -82,7 +84,7 @@ internal class PlayerVM(
     private val progressTracker = ProgressTracker()
     private val debugOverlayEnabled = interactor.isDebugOverlayEnabled()
 
-    private val playbackCallback = object : PlaybackController.Callback {
+    private val playbackCallback = object : PlaybackControl.Callback {
         override fun onPlaybackStateChanged(isPlaying: Boolean, isBuffering: Boolean, position: Long, duration: Long, buffered: Long) {
             val wasBuffering = (stateValue as? PlayerViewState.Content)?.content?.isBuffering == true
             updateContent {
@@ -102,6 +104,10 @@ internal class PlayerVM(
                     audioTracks = audioTracks,
                     selectedAudioTrackIndex = selectedIndex,
                 )
+            }
+            if (!tracksRestoredForCurrentMedia) {
+                tracksRestoredForCurrentMedia = true
+                restoreTrackPreferences()
             }
         }
 
@@ -143,7 +149,6 @@ internal class PlayerVM(
         initializePlayer(savedPosition = if (resumeDialog != null) null else 0L)
         startProgressSync()
         if (resumeDialog == null) scheduleControlsHide()
-        restoreTrackPreferences()
         loadSkipSegments(item, resolved.seasonNumber, resolved.episodeNumber)
     }
 
@@ -175,12 +180,12 @@ internal class PlayerVM(
     }
 
     private fun restoreTrackPreferences() {
-        val audioTrackId = interactor.getPreferredAudioTrackId(params.itemId)
+        val preferredLang = interactor.getPreferredAudioLang(params.itemId)
         val subtitleLang = interactor.getPreferredSubtitleLang(params.itemId)
 
-        if (audioTrackId != null) {
+        if (preferredLang != null) {
             val audioIndex = (stateValue as? PlayerViewState.Content)?.content?.audioTracks
-                ?.indexOfFirst { it.index == audioTrackId } ?: -1
+                ?.indexOfFirst { it.language == preferredLang } ?: -1
             if (audioIndex >= 0) {
                 applyAudioTrackSelection(audioIndex)
             }
@@ -426,6 +431,8 @@ internal class PlayerVM(
         segments = emptyList()
         creditsSegment = null
         dismissedSegmentType = null
+        countdownDismissed = false
+        tracksRestoredForCurrentMedia = false
 
         updateViewState(PlayerViewState.Loading)
         launch { preparePlayback(seasonNumber, episodeNumber, forceFromBeginning = true) }
@@ -468,6 +475,7 @@ internal class PlayerVM(
 
     private fun cancelCountdown() {
         countdownJob?.cancel()
+        countdownDismissed = true
         updateContent {
             copy(nextEpisodeCountdown = null)
         }
@@ -571,7 +579,7 @@ internal class PlayerVM(
                     } else 0L
                     lastBufferedPosition = currentBuffered
 
-                    val debugInfo = if (debugOverlayEnabled) playbackController.getDebugInfo() else null
+                    val debugInfo = if (debugOverlayEnabled) (playbackController as? PlaybackController)?.getDebugInfo() else null
                     updateContent {
                         copy(
                             currentPosition = playbackController.currentPosition,
@@ -595,6 +603,7 @@ internal class PlayerVM(
         val state = (stateValue as? PlayerViewState.Content)?.content ?: return
         if (state.isMovie || !state.hasNextEpisode) return
         if (state.nextEpisodeCountdown != null) return
+        if (countdownDismissed) return
         val duration = playbackController.duration
         if (duration <= 0) return
 
@@ -604,8 +613,9 @@ internal class PlayerVM(
                 startNextEpisodeCountdown()
             }
         } else {
+            if (duration <= EARLY_NEXT_EPISODE_OFFSET_MS) return
             val remaining = duration - playbackController.currentPosition
-            if (remaining < duration * EARLY_NEXT_EPISODE_THRESHOLD) {
+            if (remaining <= EARLY_NEXT_EPISODE_OFFSET_MS) {
                 startNextEpisodeCountdown()
             }
         }
@@ -618,7 +628,7 @@ internal class PlayerVM(
             creditsSegment = skipSegmentInteractor.findCreditsSegment(segments)
             dismissedSegmentType = null
             // Late arrival check: if credits segment exists and position already past it
-            if (creditsSegment != null) {
+            if (creditsSegment != null && !countdownDismissed) {
                 val state = (stateValue as? PlayerViewState.Content)?.content ?: return@launch
                 if (!state.isMovie && state.hasNextEpisode && state.nextEpisodeCountdown == null) {
                     if (playbackController.currentPosition >= creditsSegment!!.startMs) {
@@ -746,12 +756,12 @@ internal class PlayerVM(
         val subtitle = state.subtitleTracks.getOrNull(state.selectedSubtitleIndex)
         interactor.saveTrackPreferences(
             itemId = params.itemId,
-            audioTrackId = audioTrack?.index,
+            audioLang = audioTrack?.language?.takeIf { it.isNotEmpty() },
             subtitleLang = subtitle?.language?.takeIf { it.isNotEmpty() },
         )
     }
 
-    fun getExoPlayer(): ExoPlayer? = playbackController.player
+    fun getExoPlayer(): ExoPlayer? = (playbackController as? PlaybackController)?.player
 
     override fun onCleared() {
         saveCurrentPosition()
@@ -771,10 +781,10 @@ internal class PlayerVM(
         const val SEEK_INDICATOR_HIDE_DELAY_MS = 1500L
         const val PROGRESS_SYNC_INTERVAL_MS = 30_000L
         const val POSITION_UPDATE_INTERVAL_MS = 500L
-        const val NEXT_EPISODE_COUNTDOWN_SEC = 7
+        const val NEXT_EPISODE_COUNTDOWN_SEC = 15
         const val AUTO_MARK_WATCHED_THRESHOLD = 0.10
         const val PLAY_PAUSE_INDICATOR_HIDE_DELAY_MS = 1500L
-        const val EARLY_NEXT_EPISODE_THRESHOLD = 0.05
+        const val EARLY_NEXT_EPISODE_OFFSET_MS = 30_000L
         const val SKIP_COUNTDOWN_SEC = 7
     }
 }

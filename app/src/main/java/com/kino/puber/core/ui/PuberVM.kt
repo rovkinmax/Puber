@@ -15,6 +15,7 @@ import com.kino.puber.core.ui.navigation.BackButtonDispatcher
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.SnackbarMessage
 import com.kino.puber.core.ui.uikit.model.UIAction
+import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -42,6 +43,10 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
         get() = viewModelScope.coroutineContext
 
     protected val stateValue
+        get() = mutableViewState.value
+
+    @VisibleForTesting
+    internal val testStateValue: ViewState
         get() = mutableViewState.value
 
     protected inline fun <reified T : ViewState> updateViewState(
@@ -94,6 +99,13 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
     }
 
     protected open fun onStart() {}
+
+    @VisibleForTesting
+    internal fun testOnStart() {
+        if (started.compareAndSet(false, true)) {
+            onStart()
+        }
+    }
 
     open fun onAction(action: UIAction) {
         when (action) {

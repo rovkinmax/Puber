@@ -17,6 +17,7 @@ import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerUIMapper
 import com.kino.puber.ui.feature.player.vm.ContentStateFactory
+import com.kino.puber.ui.feature.player.vm.PlaybackControl
 import com.kino.puber.ui.feature.player.vm.PlaybackController
 import com.kino.puber.ui.feature.player.vm.PlayerVM
 import kotlinx.parcelize.Parcelize
@@ -39,7 +40,7 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Puber
             scopedOf(::SkipSegmentInteractor)
             scopedOf(::PlayerUIMapper)
             scopedOf(::ContentStateFactory)
-            scopedOf(::PlaybackController)
+            scoped<PlaybackControl> { PlaybackController(get()) }
             viewModelOf(::PlayerVM)
         }
     }

@@ -32,6 +32,9 @@ class SkipSegmentInteractor(
         }
     }
 
+    // No settings check here: credits segment is used for next-episode timing
+    // regardless of skip-credits toggle. The skip overlay visibility is controlled
+    // by findActiveSegment() which does check isSegmentTypeEnabled().
     fun findCreditsSegment(segments: List<SkipSegment>): SkipSegment? {
         return segments.firstOrNull { it.type == SkipSegmentType.CREDITS }
     }

@@ -7,21 +7,20 @@ class PlayerPreferencesRepository(context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun getPreferredAudioTrackId(itemId: Int): Int? {
-        val key = "${KEY_AUDIO_TRACK_PREFIX}$itemId"
-        return if (prefs.contains(key)) prefs.getInt(key, -1) else null
+    fun getPreferredAudioLang(itemId: Int): String? {
+        return prefs.getString("${KEY_AUDIO_LANG_PREFIX}$itemId", null)
     }
 
     fun getPreferredSubtitleLang(itemId: Int): String? {
         return prefs.getString("${KEY_SUBTITLE_LANG_PREFIX}$itemId", null)
     }
 
-    fun saveTrackPreferences(itemId: Int, audioTrackId: Int?, subtitleLang: String?) {
+    fun saveTrackPreferences(itemId: Int, audioLang: String?, subtitleLang: String?) {
         prefs.edit().apply {
-            if (audioTrackId != null) {
-                putInt("${KEY_AUDIO_TRACK_PREFIX}$itemId", audioTrackId)
+            if (audioLang != null) {
+                putString("${KEY_AUDIO_LANG_PREFIX}$itemId", audioLang)
             } else {
-                remove("${KEY_AUDIO_TRACK_PREFIX}$itemId")
+                remove("${KEY_AUDIO_LANG_PREFIX}$itemId")
             }
             if (subtitleLang != null) {
                 putString("${KEY_SUBTITLE_LANG_PREFIX}$itemId", subtitleLang)
@@ -59,7 +58,7 @@ class PlayerPreferencesRepository(context: Context) {
 
     private companion object {
         const val PREFS_NAME = "player_preferences"
-        const val KEY_AUDIO_TRACK_PREFIX = "audio_track_"
+        const val KEY_AUDIO_LANG_PREFIX = "audio_lang_"
         const val KEY_SUBTITLE_LANG_PREFIX = "subtitle_lang_"
         const val KEY_SUBTITLE_SIZE = "subtitle_size"
         const val KEY_SKIP_INTRO = "skip_intro_enabled"

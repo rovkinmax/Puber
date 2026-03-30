@@ -47,6 +47,7 @@ data class VideoItemUIState(
     val unwatchedCount: Int? = null,
     val ratings: List<RatingUIState> = emptyList(),
     val progressPercent: Float? = null,
+    val isWatched: Boolean = false,
 )
 
 @Composable

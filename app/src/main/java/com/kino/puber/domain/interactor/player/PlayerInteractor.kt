@@ -151,16 +151,16 @@ internal class PlayerInteractor(
         api.toggleWatchingStatus(id, status = 1, season = season, video = videoNumber)
     }
 
-    fun getPreferredAudioTrackId(itemId: Int): Int? {
-        return playerPreferencesRepository.getPreferredAudioTrackId(itemId)
+    fun getPreferredAudioLang(itemId: Int): String? {
+        return playerPreferencesRepository.getPreferredAudioLang(itemId)
     }
 
     fun getPreferredSubtitleLang(itemId: Int): String? {
         return playerPreferencesRepository.getPreferredSubtitleLang(itemId)
     }
 
-    fun saveTrackPreferences(itemId: Int, audioTrackId: Int?, subtitleLang: String?) {
-        playerPreferencesRepository.saveTrackPreferences(itemId, audioTrackId, subtitleLang)
+    fun saveTrackPreferences(itemId: Int, audioLang: String?, subtitleLang: String?) {
+        playerPreferencesRepository.saveTrackPreferences(itemId, audioLang = audioLang, subtitleLang = subtitleLang)
     }
 
     fun isDebugOverlayEnabled(): Boolean {

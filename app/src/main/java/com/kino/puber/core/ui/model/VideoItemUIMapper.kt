@@ -23,6 +23,7 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
             wideImageUrl = item.posters?.wide.orEmpty().ensureHttps(),
             unwatchedCount = item.new,
             ratings = buildRatings(item),
+            isWatched = isItemWatched(item),
         )
     }
 
@@ -46,6 +47,14 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
             year = item.year?.toString().orEmpty(),
             duration = buildDuration(item),
         )
+    }
+
+    private fun isItemWatched(item: Item): Boolean {
+        val watched = item.watched ?: return false
+        if (watched == 0) return false
+        // For series: watched when no new (unwatched) episodes remain
+        val newEpisodes = item.new
+        return newEpisodes == null || newEpisodes == 0
     }
 
     private fun buildRatings(item: Item): List<RatingUIState> = buildList {

@@ -263,7 +263,10 @@ dependencies {
     implementation(libs.timber)
 
     // Testing
-    testImplementation(libs.junit)
+    testImplementation(libs.junit5)
+    testRuntimeOnly(libs.junit5.launcher)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.mockk)
 
     detektPlugins(libs.detekt.compose.rules)
 
@@ -271,4 +274,9 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+    maxHeapSize = "2g"
 }

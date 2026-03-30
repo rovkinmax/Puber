@@ -21,8 +21,7 @@ import com.kino.puber.R
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 
-internal class PlaybackController(private val context: Context) {
-
+internal interface PlaybackControl {
     interface Callback {
         fun onPlaybackStateChanged(isPlaying: Boolean, isBuffering: Boolean, position: Long, duration: Long, buffered: Long)
         fun onTracksUpdated(audioTracks: List<AudioTrackUIState>, selectedIndex: Int)
@@ -30,14 +29,33 @@ internal class PlaybackController(private val context: Context) {
         fun onError(message: String)
     }
 
+    val currentPosition: Long
+    val duration: Long
+    val isPlaying: Boolean
+    val bufferedPosition: Long
+
+    fun setCallback(callback: Callback)
+    fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?)
+    fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?)
+    fun play()
+    fun pause()
+    fun seekTo(positionMs: Long)
+    fun setSpeed(speed: Float)
+    fun selectAudioTrack(groupIndex: Int)
+    fun selectSubtitle(index: Int)
+    fun release()
+}
+
+internal class PlaybackController(private val context: Context) : PlaybackControl {
+
     private var exoPlayer: ExoPlayer? = null
-    private var callback: Callback? = null
+    private var callback: PlaybackControl.Callback? = null
 
     val player: ExoPlayer? get() = exoPlayer
-    val currentPosition: Long get() = exoPlayer?.currentPosition ?: 0L
-    val duration: Long get() = exoPlayer?.duration?.coerceAtLeast(0) ?: 0L
-    val isPlaying: Boolean get() = exoPlayer?.isPlaying == true
-    val bufferedPosition: Long get() = exoPlayer?.bufferedPosition ?: 0L
+    override val currentPosition: Long get() = exoPlayer?.currentPosition ?: 0L
+    override val duration: Long get() = exoPlayer?.duration?.coerceAtLeast(0) ?: 0L
+    override val isPlaying: Boolean get() = exoPlayer?.isPlaying == true
+    override val bufferedPosition: Long get() = exoPlayer?.bufferedPosition ?: 0L
     
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -61,12 +79,12 @@ internal class PlaybackController(private val context: Context) {
         }
     }
 
-    fun setCallback(callback: Callback) {
+    override fun setCallback(callback: PlaybackControl.Callback) {
         this.callback = callback
     }
 
     @OptIn(UnstableApi::class)
-    fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?) {
+    override fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?) {
         release()
 
         val loadControl = DefaultLoadControl.Builder()
@@ -122,7 +140,7 @@ internal class PlaybackController(private val context: Context) {
         }
     }
 
-    fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?) {
+    override fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?) {
         val player = exoPlayer ?: return
         val savedPosition = player.currentPosition
         val wasPlaying = player.isPlaying
@@ -139,23 +157,23 @@ internal class PlaybackController(private val context: Context) {
         player.playWhenReady = wasPlaying
     }
 
-    fun play() {
+    override fun play() {
         exoPlayer?.play()
     }
 
-    fun pause() {
+    override fun pause() {
         exoPlayer?.pause()
     }
 
-    fun seekTo(positionMs: Long) {
+    override fun seekTo(positionMs: Long) {
         exoPlayer?.seekTo(positionMs)
     }
 
-    fun setSpeed(speed: Float) {
+    override fun setSpeed(speed: Float) {
         exoPlayer?.setPlaybackSpeed(speed)
     }
 
-    fun selectAudioTrack(groupIndex: Int) {
+    override fun selectAudioTrack(groupIndex: Int) {
         val player = exoPlayer ?: return
         val audioGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
         val targetGroup = audioGroups.getOrNull(groupIndex) ?: return
@@ -168,7 +186,7 @@ internal class PlaybackController(private val context: Context) {
             .build()
     }
 
-    fun selectSubtitle(index: Int) {
+    override fun selectSubtitle(index: Int) {
         val player = exoPlayer ?: return
         if (index == 0) {
             player.trackSelectionParameters = player.trackSelectionParameters
@@ -193,7 +211,7 @@ internal class PlaybackController(private val context: Context) {
         }
     }
 
-    fun release() {
+    override fun release() {
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.release()
         exoPlayer = null
