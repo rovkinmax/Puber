@@ -15,6 +15,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.kino.puber.R
@@ -91,8 +92,8 @@ internal class PlaybackController(private val context: Context) : PlaybackContro
             .setBufferDurationsMs(
                 /* minBufferMs = */ 30_000,
                 /* maxBufferMs = */ 120_000,
-                /* bufferForPlaybackMs = */ 5_000,
-                /* bufferForPlaybackAfterRebufferMs = */ 10_000,
+                /* bufferForPlaybackMs = */ 2_500,
+                /* bufferForPlaybackAfterRebufferMs = */ 5_000,
             )
             .setBackBuffer(
                 /* backBufferDurationMs = */ 30_000,
@@ -102,10 +103,16 @@ internal class PlaybackController(private val context: Context) : PlaybackContro
             .build()
 
         val bandwidthMeter = DefaultBandwidthMeter.Builder(context)
-            .setInitialBitrateEstimate(1_500_000L)
+            .setInitialBitrateEstimate(5_000_000L)
             .build()
 
-        val trackSelector = DefaultTrackSelector(context).apply {
+        val adaptiveTrackSelectionFactory = AdaptiveTrackSelection.Factory(
+            /* minDurationForQualityIncreaseMs = */ 4_000,
+            /* maxDurationForQualityDecreaseMs = */ 8_000,
+            /* minDurationToRetainAfterDiscardMs = */ 15_000,
+            /* bandwidthFraction = */ 0.8f,
+        )
+        val trackSelector = DefaultTrackSelector(context, adaptiveTrackSelectionFactory).apply {
             parameters = buildUponParameters()
                 .setExceedVideoConstraintsIfNecessary(true)
                 .setExceedRendererCapabilitiesIfNecessary(true)

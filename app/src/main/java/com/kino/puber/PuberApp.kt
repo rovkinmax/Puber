@@ -5,10 +5,12 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
-import coil3.util.DebugLogger
+import coil3.intercept.Interceptor
 import coil3.request.CachePolicy
+import coil3.request.ImageResult
 import coil3.request.crossfade
 import coil3.memory.MemoryCache
+import coil3.util.DebugLogger
 import com.kino.puber.core.error.DefaultErrorHandler
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.logger.LinkingDebugTree
@@ -82,6 +84,22 @@ class PuberApp : Application(), SingletonImageLoader.Factory {
                     .maxSizeBytes(100L * 1024 * 1024)
                     .build()
             }
+            .components {
+                add(HttpsEnforcingInterceptor())
+            }
             .build()
+    }
+}
+
+private class HttpsEnforcingInterceptor : Interceptor {
+    override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+        val data = chain.request.data
+        if (data is String && data.startsWith("http://")) {
+            val newRequest = chain.request.newBuilder()
+                .data(data.replaceFirst("http://", "https://"))
+                .build()
+            return chain.withRequest(newRequest).proceed()
+        }
+        return chain.proceed()
     }
 }

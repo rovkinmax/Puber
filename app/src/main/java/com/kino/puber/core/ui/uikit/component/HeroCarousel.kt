@@ -1,7 +1,9 @@
 package com.kino.puber.core.ui.uikit.component
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -17,10 +19,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.runtime.Composable
@@ -106,20 +108,39 @@ fun HeroCarousel(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             repeat(items.size) { index ->
                 val isSelected = index == pagerState.currentPage
+                val width by animateDpAsState(
+                    targetValue = when {
+                        isFocused && isSelected -> 24.dp
+                        else -> 8.dp
+                    },
+                    label = "indicatorWidth",
+                )
+                val height by animateDpAsState(
+                    targetValue = when {
+                        isFocused && isSelected -> 8.dp
+                        isFocused -> 6.dp
+                        else -> 6.dp
+                    },
+                    label = "indicatorHeight",
+                )
+                val color by animateColorAsState(
+                    targetValue = when {
+                        isFocused && isSelected -> MaterialTheme.colorScheme.primary
+                        isFocused -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    },
+                    label = "indicatorColor",
+                )
                 Box(
                     modifier = Modifier
-                        .size(if (isSelected) 10.dp else 8.dp)
-                        .background(
-                            color = if (isSelected) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                            },
-                            shape = CircleShape,
-                        ),
+                        .width(width)
+                        .height(height)
+                        .background(color = color, shape = RoundedCornerShape(50)),
                 )
             }
         }

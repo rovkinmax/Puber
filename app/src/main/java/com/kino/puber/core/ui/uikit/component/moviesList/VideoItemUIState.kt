@@ -62,8 +62,8 @@ fun VideoItem(
                 PuberTheme.Defaults.VideoItemWidth,
                 PuberTheme.Defaults.VideoItemHeight,
             ),
+        scale = CardDefaults.scale(pressedScale = 1f, focusedScale = 1f),
         onClick = onClick,
-        scale = CardDefaults.scale(pressedScale = 1F, focusedScale = 1.05F),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val context = LocalContext.current

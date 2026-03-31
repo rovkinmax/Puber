@@ -52,8 +52,8 @@ fun VideoItemHorizontal(
         modifier = modifier
             .height(PuberTheme.Defaults.HorizontalVideoItemHeight)
             .aspectRatio(PuberTheme.Defaults.HorizontalVideoItemAspectRatio),
+        scale = CardDefaults.scale(pressedScale = 1f, focusedScale = 1f),
         onClick = onClick,
-        scale = CardDefaults.scale(pressedScale = 1F, focusedScale = 1.05F),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val context = LocalContext.current
