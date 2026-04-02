@@ -37,7 +37,7 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
     }
     private val snackBarMessageFlow = MutableStateFlow<SnackbarMessage?>(null)
     private val started = AtomicBoolean(false)
-    private val viewState: Flow<ViewState> get() = mutableViewState
+    protected val viewState: Flow<ViewState> get() = mutableViewState
 
     protected val coroutineContext: CoroutineContext
         get() = viewModelScope.coroutineContext
@@ -118,11 +118,15 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
         router.back()
     }
 
-    @Composable
-    fun collectViewState(initial: ViewState = stateValue): State<ViewState> {
+    protected fun ensureStarted() {
         if (started.compareAndSet(false, true)) {
             onStart()
         }
+    }
+
+    @Composable
+    fun collectViewState(initial: ViewState = stateValue): State<ViewState> {
+        ensureStarted()
         DisposableEffect(this@PuberVM) {
             registerBackDispatcher()
             onDispose {

@@ -66,7 +66,12 @@ fun VideoGrid(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = PuberTheme.Defaults.VideoItemHeight),
         ) {
-            itemsIndexed(state.list, key = { index, _ -> index }) { indexC, columnItem ->
+            itemsIndexed(state.list, key = { _, item ->
+                when (item) {
+                    is VideoGridItemUIState.Title -> "title_${item.title}"
+                    is VideoGridItemUIState.Items -> "items_${item.items.first().id}"
+                }
+            }) { indexC, columnItem ->
                 when (columnItem) {
 
                     is VideoGridItemUIState.Title -> Text(
@@ -93,20 +98,20 @@ fun VideoGrid(
 
         if (enableTopSideGradient && showTopGradient) {
             val gradientHeight = 48.dp
+            val surfaceColor = MaterialTheme.colorScheme.surface
+            val density = LocalDensity.current
+            val gradientBrush = remember(surfaceColor) {
+                Brush.verticalGradient(
+                    colors = listOf(surfaceColor, surfaceColor.copy(alpha = 0F)),
+                    endY = with(density) { gradientHeight.toPx() },
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(gradientHeight)
                     .align(Alignment.TopCenter)
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.surface,
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0F),
-                            ),
-                            endY = with(LocalDensity.current) { gradientHeight.toPx() },
-                        )
-                    )
+                    .background(brush = gradientBrush)
             )
         }
     }
@@ -147,6 +152,20 @@ private fun VideoGridItems(
                     } else {
                         indexR == 0
                     }
+                    val focusModifier = remember(indexR, item.id) {
+                        Modifier.onFocusChanged { state ->
+                            if (state.isFocused) {
+                                focusedItemIndex = indexR
+                                onItemFocused(item)
+                            }
+                        }
+                    }
+                    val clickCallback = remember(item.id) {
+                        {
+                            runCatching { rowFocusRequester.saveFocusedChild() }
+                            onItemClick(item)
+                        }
+                    }
 
                     VideoItem(
                         modifier = Modifier
@@ -154,17 +173,9 @@ private fun VideoGridItems(
                                 if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
                                 else Modifier
                             )
-                            .onFocusChanged { state ->
-                                if (state.isFocused) {
-                                    focusedItemIndex = indexR
-                                    onItemFocused(item)
-                                }
-                            },
+                            .then(focusModifier),
                         state = item,
-                        onClick = {
-                            runCatching { rowFocusRequester.saveFocusedChild() }
-                            onItemClick(item)
-                        },
+                        onClick = clickCallback,
                     )
                 }
             }

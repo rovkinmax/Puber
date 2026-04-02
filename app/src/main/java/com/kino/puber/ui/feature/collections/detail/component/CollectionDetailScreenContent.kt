@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -59,9 +60,10 @@ internal fun CollectionDetailScreenContent(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         itemsIndexed(state.items, key = { _, item -> item.id }) { _, item ->
+                            val clickCallback = remember(item.id) { { onItemClick(item) } }
                             VideoItemHorizontal(
                                 state = item,
-                                onClick = { onItemClick(item) },
+                                onClick = clickCallback,
                             )
                         }
                     }

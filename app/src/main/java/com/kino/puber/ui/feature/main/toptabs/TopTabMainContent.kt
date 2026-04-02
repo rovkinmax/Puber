@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -28,6 +29,7 @@ import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.model.TabType
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -42,12 +44,24 @@ internal fun TopTabMainContent(
     val contentFocus = remember { FocusRequester() }
     val selectedIndex = state.tabs.indexOfFirst { it.isSelected }.coerceAtLeast(0)
 
+    var focusedTabIndex by remember { mutableIntStateOf(selectedIndex) }
     var isContentFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedIndex) {
+        focusedTabIndex = selectedIndex
+    }
+
+    LaunchedEffect(focusedTabIndex) {
+        if (focusedTabIndex == selectedIndex) return@LaunchedEffect
+        delay(300L)
+        val tab = state.tabs.getOrNull(focusedTabIndex) ?: return@LaunchedEffect
+        onAction(CommonAction.ItemSelected(tab))
+    }
 
     LaunchedEffect(Unit) {
         tabRowFocus.requestFocus()
     }
-    val isOnHome = state.tabs.getOrNull(selectedIndex)?.type == TabType.Home
+    val isOnHome = state.tabs.getOrNull(focusedTabIndex)?.type == TabType.Home
 
     // Back: content → TabRow, TabRow(not Home) → Home, TabRow(Home) → exit
     BackHandler(enabled = isContentFocused || !isOnHome) {
@@ -65,13 +79,8 @@ internal fun TopTabMainContent(
         Column(Modifier.fillMaxSize()) {
             TopTabBar(
                 tabs = state.tabs,
-                selectedIndex = selectedIndex,
-                onTabFocused = { index ->
-                    if (index != selectedIndex) {
-                        val tab = state.tabs.getOrNull(index) ?: return@TopTabBar
-                        onAction(CommonAction.ItemSelected(tab))
-                    }
-                },
+                selectedIndex = focusedTabIndex,
+                onTabFocused = { index -> focusedTabIndex = index },
                 onTabClick = { contentFocus.requestFocus() },
                 onSearchClick = onSearchClick,
                 onSettingsClick = onSettingsClick,

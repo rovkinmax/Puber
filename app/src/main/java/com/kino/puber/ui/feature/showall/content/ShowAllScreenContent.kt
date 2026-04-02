@@ -93,9 +93,10 @@ private fun ShowAllContentBody(
         verticalArrangement = Arrangement.spacedBy(32.dp),
     ) {
         itemsIndexed(state.items, key = { _, item -> item.id }) { _, item ->
+            val clickCallback = remember(item.id) { { onAction(CommonAction.ItemSelected(item)) } }
             VideoItemHorizontal(
                 state = item,
-                onClick = { onAction(CommonAction.ItemSelected(item)) },
+                onClick = clickCallback,
             )
         }
     }

@@ -15,6 +15,7 @@ import com.kino.puber.ui.feature.contentlist.model.ContentListAction
 import com.kino.puber.ui.feature.contentlist.model.ContentListViewState
 import com.kino.puber.ui.feature.showall.ShowAllScreen
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 
 internal class ContentListVM(
     router: AppRouter,
@@ -63,8 +64,11 @@ internal class ContentListVM(
     }
 
     private fun onItemFocused(item: VideoItemUIState) {
+        val state = stateValue as? ContentListViewState ?: return
+        if (!state.showDetailPanel) return
         focusedItemJob?.cancel()
         focusedItemJob = launch {
+            delay(150L)
             updateViewState<ContentListViewState> { copy(selectedItem = VideoDetailsUIState.Loading) }
             val details = interactor.getItemDetails(item.id)
             updateViewState<ContentListViewState> { copy(selectedItem = mapper.mapDetailedItem(details)) }

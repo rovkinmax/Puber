@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,6 +28,9 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.contentlist.model.ContentListAction
 import com.kino.puber.ui.feature.contentlist.model.ContentListViewState
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
+import com.kino.puber.ui.feature.contentlist.vm.SectionVM
+import org.koin.compose.LocalKoinScope
+import org.koin.core.qualifier.named
 
 @Composable
 internal fun ContentListScreenContent(
@@ -36,6 +40,17 @@ internal fun ContentListScreenContent(
 ) {
     val mainContentFocus = rememberFocusRequesterOnLaunch()
     var focusedSectionIndex by rememberSaveable { mutableIntStateOf(0) }
+
+    val scope = LocalKoinScope.current
+    val sectionVms = remember {
+        sections.map { config -> scope.get<SectionVM>(named(config.id)) }
+    }
+    val sectionStates = sectionVms.mapIndexed { index, vm ->
+        key(sections[index].id) {
+            val s by vm.collectState()
+            s
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -96,11 +111,14 @@ internal fun ContentListScreenContent(
                         }
                     }
                     SectionRowContent(
+                        state = sectionStates[index],
                         config = config,
                         isTargetRow = index == focusedSectionIndex,
                         onItemClick = rememberedOnItemClick,
                         onItemFocused = rememberedOnItemFocused,
                         onSectionFocused = rememberedOnSectionFocused,
+                        onRetry = { sectionVms[index].onAction(CommonAction.RetryClicked) },
+                        onLoadMore = { sectionVms[index].onAction(CommonAction.LoadMore) },
                         onShowAll = rememberedOnShowAll,
                     )
                 }

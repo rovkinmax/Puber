@@ -12,6 +12,9 @@ import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.ui.feature.contentlist.model.SectionState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 internal class SectionVM(
     paginator: Paginator.Store<Item>,
@@ -21,6 +24,13 @@ internal class SectionVM(
     router: AppRouter,
     errorHandler: ErrorHandler,
 ) : PagingVM<Item, SectionState>(paginator, router, errorHandler) {
+
+    // Collect state without back dispatcher — for use outside LazyColumn items
+    @Composable
+    fun collectState(): State<SectionState> {
+        ensureStarted()
+        return viewState.collectAsStateWithLifecycle(stateValue)
+    }
 
     private var currentPage = 0
     private var cachedInput: List<Item>? = null

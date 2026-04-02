@@ -41,27 +41,22 @@ import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
 import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
-import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.contentlist.model.SectionState
-import com.kino.puber.ui.feature.contentlist.vm.SectionVM
-import org.koin.compose.LocalKoinScope
-import org.koin.core.qualifier.named
 
 @Composable
 internal fun SectionRowContent(
+    state: SectionState,
     config: SectionConfig,
     isTargetRow: Boolean,
     onItemClick: (VideoItemUIState) -> Unit,
     onItemFocused: (VideoItemUIState) -> Unit,
     onSectionFocused: () -> Unit,
+    onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
     onShowAll: (() -> Unit)? = null,
 ) {
-    val scope = LocalKoinScope.current
-    val sectionVm = remember(config.id) { scope.get<SectionVM>(named(config.id)) }
-    val state by sectionVm.collectViewState()
-
     val contentFocusRequester = remember { FocusRequester() }
     val hasFocusRef = remember { booleanArrayOf(false) }
 
@@ -71,7 +66,7 @@ internal fun SectionRowContent(
             is SectionState.Empty -> { /* hidden */ }
             is SectionState.Error -> ErrorSectionContent(
                 message = s.message,
-                onRetry = { sectionVm.onAction(CommonAction.RetryClicked) },
+                onRetry = onRetry,
             )
             is SectionState.Content -> {
                 val shouldTransferFocus = hasFocusRef[0]
@@ -82,7 +77,7 @@ internal fun SectionRowContent(
                     onItemClick = onItemClick,
                     onItemFocused = onItemFocused,
                     onSectionFocused = onSectionFocused,
-                    onLoadMore = { sectionVm.onAction(CommonAction.LoadMore) },
+                    onLoadMore = onLoadMore,
                     onShowAll = onShowAll,
                 )
                 LaunchedEffect(Unit) {
