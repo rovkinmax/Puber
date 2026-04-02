@@ -41,7 +41,7 @@ internal fun CollectionCard(
             .height(PuberTheme.Defaults.HorizontalVideoItemHeight)
             .aspectRatio(PuberTheme.Defaults.HorizontalVideoItemAspectRatio),
         onClick = onClick,
-        scale = CardDefaults.scale(pressedScale = 1F, focusedScale = 1.05F),
+        scale = CardDefaults.scale(pressedScale = 1F, focusedScale = 1F),
     ) {
         Box(Modifier.fillMaxSize()) {
             val context = LocalContext.current

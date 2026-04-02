@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
@@ -158,6 +159,7 @@ private fun HeroItem(
         modifier = modifier,
         scale = CardDefaults.scale(pressedScale = 1f, focusedScale = 1f),
         border = CardDefaults.border(focusedBorder = Border.None, pressedBorder = Border.None),
+        shape = CardDefaults.shape(RectangleShape),
     ) {
         Box(Modifier.fillMaxSize()) {
             val context = LocalContext.current
