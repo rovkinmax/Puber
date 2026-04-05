@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -186,12 +187,38 @@ internal fun PlayerScreenContent(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    BufferingIndicator(
-                        visible = content.isBuffering,
-                        speedBps = content.bufferingSpeedBps,
-                    )
                     SeekIndicator(state = content.seekIndicator)
                     PlayPauseIndicator(state = content.playPauseIndicator)
+                }
+
+                // Buffering progress bar (visible when buffering + controls hidden)
+                AnimatedVisibility(
+                    visible = content.isBuffering && !content.controlsVisible,
+                    modifier = Modifier.fillMaxSize(),
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colorStops = arrayOf(
+                                        0.7f to MaterialTheme.colorScheme.scrim.copy(alpha = 0f),
+                                        1f to MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f),
+                                    ),
+                                )
+                            ),
+                        contentAlignment = Alignment.BottomCenter,
+                    ) {
+                        PlayerProgressBar(
+                            currentPosition = content.currentPosition,
+                            duration = content.duration,
+                            bufferedPosition = content.bufferedPosition,
+                            isBuffering = true,
+                            modifier = Modifier.padding(bottom = 24.dp),
+                        )
+                    }
                 }
 
                 // Layer 2: Controls overlay
@@ -213,6 +240,7 @@ internal fun PlayerScreenContent(
                     currentPosition = content.currentPosition,
                     duration = content.duration,
                     bufferedPosition = content.bufferedPosition,
+                    isBuffering = content.isBuffering,
                     isMovie = content.isMovie,
                     isPlaying = content.isPlaying,
                     hasNextEpisode = content.hasNextEpisode,
@@ -243,6 +271,7 @@ internal fun PlayerScreenContent(
                 val onQualitySelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectQuality(index)) } }
                 val onSpeedSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectSpeed(index)) } }
                 val onAspectRatioSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectAspectRatio(index)) } }
+                val onBufferPresetSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectBufferPreset(index)) } }
 
                 AudioSubtitlesPanel(
                     visible = content.activePanel == ActivePanel.AudioSubtitles,
@@ -267,9 +296,12 @@ internal fun PlayerScreenContent(
                     selectedSpeedIndex = content.selectedSpeedIndex,
                     aspectRatios = content.aspectRatios,
                     selectedAspectRatioIndex = content.selectedAspectRatioIndex,
+                    bufferPresets = content.bufferPresets,
+                    selectedBufferPresetIndex = content.selectedBufferPresetIndex,
                     onQualitySelected = onQualitySelected,
                     onSpeedSelected = onSpeedSelected,
                     onAspectRatioSelected = onAspectRatioSelected,
+                    onBufferPresetSelected = onBufferPresetSelected,
                     onBackPressed = onClosePanel,
                 )
 

@@ -24,6 +24,7 @@ import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.ui.feature.player.model.PlayPauseIndicatorState
 import com.kino.puber.ui.feature.player.model.PlayerContentState
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
+import com.kino.puber.ui.feature.player.model.BufferPreset
 import com.kino.puber.ui.feature.player.model.PlayerUIMapper
 import com.kino.puber.ui.feature.player.model.PlayerViewState
 import com.kino.puber.ui.feature.player.model.ResumeDialogState
@@ -71,6 +72,7 @@ internal class PlayerVM(
     private var countdownJob: Job? = null
     private var positionUpdateJob: Job? = null
     private var skipCountdownJob: Job? = null
+    private var bufferingDebounceJob: Job? = null
 
     private var segments: List<SkipSegment> = emptyList()
     private var creditsSegment: SkipSegment? = null
@@ -89,13 +91,23 @@ internal class PlayerVM(
         override fun onPlaybackStateChanged(isPlaying: Boolean, isBuffering: Boolean, position: Long, duration: Long, buffered: Long) {
             val wasBuffering = (stateValue as? PlayerViewState.Content)?.content?.isBuffering == true
             updateContent {
-                copy(isPlaying = isPlaying, isBuffering = isBuffering)
+                copy(isPlaying = isPlaying)
             }
             if (isBuffering && !wasBuffering) {
-                controlsHideJob?.cancel()
-            } else if (!isBuffering && wasBuffering) {
-                val controlsVisible = (stateValue as? PlayerViewState.Content)?.content?.controlsVisible == true
-                if (controlsVisible) scheduleControlsHide()
+                // Debounce: only show spinner if buffering lasts > 800ms
+                bufferingDebounceJob?.cancel()
+                bufferingDebounceJob = launch {
+                    delay(BUFFERING_DEBOUNCE_MS)
+                    updateContent { copy(isBuffering = true) }
+                    controlsHideJob?.cancel()
+                }
+            } else if (!isBuffering) {
+                bufferingDebounceJob?.cancel()
+                if (wasBuffering) {
+                    updateContent { copy(isBuffering = false) }
+                    val controlsVisible = (stateValue as? PlayerViewState.Content)?.content?.controlsVisible == true
+                    if (controlsVisible) scheduleControlsHide()
+                }
             }
         }
 
@@ -144,7 +156,7 @@ internal class PlayerVM(
         )
 
         val resumeDialog = if (!forceFromBeginning) buildResumeDialog(resolved.watchingTime) else null
-        val contentState = contentStateFactory.build(item, resolved, resumeDialog, interactor.getSubtitleSize())
+        val contentState = contentStateFactory.build(item, resolved, resumeDialog, interactor.getSubtitleSize(), interactor.getBufferPreset())
 
         updateViewState(PlayerViewState.Content(contentState))
         episodeSwitchInProgress = false
@@ -170,9 +182,11 @@ internal class PlayerVM(
 
     private fun initializePlayer(savedPosition: Long?) {
         val media = currentMedia ?: return
-        val qualityIndex = (stateValue as? PlayerViewState.Content)?.content?.selectedQualityIndex ?: 0
+        val content = (stateValue as? PlayerViewState.Content)?.content
+        val qualityIndex = content?.selectedQualityIndex ?: 0
+        val bufferPreset = content?.bufferPresets?.getOrNull(content.selectedBufferPresetIndex)?.preset ?: BufferPreset.AUTO
         val streamUrl = interactor.selectStreamUrl(media.files, qualityIndex) ?: return
-        playbackController.prepare(streamUrl, media.subtitles, savedPosition)
+        playbackController.prepare(streamUrl, media.subtitles, savedPosition, bufferPreset)
     }
 
     private fun switchStreamUrl(qualityIndex: Int) {
@@ -256,6 +270,7 @@ internal class PlayerVM(
             is PlayerAction.SelectQuality -> selectQuality(action.index)
             is PlayerAction.SelectSpeed -> selectSpeed(action.index)
             is PlayerAction.SelectAspectRatio -> selectAspectRatio(action.index)
+            is PlayerAction.SelectBufferPreset -> selectBufferPreset(action.index)
             is PlayerAction.SelectEpisode -> switchEpisode(action.seasonNumber, action.episodeNumber)
             is PlayerAction.SelectEpisodeById -> selectEpisodeById(action.episodeId)
             is PlayerAction.NextEpisode -> playNextEpisode()
@@ -448,6 +463,19 @@ internal class PlayerVM(
         // Aspect ratio is applied in PlayerScreenContent via PlayerView.resizeMode
     }
 
+    private fun selectBufferPreset(index: Int) {
+        val currentState = (stateValue as? PlayerViewState.Content)?.content ?: return
+        if (currentState.selectedBufferPresetIndex == index) return
+
+        val preset = currentState.bufferPresets.getOrNull(index)?.preset ?: return
+        interactor.saveBufferPreset(preset)
+
+        val position = playbackController.currentPosition
+        updateContent { copy(selectedBufferPresetIndex = index) }
+        tracksRestoredForCurrentMedia = false
+        initializePlayer(savedPosition = position)
+    }
+
     private fun selectEpisodeById(episodeId: Int) {
         val item = currentMedia?.item ?: return
         val seasons = item.seasons ?: return
@@ -612,33 +640,20 @@ internal class PlayerVM(
         startPositionUpdates()
     }
 
-    private var lastBufferedPosition: Long = 0L
-
     private fun startPositionUpdates() {
         positionUpdateJob?.cancel()
-        lastBufferedPosition = 0L
         positionUpdateJob = launch {
             while (isActive) {
                 delay(POSITION_UPDATE_INTERVAL_MS)
                 val isPlaying = playbackController.isPlaying
                 val isBuffering = (stateValue as? PlayerViewState.Content)?.content?.isBuffering == true
                 if (isPlaying || isBuffering) {
-                    val currentBuffered = playbackController.bufferedPosition
-                    val speedBps = if (isBuffering) {
-                        val deltaBytes = (currentBuffered - lastBufferedPosition).coerceAtLeast(0)
-                        // Convert ms delta to bytes/sec estimate (rough: 1ms buffered ≈ bitrate-dependent)
-                        // Use buffered position delta in ms, scale to approximate bytes/sec
-                        (deltaBytes * 1000 / POSITION_UPDATE_INTERVAL_MS)
-                    } else 0L
-                    lastBufferedPosition = currentBuffered
-
                     val debugInfo = if (debugOverlayEnabled) (playbackController as? PlaybackController)?.getDebugInfo() else null
                     updateContent {
                         copy(
                             currentPosition = playbackController.currentPosition,
                             duration = playbackController.duration,
-                            bufferedPosition = currentBuffered,
-                            bufferingSpeedBps = speedBps,
+                            bufferedPosition = playbackController.bufferedPosition,
                             debugInfo = debugInfo,
                         )
                     }
@@ -838,6 +853,7 @@ internal class PlayerVM(
         const val NEXT_EPISODE_COUNTDOWN_SEC = 15
         const val AUTO_MARK_WATCHED_THRESHOLD = 0.10
         const val PLAY_PAUSE_INDICATOR_HIDE_DELAY_MS = 1500L
+        const val BUFFERING_DEBOUNCE_MS = 800L
         const val EARLY_NEXT_EPISODE_OFFSET_MS = 30_000L
         const val SKIP_COUNTDOWN_SEC = 7
         val NUMBER_PREFIX_REGEX = Regex("""^\d+\.\s*""")

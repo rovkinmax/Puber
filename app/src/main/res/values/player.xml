@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Player Controls -->
+    <string name="player_buffering">Буферизация…</string>
     <string name="player_button_episodes">Серии</string>
     <string name="player_button_audio_subtitles">Аудио и субтитры</string>
     <string name="player_button_video">Видео</string>
@@ -19,6 +20,12 @@
     <string name="player_panel_quality">КАЧЕСТВО</string>
     <string name="player_panel_speed">СКОРОСТЬ</string>
     <string name="player_panel_aspect_ratio">СООТНОШЕНИЕ</string>
+    <string name="player_panel_buffer">БУФЕР</string>
+    <string name="player_buffer_auto">Авто</string>
+    <string name="player_buffer_small">Малый (16 МБ / 60с)</string>
+    <string name="player_buffer_medium">Средний (32 МБ / 120с)</string>
+    <string name="player_buffer_large">Большой (64 МБ / 180с)</string>
+    <string name="player_buffer_max">Макс (128 МБ / 300с)</string>
     <string name="player_speed_normal">Норм.</string>
     <string name="player_aspect_auto">Авто</string>
     <string name="player_sound_stereo">Стерео 2.0</string>

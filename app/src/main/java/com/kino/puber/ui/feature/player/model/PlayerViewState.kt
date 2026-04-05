@@ -26,7 +26,6 @@ internal data class PlayerContentState(
     val currentPosition: Long,
     val duration: Long,
     val bufferedPosition: Long,
-    val bufferingSpeedBps: Long = 0,
 
     // Controls
     val controlsVisible: Boolean,
@@ -51,6 +50,8 @@ internal data class PlayerContentState(
     val selectedSpeedIndex: Int,
     val aspectRatios: List<AspectRatioUIState>,
     val selectedAspectRatioIndex: Int,
+    val bufferPresets: List<BufferPresetUIState>,
+    val selectedBufferPresetIndex: Int,
 
     // Content type
     val isMovie: Boolean,

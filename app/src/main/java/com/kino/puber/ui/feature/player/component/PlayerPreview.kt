@@ -105,6 +105,8 @@ private fun previewSeriesContent(
     selectedSpeedIndex = PlayerUIMapper.DEFAULT_SPEED_INDEX,
     aspectRatios = PlayerUIMapper.ASPECT_RATIOS,
     selectedAspectRatioIndex = PlayerUIMapper.DEFAULT_ASPECT_RATIO_INDEX,
+    bufferPresets = emptyList(),
+    selectedBufferPresetIndex = 0,
     isMovie = false,
     hasNextEpisode = true,
     hasPreviousEpisode = true,
@@ -143,6 +145,8 @@ private fun previewMovieContent(
     selectedSpeedIndex = PlayerUIMapper.DEFAULT_SPEED_INDEX,
     aspectRatios = PlayerUIMapper.ASPECT_RATIOS,
     selectedAspectRatioIndex = PlayerUIMapper.DEFAULT_ASPECT_RATIO_INDEX,
+    bufferPresets = emptyList(),
+    selectedBufferPresetIndex = 0,
     isMovie = true,
     hasNextEpisode = false,
     hasPreviousEpisode = false,
@@ -324,6 +328,30 @@ private fun NextEpisodeCountdownPreview() {
 }
 
 private const val PREVIEW_COUNTDOWN_START = 7
+
+@Preview(name = "Buffering — controls hidden", device = TV_1080p)
+@Composable
+private fun BufferingPreview() = PuberTheme {
+    PlayerScreenContent(
+        state = PlayerViewState.Content(
+            previewSeriesContent(controlsVisible = false).copy(isBuffering = true)
+        ),
+        onAction = {},
+        exoPlayer = { null },
+    )
+}
+
+@Preview(name = "Buffering — controls visible", device = TV_1080p)
+@Composable
+private fun BufferingWithControlsPreview() = PuberTheme {
+    PlayerScreenContent(
+        state = PlayerViewState.Content(
+            previewSeriesContent().copy(isBuffering = true)
+        ),
+        onAction = {},
+        exoPlayer = { null },
+    )
+}
 
 @Preview(name = "Series — paused with controls", device = TV_1080p)
 @Composable
