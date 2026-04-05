@@ -15,12 +15,21 @@ class PlayerPreferencesRepository(context: Context) {
         return prefs.getString("${KEY_SUBTITLE_LANG_PREFIX}$itemId", null)
     }
 
-    fun saveTrackPreferences(itemId: Int, audioLang: String?, subtitleLang: String?) {
+    fun getPreferredAudioLabel(itemId: Int): String? {
+        return prefs.getString("${KEY_AUDIO_LABEL_PREFIX}$itemId", null)
+    }
+
+    fun saveTrackPreferences(itemId: Int, audioLang: String?, audioLabel: String?, subtitleLang: String?) {
         prefs.edit().apply {
             if (audioLang != null) {
                 putString("${KEY_AUDIO_LANG_PREFIX}$itemId", audioLang)
             } else {
                 remove("${KEY_AUDIO_LANG_PREFIX}$itemId")
+            }
+            if (audioLabel != null) {
+                putString("${KEY_AUDIO_LABEL_PREFIX}$itemId", audioLabel)
+            } else {
+                remove("${KEY_AUDIO_LABEL_PREFIX}$itemId")
             }
             if (subtitleLang != null) {
                 putString("${KEY_SUBTITLE_LANG_PREFIX}$itemId", subtitleLang)
@@ -63,6 +72,7 @@ class PlayerPreferencesRepository(context: Context) {
     private companion object {
         const val PREFS_NAME = "player_preferences"
         const val KEY_AUDIO_LANG_PREFIX = "audio_lang_"
+        const val KEY_AUDIO_LABEL_PREFIX = "audio_label_"
         const val KEY_SUBTITLE_LANG_PREFIX = "subtitle_lang_"
         const val KEY_SUBTITLE_SIZE = "subtitle_size"
         const val KEY_SKIP_INTRO = "skip_intro_enabled"

@@ -182,16 +182,45 @@ internal class PlayerVM(
     }
 
     private fun restoreTrackPreferences() {
+        val preferredLabel = interactor.getPreferredAudioLabel(params.itemId)
         val preferredLang = interactor.getPreferredAudioLang(params.itemId)
         val subtitleLang = interactor.getPreferredSubtitleLang(params.itemId)
+        val audioTracks = (stateValue as? PlayerViewState.Content)?.content?.audioTracks
 
-        if (preferredLang != null) {
-            val audioIndex = (stateValue as? PlayerViewState.Content)?.content?.audioTracks
-                ?.indexOfFirst { it.language == preferredLang } ?: -1
-            if (audioIndex >= 0) {
-                applyAudioTrackSelection(audioIndex)
+        var audioIndex = -1
+
+        // 1. Exact label match
+        if (preferredLabel != null) {
+            audioIndex = audioTracks?.indexOfFirst { it.label == preferredLabel } ?: -1
+        }
+
+        // 2. Core label match (strip leading "NN. " number prefix)
+        if (audioIndex < 0 && preferredLabel != null) {
+            val coreLabel = preferredLabel.replace(NUMBER_PREFIX_REGEX, "")
+            audioIndex = audioTracks?.indexOfFirst {
+                it.label.replace(NUMBER_PREFIX_REGEX, "") == coreLabel
+            } ?: -1
+        }
+
+        // 3. Voice type match — "Многоголосый. Red Head Sound (RUS)" → type "Многоголосый" + lang
+        if (audioIndex < 0 && preferredLabel != null && preferredLang != null) {
+            val savedType = extractVoiceType(preferredLabel)
+            if (savedType != null) {
+                audioIndex = audioTracks?.indexOfFirst { track ->
+                    extractVoiceType(track.label) == savedType && track.language == preferredLang
+                } ?: -1
             }
         }
+
+        // 4. Language fallback
+        if (audioIndex < 0 && preferredLang != null) {
+            audioIndex = audioTracks?.indexOfFirst { it.language == preferredLang } ?: -1
+        }
+
+        if (audioIndex >= 0) {
+            applyAudioTrackSelection(audioIndex)
+        }
+
         if (subtitleLang != null) {
             val subIndex = (stateValue as? PlayerViewState.Content)?.content?.subtitleTracks
                 ?.indexOfFirst { it.language == subtitleLang } ?: -1
@@ -199,6 +228,13 @@ internal class PlayerVM(
                 applySubtitleSelection(subIndex)
             }
         }
+    }
+
+    /** Extracts voice type from HLS label: "03. Многоголосый. Red Head Sound (RUS)" → "Многоголосый" */
+    private fun extractVoiceType(label: String): String? {
+        val core = label.replace(NUMBER_PREFIX_REGEX, "")
+        val withoutLang = core.substringBeforeLast(" (")
+        return withoutLang.substringBefore(". ").trim().takeIf { it.isNotEmpty() }
     }
 
     override fun onAction(action: UIAction) {
@@ -774,6 +810,7 @@ internal class PlayerVM(
         interactor.saveTrackPreferences(
             itemId = params.itemId,
             audioLang = audioTrack?.language?.takeIf { it.isNotEmpty() },
+            audioLabel = audioTrack?.label?.takeIf { it.isNotEmpty() },
             subtitleLang = subtitle?.language?.takeIf { it.isNotEmpty() },
         )
     }
@@ -803,5 +840,6 @@ internal class PlayerVM(
         const val PLAY_PAUSE_INDICATOR_HIDE_DELAY_MS = 1500L
         const val EARLY_NEXT_EPISODE_OFFSET_MS = 30_000L
         const val SKIP_COUNTDOWN_SEC = 7
+        val NUMBER_PREFIX_REGEX = Regex("""^\d+\.\s*""")
     }
 }

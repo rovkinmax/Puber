@@ -182,12 +182,16 @@ internal class PlayerInteractor(
         return playerPreferencesRepository.getPreferredAudioLang(itemId)
     }
 
+    fun getPreferredAudioLabel(itemId: Int): String? {
+        return playerPreferencesRepository.getPreferredAudioLabel(itemId)
+    }
+
     fun getPreferredSubtitleLang(itemId: Int): String? {
         return playerPreferencesRepository.getPreferredSubtitleLang(itemId)
     }
 
-    fun saveTrackPreferences(itemId: Int, audioLang: String?, subtitleLang: String?) {
-        playerPreferencesRepository.saveTrackPreferences(itemId, audioLang = audioLang, subtitleLang = subtitleLang)
+    fun saveTrackPreferences(itemId: Int, audioLang: String?, audioLabel: String?, subtitleLang: String?) {
+        playerPreferencesRepository.saveTrackPreferences(itemId, audioLang = audioLang, audioLabel = audioLabel, subtitleLang = subtitleLang)
     }
 
     fun isDebugOverlayEnabled(): Boolean {
