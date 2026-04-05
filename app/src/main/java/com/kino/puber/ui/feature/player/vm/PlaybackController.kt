@@ -127,7 +127,8 @@ internal class PlaybackController(
                 bufferParams.backBufferDurationMs,
                 /* retainBackBufferFromKeyframe = */ true,
             )
-            .setPrioritizeTimeOverSizeThresholds(true)
+            .setTargetBufferBytes(bufferParams.targetBufferBytes)
+            .setPrioritizeTimeOverSizeThresholds(false)
             .build()
 
         val bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
