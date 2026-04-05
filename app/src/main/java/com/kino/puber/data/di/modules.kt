@@ -1,3 +1,5 @@
+@file:OptIn(UnstableApi::class)
+
 package com.kino.puber.data.di
 
 import android.net.ConnectivityManager
@@ -20,15 +22,27 @@ import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.data.api.IntroDbAppApiClient
 import com.kino.puber.data.api.TheIntroDbApiClient
 import com.kino.puber.data.api.TmdbApiClient
+import okhttp3.OkHttpClient
+import com.kino.puber.data.api.network.DnsOverHttpsFactory
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.database.StandaloneDatabaseProvider
 
 val apiModule = module {
     single { SessionEventBus() }
     single {
+        OkHttpClient.Builder()
+            .dns(DnsOverHttpsFactory.create())
+            .build()
+    }
+    single {
         KinoPubApiClient(
+            okHttpClient = get(),
             cacheDir = androidContext().cacheDir,
             connectivityManager = androidContext().getSystemService(ConnectivityManager::class.java),
             cryptoPreferenceRepository = get(),
@@ -51,4 +65,12 @@ val repositoryModule = module {
     singleOf(::SkipSegmentRepository)
     singleOf(::SkipSegmentService)
     singleOf(::NavigationPreferencesRepository)
+    single<androidx.media3.datasource.cache.Cache> {
+        val cacheDir = java.io.File(androidContext().externalCacheDir, "media_cache")
+        SimpleCache(
+            cacheDir,
+            LeastRecentlyUsedCacheEvictor(512L * 1024 * 1024),
+            StandaloneDatabaseProvider(androidContext())
+        )
+    }
 }

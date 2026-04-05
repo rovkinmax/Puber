@@ -1,14 +1,12 @@
 package com.kino.puber.ui.feature.player.component
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
+import com.kino.puber.core.ui.uikit.component.LifecycleAction
 import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.player.model.PlayerAction
@@ -40,7 +38,7 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Puber
             scopedOf(::SkipSegmentInteractor)
             scopedOf(::PlayerUIMapper)
             scopedOf(::ContentStateFactory)
-            scoped<PlaybackControl> { PlaybackController(get()) }
+            scoped<PlaybackControl> { PlaybackController(get(), get(), get()) }
             viewModelOf(::PlayerVM)
         }
     }
@@ -51,16 +49,11 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Puber
         val state by vm.collectViewState()
         val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
 
-        val lifecycleOwner = LocalLifecycleOwner.current
-        DisposableEffect(lifecycleOwner) {
-            val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_STOP) {
-                    onAction(PlayerAction.OnBackground)
-                }
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
+        LifecycleAction(
+            event = Lifecycle.Event.ON_STOP,
+            onAction = onAction,
+            action = PlayerAction.OnBackground,
+        )
 
         PlayerScreenContent(
             state = state,

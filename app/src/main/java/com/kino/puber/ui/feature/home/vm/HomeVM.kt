@@ -50,6 +50,7 @@ internal class HomeVM(
                 router.navigateTo(router.screens.details(item.id))
             }
             is CommonAction.RetryClicked -> loadHome()
+            is CommonAction.OnResume -> silentRefresh()
             else -> super.onAction(action)
         }
     }
@@ -60,6 +61,11 @@ internal class HomeVM(
 
     fun onCollectionClick(id: Int, title: String) {
         router.navigateTo(CollectionDetailScreen(id, title))
+    }
+
+    private fun silentRefresh() {
+        if (stateValue !is HomeViewState.Content) return
+        loadHome()
     }
 
     private fun loadHome() {

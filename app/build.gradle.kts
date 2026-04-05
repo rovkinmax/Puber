@@ -258,6 +258,7 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     implementation(libs.media3.common)
+    implementation(libs.media3.datasource.okhttp)
 
     // Logging
     implementation(libs.timber)

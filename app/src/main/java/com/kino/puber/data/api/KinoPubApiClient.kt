@@ -43,7 +43,6 @@ import com.kino.puber.data.api.models.VoteResult
 import com.kino.puber.data.api.models.WatchingStatus
 import com.kino.puber.data.api.models.WatchlistToggleResponse
 import android.net.ConnectivityManager
-import com.kino.puber.data.api.network.DnsOverHttpsFactory
 import com.kino.puber.data.api.network.createConnectivityPlugin
 import com.kino.puber.data.repository.ICryptoPreferenceRepository
 import io.ktor.client.HttpClient
@@ -71,10 +70,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import okhttp3.Cache
+import okhttp3.OkHttpClient
 import java.io.File
 
 
 class KinoPubApiClient(
+    private val okHttpClient: OkHttpClient,
     private val cacheDir: File,
     private val connectivityManager: ConnectivityManager,
     private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
@@ -90,8 +91,8 @@ class KinoPubApiClient(
     private fun createHttpClient(): HttpClient = HttpClient(OkHttp) {
 
         engine {
+            preconfigured = okHttpClient
             config {
-                dns(DnsOverHttpsFactory.create())
                 cache(Cache(File(cacheDir, "okhttpcache"), CACHE_SIZE))
             }
         }

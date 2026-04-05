@@ -56,6 +56,10 @@ class PlayerPreferencesRepository(context: Context) {
         get() = prefs.getBoolean(KEY_DEBUG_OVERLAY, false)
         set(value) = prefs.edit().putBoolean(KEY_DEBUG_OVERLAY, value).apply()
 
+    var preferSurroundAudio: Boolean
+        get() = prefs.getBoolean(KEY_PREFER_SURROUND, false)
+        set(value) = prefs.edit().putBoolean(KEY_PREFER_SURROUND, value).apply()
+
     private companion object {
         const val PREFS_NAME = "player_preferences"
         const val KEY_AUDIO_LANG_PREFIX = "audio_lang_"
@@ -65,5 +69,6 @@ class PlayerPreferencesRepository(context: Context) {
         const val KEY_SKIP_RECAP = "skip_recap_enabled"
         const val KEY_SKIP_CREDITS = "skip_credits_enabled"
         const val KEY_DEBUG_OVERLAY = "debug_overlay_enabled"
+        const val KEY_PREFER_SURROUND = "prefer_surround_audio"
     }
 }

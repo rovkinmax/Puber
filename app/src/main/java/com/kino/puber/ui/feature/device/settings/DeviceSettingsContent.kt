@@ -158,6 +158,13 @@ private fun DeviceSettingsList(
                 )
             }
         }
+        item {
+            LocalToggleItem(
+                label = stringResource(R.string.settings_prefer_surround_audio),
+                checked = state.preferSurroundAudio,
+                onToggle = { onAction(DeviceSettingsActions.ToggleSurroundAudio) },
+            )
+        }
 
         // Skip segments section (local-only preferences)
         item {

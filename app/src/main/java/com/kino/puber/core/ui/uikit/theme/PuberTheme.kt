@@ -35,12 +35,12 @@ fun PuberTheme(
         error = Error60,
         errorContainer = Error60,
     )
-    MaterialTheme(
-        colorScheme = colorSchemeTv,
-        typography = Typography,
+    androidx.compose.material3.MaterialTheme(
+        colorScheme = colorScheme,
         content = {
-            androidx.compose.material3.MaterialTheme(
-                colorScheme = colorScheme,
+            MaterialTheme(
+                colorScheme = colorSchemeTv,
+                typography = Typography,
                 content = content
             )
         }

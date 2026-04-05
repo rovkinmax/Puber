@@ -337,6 +337,14 @@ private fun ErrorOverlay(
     onRetry: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val retryFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        try {
+            retryFocusRequester.requestFocus()
+        } catch (_: Exception) {
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -354,6 +362,7 @@ private fun ErrorOverlay(
             )
             Button(
                 onClick = onRetry,
+                modifier = Modifier.focusRequester(retryFocusRequester),
                 colors = ButtonDefaults.colors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,

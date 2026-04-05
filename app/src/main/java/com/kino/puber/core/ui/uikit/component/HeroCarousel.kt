@@ -107,7 +107,8 @@ fun HeroCarousel(
         Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 12.dp),
+                .padding(bottom = 12.dp)
+                .height(8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

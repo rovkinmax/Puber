@@ -11,8 +11,13 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
+import androidx.media3.exoplayer.source.BehindLiveWindowException
+import okhttp3.OkHttpClient
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
@@ -47,10 +52,16 @@ internal interface PlaybackControl {
     fun release()
 }
 
-internal class PlaybackController(private val context: Context) : PlaybackControl {
+internal class PlaybackController(
+    private val context: Context,
+    private val okHttpClient: OkHttpClient,
+    private val mediaCache: androidx.media3.datasource.cache.Cache,
+) : PlaybackControl {
 
     private var exoPlayer: ExoPlayer? = null
+    private var trackSelector: DefaultTrackSelector? = null
     private var callback: PlaybackControl.Callback? = null
+    private var ac3FallbackApplied = false
 
     val player: ExoPlayer? get() = exoPlayer
     override val currentPosition: Long get() = exoPlayer?.currentPosition ?: 0L
@@ -76,7 +87,22 @@ internal class PlaybackController(private val context: Context) : PlaybackContro
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            callback?.onError(error.localizedMessage ?: context.getString(R.string.player_error_playback))
+            val cause = error.cause
+            when {
+                cause is BehindLiveWindowException -> {
+                    exoPlayer?.let { player ->
+                        player.seekToDefaultPosition()
+                        player.prepare()
+                    }
+                }
+                cause is MediaCodecRenderer.DecoderInitializationException
+                        && cause.mimeType == MimeTypes.AUDIO_AC3 -> {
+                    disableAc3AndRetry()
+                }
+                else -> callback?.onError(
+                    error.localizedMessage ?: context.getString(R.string.player_error_playback)
+                )
+            }
         }
     }
 
@@ -87,30 +113,30 @@ internal class PlaybackController(private val context: Context) : PlaybackContro
     @OptIn(UnstableApi::class)
     override fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?) {
         release()
+        ac3FallbackApplied = false
 
+        val bufferParams = DeviceBufferConfig.resolve(context)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                /* minBufferMs = */ 30_000,
-                /* maxBufferMs = */ 120_000,
-                /* bufferForPlaybackMs = */ 2_500,
-                /* bufferForPlaybackAfterRebufferMs = */ 5_000,
+                bufferParams.minBufferMs,
+                bufferParams.maxBufferMs,
+                bufferParams.bufferForPlaybackMs,
+                bufferParams.bufferForPlaybackAfterRebufferMs,
             )
             .setBackBuffer(
-                /* backBufferDurationMs = */ 30_000,
+                bufferParams.backBufferDurationMs,
                 /* retainBackBufferFromKeyframe = */ true,
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        val bandwidthMeter = DefaultBandwidthMeter.Builder(context)
-            .setInitialBitrateEstimate(5_000_000L)
-            .build()
+        val bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
 
         val adaptiveTrackSelectionFactory = AdaptiveTrackSelection.Factory(
-            /* minDurationForQualityIncreaseMs = */ 4_000,
-            /* maxDurationForQualityDecreaseMs = */ 8_000,
-            /* minDurationToRetainAfterDiscardMs = */ 15_000,
-            /* bandwidthFraction = */ 0.8f,
+            /* minDurationForQualityIncreaseMs = */ 10_000,
+            /* maxDurationForQualityDecreaseMs = */ 15_000,
+            /* minDurationToRetainAfterDiscardMs = */ 25_000,
+            /* bandwidthFraction = */ 0.75f,
         )
         val trackSelector = DefaultTrackSelector(context, adaptiveTrackSelectionFactory).apply {
             parameters = buildUponParameters()
@@ -118,6 +144,7 @@ internal class PlaybackController(private val context: Context) : PlaybackContro
                 .setExceedRendererCapabilitiesIfNecessary(true)
                 .build()
         }
+        this.trackSelector = trackSelector
 
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
@@ -221,6 +248,31 @@ internal class PlaybackController(private val context: Context) : PlaybackContro
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.release()
         exoPlayer = null
+        trackSelector = null
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun disableAc3AndRetry() {
+        if (ac3FallbackApplied) {
+            callback?.onError(context.getString(R.string.player_error_playback))
+            return
+        }
+        ac3FallbackApplied = true
+
+        val player = exoPlayer ?: return
+        val selector = trackSelector ?: return
+        val position = player.currentPosition
+
+        player.stop()
+
+        selector.parameters = selector.parameters.buildUpon()
+            .setExceedRendererCapabilitiesIfNecessary(false)
+            .setExceedAudioConstraintsIfNecessary(false)
+            .build()
+
+        player.seekTo(position)
+        player.prepare()
+        player.playWhenReady = true
     }
 
     private fun buildMediaItem(streamUrl: String, subtitles: List<SubtitleLink>?): MediaItem {
@@ -239,11 +291,19 @@ internal class PlaybackController(private val context: Context) : PlaybackContro
     }
 
     @OptIn(UnstableApi::class)
+    private fun createDataSourceFactory(): DataSource.Factory {
+        val httpFactory = OkHttpDataSource.Factory(okHttpClient)
+        return CacheDataSource.Factory()
+            .setCache(mediaCache)
+            .setUpstreamDataSourceFactory(httpFactory)
+    }
+
+    @OptIn(UnstableApi::class)
     private fun setMediaSource(player: ExoPlayer, mediaItem: MediaItem, streamUrl: String) {
         if (streamUrl.contains(".m3u8") || streamUrl.contains("hls")) {
-            val dataSourceFactory = DefaultDataSource.Factory(context)
-            val hlsSource = HlsMediaSource.Factory(dataSourceFactory)
+            val hlsSource = HlsMediaSource.Factory(createDataSourceFactory())
                 .setAllowChunklessPreparation(true)
+                .setLoadErrorHandlingPolicy(HlsErrorPolicy())
                 .createMediaSource(mediaItem)
             player.setMediaSource(hlsSource)
         } else {

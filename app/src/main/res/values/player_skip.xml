@@ -14,6 +14,9 @@
     <string name="settings_skip_recap">Пересказ (recap)</string>
     <string name="settings_skip_credits">Титры (credits)</string>
 
+    <!-- Audio -->
+    <string name="settings_prefer_surround_audio">Объемный звук (AC3)</string>
+
     <!-- Debug -->
     <string name="settings_debug_title">Отладка</string>
     <string name="settings_debug_overlay">Показывать информацию о потоке</string>

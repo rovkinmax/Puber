@@ -66,6 +66,7 @@ internal class DeviceSettingsVM(
                                 skipRecapEnabled = playerPreferencesRepository.skipRecapEnabled,
                                 skipCreditsEnabled = playerPreferencesRepository.skipCreditsEnabled,
                                 debugOverlayEnabled = playerPreferencesRepository.debugOverlayEnabled,
+                                preferSurroundAudio = playerPreferencesRepository.preferSurroundAudio,
                                 navigationMode = navigationPreferencesRepository.getNavigationMode(),
                             )
                         )
@@ -85,6 +86,7 @@ internal class DeviceSettingsVM(
             DeviceSettingsActions.ToggleSkipRecap -> toggleSkipPref { it.copy(skipRecapEnabled = !it.skipRecapEnabled) }
             DeviceSettingsActions.ToggleSkipCredits -> toggleSkipPref { it.copy(skipCreditsEnabled = !it.skipCreditsEnabled) }
             DeviceSettingsActions.ToggleDebugOverlay -> toggleDebugOverlay()
+            DeviceSettingsActions.ToggleSurroundAudio -> toggleSurroundAudio()
             is DeviceSettingsActions.ChangeNavigationMode -> onChangeNavigationMode(action.mode)
             CommonAction.RetryClicked -> onRetry()
             else -> super.onAction(action)
@@ -227,6 +229,14 @@ internal class DeviceSettingsVM(
         val newValue = !currentState.debugOverlayEnabled
         playerPreferencesRepository.debugOverlayEnabled = newValue
         updateViewState(stateValue.copy(state = currentState.copy(debugOverlayEnabled = newValue)))
+    }
+
+    private fun toggleSurroundAudio() {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        val newValue = !currentState.preferSurroundAudio
+        playerPreferencesRepository.preferSurroundAudio = newValue
+        updateViewState(stateValue.copy(state = currentState.copy(preferSurroundAudio = newValue)))
     }
 
     private fun onChangeNavigationMode(mode: NavigationMode) {

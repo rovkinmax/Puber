@@ -14,5 +14,6 @@ internal sealed class DeviceSettingsActions : UIAction {
     data object ToggleSkipRecap : DeviceSettingsActions()
     data object ToggleSkipCredits : DeviceSettingsActions()
     data object ToggleDebugOverlay : DeviceSettingsActions()
+    data object ToggleSurroundAudio : DeviceSettingsActions()
     data class ChangeNavigationMode(val mode: NavigationMode) : DeviceSettingsActions()
 }

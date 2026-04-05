@@ -134,17 +134,23 @@ internal class PlayerInteractor(
 
     fun selectStreamUrl(files: List<VideoFile>?, qualityIndex: Int): String? {
         if (files.isNullOrEmpty()) return null
-        if (qualityIndex == 0) {
-            // Auto: prefer adaptive hls4 playlist
+        val baseUrl = if (qualityIndex == 0) {
             val url = files.first().url ?: return null
-            return url.hls4 ?: url.hls ?: url.http
+            url.hls4 ?: url.hls ?: url.http
+        } else {
+            val uniqueFiles = files.distinctBy { it.quality ?: "${it.h}p" }
+                .sortedByDescending { it.qualityId ?: 0 }
+            val file = uniqueFiles.getOrNull(qualityIndex - 1) ?: files.first()
+            val url = file.url ?: return null
+            url.hls ?: url.hls4 ?: url.http
+        } ?: return null
+
+        return if (playerPreferencesRepository.preferSurroundAudio) {
+            val separator = if ("?" in baseUrl) "&" else "?"
+            "${baseUrl}${separator}ac3default=1"
+        } else {
+            baseUrl
         }
-        // Specific quality: prefer single-bitrate hls (unique per quality)
-        val uniqueFiles = files.distinctBy { it.quality ?: "${it.h}p" }
-            .sortedByDescending { it.qualityId ?: 0 }
-        val file = uniqueFiles.getOrNull(qualityIndex - 1) ?: files.first()
-        val url = file.url ?: return null
-        return url.hls ?: url.hls4 ?: url.http
     }
 
     private fun findFirstUnwatchedEpisode(item: Item): Pair<Int, Int>? {
