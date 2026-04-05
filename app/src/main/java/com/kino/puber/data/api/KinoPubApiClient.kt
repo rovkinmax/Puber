@@ -409,9 +409,10 @@ class KinoPubApiClient(
     /**
      * Get bookmarks
      */
-    suspend fun getBookmarks(): Result<List<Bookmark>> = apiCall {
-        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks")
-    }
+    suspend fun getBookmarks(): Result<List<Bookmark>> =
+        apiCall<ApiResponseList<Bookmark>> {
+            httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks")
+        }.map { it.items.orEmpty() }
 
     /**
      * Get bookmark items
