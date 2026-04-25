@@ -272,6 +272,7 @@ internal fun PlayerScreenContent(
                 val onSpeedSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectSpeed(index)) } }
                 val onAspectRatioSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectAspectRatio(index)) } }
                 val onBufferPresetSelected = remember(onAction) { { index: Int -> onAction(PlayerAction.SelectBufferPreset(index)) } }
+                val onToggleFastDns = remember(onAction) { { onAction(PlayerAction.ToggleFastDns) } }
 
                 AudioSubtitlesPanel(
                     visible = content.activePanel == ActivePanel.AudioSubtitles,
@@ -302,6 +303,8 @@ internal fun PlayerScreenContent(
                     onSpeedSelected = onSpeedSelected,
                     onAspectRatioSelected = onAspectRatioSelected,
                     onBufferPresetSelected = onBufferPresetSelected,
+                    fastDnsEnabled = content.fastDnsEnabled,
+                    onToggleFastDns = onToggleFastDns,
                     onBackPressed = onClosePanel,
                 )
 

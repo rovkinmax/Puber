@@ -9,6 +9,7 @@ import com.kino.puber.data.api.models.VideoFile
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
 import com.kino.puber.domain.model.SubtitleSize
+import com.kino.puber.ui.feature.player.model.BufferPreset
 
 internal data class ResolvedMedia(
     val files: List<VideoFile>?,
@@ -204,5 +205,19 @@ internal class PlayerInteractor(
 
     fun saveSubtitleSize(size: SubtitleSize) {
         playerPreferencesRepository.saveSubtitleSize(size)
+    }
+
+    fun getBufferPreset(): BufferPreset {
+        return playerPreferencesRepository.bufferPreset
+    }
+
+    fun saveBufferPreset(preset: BufferPreset) {
+        playerPreferencesRepository.bufferPreset = preset
+    }
+
+    fun isFastDnsEnabled(): Boolean = playerPreferencesRepository.fastDnsEnabled
+
+    fun setFastDnsEnabled(enabled: Boolean) {
+        playerPreferencesRepository.fastDnsEnabled = enabled
     }
 }

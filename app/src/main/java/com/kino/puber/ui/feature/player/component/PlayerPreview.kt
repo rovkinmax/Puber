@@ -14,6 +14,8 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.ui.feature.player.model.ActivePanel
+import com.kino.puber.ui.feature.player.model.BufferPreset
+import com.kino.puber.ui.feature.player.model.BufferPresetUIState
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.PlayerContentState
 import com.kino.puber.ui.feature.player.model.PlayerUIMapper
@@ -43,6 +45,14 @@ private val previewSubtitleTracks = listOf(
 
 private val previewSoundModes = listOf(
     SoundModeUIState(0, "Стерео 2.0"),
+)
+
+private val previewBufferPresets = listOf(
+    BufferPresetUIState(0, "Авто", BufferPreset.AUTO),
+    BufferPresetUIState(1, "Малый", BufferPreset.SMALL),
+    BufferPresetUIState(2, "Средний", BufferPreset.MEDIUM),
+    BufferPresetUIState(3, "Большой", BufferPreset.LARGE),
+    BufferPresetUIState(4, "Макс", BufferPreset.MAX),
 )
 
 private val previewQualities = listOf(
@@ -105,7 +115,7 @@ private fun previewSeriesContent(
     selectedSpeedIndex = PlayerUIMapper.DEFAULT_SPEED_INDEX,
     aspectRatios = PlayerUIMapper.ASPECT_RATIOS,
     selectedAspectRatioIndex = PlayerUIMapper.DEFAULT_ASPECT_RATIO_INDEX,
-    bufferPresets = emptyList(),
+    bufferPresets = previewBufferPresets,
     selectedBufferPresetIndex = 0,
     isMovie = false,
     hasNextEpisode = true,
@@ -145,7 +155,7 @@ private fun previewMovieContent(
     selectedSpeedIndex = PlayerUIMapper.DEFAULT_SPEED_INDEX,
     aspectRatios = PlayerUIMapper.ASPECT_RATIOS,
     selectedAspectRatioIndex = PlayerUIMapper.DEFAULT_ASPECT_RATIO_INDEX,
-    bufferPresets = emptyList(),
+    bufferPresets = previewBufferPresets,
     selectedBufferPresetIndex = 0,
     isMovie = true,
     hasNextEpisode = false,

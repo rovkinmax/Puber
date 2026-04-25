@@ -156,7 +156,7 @@ internal class PlayerVM(
         )
 
         val resumeDialog = if (!forceFromBeginning) buildResumeDialog(resolved.watchingTime) else null
-        val contentState = contentStateFactory.build(item, resolved, resumeDialog, interactor.getSubtitleSize(), interactor.getBufferPreset())
+        val contentState = contentStateFactory.build(item, resolved, resumeDialog, interactor.getSubtitleSize(), interactor.getBufferPreset(), interactor.isFastDnsEnabled())
 
         updateViewState(PlayerViewState.Content(contentState))
         episodeSwitchInProgress = false
@@ -185,8 +185,9 @@ internal class PlayerVM(
         val content = (stateValue as? PlayerViewState.Content)?.content
         val qualityIndex = content?.selectedQualityIndex ?: 0
         val bufferPreset = content?.bufferPresets?.getOrNull(content.selectedBufferPresetIndex)?.preset ?: BufferPreset.AUTO
+        val fastDns = content?.fastDnsEnabled ?: true
         val streamUrl = interactor.selectStreamUrl(media.files, qualityIndex) ?: return
-        playbackController.prepare(streamUrl, media.subtitles, savedPosition, bufferPreset)
+        playbackController.prepare(streamUrl, media.subtitles, savedPosition, bufferPreset, fastDns)
     }
 
     private fun switchStreamUrl(qualityIndex: Int) {
@@ -271,6 +272,7 @@ internal class PlayerVM(
             is PlayerAction.SelectSpeed -> selectSpeed(action.index)
             is PlayerAction.SelectAspectRatio -> selectAspectRatio(action.index)
             is PlayerAction.SelectBufferPreset -> selectBufferPreset(action.index)
+            is PlayerAction.ToggleFastDns -> toggleFastDns()
             is PlayerAction.SelectEpisode -> switchEpisode(action.seasonNumber, action.episodeNumber)
             is PlayerAction.SelectEpisodeById -> selectEpisodeById(action.episodeId)
             is PlayerAction.NextEpisode -> playNextEpisode()
@@ -472,6 +474,17 @@ internal class PlayerVM(
 
         val position = playbackController.currentPosition
         updateContent { copy(selectedBufferPresetIndex = index) }
+        tracksRestoredForCurrentMedia = false
+        initializePlayer(savedPosition = position)
+    }
+
+    private fun toggleFastDns() {
+        val currentState = (stateValue as? PlayerViewState.Content)?.content ?: return
+        val newValue = !currentState.fastDnsEnabled
+        interactor.setFastDnsEnabled(newValue)
+
+        val position = playbackController.currentPosition
+        updateContent { copy(fastDnsEnabled = newValue) }
         tracksRestoredForCurrentMedia = false
         initializePlayer(savedPosition = position)
     }

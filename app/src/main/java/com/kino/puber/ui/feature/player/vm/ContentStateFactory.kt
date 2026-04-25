@@ -4,6 +4,7 @@ import com.kino.puber.data.api.models.Item
 import com.kino.puber.domain.interactor.player.ResolvedMedia
 import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.feature.player.model.ActivePanel
+import com.kino.puber.ui.feature.player.model.BufferPreset
 import com.kino.puber.ui.feature.player.model.FocusTarget
 import com.kino.puber.ui.feature.player.model.PlayerContentState
 import com.kino.puber.ui.feature.player.model.PlayerUIMapper
@@ -17,6 +18,8 @@ internal class ContentStateFactory(private val mapper: PlayerUIMapper) {
         resolved: ResolvedMedia,
         resumeDialog: ResumeDialogState?,
         subtitleSize: SubtitleSize,
+        savedBufferPreset: BufferPreset = BufferPreset.AUTO,
+        fastDnsEnabled: Boolean = true,
     ): PlayerContentState = PlayerContentState(
         title = mapper.buildTitle(item, resolved.seasonNumber, resolved.episodeNumber),
         subtitle = mapper.buildSubtitle(item, resolved.seasonNumber, resolved.episodeNumber, resolved.episodeTitle),
@@ -42,6 +45,9 @@ internal class ContentStateFactory(private val mapper: PlayerUIMapper) {
         selectedSpeedIndex = PlayerUIMapper.DEFAULT_SPEED_INDEX,
         aspectRatios = PlayerUIMapper.ASPECT_RATIOS,
         selectedAspectRatioIndex = PlayerUIMapper.DEFAULT_ASPECT_RATIO_INDEX,
+        bufferPresets = mapper.mapBufferPresets(),
+        selectedBufferPresetIndex = BufferPreset.entries.indexOf(savedBufferPreset).coerceAtLeast(0),
+        fastDnsEnabled = fastDnsEnabled,
         isMovie = !resolved.isSeries,
         hasNextEpisode = resolved.hasNext,
         hasPreviousEpisode = resolved.hasPrevious,

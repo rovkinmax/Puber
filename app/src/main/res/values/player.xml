@@ -26,6 +26,8 @@
     <string name="player_buffer_medium">Средний (32 МБ / 120с)</string>
     <string name="player_buffer_large">Большой (64 МБ / 180с)</string>
     <string name="player_buffer_max">Макс (128 МБ / 300с)</string>
+    <string name="player_fast_dns">Быстрый DNS</string>
+    <string name="player_fast_dns_hint">Системный DNS для видео</string>
     <string name="player_speed_normal">Норм.</string>
     <string name="player_aspect_auto">Авто</string>
     <string name="player_sound_stereo">Стерео 2.0</string>

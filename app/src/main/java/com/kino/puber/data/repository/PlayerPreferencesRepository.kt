@@ -2,6 +2,7 @@ package com.kino.puber.data.repository
 
 import android.content.Context
 import com.kino.puber.domain.model.SubtitleSize
+import com.kino.puber.ui.feature.player.model.BufferPreset
 
 class PlayerPreferencesRepository(context: Context) {
 
@@ -69,6 +70,17 @@ class PlayerPreferencesRepository(context: Context) {
         get() = prefs.getBoolean(KEY_PREFER_SURROUND, false)
         set(value) = prefs.edit().putBoolean(KEY_PREFER_SURROUND, value).apply()
 
+    var bufferPreset: BufferPreset
+        get() {
+            val ordinal = prefs.getInt(KEY_BUFFER_PRESET, BufferPreset.AUTO.ordinal)
+            return BufferPreset.entries.getOrElse(ordinal) { BufferPreset.AUTO }
+        }
+        set(value) = prefs.edit().putInt(KEY_BUFFER_PRESET, value.ordinal).apply()
+
+    var fastDnsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_FAST_DNS, true)
+        set(value) = prefs.edit().putBoolean(KEY_FAST_DNS, value).apply()
+
     private companion object {
         const val PREFS_NAME = "player_preferences"
         const val KEY_AUDIO_LANG_PREFIX = "audio_lang_"
@@ -80,5 +92,7 @@ class PlayerPreferencesRepository(context: Context) {
         const val KEY_SKIP_CREDITS = "skip_credits_enabled"
         const val KEY_DEBUG_OVERLAY = "debug_overlay_enabled"
         const val KEY_PREFER_SURROUND = "prefer_surround_audio"
+        const val KEY_BUFFER_PRESET = "buffer_preset"
+        const val KEY_FAST_DNS = "fast_dns_enabled"
     }
 }

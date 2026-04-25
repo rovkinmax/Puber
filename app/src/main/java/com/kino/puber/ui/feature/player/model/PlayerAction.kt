@@ -30,6 +30,8 @@ internal sealed class PlayerAction : UIAction {
     data class SelectQuality(val index: Int) : PlayerAction()
     data class SelectSpeed(val index: Int) : PlayerAction()
     data class SelectAspectRatio(val index: Int) : PlayerAction()
+    data class SelectBufferPreset(val index: Int) : PlayerAction()
+    data object ToggleFastDns : PlayerAction()
 
     // Episodes
     data class SelectEpisode(val seasonNumber: Int, val episodeNumber: Int) : PlayerAction()

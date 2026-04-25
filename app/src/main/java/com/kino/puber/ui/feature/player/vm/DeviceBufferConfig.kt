@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.player.vm
 
 import android.app.ActivityManager
 import android.content.Context
+import com.kino.puber.ui.feature.player.model.BufferPreset
 
 internal object DeviceBufferConfig {
 
@@ -14,16 +15,44 @@ internal object DeviceBufferConfig {
         val backBufferDurationMs: Int = 30_000,
     )
 
-    fun resolve(context: Context): BufferParams {
+    fun resolve(context: Context, preset: BufferPreset = BufferPreset.AUTO): BufferParams {
+        return when (preset) {
+            BufferPreset.AUTO -> resolveAuto(context)
+            BufferPreset.SMALL -> BufferParams(
+                minBufferMs = 30_000,
+                maxBufferMs = 60_000,
+                targetBufferBytes = 16 * 1024 * 1024,
+                backBufferDurationMs = 0,
+            )
+            BufferPreset.MEDIUM -> BufferParams(
+                minBufferMs = 30_000,
+                maxBufferMs = 120_000,
+                targetBufferBytes = 32 * 1024 * 1024,
+            )
+            BufferPreset.LARGE -> BufferParams(
+                minBufferMs = 60_000,
+                maxBufferMs = 180_000,
+                targetBufferBytes = 64 * 1024 * 1024,
+            )
+            BufferPreset.MAX -> BufferParams(
+                minBufferMs = 60_000,
+                maxBufferMs = 300_000,
+                targetBufferBytes = 128 * 1024 * 1024,
+                backBufferDurationMs = 60_000,
+            )
+        }
+    }
+
+    private fun resolveAuto(context: Context): BufferParams {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val heapLimitMb = am.memoryClass
+        val heapLimitMb = am.largeMemoryClass
 
         return when {
             am.isLowRamDevice || heapLimitMb <= 128 -> BufferParams(
                 minBufferMs = 30_000,
                 maxBufferMs = 60_000,
                 targetBufferBytes = 16 * 1024 * 1024,
-                backBufferDurationMs = 15_000,
+                backBufferDurationMs = 0,
             )
             heapLimitMb <= 256 -> BufferParams(
                 minBufferMs = 30_000,

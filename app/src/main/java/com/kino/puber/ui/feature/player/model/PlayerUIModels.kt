@@ -53,6 +53,21 @@ internal enum class AspectRatioMode {
 }
 
 @Immutable
+internal data class BufferPresetUIState(
+    val index: Int,
+    val label: String,
+    val preset: BufferPreset,
+)
+
+enum class BufferPreset {
+    AUTO,
+    SMALL,
+    MEDIUM,
+    LARGE,
+    MAX,
+}
+
+@Immutable
 internal data class SeekIndicatorState(
     val isForward: Boolean,
     val offsetText: String,

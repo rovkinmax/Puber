@@ -69,7 +69,7 @@ val repositoryModule = module {
         val cacheDir = java.io.File(androidContext().externalCacheDir, "media_cache")
         SimpleCache(
             cacheDir,
-            LeastRecentlyUsedCacheEvictor(512L * 1024 * 1024),
+            LeastRecentlyUsedCacheEvictor(1024L * 1024 * 1024),
             StandaloneDatabaseProvider(androidContext())
         )
     }

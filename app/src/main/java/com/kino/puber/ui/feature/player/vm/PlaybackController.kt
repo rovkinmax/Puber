@@ -26,6 +26,7 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.kino.puber.R
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
+import com.kino.puber.ui.feature.player.model.BufferPreset
 
 internal interface PlaybackControl {
     interface Callback {
@@ -41,7 +42,7 @@ internal interface PlaybackControl {
     val bufferedPosition: Long
 
     fun setCallback(callback: Callback)
-    fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?)
+    fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?, bufferPreset: BufferPreset = BufferPreset.AUTO, fastDns: Boolean = true)
     fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?)
     fun play()
     fun pause()
@@ -62,6 +63,7 @@ internal class PlaybackController(
     private var trackSelector: DefaultTrackSelector? = null
     private var callback: PlaybackControl.Callback? = null
     private var ac3FallbackApplied = false
+    private var useFastDns = true
 
     val player: ExoPlayer? get() = exoPlayer
     override val currentPosition: Long get() = exoPlayer?.currentPosition ?: 0L
@@ -111,11 +113,12 @@ internal class PlaybackController(
     }
 
     @OptIn(UnstableApi::class)
-    override fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?) {
+    override fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?, bufferPreset: BufferPreset, fastDns: Boolean) {
         release()
         ac3FallbackApplied = false
+        useFastDns = fastDns
 
-        val bufferParams = DeviceBufferConfig.resolve(context)
+        val bufferParams = DeviceBufferConfig.resolve(context, bufferPreset)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 bufferParams.minBufferMs,
@@ -293,7 +296,12 @@ internal class PlaybackController(
 
     @OptIn(UnstableApi::class)
     private fun createDataSourceFactory(): DataSource.Factory {
-        val httpFactory = OkHttpDataSource.Factory(okHttpClient)
+        val builder = okHttpClient.newBuilder()
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        if (useFastDns) builder.dns(okhttp3.Dns.SYSTEM)
+        val playerClient = builder.build()
+        val httpFactory = OkHttpDataSource.Factory(playerClient)
         return CacheDataSource.Factory()
             .setCache(mediaCache)
             .setUpstreamDataSourceFactory(httpFactory)

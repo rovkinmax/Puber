@@ -52,6 +52,7 @@ internal data class PlayerContentState(
     val selectedAspectRatioIndex: Int,
     val bufferPresets: List<BufferPresetUIState>,
     val selectedBufferPresetIndex: Int,
+    val fastDnsEnabled: Boolean = true,
 
     // Content type
     val isMovie: Boolean,

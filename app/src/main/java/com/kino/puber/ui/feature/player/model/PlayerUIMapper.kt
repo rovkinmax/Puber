@@ -174,5 +174,14 @@ internal class PlayerUIMapper(private val context: Context) {
 
         const val DEFAULT_SPEED_INDEX = 3
         const val DEFAULT_ASPECT_RATIO_INDEX = 0
+        const val DEFAULT_BUFFER_PRESET_INDEX = 0
     }
+
+    fun mapBufferPresets(): List<BufferPresetUIState> = listOf(
+        BufferPresetUIState(0, context.getString(R.string.player_buffer_auto), BufferPreset.AUTO),
+        BufferPresetUIState(1, context.getString(R.string.player_buffer_small), BufferPreset.SMALL),
+        BufferPresetUIState(2, context.getString(R.string.player_buffer_medium), BufferPreset.MEDIUM),
+        BufferPresetUIState(3, context.getString(R.string.player_buffer_large), BufferPreset.LARGE),
+        BufferPresetUIState(4, context.getString(R.string.player_buffer_max), BufferPreset.MAX),
+    )
 }
