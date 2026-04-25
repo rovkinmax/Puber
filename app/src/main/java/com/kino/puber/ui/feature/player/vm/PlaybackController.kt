@@ -23,6 +23,8 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.kino.puber.BuildConfig
 import com.kino.puber.R
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
@@ -64,6 +66,10 @@ internal class PlaybackController(
     private var callback: PlaybackControl.Callback? = null
     private var ac3FallbackApplied = false
     private var useFastDns = true
+
+    @OptIn(UnstableApi::class)
+    private val bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
+    private var dataSourceFactory: DataSource.Factory? = null
 
     val player: ExoPlayer? get() = exoPlayer
     override val currentPosition: Long get() = exoPlayer?.currentPosition ?: 0L
@@ -131,10 +137,8 @@ internal class PlaybackController(
                 /* retainBackBufferFromKeyframe = */ true,
             )
             .setTargetBufferBytes(bufferParams.targetBufferBytes)
-            .setPrioritizeTimeOverSizeThresholds(false)
+            .setPrioritizeTimeOverSizeThresholds(bufferParams.prioritizeTimeOverSize)
             .build()
-
-        val bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
 
         val adaptiveTrackSelectionFactory = AdaptiveTrackSelection.Factory(
             /* minDurationForQualityIncreaseMs = */ 10_000,
@@ -155,10 +159,13 @@ internal class PlaybackController(
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
 
+        dataSourceFactory = createDataSourceFactory()
+
         val player = ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory!!))
             .setHandleAudioBecomingNoisy(true)
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             .build()
@@ -253,6 +260,7 @@ internal class PlaybackController(
         exoPlayer?.release()
         exoPlayer = null
         trackSelector = null
+        dataSourceFactory = null
     }
 
     @OptIn(UnstableApi::class)
@@ -302,15 +310,18 @@ internal class PlaybackController(
         if (useFastDns) builder.dns(okhttp3.Dns.SYSTEM)
         val playerClient = builder.build()
         val httpFactory = OkHttpDataSource.Factory(playerClient)
+            .setUserAgent("Puber/${BuildConfig.VERSION_NAME} (Android)")
         return CacheDataSource.Factory()
             .setCache(mediaCache)
             .setUpstreamDataSourceFactory(httpFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
 
     @OptIn(UnstableApi::class)
     private fun setMediaSource(player: ExoPlayer, mediaItem: MediaItem, streamUrl: String) {
+        val dsFactory = dataSourceFactory ?: return
         if (streamUrl.contains(".m3u8") || streamUrl.contains("hls")) {
-            val hlsSource = HlsMediaSource.Factory(createDataSourceFactory())
+            val hlsSource = HlsMediaSource.Factory(dsFactory)
                 .setAllowChunklessPreparation(true)
                 .setLoadErrorHandlingPolicy(HlsErrorPolicy())
                 .createMediaSource(mediaItem)

@@ -13,6 +13,7 @@ internal object DeviceBufferConfig {
         val bufferForPlaybackMs: Int = 2_500,
         val bufferForPlaybackAfterRebufferMs: Int = 5_000,
         val backBufferDurationMs: Int = 30_000,
+        val prioritizeTimeOverSize: Boolean = true,
     )
 
     fun resolve(context: Context, preset: BufferPreset = BufferPreset.AUTO): BufferParams {
@@ -23,6 +24,7 @@ internal object DeviceBufferConfig {
                 maxBufferMs = 60_000,
                 targetBufferBytes = 16 * 1024 * 1024,
                 backBufferDurationMs = 0,
+                prioritizeTimeOverSize = false,
             )
             BufferPreset.MEDIUM -> BufferParams(
                 minBufferMs = 30_000,
@@ -53,6 +55,7 @@ internal object DeviceBufferConfig {
                 maxBufferMs = 60_000,
                 targetBufferBytes = 16 * 1024 * 1024,
                 backBufferDurationMs = 0,
+                prioritizeTimeOverSize = false,
             )
             heapLimitMb <= 256 -> BufferParams(
                 minBufferMs = 30_000,
