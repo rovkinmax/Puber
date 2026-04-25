@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.detekt)
     id("kotlin-parcelize")
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 val currentVersion = "1.0.0"
@@ -69,6 +70,8 @@ android {
         ndk {
             abiFilters += "arm64-v8a"
         }
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
@@ -147,6 +150,15 @@ android {
         debug {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = true
+        }
+
+        create("nonMinifiedRelease") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        create("benchmarkRelease") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -275,6 +287,18 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
+}
+
+baselineProfile {
+    saveInSrc = true
+    automaticGenerationDuringBuild = false
+    mergeIntoMain = true
+    warnings {
+        maxAgpVersion = false
+    }
 }
 
 tasks.withType<Test> {
