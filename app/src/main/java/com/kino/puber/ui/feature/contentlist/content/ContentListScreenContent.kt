@@ -29,7 +29,7 @@ import com.kino.puber.ui.feature.contentlist.model.ContentListAction
 import com.kino.puber.ui.feature.contentlist.model.ContentListViewState
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.contentlist.vm.SectionVM
-import org.koin.compose.LocalKoinScope
+import com.kino.puber.core.di.LocalPuberKoinScope
 import org.koin.core.qualifier.named
 
 @Composable
@@ -41,7 +41,7 @@ internal fun ContentListScreenContent(
     val mainContentFocus = rememberFocusRequesterOnLaunch()
     var focusedSectionIndex by rememberSaveable { mutableIntStateOf(0) }
 
-    val scope = LocalKoinScope.current
+    val scope = LocalPuberKoinScope.current ?: return
     val sectionVms = remember {
         sections.map { config -> scope.get<SectionVM>(named(config.id)) }
     }

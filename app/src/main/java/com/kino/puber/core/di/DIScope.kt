@@ -2,11 +2,14 @@ package com.kino.puber.core.di
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import org.koin.compose.LocalKoinScope
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.staticCompositionLocalOf
 import org.koin.core.module.Module
 import org.koin.core.scope.Scope
 import org.koin.core.scope.ScopeID
 import org.koin.dsl.module
+
+val LocalPuberKoinScope: ProvidableCompositionLocal<Scope?> = staticCompositionLocalOf { null }
 
 @Composable
 fun DIScope(
@@ -17,7 +20,7 @@ fun DIScope(
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(
-        value = LocalKoinScope provides rememberDIScope(
+        value = LocalPuberKoinScope provides rememberDIScope(
             scopeName = scopeName,
             moduleFactory = moduleFactory,
         ),

@@ -28,7 +28,7 @@ import com.kino.puber.core.ui.navigation.puberReplaceAll
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.parcelize.Parcelize
-import org.koin.compose.LocalKoinScope
+import com.kino.puber.core.di.LocalPuberKoinScope
 import org.koin.compose.currentKoinScope
 import org.koin.core.module.Module
 import org.koin.core.qualifier.named
@@ -96,7 +96,7 @@ private fun FlowCommandRunner(router: AppRouter) {
     val navigator = LocalNavigator.currentOrThrow
     val context = LocalContext.current
     val activityNavigator = remember(context) { ActivityNavigator(context) }
-    val diScope = LocalKoinScope.current
+    val diScope = LocalPuberKoinScope.current ?: return
     val scopeName = diScope.id
     val appLauncher by diScope.inject<AppLauncher>()
     LaunchedEffect(scopeName) {

@@ -4,9 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.remember
 import com.kino.puber.core.logger.log
-import org.koin.compose.LocalKoinScope
 import org.koin.compose.getKoin
 import org.koin.core.Koin
+import org.koin.core.annotation.KoinInternalApi
 import org.koin.core.context.GlobalContext
 import org.koin.core.module.Module
 import org.koin.core.qualifier.named
@@ -67,13 +67,14 @@ internal class ScopeModuleManager(
     }
 }
 
+@OptIn(KoinInternalApi::class)
 @Composable
 fun rememberDIScope(
     scopeName: String,
     koin: Koin = getKoin(),
     moduleFactory: (ScopeID, Scope) -> Module,
 ): Scope {
-    val parentScope = LocalKoinScope.current
+    val parentScope = LocalPuberKoinScope.current ?: koin.scopeRegistry.rootScope
     return remember(scopeName, parentScope.id, koin) {
         ScopeModuleManager(
             scopeName = scopeName,

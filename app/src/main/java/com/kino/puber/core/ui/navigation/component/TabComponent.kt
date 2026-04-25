@@ -10,7 +10,7 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import com.kino.puber.core.ui.navigation.TabCommand
 import com.kino.puber.core.ui.navigation.TabRouter
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
-import org.koin.compose.LocalKoinScope
+import com.kino.puber.core.di.LocalPuberKoinScope
 import org.koin.compose.koinInject
 
 @Composable
@@ -18,7 +18,7 @@ fun TabComponent(
     tabRouter: TabRouter = koinInject(),
     content: @Composable () -> Unit,
 ) {
-    val scopeName = LocalKoinScope.current.id
+    val scopeName = LocalPuberKoinScope.current?.id ?: ""
     TabNavigator(
         tab = LoadingTab,
         key = scopeName,
