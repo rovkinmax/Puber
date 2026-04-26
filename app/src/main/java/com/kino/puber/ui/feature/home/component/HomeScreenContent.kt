@@ -27,7 +27,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.kino.puber.core.ui.navigation.component.LocalFocusRestoreTarget
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.core.ui.uikit.component.HeroCarousel
 import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
@@ -129,7 +128,6 @@ private fun HomeSectionRow(
     val listState = rememberLazyListState()
     val savedItemFocusRequester = remember { FocusRequester() }
     var focusedItemIndex by rememberSaveable { mutableIntStateOf(0) }
-    val restoreFocusTarget = LocalFocusRestoreTarget.current
 
     LazyRow(
         state = listState,
@@ -142,16 +140,10 @@ private fun HomeSectionRow(
     ) {
         itemsIndexed(items = items, key = { _, item -> item.id }) { index, item ->
             val isFocusTarget = if (isTargetRow) index == focusedItemIndex else index == 0
-            val isRestoreTarget = isTargetRow && isFocusTarget
             VideoItemHorizontal(
                 modifier = Modifier
                     .then(
                         if (isFocusTarget) Modifier.focusRequester(savedItemFocusRequester)
-                        else Modifier
-                    )
-                    .then(
-                        if (isRestoreTarget && restoreFocusTarget != null)
-                            Modifier.focusRequester(restoreFocusTarget)
                         else Modifier
                     )
                     .onFocusChanged {

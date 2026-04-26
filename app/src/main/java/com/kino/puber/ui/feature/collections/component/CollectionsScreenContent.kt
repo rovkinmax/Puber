@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.tv.material3.Text
-import com.kino.puber.core.ui.navigation.component.LocalFocusRestoreTarget
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.ui.feature.collections.model.CollectionUIState
 import com.kino.puber.ui.feature.collections.model.CollectionsViewState
@@ -59,7 +58,6 @@ private fun CollectionsGrid(
     val gridState = rememberLazyGridState()
     var focusedItemIndex by rememberSaveable { mutableIntStateOf(0) }
     val savedItemFocusRequester = remember { FocusRequester() }
-    val restoreFocusTarget = LocalFocusRestoreTarget.current
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
@@ -82,14 +80,8 @@ private fun CollectionsGrid(
                 onClick = clickCallback,
                 modifier = Modifier
                     .then(
-                        if (isFocusTarget) {
-                            Modifier
-                                .focusRequester(savedItemFocusRequester)
-                                .then(
-                                    if (restoreFocusTarget != null) Modifier.focusRequester(restoreFocusTarget)
-                                    else Modifier
-                                )
-                        } else Modifier
+                        if (isFocusTarget) Modifier.focusRequester(savedItemFocusRequester)
+                        else Modifier
                     )
                     .onFocusChanged { if (it.isFocused) focusedItemIndex = index },
             )

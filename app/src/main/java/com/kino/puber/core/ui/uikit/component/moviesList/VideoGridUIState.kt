@@ -32,7 +32,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.kino.puber.core.ui.navigation.component.LocalFocusRestoreTarget
 import com.kino.puber.core.ui.uikit.component.FadeGradient
 import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
 import com.kino.puber.core.ui.uikit.component.dpadScrollOptimization
@@ -137,8 +136,6 @@ private fun VideoGridItems(
 
         val rowFocusRequester = remember { FocusRequester() }
         val savedItemFocusRequester = remember { FocusRequester() }
-        val restoreFocusTarget = LocalFocusRestoreTarget.current
-
         PositionFocusedItemInLazyLayout {
             LazyRow(
                 modifier = Modifier
@@ -156,7 +153,6 @@ private fun VideoGridItems(
                     } else {
                         indexR == 0
                     }
-                    val isRestoreTarget = isTargetRow && isFallbackTarget
                     val focusModifier = remember(indexR, item.id) {
                         Modifier.onFocusChanged { state ->
                             if (state.isFocused) {
@@ -176,11 +172,6 @@ private fun VideoGridItems(
                         modifier = Modifier
                             .then(
                                 if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
-                                else Modifier
-                            )
-                            .then(
-                                if (isRestoreTarget && restoreFocusTarget != null)
-                                    Modifier.focusRequester(restoreFocusTarget)
                                 else Modifier
                             )
                             .then(focusModifier),

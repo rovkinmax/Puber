@@ -19,7 +19,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.delay
 import cafe.adriel.voyager.core.screen.ScreenKey
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
@@ -38,6 +37,7 @@ import com.kino.puber.core.ui.navigation.puberPush
 import com.kino.puber.core.ui.navigation.puberReplace
 import com.kino.puber.core.ui.navigation.puberReplaceAll
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.parcelize.Parcelize
 import com.kino.puber.core.di.LocalPuberKoinScope
@@ -199,8 +199,6 @@ object LoadingScreen : PuberScreen {
     }
 }
 
-val LocalFocusRestoreTarget: ProvidableCompositionLocal<FocusRequester?> = staticCompositionLocalOf { null }
-
 @Composable
 fun TabFlowComponent(
     scopeName: String,
@@ -221,25 +219,28 @@ fun TabFlowComponent(
             }
         },
     ) {
-        val restoreFocusTarget = remember { FocusRequester() }
+        val contentFocusRequester = remember { FocusRequester() }
         Navigator(
             screen = screen,
             onBackPressed = null,
         ) { navigator ->
             TabBackHandler(navigator, tabRouter)
-            CompositionLocalProvider(LocalFocusRestoreTarget provides restoreFocusTarget) {
-                Box(Modifier.focusGroup()) {
-                    CurrentScreen("currentTab$scopeName")
-                }
+            Box(
+                Modifier
+                    .focusRequester(contentFocusRequester)
+                    .focusRestorer()
+                    .focusGroup()
+            ) {
+                CurrentScreen("currentTab$scopeName")
             }
-            TabFlowCommandRunner(navigator, tabRouter, rootRouter)
+            TabFlowCommandRunner(navigator, tabRouter, rootRouter, contentFocusRequester)
 
             val stackSize = navigator.items.size
             var lastStackSize by remember { mutableIntStateOf(stackSize) }
             LaunchedEffect(stackSize) {
                 if (stackSize < lastStackSize) {
-                    delay(100)
-                    runCatching { restoreFocusTarget.requestFocus() }
+                    yield()
+                    runCatching { contentFocusRequester.requestFocus() }
                 }
                 lastStackSize = stackSize
             }
@@ -263,6 +264,7 @@ private fun TabFlowCommandRunner(
     navigator: Navigator,
     router: AppRouter,
     rootRouter: AppRouter?,
+    contentFocusRequester: FocusRequester,
 ) {
     val context = LocalContext.current
     val activityNavigator = remember(context) { ActivityNavigator(context) }
@@ -275,6 +277,7 @@ private fun TabFlowCommandRunner(
             } else {
                 when (event) {
                     is Command.NavigateTo -> {
+                        contentFocusRequester.saveFocusedChild()
                         if (event.screen is FullscreenPuberScreen && rootRouter != null) {
                             rootRouter.navigateTo(event.screen)
                         } else {

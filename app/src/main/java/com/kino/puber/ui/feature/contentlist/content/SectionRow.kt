@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.kino.puber.core.ui.navigation.component.LocalFocusRestoreTarget
 import com.kino.puber.core.ui.uikit.component.FadeGradient
 import com.kino.puber.core.ui.uikit.component.LoadMoreHandler
 import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
@@ -106,8 +105,6 @@ private fun ContentSectionCards(
     val listState = rememberLazyListState()
     val savedItemFocusRequester = remember { FocusRequester() }
     var focusedItemIndex by rememberSaveable { mutableIntStateOf(0) }
-    val restoreFocusTarget = LocalFocusRestoreTarget.current
-
     Box(
         modifier = Modifier
             .wrapContentHeight()
@@ -131,7 +128,6 @@ private fun ContentSectionCards(
                     } else {
                         index == 0
                     }
-                    val isRestoreTarget = isTargetRow && isFallbackTarget
                     val focusModifier = remember(index, item.id) {
                         Modifier.onFocusChanged { focusState ->
                             if (focusState.isFocused) {
@@ -146,11 +142,6 @@ private fun ContentSectionCards(
                         modifier = Modifier
                             .then(
                                 if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
-                                else Modifier
-                            )
-                            .then(
-                                if (isRestoreTarget && restoreFocusTarget != null)
-                                    Modifier.focusRequester(restoreFocusTarget)
                                 else Modifier
                             )
                             .then(focusModifier),
