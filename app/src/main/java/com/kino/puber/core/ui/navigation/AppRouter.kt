@@ -86,6 +86,10 @@ class AppRouter(
         }
     }
 
+    fun clearPendingCommands() {
+        sharedFlow.resetReplayCache()
+    }
+
     private fun dispatchResult(resultCode: Int, result: Any?) {
         val resultListener = onceListeners[resultCode]
         if (resultListener != null) {

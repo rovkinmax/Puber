@@ -8,3 +8,5 @@ interface PuberScreen : Screen, Parcelable {
     override val key: ScreenKey
         get() = javaClass.simpleName
 }
+
+interface FullscreenPuberScreen : PuberScreen

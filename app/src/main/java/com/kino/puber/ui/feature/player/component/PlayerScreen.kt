@@ -5,7 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import com.kino.puber.core.di.DIScope
-import com.kino.puber.core.ui.navigation.PuberScreen
+import com.kino.puber.core.ui.navigation.FullscreenPuberScreen
 import com.kino.puber.core.ui.uikit.component.LifecycleAction
 import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -28,7 +28,7 @@ import org.koin.core.scope.ScopeID
 import org.koin.dsl.module
 
 @Parcelize
-internal data class PlayerScreen(private val params: PlayerScreenParams) : PuberScreen {
+internal data class PlayerScreen(private val params: PlayerScreenParams) : FullscreenPuberScreen {
 
     @Suppress("unused")
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {

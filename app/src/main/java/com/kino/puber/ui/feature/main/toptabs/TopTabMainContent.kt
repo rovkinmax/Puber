@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -47,7 +48,7 @@ internal fun TopTabMainContent(
     }
     val selectedIndex = state.tabs.indexOfFirst { it.isSelected }.coerceAtLeast(0)
 
-    var focusedTabIndex by remember { mutableIntStateOf(selectedIndex) }
+    var focusedTabIndex by rememberSaveable { mutableIntStateOf(selectedIndex) }
     var isContentFocused by remember { mutableStateOf(false) }
 
     LaunchedEffect(selectedIndex) {
@@ -63,7 +64,8 @@ internal fun TopTabMainContent(
 
     LaunchedEffect(Unit) {
         delay(100)
-        tabRowFocus.requestFocus()
+        tabFocusRequesters.getOrNull(focusedTabIndex)?.requestFocus()
+            ?: tabRowFocus.requestFocus()
     }
     val isOnHome = state.tabs.getOrNull(focusedTabIndex)?.type == TabType.Home
 

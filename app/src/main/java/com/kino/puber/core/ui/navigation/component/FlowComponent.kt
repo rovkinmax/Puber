@@ -1,14 +1,25 @@
 package com.kino.puber.core.ui.navigation.component
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.delay
 import cafe.adriel.voyager.core.screen.ScreenKey
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
@@ -18,6 +29,7 @@ import com.kino.puber.core.logger.log
 import com.kino.puber.core.ui.navigation.AppLauncher
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.Command
+import com.kino.puber.core.ui.navigation.FullscreenPuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreenActivity
 import com.kino.puber.core.ui.navigation.puberPop
@@ -28,7 +40,6 @@ import com.kino.puber.core.ui.navigation.puberReplaceAll
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.parcelize.Parcelize
-import com.kino.puber.core.di.LocalPuberKoinScope
 import com.kino.puber.core.di.LocalPuberKoinScope
 import org.koin.core.module.Module
 import org.koin.core.qualifier.named
@@ -185,5 +196,103 @@ object LoadingScreen : PuberScreen {
     @Composable
     override fun Content() {
         FullScreenProgressIndicator()
+    }
+}
+
+@Composable
+fun TabFlowComponent(
+    scopeName: String,
+    screen: PuberScreen,
+    tabRouter: AppRouter,
+) {
+    val composableScope = rememberCoroutineScope()
+    val parentScope = LocalPuberKoinScope.current
+    val rootRouter = remember(parentScope) { parentScope?.getOrNull<AppRouter>() }
+    DIScope(
+        scopeName = scopeName,
+        moduleFactory = { scopeId, _ ->
+            module {
+                scope(named(scopeId)) {
+                    scoped<CoroutineScope> { composableScope }
+                    scoped<AppRouter> { tabRouter }
+                }
+            }
+        },
+    ) {
+        val contentFocusRequester = remember { FocusRequester() }
+        Navigator(
+            screen = screen,
+            onBackPressed = null,
+        ) { navigator ->
+            TabBackHandler(navigator, tabRouter)
+            Box(
+                Modifier
+                    .focusRequester(contentFocusRequester)
+                    .focusRestorer()
+                    .focusGroup()
+            ) {
+                CurrentScreen("currentTab$scopeName")
+            }
+            TabFlowCommandRunner(navigator, tabRouter, rootRouter)
+
+            val stackSize = navigator.items.size
+            var lastStackSize by remember { mutableIntStateOf(stackSize) }
+            LaunchedEffect(stackSize) {
+                if (stackSize < lastStackSize) {
+                    delay(100)
+                    contentFocusRequester.requestFocus()
+                }
+                lastStackSize = stackSize
+            }
+        }
+    }
+}
+
+@Composable
+private fun TabBackHandler(navigator: Navigator, router: AppRouter) {
+    // navigator.canPop is Voyager's Stack<Screen> property (size > 1),
+    // not the private canPop() extension in this file that filters LoadingScreen.
+    BackHandler(enabled = navigator.canPop) {
+        if (!router.dispatchBackPressed()) {
+            navigator.puberPop()
+        }
+    }
+}
+
+@Composable
+private fun TabFlowCommandRunner(
+    navigator: Navigator,
+    router: AppRouter,
+    rootRouter: AppRouter?,
+) {
+    val context = LocalContext.current
+    val activityNavigator = remember(context) { ActivityNavigator(context) }
+    LaunchedEffect(router) {
+        router.clearPendingCommands()
+        router.events().collect { event ->
+            router.log("tab router command: $event")
+            if (event.screen is PuberScreenActivity) {
+                activityNavigator.navigateTo(event.screen as PuberScreenActivity)
+            } else {
+                when (event) {
+                    is Command.NavigateTo -> {
+                        if (event.screen is FullscreenPuberScreen && rootRouter != null) {
+                            rootRouter.navigateTo(event.screen)
+                        } else {
+                            navigator.puberPush(event.screen)
+                        }
+                    }
+                    is Command.Replace -> navigator.puberReplace(event.screen)
+                    is Command.NewRoot -> navigator.puberReplaceAll(*event.screens.toTypedArray())
+                    is Command.BackTo -> onBackTo(navigator, event)
+                    Command.FinishFlow -> { }
+                    is Command.Back -> {
+                        if (navigator.canPop) {
+                            navigator.puberPop()
+                        }
+                    }
+                }
+            }
+        }
     }
 }
