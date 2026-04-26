@@ -15,7 +15,7 @@ import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.showall.content.ShowAllScreenContent
 import com.kino.puber.ui.feature.showall.vm.ShowAllVM
 import kotlinx.parcelize.Parcelize
-import org.koin.compose.viewmodel.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.qualifier.named
@@ -50,7 +50,7 @@ internal class ShowAllScreen(
 
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
-        val vm = koinViewModel<ShowAllVM>()
+        val vm = puberViewModel<ShowAllVM>()
         val state by vm.collectViewState()
         val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
         ShowAllScreenContent(

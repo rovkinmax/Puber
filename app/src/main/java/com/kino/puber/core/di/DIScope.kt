@@ -4,12 +4,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.lifecycle.ViewModel
+import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.module.Module
 import org.koin.core.scope.Scope
 import org.koin.core.scope.ScopeID
 import org.koin.dsl.module
 
 val LocalPuberKoinScope: ProvidableCompositionLocal<Scope?> = staticCompositionLocalOf { null }
+
+@Composable
+inline fun <reified VM : ViewModel> puberViewModel(
+    key: String? = null,
+): VM = koinViewModel<VM>(
+    key = key,
+    scope = LocalPuberKoinScope.current!!,
+)
 
 @Composable
 fun DIScope(

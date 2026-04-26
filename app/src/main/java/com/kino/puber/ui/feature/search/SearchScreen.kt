@@ -11,7 +11,7 @@ import com.kino.puber.domain.interactor.search.SearchInteractor
 import com.kino.puber.ui.feature.search.content.SearchScreenContent
 import com.kino.puber.ui.feature.search.vm.SearchVM
 import kotlinx.parcelize.Parcelize
-import org.koin.compose.viewmodel.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
@@ -33,7 +33,7 @@ internal class SearchScreen : PuberScreen {
 
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
-        val vm = koinViewModel<SearchVM>()
+        val vm = puberViewModel<SearchVM>()
         val state by vm.collectViewState()
         val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
         SearchScreenContent(

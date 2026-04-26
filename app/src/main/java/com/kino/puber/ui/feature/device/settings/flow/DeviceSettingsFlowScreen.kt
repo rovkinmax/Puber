@@ -5,7 +5,7 @@ import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.component.FlowComponent
 import com.kino.puber.ui.feature.device.settings.flow.vm.DeviceSettingsFlowVM
 import kotlinx.parcelize.Parcelize
-import org.koin.compose.viewmodel.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -28,7 +28,7 @@ internal class DeviceSettingsFlowScreen : PuberScreen {
             scopeName = key,
             moduleFactory = ::buildModule,
         ) {
-            val vm = koinViewModel<DeviceSettingsFlowVM>()
+            val vm = puberViewModel<DeviceSettingsFlowVM>()
             vm.collectViewState()
         }
     }

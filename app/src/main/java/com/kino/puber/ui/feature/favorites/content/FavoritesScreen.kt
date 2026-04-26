@@ -10,7 +10,7 @@ import com.kino.puber.domain.interactor.favorites.FavoritesInteractor
 import com.kino.puber.ui.feature.favorites.model.FavoriteItemUIMapper
 import com.kino.puber.ui.feature.favorites.vm.FavoriteVM
 import kotlinx.parcelize.Parcelize
-import org.koin.compose.viewmodel.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
@@ -32,7 +32,7 @@ internal class FavoritesScreen : PuberScreen {
 
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
-        val vm = koinViewModel<FavoriteVM>()
+        val vm = puberViewModel<FavoriteVM>()
         val state by vm.collectViewState()
         val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
         FavoriteScreenContent(

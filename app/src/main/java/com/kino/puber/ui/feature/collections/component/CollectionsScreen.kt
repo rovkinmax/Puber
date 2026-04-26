@@ -7,7 +7,7 @@ import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.domain.interactor.collections.CollectionInteractor
 import com.kino.puber.ui.feature.collections.vm.CollectionsVM
 import kotlinx.parcelize.Parcelize
-import org.koin.compose.viewmodel.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
@@ -28,7 +28,7 @@ internal class CollectionsScreen : PuberScreen {
 
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
-        val vm = koinViewModel<CollectionsVM>()
+        val vm = puberViewModel<CollectionsVM>()
         val state by vm.collectViewState()
         CollectionsScreenContent(
             state = state,

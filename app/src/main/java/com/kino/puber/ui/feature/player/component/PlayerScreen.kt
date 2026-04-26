@@ -19,7 +19,7 @@ import com.kino.puber.ui.feature.player.vm.PlaybackControl
 import com.kino.puber.ui.feature.player.vm.PlaybackController
 import com.kino.puber.ui.feature.player.vm.PlayerVM
 import kotlinx.parcelize.Parcelize
-import org.koin.androidx.compose.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
@@ -45,7 +45,7 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Puber
 
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
-        val vm = koinViewModel<PlayerVM>()
+        val vm = puberViewModel<PlayerVM>()
         val state by vm.collectViewState()
         val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
 

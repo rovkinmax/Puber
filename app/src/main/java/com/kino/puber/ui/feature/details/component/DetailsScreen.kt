@@ -12,7 +12,7 @@ import com.kino.puber.ui.feature.details.model.DetailsScreenParams
 import com.kino.puber.ui.feature.details.model.DetailsScreenUIMapper
 import com.kino.puber.ui.feature.details.vm.DetailsVM
 import kotlinx.parcelize.Parcelize
-import org.koin.androidx.compose.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
@@ -35,7 +35,7 @@ internal data class DetailsScreen(private val params: DetailsScreenParams) : Pub
 
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
-        val vm = koinViewModel<DetailsVM>()
+        val vm = puberViewModel<DetailsVM>()
         val state by vm.collectViewState()
         val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
 

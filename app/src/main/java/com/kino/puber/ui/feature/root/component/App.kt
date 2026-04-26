@@ -17,7 +17,7 @@ import com.kino.puber.core.ui.navigation.component.FlowComponent
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.ui.ScreensImpl
-import org.koin.compose.currentKoinScope
+import com.kino.puber.core.di.LocalPuberKoinScope
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.scopedOf
 import org.koin.core.qualifier.named
@@ -41,7 +41,7 @@ private const val ScopeRoot = "Root"
 
 @Composable
 private fun SessionExpiredHandler() {
-    val router by currentKoinScope().inject<AppRouter>()
+    val router by LocalPuberKoinScope.current!!.inject<AppRouter>()
     val sessionEventBus = getKoin().get<SessionEventBus>()
     LaunchedEffect(Unit) {
         sessionEventBus.events.collect { event ->

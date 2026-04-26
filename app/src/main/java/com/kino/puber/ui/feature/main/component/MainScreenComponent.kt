@@ -50,11 +50,11 @@ import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.toptabs.TopTabMainContent
 import com.kino.puber.ui.feature.main.vm.MainVM
-import org.koin.compose.viewmodel.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 
 @Composable
 internal fun MainScreenComponent() {
-    val vm = koinViewModel<MainVM>()
+    val vm = puberViewModel<MainVM>()
     val state by vm.collectViewState()
     val onAction: (UIAction) -> Unit = remember { vm::onAction }
     when (state.navigationMode) {

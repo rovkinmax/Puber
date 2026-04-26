@@ -29,7 +29,7 @@ import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.parcelize.Parcelize
 import com.kino.puber.core.di.LocalPuberKoinScope
-import org.koin.compose.currentKoinScope
+import com.kino.puber.core.di.LocalPuberKoinScope
 import org.koin.core.module.Module
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -71,7 +71,7 @@ fun FlowComponent(
     },
     scopeName = scopeName,
 ) {
-    val router by currentKoinScope().inject<AppRouter>()
+    val router by LocalPuberKoinScope.current!!.inject<AppRouter>()
 
     Navigator(
         screen = screen,

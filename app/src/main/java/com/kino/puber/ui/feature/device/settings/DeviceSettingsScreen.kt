@@ -9,7 +9,7 @@ import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
 import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
 import com.kino.puber.ui.feature.device.settings.vm.DeviceSettingsVM
 import kotlinx.parcelize.Parcelize
-import org.koin.androidx.compose.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -29,7 +29,7 @@ internal class DeviceSettingsScreen : PuberScreen {
 
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
-        val viewModel = koinViewModel<DeviceSettingsVM>()
+        val viewModel = puberViewModel<DeviceSettingsVM>()
         val state by viewModel.collectViewState()
         val message by viewModel.collectMessage()
 

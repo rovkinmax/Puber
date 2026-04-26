@@ -20,11 +20,11 @@ import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.ui.feature.auth.model.AuthViewState
 import com.kino.puber.ui.feature.auth.vm.AuthVM
-import org.koin.androidx.compose.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 
 @Composable
 internal fun AuthScreenComponent() {
-    val vm = koinViewModel<AuthVM>()
+    val vm = puberViewModel<AuthVM>()
     val viewState by vm.collectViewState()
     Box(
         modifier = Modifier.fillMaxSize(),

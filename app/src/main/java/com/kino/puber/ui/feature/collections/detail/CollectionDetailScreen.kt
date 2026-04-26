@@ -11,7 +11,7 @@ import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.ui.feature.collections.detail.component.CollectionDetailScreenContent
 import com.kino.puber.ui.feature.collections.detail.vm.CollectionDetailVM
 import kotlinx.parcelize.Parcelize
-import org.koin.compose.viewmodel.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.qualifier.named
@@ -45,7 +45,7 @@ internal class CollectionDetailScreen(
 
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
-        val vm = koinViewModel<CollectionDetailVM>()
+        val vm = puberViewModel<CollectionDetailVM>()
         val state by vm.collectViewState()
         val onAction = remember(vm) { vm::onAction }
         CollectionDetailScreenContent(

@@ -16,7 +16,7 @@ import com.kino.puber.ui.feature.contentlist.vm.ContentListVM
 import com.kino.puber.ui.feature.contentlist.vm.SectionVM
 import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.parcelize.Parcelize
-import org.koin.compose.viewmodel.koinViewModel
+import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
@@ -67,7 +67,7 @@ internal class ContentListScreen(
 
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
-        val contentListVm = koinViewModel<ContentListVM>()
+        val contentListVm = puberViewModel<ContentListVM>()
         val state by contentListVm.collectViewState()
         val onAction = remember(contentListVm) { contentListVm::onAction }
         ContentListScreenContent(
