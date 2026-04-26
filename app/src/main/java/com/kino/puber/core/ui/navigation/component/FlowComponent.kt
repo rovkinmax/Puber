@@ -199,6 +199,8 @@ object LoadingScreen : PuberScreen {
     }
 }
 
+val LocalFocusRestoreTarget: ProvidableCompositionLocal<FocusRequester?> = staticCompositionLocalOf { null }
+
 @Composable
 fun TabFlowComponent(
     scopeName: String,
@@ -219,19 +221,16 @@ fun TabFlowComponent(
             }
         },
     ) {
-        val contentFocusRequester = remember { FocusRequester() }
+        val restoreFocusTarget = remember { FocusRequester() }
         Navigator(
             screen = screen,
             onBackPressed = null,
         ) { navigator ->
             TabBackHandler(navigator, tabRouter)
-            Box(
-                Modifier
-                    .focusRequester(contentFocusRequester)
-                    .focusRestorer()
-                    .focusGroup()
-            ) {
-                CurrentScreen("currentTab$scopeName")
+            CompositionLocalProvider(LocalFocusRestoreTarget provides restoreFocusTarget) {
+                Box(Modifier.focusGroup()) {
+                    CurrentScreen("currentTab$scopeName")
+                }
             }
             TabFlowCommandRunner(navigator, tabRouter, rootRouter)
 
@@ -240,7 +239,7 @@ fun TabFlowComponent(
             LaunchedEffect(stackSize) {
                 if (stackSize < lastStackSize) {
                     delay(100)
-                    contentFocusRequester.requestFocus()
+                    runCatching { restoreFocusTarget.requestFocus() }
                 }
                 lastStackSize = stackSize
             }

@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.kino.puber.core.ui.navigation.component.LocalFocusRestoreTarget
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.core.ui.uikit.component.HeroCarousel
 import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
@@ -72,6 +73,8 @@ private fun HomeContent(
     onHeroClick: (Int) -> Unit,
     onCollectionClick: (Int, String) -> Unit,
 ) {
+    var focusedSectionIndex by rememberSaveable { mutableIntStateOf(0) }
+
     PositionFocusedItemInLazyLayout {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -87,7 +90,7 @@ private fun HomeContent(
                 }
             }
 
-            state.sections.forEach { section ->
+            state.sections.forEachIndexed { index, section ->
                 item(key = "section_${section.type.name}") {
                     Column {
                         Text(
@@ -99,6 +102,8 @@ private fun HomeContent(
                         )
                         HomeSectionRow(
                             items = section.items,
+                            isTargetRow = index == focusedSectionIndex,
+                            onSectionFocused = { focusedSectionIndex = index },
                             onItemClick = { item ->
                                 if (section.type == HomeSectionType.Collections) {
                                     onCollectionClick(item.id, item.title)
@@ -117,11 +122,14 @@ private fun HomeContent(
 @Composable
 private fun HomeSectionRow(
     items: List<VideoItemUIState>,
+    isTargetRow: Boolean,
+    onSectionFocused: () -> Unit,
     onItemClick: (VideoItemUIState) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val savedItemFocusRequester = remember { FocusRequester() }
     var focusedItemIndex by rememberSaveable { mutableIntStateOf(0) }
+    val restoreFocusTarget = LocalFocusRestoreTarget.current
 
     LazyRow(
         state = listState,
@@ -133,14 +141,25 @@ private fun HomeSectionRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
     ) {
         itemsIndexed(items = items, key = { _, item -> item.id }) { index, item ->
-            val isFocusTarget = index == focusedItemIndex
+            val isFocusTarget = if (isTargetRow) index == focusedItemIndex else index == 0
+            val isRestoreTarget = isTargetRow && isFocusTarget
             VideoItemHorizontal(
                 modifier = Modifier
                     .then(
                         if (isFocusTarget) Modifier.focusRequester(savedItemFocusRequester)
                         else Modifier
                     )
-                    .onFocusChanged { if (it.isFocused) focusedItemIndex = index },
+                    .then(
+                        if (isRestoreTarget && restoreFocusTarget != null)
+                            Modifier.focusRequester(restoreFocusTarget)
+                        else Modifier
+                    )
+                    .onFocusChanged {
+                        if (it.isFocused) {
+                            focusedItemIndex = index
+                            onSectionFocused()
+                        }
+                    },
                 state = item,
                 onClick = { onItemClick(item) },
             )
