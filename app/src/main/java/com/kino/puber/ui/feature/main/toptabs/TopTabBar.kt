@@ -63,7 +63,9 @@ internal fun TopTabBar(
             selectedTabIndex = selectedIndex,
             modifier = tabRowModifier
                 .focusRestorer {
-                    tabFocusRequesters.getOrElse(selectedIndex) { tabFocusRequesters.first() }
+                    tabFocusRequesters.getOrElse(selectedIndex) {
+                        tabFocusRequesters.firstOrNull() ?: FocusRequester.Default
+                    }
                 }
                 .weight(1f),
         ) {

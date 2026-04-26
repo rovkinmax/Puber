@@ -82,7 +82,7 @@ internal class HomeVM(
 
                 val hotMovies = hotMoviesDeferred.await().orEmpty()
                 val hotSeries = hotSeriesDeferred.await().orEmpty()
-                val hotItems = (hotMovies + hotSeries).shuffled()
+                val hotItems = (hotMovies + hotSeries).sortedByDescending { it.ratingPercentage ?: 0 }
 
                 val sections = listOfNotNull(
                     watchingDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.ContinueWatching) },

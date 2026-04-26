@@ -9,8 +9,8 @@ class NavigationPreferencesRepository(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun getNavigationMode(): NavigationMode {
-        val name = prefs.getString(KEY_NAVIGATION_MODE, NavigationMode.SideDrawer.name)
-        return NavigationMode.entries.find { it.name == name } ?: NavigationMode.SideDrawer
+        val name = prefs.getString(KEY_NAVIGATION_MODE, NavigationMode.TopTabs.name)
+        return NavigationMode.entries.find { it.name == name } ?: NavigationMode.TopTabs
     }
 
     fun setNavigationMode(mode: NavigationMode) {
