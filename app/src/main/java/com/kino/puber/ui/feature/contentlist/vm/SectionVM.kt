@@ -1,20 +1,20 @@
 package com.kino.puber.ui.feature.contentlist.vm
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kino.puber.core.error.ErrorHandler
-import com.kino.puber.core.paginator.PagingVM
 import com.kino.puber.core.paginator.Paginator
+import com.kino.puber.core.paginator.PagingVM
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
-import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.ui.feature.contentlist.model.SectionState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 internal class SectionVM(
     paginator: Paginator.Store<Item>,
@@ -29,7 +29,7 @@ internal class SectionVM(
     @Composable
     fun collectState(): State<SectionState> {
         ensureStarted()
-        return viewState.collectAsStateWithLifecycle(stateValue)
+        return viewState.collectAsStateWithLifecycle(initialViewState)
     }
 
     private var currentPage = 0
