@@ -34,6 +34,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kino.puber.core.ui.uikit.component.FadeGradient
 import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
+import com.kino.puber.core.ui.uikit.component.dpadScrollOptimization
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 
 @Immutable
@@ -141,6 +142,7 @@ private fun VideoGridItems(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(rowFocusRequester)
+                    .dpadScrollOptimization()
                     .focusRestorer(savedItemFocusRequester),
                 state = listState,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -36,6 +35,7 @@ import com.kino.puber.ui.feature.main.model.MainTab
 internal fun TopTabBar(
     tabs: List<MainTab>,
     selectedIndex: Int,
+    tabFocusRequesters: List<FocusRequester>,
     onTabFocused: (Int) -> Unit,
     onTabClick: () -> Unit,
     onSearchClick: () -> Unit,
@@ -43,9 +43,6 @@ internal fun TopTabBar(
     modifier: Modifier = Modifier,
     tabRowModifier: Modifier = Modifier,
 ) {
-    val tabFocusRequesters = remember(tabs.size) {
-        List(tabs.size) { FocusRequester() }
-    }
 
     Row(
         modifier = modifier.padding(horizontal = 24.dp, vertical = 12.dp),

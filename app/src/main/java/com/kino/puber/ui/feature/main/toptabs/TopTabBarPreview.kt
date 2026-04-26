@@ -9,6 +9,8 @@ import com.adamglin.phosphoricons.duotone.FilmSlate
 import com.adamglin.phosphoricons.duotone.House
 import com.adamglin.phosphoricons.duotone.Playlist
 import com.adamglin.phosphoricons.duotone.TelevisionSimple
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.TabType
@@ -23,9 +25,11 @@ private val previewTabs = listOf(
 @Preview(name = "TopTabBar — Home selected", device = TV_1080p)
 @Composable
 private fun TopTabBarHomePreview() = PuberTheme {
+    val tabFocusRequesters = remember { List(previewTabs.size) { FocusRequester() } }
     TopTabBar(
         tabs = previewTabs,
         selectedIndex = 0,
+        tabFocusRequesters = tabFocusRequesters,
         onTabFocused = {},
         onTabClick = {},
         onSearchClick = {},
@@ -36,9 +40,11 @@ private fun TopTabBarHomePreview() = PuberTheme {
 @Preview(name = "TopTabBar — Movies selected", device = TV_1080p)
 @Composable
 private fun TopTabBarMoviesPreview() = PuberTheme {
+    val tabFocusRequesters = remember { List(previewTabs.size) { FocusRequester() } }
     TopTabBar(
         tabs = previewTabs,
         selectedIndex = 1,
+        tabFocusRequesters = tabFocusRequesters,
         onTabFocused = {},
         onTabClick = {},
         onSearchClick = {},

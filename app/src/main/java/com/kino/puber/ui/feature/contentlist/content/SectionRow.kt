@@ -38,6 +38,7 @@ import androidx.tv.material3.Text
 import com.kino.puber.core.ui.uikit.component.FadeGradient
 import com.kino.puber.core.ui.uikit.component.LoadMoreHandler
 import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
+import com.kino.puber.core.ui.uikit.component.dpadScrollOptimization
 import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
@@ -117,6 +118,7 @@ private fun ContentSectionCards(
                     .fillMaxWidth()
                     .graphicsLayer { clip = false }
                     .focusRequester(contentFocusRequester)
+                    .dpadScrollOptimization()
                     .focusRestorer(savedItemFocusRequester),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(16.dp),

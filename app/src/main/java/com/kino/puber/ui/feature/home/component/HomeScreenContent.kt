@@ -30,6 +30,7 @@ import androidx.tv.material3.Text
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.core.ui.uikit.component.HeroCarousel
 import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
+import com.kino.puber.core.ui.uikit.component.dpadScrollOptimization
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
@@ -126,6 +127,7 @@ private fun HomeSectionRow(
         state = listState,
         modifier = Modifier
             .graphicsLayer { clip = false }
+            .dpadScrollOptimization()
             .focusRestorer(savedItemFocusRequester),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(horizontal = 16.dp),

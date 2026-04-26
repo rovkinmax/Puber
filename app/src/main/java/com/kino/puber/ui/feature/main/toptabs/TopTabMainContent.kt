@@ -42,6 +42,9 @@ internal fun TopTabMainContent(
 ) {
     val tabRowFocus = remember { FocusRequester() }
     val contentFocus = remember { FocusRequester() }
+    val tabFocusRequesters = remember(state.tabs.size) {
+        List(state.tabs.size) { FocusRequester() }
+    }
     val selectedIndex = state.tabs.indexOfFirst { it.isSelected }.coerceAtLeast(0)
 
     var focusedTabIndex by remember { mutableIntStateOf(selectedIndex) }
@@ -59,18 +62,21 @@ internal fun TopTabMainContent(
     }
 
     LaunchedEffect(Unit) {
+        delay(100)
         tabRowFocus.requestFocus()
     }
     val isOnHome = state.tabs.getOrNull(focusedTabIndex)?.type == TabType.Home
 
-    // Back: content → TabRow, TabRow(not Home) → Home, TabRow(Home) → exit
     BackHandler(enabled = isContentFocused || !isOnHome) {
         if (isContentFocused) {
             tabRowFocus.requestFocus()
         } else {
-            val homeTab = state.tabs.firstOrNull { it.type == TabType.Home }
+            val homeIndex = state.tabs.indexOfFirst { it.type == TabType.Home }.coerceAtLeast(0)
+            val homeTab = state.tabs.getOrNull(homeIndex)
             if (homeTab != null) {
+                focusedTabIndex = homeIndex
                 onAction(CommonAction.ItemSelected(homeTab))
+                tabFocusRequesters.getOrNull(homeIndex)?.requestFocus()
             }
         }
     }
@@ -80,6 +86,7 @@ internal fun TopTabMainContent(
             TopTabBar(
                 tabs = state.tabs,
                 selectedIndex = focusedTabIndex,
+                tabFocusRequesters = tabFocusRequesters,
                 onTabFocused = { index -> focusedTabIndex = index },
                 onTabClick = { contentFocus.requestFocus() },
                 onSearchClick = onSearchClick,
@@ -99,7 +106,7 @@ internal fun TopTabMainContent(
                             @Suppress("DEPRECATION")
                             exit = { direction ->
                                 if (direction == FocusDirection.Up) tabRowFocus
-                                else FocusRequester.Default
+                                else FocusRequester.Cancel
                             }
                         }
                         .focusRestorer()

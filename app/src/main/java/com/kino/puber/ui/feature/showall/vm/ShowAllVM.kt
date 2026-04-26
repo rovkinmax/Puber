@@ -53,7 +53,10 @@ internal class ShowAllVM(
         when (action) {
             is CommonAction.LoadMore -> notifyLoadNextPage()
             is CommonAction.RetryClicked -> resetPaging()
-            is CommonAction.ItemSelected<*> -> { /* TODO: navigate to details */ }
+            is CommonAction.ItemSelected<*> -> {
+                val item = action.item as VideoItemUIState
+                router.navigateTo(router.screens.details(item.id))
+            }
         }
     }
 

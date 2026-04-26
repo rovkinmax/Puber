@@ -17,6 +17,10 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Button
@@ -99,11 +103,18 @@ private fun DeviceSettingsList(
     onAction: (UIAction) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    val focusRequester = remember { FocusRequester() }
     val headerItemsCount = (if (state.device != null) 1 else 0) + 2
+
+    LaunchedEffect(Unit) {
+        delay(100)
+        focusRequester.requestFocus()
+    }
 
     LazyColumn(
         state = listState,
         modifier = Modifier
+            .focusRequester(focusRequester)
             .focusGroup()
             .fillMaxSize()
             .padding(16.dp),
