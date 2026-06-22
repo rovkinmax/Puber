@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.details.model
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.kino.puber.core.ui.uikit.component.RatingUIState
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
@@ -13,6 +14,7 @@ internal sealed class DetailsScreenState {
     data class Error(val message: String) : DetailsScreenState()
     data class Content(
         val details: VideoDetailsUIState,
+        val info: DetailsInfoUIState,
         val buttons: List<DetailsButtonUIState>,
         val isInWatchlist: Boolean,
         val isWatched: Boolean,
@@ -47,6 +49,20 @@ internal sealed class DetailsButtonUIState {
         val action: DetailsAction,
     ) : DetailsButtonUIState()
 }
+
+@Immutable
+internal data class DetailsInfoUIState(
+    val description: String,
+    val ratings: List<RatingUIState>,
+    val primaryRows: List<DetailsInfoRowUIState>,
+    val secondaryRows: List<DetailsInfoRowUIState>,
+)
+
+@Immutable
+internal data class DetailsInfoRowUIState(
+    val label: String,
+    val value: String,
+)
 
 @Immutable
 internal sealed class DetailsAction : UIAction {

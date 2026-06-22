@@ -21,6 +21,8 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsButtonUIState
+import com.kino.puber.ui.feature.details.model.DetailsInfoRowUIState
+import com.kino.puber.ui.feature.details.model.DetailsInfoUIState
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
 
 // region Preview Data
@@ -94,13 +96,29 @@ private val previewMovieButtons = listOf(
         icon = PhosphorIcons.Duotone.FilmSlate,
         action = DetailsAction.TrailerClicked,
     ),
+    DetailsButtonUIState.WatchedToggle(
+        contentDescription = R.string.video_details_button_mark_watched,
+        action = DetailsAction.WatchedToggleClicked,
+    ),
     DetailsButtonUIState.WatchlistToggle(
         contentDescription = R.string.video_details_button_add_to_bookmarks,
         action = DetailsAction.WatchlistToggleClicked,
     ),
-    DetailsButtonUIState.WatchedToggle(
-        contentDescription = R.string.video_details_button_mark_watched,
-        action = DetailsAction.WatchedToggleClicked,
+)
+
+private fun previewInfo(details: VideoDetailsUIState) = DetailsInfoUIState(
+    description = details.description,
+    ratings = details.ratings,
+    primaryRows = listOf(
+        DetailsInfoRowUIState("Оригинальное название", "Original title"),
+        DetailsInfoRowUIState("Год", details.year),
+        DetailsInfoRowUIState("Жанры", details.genres),
+        DetailsInfoRowUIState("Страна", details.country),
+    ),
+    secondaryRows = listOf(
+        DetailsInfoRowUIState("Режиссёр", "Ларри Ян"),
+        DetailsInfoRowUIState("В ролях", "Джеки Чан, Чжан Цзыфэн, Тони Люн Ка-Фай"),
+        DetailsInfoRowUIState("Качество", "1080p"),
     ),
 )
 
@@ -132,6 +150,7 @@ private fun previewSeriesContent(
     trailerUrl: String? = null,
 ) = DetailsScreenState.Content(
     details = previewSeriesDetails,
+    info = previewInfo(previewSeriesDetails),
     buttons = previewSeriesButtons,
     isInWatchlist = true,
     isWatched = false,
@@ -144,6 +163,7 @@ private fun previewMovieContent(
     trailerUrl: String? = null,
 ) = DetailsScreenState.Content(
     details = previewMovieDetails,
+    info = previewInfo(previewMovieDetails),
     buttons = previewMovieButtons,
     isInWatchlist = false,
     isWatched = false,

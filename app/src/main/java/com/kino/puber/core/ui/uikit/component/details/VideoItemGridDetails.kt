@@ -40,12 +40,14 @@ import com.kino.puber.core.ui.uikit.theme.PuberTheme
 fun VideoItemGridDetails(
     modifier: Modifier,
     state: VideoDetailsUIState,
+    descriptionMaxLines: Int = Int.MAX_VALUE,
 ) {
     if (state.isLoading) {
         Row(modifier = modifier) {
             VideoDetailsDescription(
                 modifier = Modifier.weight(3F),
-                state = state
+                state = state,
+                descriptionMaxLines = descriptionMaxLines,
             )
             VideoDetailsPoster(
                 modifier = Modifier
@@ -58,7 +60,8 @@ fun VideoItemGridDetails(
         Row(modifier = modifier) {
             VideoDetailsDescription(
                 modifier = Modifier.weight(3F),
-                state = state
+                state = state,
+                descriptionMaxLines = descriptionMaxLines,
             )
             VideoDetailsPoster(
                 modifier = Modifier
@@ -73,7 +76,8 @@ fun VideoItemGridDetails(
 @Composable
 fun VideoDetailsDescription(
     modifier: Modifier,
-    state: VideoDetailsUIState
+    state: VideoDetailsUIState,
+    descriptionMaxLines: Int = Int.MAX_VALUE,
 ) {
     Box(
         modifier = modifier
@@ -141,6 +145,7 @@ fun VideoDetailsDescription(
                     text = state.description,
                     style = MaterialTheme.typography.bodySmall,
                     overflow = TextOverflow.Ellipsis,
+                    maxLines = descriptionMaxLines,
                 )
             }
         }
