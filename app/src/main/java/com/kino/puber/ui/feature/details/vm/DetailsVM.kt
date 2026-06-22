@@ -10,6 +10,7 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.isSeriesLike
 import com.kino.puber.domain.interactor.details.DetailsInteractor
 import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
@@ -44,7 +45,7 @@ internal class DetailsVM(
         launch {
             val item = interactor.getItemDetails(params.itemId)
             currentItem = item
-            updateViewState(mapper.map(item))
+            updateViewState(mapper.map(item, isInWatchlist = interactor.isInWatchLaterFolder(item)))
         }
     }
 
@@ -55,6 +56,7 @@ internal class DetailsVM(
             is DetailsAction.CloseTrailer -> hideTrailer()
             is DetailsAction.SelectSeasonClicked -> showSeasonsPanel()
             is DetailsAction.WatchlistToggleClicked -> onWatchlistToggle()
+            is DetailsAction.WatchedToggleClicked -> onWatchedToggle()
             is DetailsAction.EpisodeSelected -> onEpisodeSelected(action.item)
             is DetailsAction.CloseSeasonsPanel -> hideSeasonsPanel()
             is CommonAction.RetryClicked -> loadData()
@@ -121,9 +123,17 @@ internal class DetailsVM(
         }
         launch {
             try {
-                val item = interactor.toggleWatchlist(params.itemId)
+                val item = if (itemIsSeriesLike()) {
+                    interactor.toggleWatchlist(params.itemId)
+                } else {
+                    interactor.setWatchLater(params.itemId, inWatchLater = !previous)
+                }
                 currentItem = item
-                val inWatchlist = item.inWatchlist ?: !previous
+                val inWatchlist = if (itemIsSeriesLike()) {
+                    item.inWatchlist ?: !previous
+                } else {
+                    interactor.isInWatchLaterFolder(item)
+                }
                 updateViewState<DetailsScreenState.Content> {
                     copy(isInWatchlist = inWatchlist)
                 }
@@ -140,5 +150,37 @@ internal class DetailsVM(
                 throw e
             }
         }
+    }
+
+    private fun onWatchedToggle() {
+        if (itemIsSeriesLike()) return
+        val previous = (stateValue as? DetailsScreenState.Content)?.isWatched ?: return
+        updateViewState<DetailsScreenState.Content> {
+            copy(isWatched = !isWatched)
+        }
+        launch {
+            try {
+                val item = interactor.setMovieWatched(params.itemId, watched = !previous)
+                currentItem = item
+                updateViewState<DetailsScreenState.Content> {
+                    copy(isWatched = mapper.map(item, isInWatchlist = isInWatchlist).isWatched)
+                }
+                val messageRes = if (!previous) {
+                    R.string.video_details_watched_added
+                } else {
+                    R.string.video_details_watched_removed
+                }
+                showMessage(resources.getString(messageRes))
+            } catch (e: Exception) {
+                updateViewState<DetailsScreenState.Content> {
+                    copy(isWatched = previous)
+                }
+                throw e
+            }
+        }
+    }
+
+    private fun itemIsSeriesLike(): Boolean {
+        return currentItem?.type?.isSeriesLike() ?: false
     }
 }

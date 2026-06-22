@@ -9,6 +9,7 @@ import com.kino.puber.data.api.models.VideoFile
 import com.kino.puber.data.api.models.VideoUrl
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
+import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -55,6 +56,7 @@ class PlayerInteractorTest {
 
     @BeforeEach
     fun setup() {
+        every { playerPreferencesRepository.preferSurroundAudio } returns false
         interactor = PlayerInteractor(api, itemDetailsRepository, playerPreferencesRepository)
     }
 

@@ -4,6 +4,7 @@ import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.data.api.models.Audio
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
+import com.kino.puber.data.api.models.Season
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.data.api.models.VideoFile
 import com.kino.puber.data.repository.ItemDetailsRepository
@@ -25,6 +26,12 @@ internal data class ResolvedMedia(
     val hasPrevious: Boolean,
     val seasonNumber: Int?,
     val episodeNumber: Int?,
+)
+
+private data class EpisodeCursor(
+    val seasons: List<Season>,
+    val seasonIndex: Int,
+    val episodeIndex: Int,
 )
 
 internal class PlayerInteractor(
@@ -100,58 +107,92 @@ internal class PlayerInteractor(
             ?.find { it.number == episodeNumber }
 
     fun findNextEpisode(item: Item, currentSeason: Int, currentEpisode: Int): Pair<Int, Int>? {
-        val seasons = item.seasons ?: return null
-        val season = seasons.find { it.number == currentSeason } ?: return null
-        val episodes = season.episodes ?: return null
-        val currentIndex = episodes.indexOfFirst { it.number == currentEpisode }
-        if (currentIndex >= 0 && currentIndex < episodes.size - 1) {
-            return currentSeason to episodes[currentIndex + 1].number
-        }
-        val seasonIndex = seasons.indexOf(season)
-        if (seasonIndex < seasons.size - 1) {
-            val nextSeason = seasons[seasonIndex + 1]
-            val firstEpisode = nextSeason.episodes?.firstOrNull() ?: return null
-            return nextSeason.number to firstEpisode.number
-        }
-        return null
+        val cursor = episodeCursor(item, currentSeason, currentEpisode)
+        return cursor?.nextInCurrentSeason()
+            ?: cursor?.firstEpisodeInNextSeason()
     }
 
     fun findPreviousEpisode(item: Item, currentSeason: Int, currentEpisode: Int): Pair<Int, Int>? {
-        val seasons = item.seasons ?: return null
-        val season = seasons.find { it.number == currentSeason } ?: return null
-        val episodes = season.episodes ?: return null
-        val currentIndex = episodes.indexOfFirst { it.number == currentEpisode }
-        if (currentIndex > 0) {
-            return currentSeason to episodes[currentIndex - 1].number
+        val cursor = episodeCursor(item, currentSeason, currentEpisode)
+        return cursor?.previousInCurrentSeason()
+            ?: cursor?.lastEpisodeInPreviousSeason()
+    }
+
+    private fun episodeCursor(item: Item, currentSeason: Int, currentEpisode: Int): EpisodeCursor? {
+        val seasons = item.seasons.orEmpty()
+        val seasonIndex = seasons.indexOfFirst { it.number == currentSeason }
+        val episodes = seasons.getOrNull(seasonIndex)?.episodes.orEmpty()
+        val episodeIndex = episodes.indexOfFirst { it.number == currentEpisode }
+        return if (seasonIndex >= 0 && episodeIndex >= 0) {
+            EpisodeCursor(
+                seasons = seasons,
+                seasonIndex = seasonIndex,
+                episodeIndex = episodeIndex,
+            )
+        } else {
+            null
         }
-        val seasonIndex = seasons.indexOf(season)
-        if (seasonIndex > 0) {
-            val prevSeason = seasons[seasonIndex - 1]
-            val lastEpisode = prevSeason.episodes?.lastOrNull() ?: return null
-            return prevSeason.number to lastEpisode.number
+    }
+
+    private fun EpisodeCursor.nextInCurrentSeason(): Pair<Int, Int>? {
+        val season = seasons[seasonIndex]
+        val episodes = season.episodes.orEmpty()
+        return episodes.getOrNull(episodeIndex + 1)?.let { episode ->
+            season.number to episode.number
         }
-        return null
+    }
+
+    private fun EpisodeCursor.firstEpisodeInNextSeason(): Pair<Int, Int>? {
+        val nextSeason = seasons.getOrNull(seasonIndex + 1)
+        return nextSeason?.episodes?.firstOrNull()?.let { episode ->
+            nextSeason.number to episode.number
+        }
+    }
+
+    private fun EpisodeCursor.previousInCurrentSeason(): Pair<Int, Int>? {
+        val season = seasons[seasonIndex]
+        val episodes = season.episodes.orEmpty()
+        return episodes.getOrNull(episodeIndex - 1)?.let { episode ->
+            season.number to episode.number
+        }
+    }
+
+    private fun EpisodeCursor.lastEpisodeInPreviousSeason(): Pair<Int, Int>? {
+        val previousSeason = seasons.getOrNull(seasonIndex - 1)
+        return previousSeason?.episodes?.lastOrNull()?.let { episode ->
+            previousSeason.number to episode.number
+        }
     }
 
     fun selectStreamUrl(files: List<VideoFile>?, qualityIndex: Int): String? {
-        if (files.isNullOrEmpty()) return null
-        val baseUrl = if (qualityIndex == 0) {
-            val url = files.first().url ?: return null
-            url.hls4 ?: url.hls ?: url.http
-        } else {
-            val uniqueFiles = files.distinctBy { it.quality ?: "${it.h}p" }
-                .sortedByDescending { it.qualityId ?: 0 }
-            val file = uniqueFiles.getOrNull(qualityIndex - 1) ?: files.first()
-            val url = file.url ?: return null
-            url.hls ?: url.hls4 ?: url.http
-        } ?: return null
+        return selectBaseStreamUrl(files, qualityIndex)?.let(::withSurroundAudioPreference)
+    }
 
-        return if (playerPreferencesRepository.preferSurroundAudio) {
-            val separator = if ("?" in baseUrl) "&" else "?"
-            "${baseUrl}${separator}ac3default=1"
+    private fun selectBaseStreamUrl(files: List<VideoFile>?, qualityIndex: Int): String? {
+        if (files.isNullOrEmpty()) return null
+        return if (qualityIndex == 0) {
+            selectAutoStreamUrl(files)
         } else {
-            baseUrl
+            selectManualStreamUrl(files, qualityIndex)
         }
+    }
+
+    private fun selectAutoStreamUrl(files: List<VideoFile>): String? {
+        val url = files.firstOrNull()?.url
+        return url?.hls4 ?: url?.hls ?: url?.http
+    }
+
+    private fun selectManualStreamUrl(files: List<VideoFile>, qualityIndex: Int): String? {
+        val uniqueFiles = files.distinctBy { it.quality ?: "${it.h}p" }
+            .sortedByDescending { it.qualityId ?: 0 }
+        val url = (uniqueFiles.getOrNull(qualityIndex - 1) ?: files.first()).url
+        return url?.hls ?: url?.hls4 ?: url?.http
+    }
+
+    private fun withSurroundAudioPreference(baseUrl: String): String {
+        if (!playerPreferencesRepository.preferSurroundAudio) return baseUrl
+        val separator = if ("?" in baseUrl) "&" else "?"
+        return "${baseUrl}${separator}ac3default=1"
     }
 
     private fun findFirstUnwatchedEpisode(item: Item): Pair<Int, Int>? {
@@ -192,7 +233,12 @@ internal class PlayerInteractor(
     }
 
     fun saveTrackPreferences(itemId: Int, audioLang: String?, audioLabel: String?, subtitleLang: String?) {
-        playerPreferencesRepository.saveTrackPreferences(itemId, audioLang = audioLang, audioLabel = audioLabel, subtitleLang = subtitleLang)
+        playerPreferencesRepository.saveTrackPreferences(
+            itemId = itemId,
+            audioLang = audioLang,
+            audioLabel = audioLabel,
+            subtitleLang = subtitleLang,
+        )
     }
 
     fun isDebugOverlayEnabled(): Boolean {

@@ -42,59 +42,112 @@ internal fun ResumeDialog(
         exit = fadeOut(),
     ) {
         val resumeButtonFocusRequester = remember { FocusRequester() }
-        LaunchedEffect(Unit) {
-            try {
-                resumeButtonFocusRequester.requestFocus()
-            } catch (_: Exception) {
-            }
-        }
+        RequestResumeButtonFocus(resumeButtonFocusRequester)
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f)),
-            contentAlignment = Alignment.Center,
-        ) {
+        ResumeDialogScrim {
             state?.let {
-                Column(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                ) {
-                    if (it.episodeInfo != null) {
-                        Text(
-                            text = it.episodeInfo,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.player_resume_title, it.formattedTime),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        Button(
-                            onClick = onResume,
-                            modifier = Modifier.focusRequester(resumeButtonFocusRequester),
-                        ) {
-                            Text(text = stringResource(R.string.player_resume_continue))
-                        }
-
-                        Button(
-                            onClick = onStartFromBeginning,
-                        ) {
-                            Text(text = stringResource(R.string.player_resume_from_start))
-                        }
-                    }
-                }
+                ResumeDialogCard(
+                    state = it,
+                    resumeButtonFocusRequester = resumeButtonFocusRequester,
+                    onResume = onResume,
+                    onStartFromBeginning = onStartFromBeginning,
+                )
             }
         }
     }
 }
+
+@Composable
+private fun RequestResumeButtonFocus(resumeButtonFocusRequester: FocusRequester) {
+    LaunchedEffect(Unit) {
+        try {
+            resumeButtonFocusRequester.requestFocus()
+        } catch (_: Exception) {
+        }
+    }
+}
+
+@Composable
+private fun ResumeDialogScrim(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.scrim.copy(alpha = SCRIM_ALPHA)),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun ResumeDialogCard(
+    state: ResumeDialogState,
+    resumeButtonFocusRequester: FocusRequester,
+    onResume: () -> Unit,
+    onStartFromBeginning: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(DIALOG_CORNER_RADIUS))
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(DIALOG_PADDING),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(DIALOG_ITEM_SPACING),
+    ) {
+        ResumeEpisodeInfo(state.episodeInfo)
+        ResumeTitle(state.formattedTime)
+        ResumeActions(
+            resumeButtonFocusRequester = resumeButtonFocusRequester,
+            onResume = onResume,
+            onStartFromBeginning = onStartFromBeginning,
+        )
+    }
+}
+
+@Composable
+private fun ResumeEpisodeInfo(episodeInfo: String?) {
+    if (episodeInfo != null) {
+        Text(
+            text = episodeInfo,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = EPISODE_INFO_ALPHA),
+        )
+    }
+}
+
+@Composable
+private fun ResumeTitle(formattedTime: String) {
+    Text(
+        text = stringResource(R.string.player_resume_title, formattedTime),
+        style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+}
+
+@Composable
+private fun ResumeActions(
+    resumeButtonFocusRequester: FocusRequester,
+    onResume: () -> Unit,
+    onStartFromBeginning: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(ACTION_SPACING)) {
+        Button(
+            onClick = onResume,
+            modifier = Modifier.focusRequester(resumeButtonFocusRequester),
+        ) {
+            Text(text = stringResource(R.string.player_resume_continue))
+        }
+
+        Button(onClick = onStartFromBeginning) {
+            Text(text = stringResource(R.string.player_resume_from_start))
+        }
+    }
+}
+
+private const val SCRIM_ALPHA = 0.6f
+private const val EPISODE_INFO_ALPHA = 0.7f
+
+private val DIALOG_CORNER_RADIUS = 16.dp
+private val DIALOG_PADDING = 32.dp
+private val DIALOG_ITEM_SPACING = 24.dp
+private val ACTION_SPACING = 16.dp

@@ -36,7 +36,9 @@ import com.adamglin.phosphoricons.Duotone
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.duotone.BookmarkSimple
 import com.adamglin.phosphoricons.duotone.CaretDown
+import com.adamglin.phosphoricons.duotone.Eye
 import com.adamglin.phosphoricons.fill.BookmarkSimple
+import com.adamglin.phosphoricons.fill.Eye
 import com.kino.puber.core.ui.uikit.component.FullScreenError
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
@@ -123,6 +125,7 @@ private fun DetailsMainPage(
         ActionButtonsRow(
             buttons = state.buttons,
             isInWatchlist = state.isInWatchlist,
+            isWatched = state.isWatched,
             onAction = onAction,
             seasonsPanelVisible = seasonsPanelVisible,
         )
@@ -137,6 +140,7 @@ private fun DetailsMainPage(
 private fun ActionButtonsRow(
     buttons: List<DetailsButtonUIState>,
     isInWatchlist: Boolean,
+    isWatched: Boolean,
     onAction: (UIAction) -> Unit,
     seasonsPanelVisible: Boolean,
 ) {
@@ -204,6 +208,28 @@ private fun ActionButtonsRow(
                             contentDescription = stringResource(button.contentDescription),
                             modifier = Modifier.size(20.dp),
                             tint = if (isInWatchlist) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                LocalContentColor.current
+                            },
+                        )
+                    }
+                }
+
+                is DetailsButtonUIState.WatchedToggle -> {
+                    IconButton(
+                        onClick = { onAction(button.action) },
+                        modifier = buttonModifier,
+                    ) {
+                        Icon(
+                            imageVector = if (isWatched) {
+                                PhosphorIcons.Fill.Eye
+                            } else {
+                                PhosphorIcons.Duotone.Eye
+                            },
+                            contentDescription = stringResource(button.contentDescription),
+                            modifier = Modifier.size(20.dp),
+                            tint = if (isWatched) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 LocalContentColor.current

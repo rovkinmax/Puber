@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -51,37 +52,29 @@ internal fun TopTabMainContent(
     var focusedTabIndex by rememberSaveable { mutableIntStateOf(selectedIndex) }
     var isContentFocused by remember { mutableStateOf(false) }
 
-    LaunchedEffect(selectedIndex) {
-        focusedTabIndex = selectedIndex
-    }
-
-    LaunchedEffect(focusedTabIndex) {
-        if (focusedTabIndex == selectedIndex) return@LaunchedEffect
-        delay(300L)
-        val tab = state.tabs.getOrNull(focusedTabIndex) ?: return@LaunchedEffect
-        onAction(CommonAction.ItemSelected(tab))
-    }
-
-    LaunchedEffect(Unit) {
-        delay(100)
-        tabFocusRequesters.getOrNull(focusedTabIndex)?.requestFocus()
-            ?: tabRowFocus.requestFocus()
-    }
+    SyncSelectedTabEffect(selectedIndex) { focusedTabIndex = selectedIndex }
+    DelayedTabSelectionEffect(
+        state = state,
+        focusedTabIndex = focusedTabIndex,
+        selectedIndex = selectedIndex,
+        onAction = onAction,
+    )
+    InitialTabFocusEffect(
+        focusedTabIndex = focusedTabIndex,
+        tabFocusRequesters = tabFocusRequesters,
+        tabRowFocus = tabRowFocus,
+    )
     val isOnHome = state.tabs.getOrNull(focusedTabIndex)?.type == TabType.Home
 
-    BackHandler(enabled = isContentFocused || !isOnHome) {
-        if (isContentFocused) {
-            tabRowFocus.requestFocus()
-        } else {
-            val homeIndex = state.tabs.indexOfFirst { it.type == TabType.Home }.coerceAtLeast(0)
-            val homeTab = state.tabs.getOrNull(homeIndex)
-            if (homeTab != null) {
-                focusedTabIndex = homeIndex
-                onAction(CommonAction.ItemSelected(homeTab))
-                tabFocusRequesters.getOrNull(homeIndex)?.requestFocus()
-            }
-        }
-    }
+    TopTabBackHandler(
+        enabled = isContentFocused || !isOnHome,
+        isContentFocused = isContentFocused,
+        state = state,
+        tabRowFocus = tabRowFocus,
+        tabFocusRequesters = tabFocusRequesters,
+        onHomeFocused = { focusedTabIndex = it },
+        onAction = onAction,
+    )
 
     TabComponent(tabRouter = tabRouter) {
         Column(Modifier.fillMaxSize()) {
@@ -99,24 +92,119 @@ internal fun TopTabMainContent(
             )
 
             CompositionLocalProvider(LocalAutoFocusOnLaunchEnabled provides false) {
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .focusRequester(contentFocus)
-                        .onFocusChanged { if (it.hasFocus) isContentFocused = true }
-                        .focusProperties {
-                            @Suppress("DEPRECATION")
-                            exit = { direction ->
-                                if (direction == FocusDirection.Up) tabRowFocus
-                                else FocusRequester.Cancel
-                            }
-                        }
-                        .focusRestorer()
-                        .focusGroup()
-                ) {
-                    PuberCurrentTab()
-                }
+                TopTabContentBox(
+                    contentFocus = contentFocus,
+                    tabRowFocus = tabRowFocus,
+                    onFocused = { isContentFocused = true },
+                )
             }
         }
     }
 }
+
+@Composable
+private fun SyncSelectedTabEffect(selectedIndex: Int, onSelectedIndexChanged: (Int) -> Unit) {
+    LaunchedEffect(selectedIndex) {
+        onSelectedIndexChanged(selectedIndex)
+    }
+}
+
+@Composable
+private fun DelayedTabSelectionEffect(
+    state: MainViewState,
+    focusedTabIndex: Int,
+    selectedIndex: Int,
+    onAction: (UIAction) -> Unit,
+) {
+    LaunchedEffect(focusedTabIndex) {
+        if (focusedTabIndex != selectedIndex) {
+            delay(TAB_SELECTION_DELAY_MS)
+            state.tabs.getOrNull(focusedTabIndex)?.let { tab ->
+                onAction(CommonAction.ItemSelected(tab))
+            }
+        }
+    }
+}
+
+@Composable
+private fun InitialTabFocusEffect(
+    focusedTabIndex: Int,
+    tabFocusRequesters: List<FocusRequester>,
+    tabRowFocus: FocusRequester,
+) {
+    LaunchedEffect(Unit) {
+        delay(INITIAL_TAB_FOCUS_DELAY_MS)
+        tabFocusRequesters.getOrNull(focusedTabIndex)?.requestFocus()
+            ?: tabRowFocus.requestFocus()
+    }
+}
+
+@Composable
+private fun TopTabBackHandler(
+    enabled: Boolean,
+    isContentFocused: Boolean,
+    state: MainViewState,
+    tabRowFocus: FocusRequester,
+    tabFocusRequesters: List<FocusRequester>,
+    onHomeFocused: (Int) -> Unit,
+    onAction: (UIAction) -> Unit,
+) {
+    BackHandler(enabled = enabled) {
+        if (isContentFocused) {
+            tabRowFocus.requestFocus()
+        } else {
+            focusHomeTab(
+                state = state,
+                tabFocusRequesters = tabFocusRequesters,
+                onHomeFocused = onHomeFocused,
+                onAction = onAction,
+            )
+        }
+    }
+}
+
+private fun focusHomeTab(
+    state: MainViewState,
+    tabFocusRequesters: List<FocusRequester>,
+    onHomeFocused: (Int) -> Unit,
+    onAction: (UIAction) -> Unit,
+) {
+    val homeIndex = state.tabs.indexOfFirst { it.type == TabType.Home }.coerceAtLeast(0)
+    state.tabs.getOrNull(homeIndex)?.let { homeTab ->
+        onHomeFocused(homeIndex)
+        onAction(CommonAction.ItemSelected(homeTab))
+        tabFocusRequesters.getOrNull(homeIndex)?.requestFocus()
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun ColumnScope.TopTabContentBox(
+    contentFocus: FocusRequester,
+    tabRowFocus: FocusRequester,
+    onFocused: () -> Unit,
+) {
+    Box(
+        Modifier
+            .weight(1f)
+            .focusRequester(contentFocus)
+            .onFocusChanged { if (it.hasFocus) onFocused() }
+            .focusProperties {
+                @Suppress("DEPRECATION")
+                exit = { direction ->
+                    if (direction == FocusDirection.Up) {
+                        tabRowFocus
+                    } else {
+                        FocusRequester.Cancel
+                    }
+                }
+            }
+            .focusRestorer()
+            .focusGroup()
+    ) {
+        PuberCurrentTab()
+    }
+}
+
+private const val TAB_SELECTION_DELAY_MS = 300L
+private const val INITIAL_TAB_FOCUS_DELAY_MS = 100L

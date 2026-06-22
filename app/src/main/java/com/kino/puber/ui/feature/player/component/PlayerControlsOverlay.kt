@@ -53,65 +53,131 @@ internal fun PlayerControlsOverlay(
         enter = fadeIn(),
         exit = fadeOut(),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.scrim.copy(alpha = 0.7f),
-                            MaterialTheme.colorScheme.scrim.copy(alpha = 0f),
-                            MaterialTheme.colorScheme.scrim.copy(alpha = 0f),
-                            MaterialTheme.colorScheme.scrim.copy(alpha = 0.7f),
-                        ),
-                    )
-                )
-                .onPreviewKeyEvent { keyEvent ->
-                    if (keyEvent.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
-                    // Reset hide timer on any key press while controls are visible
-                    onControlsInteraction()
-                    false // Let D-pad navigate between buttons naturally; BACK handled by Voyager BackHandler
-                },
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-                PlayerTitle(
-                    title = title,
-                    subtitle = subtitle,
-                )
-
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    PlayerProgressBar(
-                        currentPosition = currentPosition,
-                        duration = duration,
-                        bufferedPosition = bufferedPosition,
-                        isBuffering = isBuffering,
-                        onSeekForward = onSeekForward,
-                        onSeekBackward = onSeekBackward,
-                        onTogglePlayPause = onTogglePlayPause,
-                        focusRequester = seekBarFocusRequester,
-                    )
-
-                    PlayerButtonRow(
-                        isMovie = isMovie,
-                        isPlaying = isPlaying,
-                        hasNextEpisode = hasNextEpisode,
-                        hasPreviousEpisode = hasPreviousEpisode,
-                        onTogglePlayPause = onTogglePlayPause,
-                        onEpisodesClick = onEpisodesClick,
-                        onAudioSubtitlesClick = onAudioSubtitlesClick,
-                        onVideoSettingsClick = onVideoSettingsClick,
-                        onNextEpisodeClick = onNextEpisodeClick,
-                        onPreviousEpisodeClick = onPreviousEpisodeClick,
-                        firstButtonFocusRequester = firstButtonFocusRequester,
-                        episodesButtonFocusRequester = episodesButtonFocusRequester,
-                        audioSubtitlesButtonFocusRequester = audioSubtitlesButtonFocusRequester,
-                        videoSettingsButtonFocusRequester = videoSettingsButtonFocusRequester,
-                    )
-                }
-            }
+        ControlsScrim(onControlsInteraction = onControlsInteraction) {
+            PlayerTitle(title = title, subtitle = subtitle)
+            ControlsBottomBar(
+                progressState = ProgressBarState(
+                    currentPosition = currentPosition,
+                    duration = duration,
+                    bufferedPosition = bufferedPosition,
+                    isBuffering = isBuffering,
+                ),
+                buttonState = PlayerButtonRowState(
+                    isMovie = isMovie,
+                    isPlaying = isPlaying,
+                    hasNextEpisode = hasNextEpisode,
+                    hasPreviousEpisode = hasPreviousEpisode,
+                ),
+                actions = PlayerControlActions(
+                    onEpisodesClick = onEpisodesClick,
+                    onAudioSubtitlesClick = onAudioSubtitlesClick,
+                    onVideoSettingsClick = onVideoSettingsClick,
+                    onNextEpisodeClick = onNextEpisodeClick,
+                    onPreviousEpisodeClick = onPreviousEpisodeClick,
+                    onSeekForward = onSeekForward,
+                    onSeekBackward = onSeekBackward,
+                    onTogglePlayPause = onTogglePlayPause,
+                ),
+                focusRequesters = PlayerControlFocusRequesters(
+                    firstButton = firstButtonFocusRequester,
+                    episodesButton = episodesButtonFocusRequester,
+                    audioSubtitlesButton = audioSubtitlesButtonFocusRequester,
+                    videoSettingsButton = videoSettingsButtonFocusRequester,
+                    seekBar = seekBarFocusRequester,
+                ),
+            )
         }
     }
 }
+
+private data class ProgressBarState(
+    val currentPosition: Long,
+    val duration: Long,
+    val bufferedPosition: Long,
+    val isBuffering: Boolean,
+)
+
+internal data class PlayerControlActions(
+    val onEpisodesClick: () -> Unit,
+    val onAudioSubtitlesClick: () -> Unit,
+    val onVideoSettingsClick: () -> Unit,
+    val onNextEpisodeClick: () -> Unit,
+    val onPreviousEpisodeClick: () -> Unit,
+    val onSeekForward: () -> Unit,
+    val onSeekBackward: () -> Unit,
+    val onTogglePlayPause: () -> Unit,
+)
+
+internal data class PlayerControlFocusRequesters(
+    val firstButton: FocusRequester,
+    val episodesButton: FocusRequester,
+    val audioSubtitlesButton: FocusRequester,
+    val videoSettingsButton: FocusRequester,
+    val seekBar: FocusRequester,
+)
+
+@Composable
+private fun ControlsScrim(
+    onControlsInteraction: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(controlsScrimBrush())
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) {
+                    return@onPreviewKeyEvent false
+                }
+                onControlsInteraction()
+                false
+            },
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ControlsBottomBar(
+    progressState: ProgressBarState,
+    buttonState: PlayerButtonRowState,
+    actions: PlayerControlActions,
+    focusRequesters: PlayerControlFocusRequesters,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        PlayerProgressBar(
+            currentPosition = progressState.currentPosition,
+            duration = progressState.duration,
+            bufferedPosition = progressState.bufferedPosition,
+            isBuffering = progressState.isBuffering,
+            onSeekForward = actions.onSeekForward,
+            onSeekBackward = actions.onSeekBackward,
+            onTogglePlayPause = actions.onTogglePlayPause,
+            focusRequester = focusRequesters.seekBar,
+        )
+        PlayerButtonRow(
+            state = buttonState,
+            actions = actions,
+            focusRequesters = focusRequesters,
+        )
+    }
+}
+
+@Composable
+private fun controlsScrimBrush(): Brush {
+    return Brush.verticalGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.scrim.copy(alpha = CONTROLS_SCRIM_ALPHA),
+            MaterialTheme.colorScheme.scrim.copy(alpha = 0f),
+            MaterialTheme.colorScheme.scrim.copy(alpha = 0f),
+            MaterialTheme.colorScheme.scrim.copy(alpha = CONTROLS_SCRIM_ALPHA),
+        ),
+    )
+}
+
+private const val CONTROLS_SCRIM_ALPHA = 0.7f

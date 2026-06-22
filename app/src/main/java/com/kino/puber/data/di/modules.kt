@@ -54,6 +54,9 @@ val apiModule = module {
     singleOf(::IntroDbAppApiClient)
 }
 
+private const val MIB = 1024L * 1024L
+private const val MEDIA_CACHE_SIZE_BYTES = 512L * MIB
+
 val repositoryModule = module {
     singleOf(::KinoPubRepository) { bind<IKinoPubRepository>() }
     singleOf(::CryptoPreferenceRepository) { bind<ICryptoPreferenceRepository>() }
@@ -66,10 +69,10 @@ val repositoryModule = module {
     singleOf(::SkipSegmentService)
     singleOf(::NavigationPreferencesRepository)
     single<androidx.media3.datasource.cache.Cache> {
-        val cacheDir = java.io.File(androidContext().externalCacheDir, "media_cache")
+        val cacheDir = java.io.File(androidContext().externalCacheDir ?: androidContext().cacheDir, "media_cache")
         SimpleCache(
             cacheDir,
-            LeastRecentlyUsedCacheEvictor(1024L * 1024 * 1024),
+            LeastRecentlyUsedCacheEvictor(MEDIA_CACHE_SIZE_BYTES),
             StandaloneDatabaseProvider(androidContext())
         )
     }

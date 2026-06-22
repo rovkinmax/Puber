@@ -20,11 +20,12 @@ internal class DetailsScreenUIMapper(
     private val itemMapper: VideoItemUIMapper,
 ) {
 
-    fun map(item: Item): DetailsScreenState.Content {
+    fun map(item: Item, isInWatchlist: Boolean = item.inWatchlist ?: false): DetailsScreenState.Content {
         return DetailsScreenState.Content(
             details = itemMapper.mapDetailedItem(item),
             buttons = buildButtons(item),
-            isInWatchlist = item.inWatchlist ?: false,
+            isInWatchlist = isInWatchlist,
+            isWatched = itemMapper.isItemWatched(item),
             episodes = if (item.type.isSeriesLike()) mapEpisodes(item) else null,
         )
     }
@@ -116,6 +117,14 @@ internal class DetailsScreenUIMapper(
                 action = DetailsAction.WatchlistToggleClicked,
             )
         )
+        if (!item.type.isSeriesLike()) {
+            add(
+                DetailsButtonUIState.WatchedToggle(
+                    contentDescription = R.string.video_details_button_mark_watched,
+                    action = DetailsAction.WatchedToggleClicked,
+                )
+            )
+        }
     }
 
     private fun findFirstUnwatchedEpisode(item: Item): Pair<Int, Int>? {

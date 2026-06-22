@@ -15,6 +15,7 @@ internal sealed class DetailsScreenState {
         val details: VideoDetailsUIState,
         val buttons: List<DetailsButtonUIState>,
         val isInWatchlist: Boolean,
+        val isWatched: Boolean,
         val seasonsPanelVisible: Boolean = false,
         val episodes: VideoGridUIState? = null,
         val trailerUrl: String? = null,
@@ -40,6 +41,11 @@ internal sealed class DetailsButtonUIState {
         val contentDescription: Int,
         val action: DetailsAction,
     ) : DetailsButtonUIState()
+
+    data class WatchedToggle(
+        val contentDescription: Int,
+        val action: DetailsAction,
+    ) : DetailsButtonUIState()
 }
 
 @Immutable
@@ -48,6 +54,7 @@ internal sealed class DetailsAction : UIAction {
     data object TrailerClicked : DetailsAction()
     data object SelectSeasonClicked : DetailsAction()
     data object WatchlistToggleClicked : DetailsAction()
+    data object WatchedToggleClicked : DetailsAction()
     data class EpisodeSelected(val item: VideoItemUIState) : DetailsAction()
     data object CloseSeasonsPanel : DetailsAction()
     data object CloseTrailer : DetailsAction()

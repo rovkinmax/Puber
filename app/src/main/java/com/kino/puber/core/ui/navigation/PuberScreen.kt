@@ -9,4 +9,6 @@ interface PuberScreen : Screen, Parcelable {
         get() = javaClass.simpleName
 }
 
-interface FullscreenPuberScreen : PuberScreen
+interface RootPuberScreen : PuberScreen
+
+interface FullscreenPuberScreen : RootPuberScreen

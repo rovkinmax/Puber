@@ -49,7 +49,7 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
         )
     }
 
-    private fun isItemWatched(item: Item): Boolean {
+    fun isItemWatched(item: Item): Boolean {
         val watched = item.watched ?: return false
         if (watched == 0) return false
         // For series: watched when no new (unwatched) episodes remain

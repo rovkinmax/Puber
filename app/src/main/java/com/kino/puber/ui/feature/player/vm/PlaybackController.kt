@@ -32,7 +32,14 @@ import com.kino.puber.ui.feature.player.model.BufferPreset
 
 internal interface PlaybackControl {
     interface Callback {
-        fun onPlaybackStateChanged(isPlaying: Boolean, isBuffering: Boolean, position: Long, duration: Long, buffered: Long)
+        fun onPlaybackStateChanged(
+            isPlaying: Boolean,
+            isBuffering: Boolean,
+            position: Long,
+            duration: Long,
+            buffered: Long,
+        )
+
         fun onTracksUpdated(audioTracks: List<AudioTrackUIState>, selectedIndex: Int)
         fun onPlaybackEnded()
         fun onError(message: String)
@@ -44,7 +51,14 @@ internal interface PlaybackControl {
     val bufferedPosition: Long
 
     fun setCallback(callback: Callback)
-    fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?, bufferPreset: BufferPreset = BufferPreset.AUTO, fastDns: Boolean = true)
+    fun prepare(
+        streamUrl: String,
+        subtitles: List<SubtitleLink>?,
+        startPosition: Long?,
+        bufferPreset: BufferPreset = BufferPreset.AUTO,
+        fastDns: Boolean = true,
+    )
+
     fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?)
     fun play()
     fun pause()
@@ -97,16 +111,8 @@ internal class PlaybackController(
         override fun onPlayerError(error: PlaybackException) {
             val cause = error.cause
             when {
-                cause is BehindLiveWindowException -> {
-                    exoPlayer?.let { player ->
-                        player.seekToDefaultPosition()
-                        player.prepare()
-                    }
-                }
-                cause is MediaCodecRenderer.DecoderInitializationException
-                        && cause.mimeType == MimeTypes.AUDIO_AC3 -> {
-                    disableAc3AndRetry()
-                }
+                cause is BehindLiveWindowException -> recoverBehindLiveWindow()
+                cause.isAc3DecoderInitializationException() -> disableAc3AndRetry()
                 else -> callback?.onError(
                     error.localizedMessage ?: context.getString(R.string.player_error_playback)
                 )
@@ -114,12 +120,29 @@ internal class PlaybackController(
         }
     }
 
+    private fun recoverBehindLiveWindow() {
+        exoPlayer?.let { player ->
+            player.seekToDefaultPosition()
+            player.prepare()
+        }
+    }
+
+    private fun Throwable?.isAc3DecoderInitializationException(): Boolean {
+        return this is MediaCodecRenderer.DecoderInitializationException && mimeType == MimeTypes.AUDIO_AC3
+    }
+
     override fun setCallback(callback: PlaybackControl.Callback) {
         this.callback = callback
     }
 
     @OptIn(UnstableApi::class)
-    override fun prepare(streamUrl: String, subtitles: List<SubtitleLink>?, startPosition: Long?, bufferPreset: BufferPreset, fastDns: Boolean) {
+    override fun prepare(
+        streamUrl: String,
+        subtitles: List<SubtitleLink>?,
+        startPosition: Long?,
+        bufferPreset: BufferPreset,
+        fastDns: Boolean,
+    ) {
         release()
         ac3FallbackApplied = false
         useFastDns = fastDns
@@ -134,22 +157,22 @@ internal class PlaybackController(
             )
             .setBackBuffer(
                 bufferParams.backBufferDurationMs,
-                /* retainBackBufferFromKeyframe = */ true,
+                /* retainBackBufferFromKeyframe = */ false,
             )
             .setTargetBufferBytes(bufferParams.targetBufferBytes)
             .setPrioritizeTimeOverSizeThresholds(bufferParams.prioritizeTimeOverSize)
             .build()
 
         val adaptiveTrackSelectionFactory = AdaptiveTrackSelection.Factory(
-            /* minDurationForQualityIncreaseMs = */ 10_000,
-            /* maxDurationForQualityDecreaseMs = */ 15_000,
-            /* minDurationToRetainAfterDiscardMs = */ 25_000,
-            /* bandwidthFraction = */ 0.75f,
+            /* minDurationForQualityIncreaseMs = */ MIN_DURATION_FOR_QUALITY_INCREASE_MS,
+            /* maxDurationForQualityDecreaseMs = */ MAX_DURATION_FOR_QUALITY_DECREASE_MS,
+            /* minDurationToRetainAfterDiscardMs = */ MIN_DURATION_TO_RETAIN_AFTER_DISCARD_MS,
+            /* bandwidthFraction = */ BANDWIDTH_FRACTION,
         )
         val trackSelector = DefaultTrackSelector(context, adaptiveTrackSelectionFactory).apply {
             parameters = buildUponParameters()
-                .setExceedVideoConstraintsIfNecessary(true)
-                .setExceedRendererCapabilitiesIfNecessary(true)
+                .setExceedVideoConstraintsIfNecessary(false)
+                .setExceedRendererCapabilitiesIfNecessary(false)
                 .build()
         }
         this.trackSelector = trackSelector
@@ -305,9 +328,11 @@ internal class PlaybackController(
     @OptIn(UnstableApi::class)
     private fun createDataSourceFactory(): DataSource.Factory {
         val builder = okHttpClient.newBuilder()
-            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-        if (useFastDns) builder.dns(okhttp3.Dns.SYSTEM)
+            .connectTimeout(PLAYER_NETWORK_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(PLAYER_NETWORK_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+        if (useFastDns) {
+            builder.dns(okhttp3.Dns.SYSTEM)
+        }
         val playerClient = builder.build()
         val httpFactory = OkHttpDataSource.Factory(playerClient)
             .setUserAgent("Puber/${BuildConfig.VERSION_NAME} (Android)")
@@ -354,11 +379,13 @@ internal class PlaybackController(
         val bufferedSec = (bufferedMs / 1000.0).coerceAtLeast(0.0)
 
         return DebugInfo(
-            videoResolution = if (videoFormat != null) "${videoFormat.width}x${videoFormat.height}" else "—",
+            videoResolution = videoFormat?.let { "${it.width}x${it.height}" } ?: "—",
             videoCodec = videoFormat?.codecs ?: videoFormat?.sampleMimeType?.substringAfter("/") ?: "—",
             videoBitrate = if (videoFormat?.bitrate != null && videoFormat.bitrate > 0) {
-                "%.1f Mbps".format(videoFormat.bitrate / 1_000_000.0)
-            } else "—",
+                "%.1f Mbps".format(videoFormat.bitrate / BITS_PER_MEGABIT)
+            } else {
+                "—"
+            },
             audioCodec = audioFormat?.codecs ?: audioFormat?.sampleMimeType?.substringAfter("/") ?: "—",
             audioChannels = when (audioFormat?.channelCount) {
                 1 -> "mono"
@@ -399,5 +426,14 @@ internal class PlaybackController(
         }
         val selectedIndex = audioGroups.indexOfFirst { it.isSelected }.coerceAtLeast(0)
         callback?.onTracksUpdated(audioTracks, selectedIndex)
+    }
+
+    private companion object {
+        const val MIN_DURATION_FOR_QUALITY_INCREASE_MS = 10_000
+        const val MAX_DURATION_FOR_QUALITY_DECREASE_MS = 15_000
+        const val MIN_DURATION_TO_RETAIN_AFTER_DISCARD_MS = 25_000
+        const val BANDWIDTH_FRACTION = 0.75f
+        const val PLAYER_NETWORK_TIMEOUT_SECONDS = 20L
+        const val BITS_PER_MEGABIT = 1_000_000.0
     }
 }

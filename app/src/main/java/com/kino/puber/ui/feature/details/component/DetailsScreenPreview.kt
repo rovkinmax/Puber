@@ -94,6 +94,10 @@ private val previewMovieButtons = listOf(
         contentDescription = R.string.video_details_button_add_to_bookmarks,
         action = DetailsAction.WatchlistToggleClicked,
     ),
+    DetailsButtonUIState.WatchedToggle(
+        contentDescription = R.string.video_details_button_mark_watched,
+        action = DetailsAction.WatchedToggleClicked,
+    ),
 )
 
 private val previewEpisodes = VideoGridUIState(
@@ -126,6 +130,7 @@ private fun previewSeriesContent(
     details = previewSeriesDetails,
     buttons = previewSeriesButtons,
     isInWatchlist = true,
+    isWatched = false,
     seasonsPanelVisible = seasonsPanelVisible,
     episodes = previewEpisodes,
     trailerUrl = trailerUrl,
@@ -137,6 +142,7 @@ private fun previewMovieContent(
     details = previewMovieDetails,
     buttons = previewMovieButtons,
     isInWatchlist = false,
+    isWatched = false,
     trailerUrl = trailerUrl,
 )
 

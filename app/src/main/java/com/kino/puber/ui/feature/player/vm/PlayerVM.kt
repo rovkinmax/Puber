@@ -64,6 +64,12 @@ internal class PlayerVM(
         val subtitles: List<SubtitleLink>?,
     )
 
+    private data class CurrentEpisode(
+        val media: CurrentMedia,
+        val seasonNumber: Int,
+        val episodeNumber: Int,
+    )
+
     private var currentMedia: CurrentMedia? = null
 
     private var controlsHideJob: Job? = null
@@ -85,10 +91,17 @@ internal class PlayerVM(
     private val seekHandler = SeekHandler()
     private val controlsStateMachine = ControlsStateMachine()
     private val progressTracker = ProgressTracker()
+    private val audioTrackPreferenceResolver = AudioTrackPreferenceResolver()
     private val debugOverlayEnabled = interactor.isDebugOverlayEnabled()
 
     private val playbackCallback = object : PlaybackControl.Callback {
-        override fun onPlaybackStateChanged(isPlaying: Boolean, isBuffering: Boolean, position: Long, duration: Long, buffered: Long) {
+        override fun onPlaybackStateChanged(
+            isPlaying: Boolean,
+            isBuffering: Boolean,
+            position: Long,
+            duration: Long,
+            buffered: Long,
+        ) {
             val wasBuffering = (stateValue as? PlayerViewState.Content)?.content?.isBuffering == true
             updateContent {
                 copy(isPlaying = isPlaying)
@@ -106,7 +119,9 @@ internal class PlayerVM(
                 if (wasBuffering) {
                     updateContent { copy(isBuffering = false) }
                     val controlsVisible = (stateValue as? PlayerViewState.Content)?.content?.controlsVisible == true
-                    if (controlsVisible) scheduleControlsHide()
+                    if (controlsVisible) {
+                        scheduleControlsHide()
+                    }
                 }
             }
         }
@@ -156,7 +171,14 @@ internal class PlayerVM(
         )
 
         val resumeDialog = if (!forceFromBeginning) buildResumeDialog(resolved.watchingTime) else null
-        val contentState = contentStateFactory.build(item, resolved, resumeDialog, interactor.getSubtitleSize(), interactor.getBufferPreset(), interactor.isFastDnsEnabled())
+        val contentState = contentStateFactory.build(
+            item = item,
+            resolved = resolved,
+            resumeDialog = resumeDialog,
+            subtitleSize = interactor.getSubtitleSize(),
+            savedBufferPreset = interactor.getBufferPreset(),
+            fastDnsEnabled = interactor.isFastDnsEnabled(),
+        )
 
         updateViewState(PlayerViewState.Content(contentState))
         episodeSwitchInProgress = false
@@ -172,7 +194,9 @@ internal class PlayerVM(
         val media = currentMedia
         val episodeInfo = if (media?.seasonNumber != null && media.episodeNumber != null) {
             mapper.buildSubtitle(media.item, media.seasonNumber, media.episodeNumber, null)
-        } else null
+        } else {
+            null
+        }
         return ResumeDialogState(
             savedPosition = savedPosition,
             formattedTime = mapper.formatTime(savedPosition),
@@ -184,7 +208,11 @@ internal class PlayerVM(
         val media = currentMedia ?: return
         val content = (stateValue as? PlayerViewState.Content)?.content
         val qualityIndex = content?.selectedQualityIndex ?: 0
-        val bufferPreset = content?.bufferPresets?.getOrNull(content.selectedBufferPresetIndex)?.preset ?: BufferPreset.AUTO
+        val bufferPreset = content
+            ?.bufferPresets
+            ?.getOrNull(content.selectedBufferPresetIndex)
+            ?.preset
+            ?: BufferPreset.AUTO
         val fastDns = content?.fastDnsEnabled ?: true
         val streamUrl = interactor.selectStreamUrl(media.files, qualityIndex) ?: return
         playbackController.prepare(streamUrl, media.subtitles, savedPosition, bufferPreset, fastDns)
@@ -200,56 +228,24 @@ internal class PlayerVM(
         val preferredLabel = interactor.getPreferredAudioLabel(params.itemId)
         val preferredLang = interactor.getPreferredAudioLang(params.itemId)
         val subtitleLang = interactor.getPreferredSubtitleLang(params.itemId)
-        val audioTracks = (stateValue as? PlayerViewState.Content)?.content?.audioTracks
-
-        var audioIndex = -1
-
-        // 1. Exact label match
-        if (preferredLabel != null) {
-            audioIndex = audioTracks?.indexOfFirst { it.label == preferredLabel } ?: -1
-        }
-
-        // 2. Core label match (strip leading "NN. " number prefix)
-        if (audioIndex < 0 && preferredLabel != null) {
-            val coreLabel = preferredLabel.replace(NUMBER_PREFIX_REGEX, "")
-            audioIndex = audioTracks?.indexOfFirst {
-                it.label.replace(NUMBER_PREFIX_REGEX, "") == coreLabel
-            } ?: -1
-        }
-
-        // 3. Voice type match — "Многоголосый. Red Head Sound (RUS)" → type "Многоголосый" + lang
-        if (audioIndex < 0 && preferredLabel != null && preferredLang != null) {
-            val savedType = extractVoiceType(preferredLabel)
-            if (savedType != null) {
-                audioIndex = audioTracks?.indexOfFirst { track ->
-                    extractVoiceType(track.label) == savedType && track.language == preferredLang
-                } ?: -1
-            }
-        }
-
-        // 4. Language fallback
-        if (audioIndex < 0 && preferredLang != null) {
-            audioIndex = audioTracks?.indexOfFirst { it.language == preferredLang } ?: -1
-        }
+        val content = (stateValue as? PlayerViewState.Content)?.content ?: return
+        val audioIndex = audioTrackPreferenceResolver.findAudioTrackIndex(
+            tracks = content.audioTracks,
+            preferredLabel = preferredLabel,
+            preferredLang = preferredLang,
+        )
 
         if (audioIndex >= 0) {
             applyAudioTrackSelection(audioIndex)
         }
 
-        if (subtitleLang != null) {
-            val subIndex = (stateValue as? PlayerViewState.Content)?.content?.subtitleTracks
-                ?.indexOfFirst { it.language == subtitleLang } ?: -1
-            if (subIndex >= 0) {
-                applySubtitleSelection(subIndex)
-            }
+        val subtitleIndex = audioTrackPreferenceResolver.findSubtitleTrackIndex(
+            tracks = content.subtitleTracks,
+            preferredLang = subtitleLang,
+        )
+        if (subtitleIndex >= 0) {
+            applySubtitleSelection(subtitleIndex)
         }
-    }
-
-    /** Extracts voice type from HLS label: "03. Многоголосый. Red Head Sound (RUS)" → "Многоголосый" */
-    private fun extractVoiceType(label: String): String? {
-        val core = label.replace(NUMBER_PREFIX_REGEX, "")
-        val withoutLang = core.substringBeforeLast(" (")
-        return withoutLang.substringBefore(". ").trim().takeIf { it.isNotEmpty() }
     }
 
     override fun onAction(action: UIAction) {
@@ -523,21 +519,46 @@ internal class PlayerVM(
     }
 
     private fun playNextEpisode() {
-        if (episodeSwitchInProgress) return
-        val media = currentMedia ?: return
-        val season = media.seasonNumber ?: return
-        val episode = media.episodeNumber ?: return
-        val next = interactor.findNextEpisode(media.item, season, episode) ?: return
-        switchEpisode(next.first, next.second)
+        currentEpisode()?.let { episode ->
+            interactor.findNextEpisode(
+                item = episode.media.item,
+                currentSeason = episode.seasonNumber,
+                currentEpisode = episode.episodeNumber,
+            )
+        }?.let(::switchEpisode)
     }
 
     private fun playPreviousEpisode() {
-        if (episodeSwitchInProgress) return
-        val media = currentMedia ?: return
-        val season = media.seasonNumber ?: return
-        val episode = media.episodeNumber ?: return
-        val prev = interactor.findPreviousEpisode(media.item, season, episode) ?: return
-        switchEpisode(prev.first, prev.second)
+        currentEpisode()?.let { episode ->
+            interactor.findPreviousEpisode(
+                item = episode.media.item,
+                currentSeason = episode.seasonNumber,
+                currentEpisode = episode.episodeNumber,
+            )
+        }?.let(::switchEpisode)
+    }
+
+    private fun switchEpisode(episode: Pair<Int, Int>) {
+        switchEpisode(episode.first, episode.second)
+    }
+
+    private fun currentEpisode(): CurrentEpisode? {
+        val media = currentMedia ?: return null
+        return if (canUseCurrentEpisode(media)) {
+            CurrentEpisode(
+                media = media,
+                seasonNumber = requireNotNull(media.seasonNumber),
+                episodeNumber = requireNotNull(media.episodeNumber),
+            )
+        } else {
+            null
+        }
+    }
+
+    private fun canUseCurrentEpisode(media: CurrentMedia): Boolean {
+        return !episodeSwitchInProgress &&
+            media.seasonNumber != null &&
+            media.episodeNumber != null
     }
 
     private fun onPlaybackEnded() {
@@ -545,7 +566,9 @@ internal class PlayerVM(
         val state = stateValue as? PlayerViewState.Content ?: return
         val content = state.content
         when {
-            !content.isMovie && content.hasNextEpisode && content.nextEpisodeCountdown == null -> startNextEpisodeCountdown()
+            !content.isMovie &&
+                content.hasNextEpisode &&
+                content.nextEpisodeCountdown == null -> startNextEpisodeCountdown()
             !content.isMovie -> updateContent { copy(controlsVisible = true) }
         }
     }
@@ -620,27 +643,33 @@ internal class PlayerVM(
     }
 
     private fun handleBackAndCheckExit(): Boolean {
-        val state = stateValue as? PlayerViewState.Content ?: run {
-            saveCurrentPosition()
-            router.back()
-            return true
+        val state = stateValue as? PlayerViewState.Content
+        return when {
+            state == null -> {
+                saveCurrentPosition()
+                router.back()
+                true
+            }
+            state.content.activeSkipSegment != null -> {
+                cancelSkipSegment()
+                false
+            }
+            state.content.nextEpisodeCountdown != null -> {
+                cancelCountdown()
+                false
+            }
+            else -> handleControlsBack()
         }
-        if (state.content.activeSkipSegment != null) {
-            cancelSkipSegment()
-            return false
-        }
-        if (state.content.nextEpisodeCountdown != null) {
-            cancelCountdown()
-            return false
-        }
+    }
+
+    private fun handleControlsBack(): Boolean {
         val effects = controlsStateMachine.handleBack()
-        if (effects.any { it is ControlsStateMachine.Effect.SaveAndExit }) {
-            processEffects(effects)
-            return true
+        val shouldExit = effects.any { it is ControlsStateMachine.Effect.SaveAndExit }
+        if (!shouldExit) {
+            applyControlsState()
         }
-        applyControlsState()
         processEffects(effects)
-        return false
+        return shouldExit
     }
 
     private fun startProgressSync() {
@@ -661,7 +690,11 @@ internal class PlayerVM(
                 val isPlaying = playbackController.isPlaying
                 val isBuffering = (stateValue as? PlayerViewState.Content)?.content?.isBuffering == true
                 if (isPlaying || isBuffering) {
-                    val debugInfo = if (debugOverlayEnabled) (playbackController as? PlaybackController)?.getDebugInfo() else null
+                    val debugInfo = if (debugOverlayEnabled) {
+                        (playbackController as? PlaybackController)?.getDebugInfo()
+                    } else {
+                        null
+                    }
                     updateContent {
                         copy(
                             currentPosition = playbackController.currentPosition,
@@ -682,23 +715,28 @@ internal class PlayerVM(
 
     private fun checkEarlyNextEpisode() {
         val state = (stateValue as? PlayerViewState.Content)?.content ?: return
-        if (state.isMovie || !state.hasNextEpisode) return
-        if (state.nextEpisodeCountdown != null) return
-        if (countdownDismissed) return
         val duration = playbackController.duration
-        if (duration <= 0) return
+        if (shouldCheckEarlyNextEpisode(state, duration) && isEarlyNextEpisodePosition(duration)) {
+            startNextEpisodeCountdown()
+        }
+    }
 
+    private fun shouldCheckEarlyNextEpisode(state: PlayerContentState, duration: Long): Boolean {
+        return !state.isMovie &&
+            state.hasNextEpisode &&
+            state.nextEpisodeCountdown == null &&
+            !countdownDismissed &&
+            duration > 0
+    }
+
+    private fun isEarlyNextEpisodePosition(duration: Long): Boolean {
+        val currentPosition = playbackController.currentPosition
         val creditsStart = creditsSegment?.startMs
-        if (creditsStart != null) {
-            if (playbackController.currentPosition >= creditsStart) {
-                startNextEpisodeCountdown()
-            }
+        return if (creditsStart != null) {
+            currentPosition >= creditsStart
         } else {
-            if (duration <= EARLY_NEXT_EPISODE_OFFSET_MS) return
-            val remaining = duration - playbackController.currentPosition
-            if (remaining <= EARLY_NEXT_EPISODE_OFFSET_MS) {
-                startNextEpisodeCountdown()
-            }
+            duration > EARLY_NEXT_EPISODE_OFFSET_MS &&
+                duration - currentPosition <= EARLY_NEXT_EPISODE_OFFSET_MS
         }
     }
 
@@ -711,54 +749,77 @@ internal class PlayerVM(
             // Late arrival check: if credits segment exists and position already past it
             if (creditsSegment != null && !countdownDismissed) {
                 val state = (stateValue as? PlayerViewState.Content)?.content ?: return@launch
-                if (!state.isMovie && state.hasNextEpisode && state.nextEpisodeCountdown == null) {
-                    if (playbackController.currentPosition >= creditsSegment!!.startMs) {
-                        startNextEpisodeCountdown()
-                    }
+                if (shouldStartNextEpisodeForLoadedCredits(state, requireNotNull(creditsSegment))) {
+                    startNextEpisodeCountdown()
                 }
             }
         }
     }
 
+    private fun shouldStartNextEpisodeForLoadedCredits(
+        state: PlayerContentState,
+        segment: SkipSegment,
+    ): Boolean {
+        return !state.isMovie &&
+            state.hasNextEpisode &&
+            state.nextEpisodeCountdown == null &&
+            playbackController.currentPosition >= segment.startMs
+    }
+
     private fun checkSkipSegment() {
         val state = (stateValue as? PlayerViewState.Content)?.content ?: return
-        if (state.nextEpisodeCountdown != null || state.resumeDialog != null) return
+        if (state.nextEpisodeCountdown == null && state.resumeDialog == null) {
+            val currentPos = playbackController.currentPosition
+            if (!handlePositionJump(currentPos)) {
+                handleActiveSkipSegment(state, currentPos)
+            }
+        }
+    }
 
-        val currentPos = playbackController.currentPosition
+    private fun handlePositionJump(currentPos: Long): Boolean {
         // Detect seek: if position jumped more than 2s in one 500ms tick, skip detection
         val positionDelta = kotlin.math.abs(currentPos - lastPositionMs)
         lastPositionMs = currentPos
-        if (positionDelta > 2000) {
+        return if (positionDelta > SEEK_JUMP_THRESHOLD_MS) {
             // Position jumped — clear dismissed state, don't show overlay this tick
             dismissedSegmentType = null
             updateContent { copy(activeSkipSegment = null) }
             skipCountdownJob?.cancel()
             skipCountdownJob = null
-            return
+            true
+        } else {
+            false
         }
+    }
 
+    private fun handleActiveSkipSegment(state: PlayerContentState, currentPos: Long) {
         val activeSegment = skipSegmentInteractor.findActiveSegment(segments, currentPos)
-        if (activeSegment == null) {
-            // Left segment zone — clear dismissed state
-            if (state.activeSkipSegment != null) {
-                updateContent { copy(activeSkipSegment = null) }
-                skipCountdownJob?.cancel()
-                skipCountdownJob = null
-            }
-            dismissedSegmentType = null
-            return
+        when {
+            activeSegment == null -> clearInactiveSkipSegment(state)
+            shouldStartSkipSegmentCountdown(state, activeSegment) -> startSkipSegmentCountdown(activeSegment)
         }
+    }
 
-        // Don't show for credits when it's a series with next episode (NextEpisodeOverlay handles it)
-        if (activeSegment.type == SkipSegmentType.CREDITS && !state.isMovie && state.hasNextEpisode) return
+    private fun clearInactiveSkipSegment(state: PlayerContentState) {
+        // Left segment zone — clear dismissed state
+        if (state.activeSkipSegment != null) {
+            updateContent { copy(activeSkipSegment = null) }
+            skipCountdownJob?.cancel()
+            skipCountdownJob = null
+        }
+        dismissedSegmentType = null
+    }
 
-        // Don't re-show dismissed segment
-        if (activeSegment.type == dismissedSegmentType) return
-
-        // Already showing this segment
-        if (state.activeSkipSegment?.type == activeSegment.type) return
-
-        startSkipSegmentCountdown(activeSegment)
+    private fun shouldStartSkipSegmentCountdown(
+        state: PlayerContentState,
+        activeSegment: SkipSegment,
+    ): Boolean {
+        val isCreditsWithNextEpisode = activeSegment.type == SkipSegmentType.CREDITS &&
+            !state.isMovie &&
+            state.hasNextEpisode
+        return !isCreditsWithNextEpisode &&
+            activeSegment.type != dismissedSegmentType &&
+            state.activeSkipSegment?.type != activeSegment.type
     }
 
     private fun startSkipSegmentCountdown(segment: SkipSegment) {
@@ -868,7 +929,7 @@ internal class PlayerVM(
         const val PLAY_PAUSE_INDICATOR_HIDE_DELAY_MS = 1500L
         const val BUFFERING_DEBOUNCE_MS = 800L
         const val EARLY_NEXT_EPISODE_OFFSET_MS = 30_000L
+        const val SEEK_JUMP_THRESHOLD_MS = 2_000L
         const val SKIP_COUNTDOWN_SEC = 7
-        val NUMBER_PREFIX_REGEX = Regex("""^\d+\.\s*""")
     }
 }

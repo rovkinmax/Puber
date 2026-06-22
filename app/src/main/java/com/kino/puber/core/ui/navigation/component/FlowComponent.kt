@@ -28,9 +28,9 @@ import com.kino.puber.core.logger.log
 import com.kino.puber.core.ui.navigation.AppLauncher
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.Command
-import com.kino.puber.core.ui.navigation.FullscreenPuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreenActivity
+import com.kino.puber.core.ui.navigation.RootPuberScreen
 import com.kino.puber.core.ui.navigation.puberPop
 import com.kino.puber.core.ui.navigation.puberPopUntil
 import com.kino.puber.core.ui.navigation.puberPush
@@ -278,7 +278,7 @@ private fun TabFlowCommandRunner(
                 when (event) {
                     is Command.NavigateTo -> {
                         contentFocusRequester.saveFocusedChild()
-                        if (event.screen is FullscreenPuberScreen && rootRouter != null) {
+                        if (event.screen is RootPuberScreen && rootRouter != null) {
                             rootRouter.navigateTo(event.screen)
                         } else {
                             navigator.puberPush(event.screen)
@@ -287,11 +287,9 @@ private fun TabFlowCommandRunner(
                     is Command.Replace -> navigator.puberReplace(event.screen)
                     is Command.NewRoot -> navigator.puberReplaceAll(*event.screens.toTypedArray())
                     is Command.BackTo -> onBackTo(navigator, event)
-                    Command.FinishFlow -> { }
-                    is Command.Back -> {
-                        if (navigator.canPop) {
-                            navigator.puberPop()
-                        }
+                    Command.FinishFlow -> Unit
+                    is Command.Back -> if (navigator.canPop) {
+                        navigator.puberPop()
                     }
                 }
             }

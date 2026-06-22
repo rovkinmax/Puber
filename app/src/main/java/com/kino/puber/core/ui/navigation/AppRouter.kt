@@ -65,6 +65,7 @@ class AppRouter(
     }
 
     fun addBackDispatcher(dispatcher: BackButtonDispatcher) {
+        backDispatchersStack.remove(dispatcher)
         backDispatchersStack.addLast(dispatcher)
     }
 

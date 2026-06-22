@@ -34,106 +34,117 @@ import com.kino.puber.R
 
 @Composable
 internal fun PlayerButtonRow(
-    isMovie: Boolean,
-    isPlaying: Boolean,
-    hasNextEpisode: Boolean,
-    hasPreviousEpisode: Boolean,
-    onTogglePlayPause: () -> Unit,
-    onEpisodesClick: () -> Unit,
-    onAudioSubtitlesClick: () -> Unit,
-    onVideoSettingsClick: () -> Unit,
-    onNextEpisodeClick: () -> Unit,
-    onPreviousEpisodeClick: () -> Unit,
-    firstButtonFocusRequester: FocusRequester,
-    episodesButtonFocusRequester: FocusRequester,
-    audioSubtitlesButtonFocusRequester: FocusRequester,
-    videoSettingsButtonFocusRequester: FocusRequester,
+    state: PlayerButtonRowState,
+    actions: PlayerControlActions,
+    focusRequesters: PlayerControlFocusRequesters,
     modifier: Modifier = Modifier,
 ) {
-    val transparentButtonColors = ButtonDefaults.colors(
-        containerColor = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        focusedContainerColor = MaterialTheme.colorScheme.primary,
-        focusedContentColor = MaterialTheme.colorScheme.onPrimary,
-    )
-
     Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Button(
-                onClick = onTogglePlayPause,
-                modifier = Modifier.focusRequester(firstButtonFocusRequester),
-                colors = transparentButtonColors,
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-            if (!isMovie) {
-                PlayerButton(
-                    text = stringResource(R.string.player_button_episodes),
-                    icon = Icons.AutoMirrored.Filled.PlaylistPlay,
-                    onClick = onEpisodesClick,
-                    modifier = Modifier.focusRequester(episodesButtonFocusRequester),
-                )
-                PlayerButton(
-                    text = stringResource(R.string.player_button_audio_subtitles),
-                    icon = Icons.Default.Subtitles,
-                    onClick = onAudioSubtitlesClick,
-                    modifier = Modifier.focusRequester(audioSubtitlesButtonFocusRequester),
-                )
-            } else {
-                PlayerButton(
-                    text = stringResource(R.string.player_button_audio_subtitles),
-                    icon = Icons.Default.Subtitles,
-                    onClick = onAudioSubtitlesClick,
-                    modifier = Modifier.focusRequester(audioSubtitlesButtonFocusRequester),
-                )
-            }
-            PlayerButton(
-                text = stringResource(R.string.player_button_video),
-                icon = Icons.Default.Videocam,
-                onClick = onVideoSettingsClick,
-                modifier = Modifier.focusRequester(videoSettingsButtonFocusRequester),
-            )
-        }
+        PrimaryControls(state, actions, focusRequesters)
 
         Spacer(modifier = Modifier.weight(1f))
 
-        if (!isMovie) {
-            if (hasPreviousEpisode) {
-                Button(
-                    onClick = onPreviousEpisodeClick,
-                    colors = transparentButtonColors,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipPrevious,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
-            if (hasNextEpisode) {
-                Button(
-                    onClick = onNextEpisodeClick,
-                    colors = transparentButtonColors,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
+        EpisodeNavigationButtons(state, actions)
+    }
+}
+
+internal data class PlayerButtonRowState(
+    val isMovie: Boolean,
+    val isPlaying: Boolean,
+    val hasNextEpisode: Boolean,
+    val hasPreviousEpisode: Boolean,
+)
+
+@Composable
+private fun PrimaryControls(
+    state: PlayerButtonRowState,
+    actions: PlayerControlActions,
+    focusRequesters: PlayerControlFocusRequesters,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        PlayPauseButton(
+            isPlaying = state.isPlaying,
+            onClick = actions.onTogglePlayPause,
+            focusRequester = focusRequesters.firstButton,
+        )
+        if (!state.isMovie) {
+            PlayerButton(
+                text = stringResource(R.string.player_button_episodes),
+                icon = Icons.AutoMirrored.Filled.PlaylistPlay,
+                onClick = actions.onEpisodesClick,
+                modifier = Modifier.focusRequester(focusRequesters.episodesButton),
+            )
         }
+        PlayerButton(
+            text = stringResource(R.string.player_button_audio_subtitles),
+            icon = Icons.Default.Subtitles,
+            onClick = actions.onAudioSubtitlesClick,
+            modifier = Modifier.focusRequester(focusRequesters.audioSubtitlesButton),
+        )
+        PlayerButton(
+            text = stringResource(R.string.player_button_video),
+            icon = Icons.Default.Videocam,
+            onClick = actions.onVideoSettingsClick,
+            modifier = Modifier.focusRequester(focusRequesters.videoSettingsButton),
+        )
+    }
+}
+
+@Composable
+private fun PlayPauseButton(
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    focusRequester: FocusRequester,
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.focusRequester(focusRequester),
+        colors = transparentButtonColors(),
+    ) {
+        Icon(
+            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+@Composable
+private fun EpisodeNavigationButtons(
+    state: PlayerButtonRowState,
+    actions: PlayerControlActions,
+) {
+    if (state.isMovie) return
+    if (state.hasPreviousEpisode) {
+        IconOnlyButton(
+            icon = Icons.Default.SkipPrevious,
+            onClick = actions.onPreviousEpisodeClick,
+        )
+    }
+    if (state.hasNextEpisode) {
+        IconOnlyButton(
+            icon = Icons.Default.SkipNext,
+            onClick = actions.onNextEpisodeClick,
+        )
+    }
+}
+
+@Composable
+private fun IconOnlyButton(icon: ImageVector, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        colors = transparentButtonColors(),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+        )
     }
 }
 
@@ -144,16 +155,10 @@ private fun PlayerButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val transparentButtonColors = ButtonDefaults.colors(
-        containerColor = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        focusedContainerColor = MaterialTheme.colorScheme.primary,
-        focusedContentColor = MaterialTheme.colorScheme.onPrimary,
-    )
     Button(
         onClick = onClick,
         modifier = modifier,
-        colors = transparentButtonColors,
+        colors = transparentButtonColors(),
     ) {
         Icon(
             imageVector = icon,
@@ -167,3 +172,11 @@ private fun PlayerButton(
         )
     }
 }
+
+@Composable
+private fun transparentButtonColors() = ButtonDefaults.colors(
+    containerColor = Color.Transparent,
+    contentColor = MaterialTheme.colorScheme.onSurface,
+    focusedContainerColor = MaterialTheme.colorScheme.primary,
+    focusedContentColor = MaterialTheme.colorScheme.onPrimary,
+)

@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.kino.puber.core.di.DIScope
-import com.kino.puber.core.ui.navigation.PuberScreen
+import com.kino.puber.core.ui.navigation.RootPuberScreen
 import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.details.DetailsInteractor
@@ -21,7 +21,7 @@ import org.koin.core.scope.ScopeID
 import org.koin.dsl.module
 
 @Parcelize
-internal data class DetailsScreen(private val params: DetailsScreenParams) : PuberScreen {
+internal data class DetailsScreen(private val params: DetailsScreenParams) : RootPuberScreen {
 
     @Suppress("unused")
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {

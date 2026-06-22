@@ -10,6 +10,8 @@ import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
 import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.feature.player.model.ActivePanel
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
+import com.kino.puber.ui.feature.player.model.BufferPreset
+import com.kino.puber.ui.feature.player.model.BufferPresetUIState
 import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.ui.feature.player.model.PlayerContentState
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
@@ -80,13 +82,16 @@ class PlayerVMTest {
 
         coEvery { interactor.getItemDetails(any()) } returns testItem
         coEvery { interactor.resolveMedia(any(), any(), any()) } returns testResolvedMedia
-        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState
         every { interactor.selectStreamUrl(any(), any()) } returns "https://test/v.m3u8"
+        every { interactor.getPreferredAudioLabel(any()) } returns null
         every { interactor.getPreferredAudioLang(any()) } returns null
         every { interactor.getPreferredSubtitleLang(any()) } returns null
         every { interactor.isDebugOverlayEnabled() } returns false
         every { interactor.getSubtitleSize() } returns SubtitleSize.MEDIUM
-        every { interactor.saveTrackPreferences(any(), any(), any()) } returns Unit
+        every { interactor.getBufferPreset() } returns BufferPreset.AUTO
+        every { interactor.isFastDnsEnabled() } returns true
+        every { interactor.saveTrackPreferences(any(), any(), any(), any()) } returns Unit
         every { interactor.findNextEpisode(any(), any(), any()) } returns null
         every { interactor.findPreviousEpisode(any(), any(), any()) } returns null
         coEvery { skipSegmentInteractor.loadSegments(any(), any(), any()) } returns emptyList()
@@ -197,7 +202,7 @@ class PlayerVMTest {
     @Test
     fun selectTrack_savesLangToPrefs() {
         startedVM().onAction(PlayerAction.SelectAudioTrack(1))
-        verify { interactor.saveTrackPreferences(42, "rus", any()) }
+        verify { interactor.saveTrackPreferences(42, "rus", any(), any()) }
     }
 
     // endregion
@@ -339,7 +344,7 @@ class PlayerVMTest {
     @Test
     fun playbackEnded_doesNotStartCountdown_forMovies() {
         // Movie content should never show next-episode countdown.
-        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
             isMovie = true,
             hasNextEpisode = false,
         )
@@ -463,7 +468,7 @@ class PlayerVMTest {
 
     @Test
     fun resumeFromPosition_seeksToSavedPosition_clearsDialog() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
             resumeDialog = ResumeDialogState(savedPosition = 120_000L, formattedTime = "2:00", episodeInfo = null),
             isPlaying = false,
         )
@@ -479,7 +484,7 @@ class PlayerVMTest {
 
     @Test
     fun startFromBeginning_seeksToZero_clearsDialog() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
             resumeDialog = ResumeDialogState(savedPosition = 120_000L, formattedTime = "2:00", episodeInfo = null),
             isPlaying = false,
         )
@@ -510,7 +515,7 @@ class PlayerVMTest {
 
     @Test
     fun cycleSubtitleSize_cyclesThrough() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
             subtitleSize = SubtitleSize.SMALL,
         )
         val vm = startedVM()
@@ -552,7 +557,7 @@ class PlayerVMTest {
 
     @Test
     fun skipSegmentClicked_seeksToTarget() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
             activeSkipSegment = SkipSegmentUIState("Skip Intro", 30_000L, SkipSegmentType.INTRO, 5),
         )
         val vm = startedVM()
@@ -565,7 +570,7 @@ class PlayerVMTest {
 
     @Test
     fun cancelSkipSegment_clearsOverlay() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
             activeSkipSegment = SkipSegmentUIState("Skip Intro", 30_000L, SkipSegmentType.INTRO, 5),
         )
         val vm = startedVM()
@@ -599,7 +604,7 @@ class PlayerVMTest {
 
     @Test
     fun backPressed_cancelsSkipSegment_whenActive() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
             activeSkipSegment = SkipSegmentUIState("Skip", 30_000L, SkipSegmentType.INTRO, 5),
         )
         val vm = startedVM()
@@ -615,7 +620,7 @@ class PlayerVMTest {
 
     @Test
     fun playbackEnded_showsControls_forSeriesWithoutNextEpisode() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any()) } returns testContentState.copy(
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
             hasNextEpisode = false,
         )
         val vm = startedVM()
@@ -633,7 +638,8 @@ class PlayerVMTest {
     private val testResolvedMedia = ResolvedMedia(
         files = emptyList(), audios = emptyList(), subtitles = emptyList(),
         watchingTime = null, duration = 2400, videoNumber = 1, episodeId = 101,
-        episodeTitle = "Pilot", isSeries = true, hasNext = true, hasPrevious = true, seasonNumber = 1, episodeNumber = 1,
+        episodeTitle = "Pilot", isSeries = true, hasNext = true,
+        hasPrevious = true, seasonNumber = 1, episodeNumber = 1,
     )
 
     private val testContentState = PlayerContentState(
@@ -647,6 +653,8 @@ class PlayerVMTest {
         qualities = emptyList(), selectedQualityIndex = 0,
         speeds = emptyList(), selectedSpeedIndex = 0,
         aspectRatios = emptyList(), selectedAspectRatioIndex = 0,
+        bufferPresets = listOf(BufferPresetUIState(0, "Auto", BufferPreset.AUTO)),
+        selectedBufferPresetIndex = 0,
         isMovie = false, hasNextEpisode = true, hasPreviousEpisode = true, nextEpisodeCountdown = null,
         resumeDialog = null, episodes = null, currentEpisodeId = 101,
     )
