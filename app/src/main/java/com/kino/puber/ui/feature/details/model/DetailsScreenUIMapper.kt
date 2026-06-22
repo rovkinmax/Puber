@@ -33,6 +33,11 @@ internal class DetailsScreenUIMapper(
         )
     }
 
+    fun mapSimilarItems(items: List<Item>): List<VideoItemUIState> {
+        return itemMapper.mapShortItemList(items)
+            .map { item -> item.copy(showTitle = true) }
+    }
+
     private fun mapEpisodes(item: Item): VideoGridUIState? {
         val seasons = item.seasons ?: return null
         val gridItems = mutableListOf<VideoGridItemUIState>()

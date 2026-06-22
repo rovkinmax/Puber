@@ -36,6 +36,13 @@ class DetailsScreenUIMapperTest {
         assertEquals(0, state.buttons.count<DetailsButtonUIState.WatchedToggle>(DetailsAction.WatchedToggleClicked))
     }
 
+    @Test
+    fun mapSimilarItems_enablesTitlesForRelatedCards() {
+        val items = mapper.mapSimilarItems(listOf(movie(trailer = null)))
+
+        assertEquals(true, items.single().showTitle)
+    }
+
     private inline fun <reified T : DetailsButtonUIState> List<DetailsButtonUIState>.count(
         action: DetailsAction,
     ): Int {

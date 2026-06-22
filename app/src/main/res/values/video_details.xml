@@ -43,4 +43,5 @@
     <string name="video_details_info_quality">Качество</string>
     <string name="video_details_info_sound">Звук</string>
     <string name="video_details_info_sound_surround">Объёмный звук</string>
+    <string name="video_details_similar_title">Похожее</string>
 </resources>
