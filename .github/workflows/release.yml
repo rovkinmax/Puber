@@ -27,7 +27,7 @@ jobs:
       - run: chmod +x gradlew
 
       - name: Run unit tests
-        run: ./gradlew testProdReleaseUnitTest
+        run: ./gradlew testProdDebugUnitTest
 
   release:
     name: Build & Publish
