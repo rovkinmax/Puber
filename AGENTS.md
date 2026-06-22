@@ -46,6 +46,10 @@ Package: `com.kino.puber`. Main application code lives in `:app`; baseline profi
 - **Library**: Voyager 1.1.0-beta03 (navigator, tab-navigator, bottom-sheet-navigator, koin)
 - **Screen interface**: `PuberScreen : Screen, Parcelable` (default key = `javaClass.simpleName`)
 - **All screens**: `@Parcelize class/object XxxScreen : PuberScreen`
+- **Parameterized screens must override `key`**: use stable navigation params in `ScreenKey` (for example,
+  `DetailsScreen_${params.itemId}` or `PlayerScreen_${params.itemId}_s${season}_e${episode}`) so Voyager saveable
+  state, TV focus state, and `DIScope(scopeName = key)` are isolated per item. Computed keys in `@Parcelize` screens
+  must be annotated with `@IgnoredOnParcel`.
 - **AppRouter**: command bus emitting `Command` sealed class via `MutableSharedFlow`
   - `navigateTo(screen)` — push
   - `replaceScreen(screen)` — replace current
@@ -267,8 +271,13 @@ When `.todo/.current` exists, the agent recognizes intent from natural language:
 ### Before ANY Device Testing (MANDATORY)
 
 ```bash
-./gradlew installDevDebug && adb shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
+./gradlew installDevDebug
+adb shell am force-stop com.kino.puber.stage
+adb shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
 ```
+
+Always install the freshly built `devDebug` APK immediately before emulator smoke tests. Another local session can
+overwrite the app on the same emulator, and testing a stale APK can hide or misattribute navigation/focus regressions.
 
 ## Testing
 No tests exist yet. JUnit dependency present but unused.

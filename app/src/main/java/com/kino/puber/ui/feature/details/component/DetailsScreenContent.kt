@@ -133,7 +133,6 @@ private fun DetailsMainPage(
             isWatched = state.isWatched,
             onAction = onAction,
             seasonsPanelVisible = seasonsPanelVisible,
-            trailerVisible = state.trailerUrl != null,
         )
 
         Spacer(modifier = Modifier.weight(1F))
@@ -149,15 +148,14 @@ private fun ActionButtonsRow(
     isWatched: Boolean,
     onAction: (UIAction) -> Unit,
     seasonsPanelVisible: Boolean,
-    trailerVisible: Boolean,
 ) {
     val firstButtonFocusRequester = remember { FocusRequester() }
 
     // Request a concrete child, not the Row container. TV focus can otherwise
     // stay on the previous card/details area and make OK look unresponsive.
-    LaunchedEffect(seasonsPanelVisible, trailerVisible, buttons.size) {
+    LaunchedEffect(seasonsPanelVisible, buttons.size) {
         delay(DETAILS_BUTTONS_FOCUS_DELAY_MS)
-        if (!seasonsPanelVisible && !trailerVisible) {
+        if (!seasonsPanelVisible) {
             runCatching { firstButtonFocusRequester.requestFocus() }
         }
     }
