@@ -1,14 +1,15 @@
 package com.kino.puber.domain.interactor.details
 
 import com.kino.puber.data.api.KinoPubApiClient
-import com.kino.puber.data.api.models.Bookmark
-import com.kino.puber.data.api.models.BookmarkFolder
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.isSeriesLike
 import com.kino.puber.data.repository.ItemDetailsRepository
+import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 
 internal class DetailsInteractor(
     private val api: KinoPubApiClient,
     private val itemDetailsRepository: ItemDetailsRepository,
+    private val watchLaterBookmarkInteractor: WatchLaterBookmarkInteractor,
 ) {
 
     suspend fun getItemDetails(id: Int): Item {
@@ -21,16 +22,18 @@ internal class DetailsInteractor(
     }
 
     suspend fun isInWatchLaterFolder(item: Item): Boolean {
-        return item.bookmarks.orEmpty().any(::isWatchLaterBookmark) ||
-            api.getItemBookmarkFolders(item.id).getOrThrow().any(::isWatchLaterBookmark)
+        if (item.type.isSeriesLike()) return item.inWatchlist ?: false
+        if (item.bookmarks.orEmpty().any { bookmark -> bookmark.title == WatchLaterBookmarkInteractor.FOLDER_TITLE }) {
+            return true
+        }
+        return watchLaterBookmarkInteractor.isBookmarked(item.id).getOrThrow()
     }
 
     suspend fun setWatchLater(id: Int, inWatchLater: Boolean): Item {
-        val folderId = watchLaterFolderId()
         if (inWatchLater) {
-            api.addBookmarkItem(itemId = id, folderId = folderId).getOrThrow()
+            watchLaterBookmarkInteractor.add(id).getOrThrow()
         } else {
-            api.removeBookmarkItem(itemId = id, folderId = folderId).getOrThrow()
+            watchLaterBookmarkInteractor.remove(id).getOrThrow()
         }
         return itemDetailsRepository.refresh(id)
     }
@@ -40,23 +43,7 @@ internal class DetailsInteractor(
         return itemDetailsRepository.refresh(id)
     }
 
-    private suspend fun watchLaterFolderId(): Int {
-        val existing = api.getBookmarks()
-            .getOrThrow()
-            .firstOrNull(::isWatchLaterBookmark)
-        return existing?.id ?: api.createBookmark(WATCH_LATER_FOLDER_TITLE).getOrThrow().id
-    }
-
-    private fun isWatchLaterBookmark(bookmark: Bookmark): Boolean {
-        return bookmark.title == WATCH_LATER_FOLDER_TITLE
-    }
-
-    private fun isWatchLaterBookmark(folder: BookmarkFolder): Boolean {
-        return folder.title == WATCH_LATER_FOLDER_TITLE
-    }
-
     private companion object {
-        const val WATCH_LATER_FOLDER_TITLE = "Буду смотреть"
         const val WATCHED_STATUS = 1
         const val UNWATCHED_STATUS = 0
     }

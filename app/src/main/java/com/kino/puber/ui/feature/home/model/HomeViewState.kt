@@ -29,6 +29,7 @@ internal enum class HomeSectionType {
     Fresh,
     PopularMovies,
     PopularSeries,
+    WatchLater,
     Bookmarks,
     Collections,
     Hot,

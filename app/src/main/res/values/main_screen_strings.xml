@@ -21,6 +21,7 @@
     <string name="home_section_fresh">Новинки</string>
     <string name="home_section_popular_movies">Популярные фильмы</string>
     <string name="home_section_popular_series">Популярные сериалы</string>
+    <string name="home_section_watch_later">Буду смотреть</string>
     <string name="home_section_bookmarks">Мои закладки</string>
     <string name="home_section_collections">Подборки</string>
     <string name="home_section_hot">Горячие</string>

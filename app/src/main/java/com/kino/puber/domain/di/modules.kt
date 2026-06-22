@@ -2,6 +2,7 @@ package com.kino.puber.domain.di
 
 import com.kino.puber.domain.interactor.auth.AuthInteractor
 import com.kino.puber.domain.interactor.auth.IAuthInteractor
+import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import com.kino.puber.domain.interactor.device.DeviceInfoInteractor
 import com.kino.puber.domain.interactor.device.DeviceSettingInteractor
 import com.kino.puber.domain.interactor.device.IDeviceInfoInteractor
@@ -16,4 +17,5 @@ val interactorModule = module {
     singleOf(::DeviceInfoInteractor) { bind<IDeviceInfoInteractor>() }
     singleOf(::DeviceSettingInteractor) { bind<IDeviceSettingInteractor>() }
     singleOf(::GenreInteractor)
+    singleOf(::WatchLaterBookmarkInteractor)
 }

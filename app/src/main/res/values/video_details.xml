@@ -24,6 +24,8 @@
     <string name="video_details_watchlist_added">Добавлено в «Я смотрю»</string>
     <string name="video_details_watchlist_removed">Удалено из «Я смотрю»</string>
     <string name="video_details_watched_added">Отмечено просмотренным</string>
+    <string name="video_details_watch_later_added">Добавлено в «Буду смотреть»</string>
+    <string name="video_details_watch_later_removed">Удалено из «Буду смотреть»</string>
     <string name="video_details_watched_removed">Отметка просмотра снята</string>
     <string name="video_details_info_title">Подробнее</string>
     <string name="video_details_info_original_title">Оригинальное название</string>
