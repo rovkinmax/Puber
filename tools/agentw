@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# agentw — wrapper for ./gradlew that isolates GRADLE_USER_HOME when run
+# from a git worktree. Intended for Kent agents working in
+# .kent/worktrees/* so their builds do not contend with the main
+# Android Studio daemon/cache.
+#
+# Usage (same as ./gradlew):
+#   ./tools/agentw :app:assembleDevDebug
+#
+# Env toggles:
+#   AGENT_GRADLE_SERIAL=1   — serialize via flock/lockf (safer, one build at a time)
+#   AGENT_GRADLE_HOME=/path — override GRADLE_USER_HOME target
+
+set -euo pipefail
+
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+gradlew="$project_root/gradlew"
+
+if [ ! -x "$gradlew" ]; then
+    echo "agentw: $gradlew not found or not executable" >&2
+    exit 1
+fi
+
+toplevel="$(git -C "$project_root" rev-parse --show-toplevel 2>/dev/null || echo "")"
+git_dir="$(git -C "$project_root" rev-parse --git-dir 2>/dev/null || echo "")"
+git_common_dir="$(git -C "$project_root" rev-parse --git-common-dir 2>/dev/null || echo "")"
+
+is_worktree=0
+if [ -n "$toplevel" ] && [ -n "$git_dir" ] && [ -n "$git_common_dir" ]; then
+    git_dir_abs="$(cd "$toplevel" && cd "$git_dir" 2>/dev/null && pwd)"
+    git_common_abs="$(cd "$toplevel" && cd "$git_common_dir" 2>/dev/null && pwd)"
+    if [ -n "$git_dir_abs" ] && [ -n "$git_common_abs" ] && [ "$git_dir_abs" != "$git_common_abs" ]; then
+        is_worktree=1
+    fi
+fi
+
+if [ "$is_worktree" -eq 1 ]; then
+    export GRADLE_USER_HOME="${AGENT_GRADLE_HOME:-$HOME/.gradle-agents}"
+    mkdir -p "$GRADLE_USER_HOME"
+    echo "agentw: worktree detected → GRADLE_USER_HOME=$GRADLE_USER_HOME" >&2
+
+    if [ "${AGENT_GRADLE_SERIAL:-0}" = "1" ]; then
+        lockfile="$GRADLE_USER_HOME/.build.lock"
+        echo "agentw: acquiring lock $lockfile" >&2
+        if command -v flock >/dev/null 2>&1; then
+            exec flock "$lockfile" "$gradlew" "$@"
+        fi
+        if command -v lockf >/dev/null 2>&1; then
+            exec lockf "$lockfile" "$gradlew" "$@"
+        fi
+        echo "agentw: warning: AGENT_GRADLE_SERIAL=1 requested, but neither flock nor lockf is available" >&2
+    fi
+else
+    echo "agentw: main checkout detected → using default GRADLE_USER_HOME ($HOME/.gradle)" >&2
+    echo "agentw: (agents should run this from a worktree, not main)" >&2
+fi
+
+exec "$gradlew" "$@"

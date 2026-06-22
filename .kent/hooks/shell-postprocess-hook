@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+payload_file="$(mktemp)"
+trap 'rm -f "$payload_file"' EXIT
+
+cat > "$payload_file"
+
+python3 - "$payload_file" <<'PY'
+import json
+import subprocess
+from pathlib import Path
+import sys
+
+payload_file = Path(sys.argv[1])
+
+try:
+    payload = json.loads(payload_file.read_text())
+except Exception:
+    print(json.dumps({"processed": False}))
+    raise SystemExit(0)
+
+command = payload.get("command") or ""
+parsed_args = payload.get("parsed_args") or []
+workdir = payload.get("workdir") or "."
+current_output = payload.get("current_output") or ""
+
+uses_direct_gradlew = (
+    bool(parsed_args) and parsed_args[0] in {"./gradlew", "gradlew"}
+) or command.strip().startswith("./gradlew")
+
+if not uses_direct_gradlew:
+    print(json.dumps({"processed": False}))
+    raise SystemExit(0)
+
+def git_value(args):
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=workdir,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+git_dir = git_value(["rev-parse", "--git-dir"])
+common_dir = git_value(["rev-parse", "--git-common-dir"])
+toplevel = git_value(["rev-parse", "--show-toplevel"])
+
+if not git_dir or not common_dir or not toplevel:
+    print(json.dumps({"processed": False}))
+    raise SystemExit(0)
+
+def resolve_git_path(path):
+    if path.startswith("/"):
+        return path
+    try:
+        return str((Path(toplevel) / path).resolve(strict=True))
+    except Exception:
+        return ""
+
+git_dir_abs = resolve_git_path(git_dir)
+common_dir_abs = resolve_git_path(common_dir)
+
+if not git_dir_abs or not common_dir_abs or git_dir_abs == common_dir_abs:
+    print(json.dumps({"processed": False}))
+    raise SystemExit(0)
+
+warning = (
+    "\n[kent warning] Direct ./gradlew was used in a git worktree. "
+    "Use ./tools/agentw <task> for isolated Gradle state.\n"
+)
+print(json.dumps({"processed": True, "replaced_output": current_output + warning}))
+PY

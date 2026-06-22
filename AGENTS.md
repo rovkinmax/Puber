@@ -2,10 +2,12 @@
 
 ## Project Overview
 Puber is an Android TV application (client for the KinoPub video streaming service).
-Package: `com.kino.puber`. Single-module project (`:app` only).
+Package: `com.kino.puber`. Main application code lives in `:app`; baseline profile generation lives in
+`:baselineprofile`.
 
 ## Build System
-- **Single module**: only `:app`, no feature modules, no core Gradle modules
+- **Modules**: `:app` for application code and `:baselineprofile` for benchmark/baseline profile generation. There are
+  no feature modules or core Gradle modules.
 - **Versions**: all versions in `gradle/libs.versions.toml` (AGP, Kotlin, KSP, libraries) — always read from there, do not hardcode
 - **Product flavors**: `dev` (`.stage` suffix) and `prod`
 - **Compile command**: `./gradlew :app:compileDevDebugKotlin`
@@ -180,30 +182,54 @@ All exact versions are in `gradle/libs.versions.toml` — always read from there
 
 ## Questions & Clarifications
 
-- When you need to ask the user **2 or more** clarifying questions, ALWAYS use the `AskUserQuestion` tool. It provides a structured UI with selectable options instead of a wall of inline text. A single simple question can be asked as plain text, but multiple questions — only via the tool.
+- When you need to ask the user **2 or more** clarifying questions, ALWAYS use the `ask_question` tool. It provides a structured UI with selectable options instead of a wall of inline text. A single simple question can be asked as plain text, but multiple questions — only via the tool.
 
 ## Build
 
 - For build errors use: `./gradlew :app:compileDevDebugKotlin 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3` — catches Kotlin compiler errors, Java errors, and Gradle failures in one pass
 - App module has flavors: use `:app:compileDevDebugKotlin` (NOT `:app:compileDebugKotlin`)
+- In Kent worktrees, use `./tools/agentw :app:compileDevDebugKotlin` instead of direct `./gradlew` so Gradle state is isolated under `~/.gradle-agents`.
+
+## Kent Workflow
+
+Active Kent infrastructure lives under `.kent/`:
+
+- commands: `.kent/commands/`
+- skill: `.kent/skills/puber-android-workflow/`
+- subagents: `.kent/subagents/`
+- MCP bridge: `.kent/adapters/mcp/`
+- worktree setup: `.kent/worktrees/setup.sh`
+
+Legacy `.claude/` files may remain as historical reference. Do not update `.claude/` unless explicitly requested.
+
+Kent commands are invoked as `/prompt:<name>`, for example `/prompt:feature-start` or `/prompt:refactor-start`.
+
+Kent worktrees must be created under `.kent/worktrees/`. Do not create sibling worktrees such as `../Puber-<task>`.
+
+MCP access is through wrapper scripts, not native `mcp__...` tool names:
+
+```bash
+.kent/adapters/mcp/mcp-list.sh <server> --schema
+.kent/adapters/mcp/mcp-call.sh <server.tool> [arguments] --raw-dir ".todo/<task>/mcp"
+```
 
 ## Feature Workflow
 
-Commands in `.claude/commands/`, recipes in `.claude/recipes/`, feature data cached in `.todo/` (gitignored).
+Commands in `.kent/commands/`, recipes in `.kent/skills/puber-android-workflow/references/recipes/`, feature data cached in `.todo/` (gitignored).
 
-### Pipeline: `/feature-start` → `/feature-implement` → `/feature-review`
+### Pipeline: `/prompt:feature-start` → `/prompt:feature-implement` → `/prompt:feature-review`
 
-1. **Prepare** — `/feature-start` (or manually: init → design → spec → plan)
-2. **Implement** — `/feature-implement` per step (auto-loads recipes + design + spec for current step)
-3. **Review** — `/feature-review` → `/feature-fix` (maker-checker, up to 3 iterations)
+1. **Prepare** — `/prompt:feature-start` (or manually: init → design → spec → plan)
+2. **Implement** — `/prompt:feature-implement` per step (auto-loads recipes + design + spec for current step)
+3. **Review** — `/prompt:feature-review` → `/prompt:feature-fix` (maker-checker, up to 3 iterations)
 
-Standalone commands (plan AND execute in one go): `/refactor-start`, `/migration-start`
+Standalone commands (plan AND execute in one go): `/prompt:refactor-start`, `/prompt:migration-start`
 
 ### Parallel execution
 
 Plan steps tagged with `parallel-group: <letter>` are executed simultaneously by worker agents:
-- `/feature-plan` identifies independent steps (no shared files, no mutual dependencies) and assigns group letters
-- `/feature-implement` detects groups → delegates to `feature-parallel-orchestrator` agent
+- `/prompt:feature-plan` identifies independent steps (no shared files, no mutual dependencies) and assigns group letters
+- `/prompt:feature-implement` detects groups → delegates to `feature-parallel-orchestrator` agent
 - Orchestrator prepares self-contained prompts → launches `feature-step-worker` agents in parallel → compiles after all finish
 - Workers do NOT compile (other agents edit code simultaneously) — orchestrator compiles once and fixes errors
 - Shared files (strings.xml, PuberApp.kt, ScreensImpl.kt) are handled via "Needs external change" reports — orchestrator merges them after workers complete
@@ -214,14 +240,14 @@ When `.todo/.current` exists, the agent recognizes intent from natural language:
 
 | User says / does | Agent action |
 |------------------|--------------|
-| Shares a Figma URL | `/feature-design` |
-| "new feature", "start feature" | `/feature-start` |
-| Shares a spec file/URL | `/feature-spec` |
-| "next step", "let's code", "implement step 3" | `/feature-implement` |
+| Shares a Figma URL | `/prompt:feature-design` |
+| "new feature", "start feature" | `/prompt:feature-start` |
+| Shares a spec file/URL | `/prompt:feature-spec` |
+| "next step", "let's code", "implement step 3" | `/prompt:feature-implement` |
 | "status", "where are we", "progress" | Show plan progress |
-| "load context", "remind me" | `/feature-context` |
-| "review", "check against design" | `/feature-review` |
-| "update mockup", "refresh design" | `/feature-design --refresh` |
+| "load context", "remind me" | `/prompt:feature-context` |
+| "review", "check against design" | `/prompt:feature-review` |
+| "update mockup", "refresh design" | `/prompt:feature-design --refresh` |
 
 ### Session rules
 - Check `.todo/.current` at session start — if exists, mention the active feature
