@@ -138,9 +138,17 @@ internal class DetailsVM(
                     copy(isInWatchlist = inWatchlist)
                 }
                 val messageRes = if (inWatchlist) {
-                    R.string.video_details_watchlist_added
+                    if (itemIsSeriesLike()) {
+                        R.string.video_details_watchlist_added
+                    } else {
+                        R.string.video_details_watch_later_added
+                    }
                 } else {
-                    R.string.video_details_watchlist_removed
+                    if (itemIsSeriesLike()) {
+                        R.string.video_details_watchlist_removed
+                    } else {
+                        R.string.video_details_watch_later_removed
+                    }
                 }
                 showMessage(resources.getString(messageRes))
             } catch (e: Exception) {

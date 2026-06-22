@@ -77,6 +77,7 @@ internal class HomeVM(
                 val freshDeferred = async { interactor.getFreshItems().logFailure("fresh") }
                 val popularMoviesDeferred = async { interactor.getPopularByType("movie").logFailure("popular movies") }
                 val popularSeriesDeferred = async { interactor.getPopularByType("serial").logFailure("popular series") }
+                val watchLaterDeferred = async { interactor.getWatchLaterItems().logFailure("watch later") }
                 val bookmarksDeferred = async { loadBookmarkSection() }
                 val collectionsDeferred = async { interactor.getCollections().logFailure("collections") }
 
@@ -89,6 +90,7 @@ internal class HomeVM(
                     freshDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.Fresh) },
                     popularMoviesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularMovies) },
                     popularSeriesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularSeries) },
+                    watchLaterDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.WatchLater) },
                     bookmarksDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.Bookmarks) },
                     collectionsDeferred.await()?.let { mapper.mapCollectionSection(it) },
                     mapper.mapItemSection(hotItems, HomeSectionType.Hot),
@@ -105,9 +107,7 @@ internal class HomeVM(
     }
 
     private suspend fun loadBookmarkSection(): List<Item>? {
-        val folders = interactor.getBookmarkFolders().logFailure("bookmark folders") ?: return null
-        val firstFolder = folders.firstOrNull() ?: return emptyList()
-        return interactor.getBookmarkItems(firstFolder.id).logFailure("bookmark items")
+        return interactor.getGenericBookmarkItems().logFailure("bookmark items")
     }
 
     private fun <T> Result<T>.logFailure(section: String): T? {

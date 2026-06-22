@@ -43,6 +43,7 @@ internal class HomeUIMapper(
             HomeSectionType.Fresh -> resources.getString(R.string.home_section_fresh)
             HomeSectionType.PopularMovies -> resources.getString(R.string.home_section_popular_movies)
             HomeSectionType.PopularSeries -> resources.getString(R.string.home_section_popular_series)
+            HomeSectionType.WatchLater -> resources.getString(R.string.home_section_watch_later)
             HomeSectionType.Bookmarks -> resources.getString(R.string.home_section_bookmarks)
             HomeSectionType.Hot -> resources.getString(R.string.home_section_hot)
             else -> ""
