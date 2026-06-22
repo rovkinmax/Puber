@@ -344,7 +344,9 @@ data class QualityType(
 
 @Serializable
 data class VoiceAuthor(
-    val id: Int, val name: String, val ru_name: String? = null,
+    val id: Int,
+    val name: String,
+    @SerialName("ru_name") val ruName: String? = null,
 )
 
 @Serializable
@@ -383,6 +385,12 @@ data class BookmarkFolder(
 )
 
 @Serializable
+data class BookmarkFoldersResponse(
+    val status: Int,
+    val folders: List<BookmarkFolder> = emptyList(),
+)
+
+@Serializable
 data class BookmarkToggleResult(
     val status: String, val action: String, // "added" or "removed"
 )
@@ -400,9 +408,9 @@ data class DeviceResponseModel(
     val software: String,
     val created: Long,
     val updated: Long,
-    val last_seen: Long,
-    val is_browser: Boolean,
-    val settings: SettingsResponse
+    @SerialName("last_seen") val lastSeen: Long,
+    @SerialName("is_browser") val isBrowser: Boolean,
+    val settings: SettingsResponse,
 )
 
 @Serializable
@@ -520,4 +528,4 @@ data class NotificationInfo(
 data class Translation(
     val id: Int, val title: String, val type: String, // "voice", "sub"
     val lang: String? = null,
-) 
+)

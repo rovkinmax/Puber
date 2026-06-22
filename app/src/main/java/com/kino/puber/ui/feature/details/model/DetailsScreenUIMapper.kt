@@ -59,57 +59,68 @@ internal class DetailsScreenUIMapper(
         return VideoGridUIState(list = gridItems)
     }
 
-    private fun buildButtons(item: Item): List<DetailsButtonUIState> = buildList {
-        if (item.type.isSeriesLike()) {
-            val continueText = findFirstUnwatchedEpisode(item)?.let { (season, episode) ->
-                resources.getString(R.string.player_season_episode, season, episode)
-            }
-            add(
-                DetailsButtonUIState.TextButton(
-                    textRes = R.string.video_details_button_watch_series,
-                    icon = PhosphorIcons.Duotone.Play,
-                    action = DetailsAction.PlayClicked,
-                    textOverride = continueText,
-                )
-            )
-            add(
-                DetailsButtonUIState.TextButton(
-                    textRes = R.string.video_details_button_select_season,
-                    icon = PhosphorIcons.Duotone.Playlist,
-                    action = DetailsAction.SelectSeasonClicked,
-                )
-            )
-            if (item.trailer != null) {
-                add(
-                    DetailsButtonUIState.IconOnly(
-                        icon = PhosphorIcons.Duotone.VideoCamera,
-                        contentDescription = R.string.video_details_button_trailer,
-                        action = DetailsAction.TrailerClicked,
-                    )
-                )
-            }
+    private fun buildButtons(item: Item): List<DetailsButtonUIState> {
+        val isSeriesLike = item.type.isSeriesLike()
+        return if (isSeriesLike) {
+            buildSeriesButtons(item)
         } else {
+            buildMovieButtons(item)
+        } + buildStatusButtons(isSeriesLike)
+    }
+
+    private fun buildSeriesButtons(item: Item): List<DetailsButtonUIState> = buildList {
+        val continueText = findFirstUnwatchedEpisode(item)?.let { (season, episode) ->
+            resources.getString(R.string.player_season_episode, season, episode)
+        }
+        add(
+            DetailsButtonUIState.TextButton(
+                textRes = R.string.video_details_button_watch_series,
+                icon = PhosphorIcons.Duotone.Play,
+                action = DetailsAction.PlayClicked,
+                textOverride = continueText,
+            )
+        )
+        add(
+            DetailsButtonUIState.TextButton(
+                textRes = R.string.video_details_button_select_season,
+                icon = PhosphorIcons.Duotone.Playlist,
+                action = DetailsAction.SelectSeasonClicked,
+            )
+        )
+        if (item.trailer != null) {
             add(
-                DetailsButtonUIState.TextButton(
-                    textRes = R.string.video_details_button_watch_movie,
-                    icon = PhosphorIcons.Duotone.Play,
-                    action = DetailsAction.PlayClicked,
+                DetailsButtonUIState.IconOnly(
+                    icon = PhosphorIcons.Duotone.VideoCamera,
+                    contentDescription = R.string.video_details_button_trailer,
+                    action = DetailsAction.TrailerClicked,
                 )
             )
-            if (item.trailer != null) {
-                add(
-                    DetailsButtonUIState.TextButton(
-                        textRes = R.string.video_details_button_trailer,
-                        icon = PhosphorIcons.Duotone.FilmSlate,
-                        action = DetailsAction.TrailerClicked,
-                    )
-                )
-            }
         }
+    }
 
+    private fun buildMovieButtons(item: Item): List<DetailsButtonUIState> = buildList {
+        add(
+            DetailsButtonUIState.TextButton(
+                textRes = R.string.video_details_button_watch_movie,
+                icon = PhosphorIcons.Duotone.Play,
+                action = DetailsAction.PlayClicked,
+            )
+        )
+        if (item.trailer != null) {
+            add(
+                DetailsButtonUIState.TextButton(
+                    textRes = R.string.video_details_button_trailer,
+                    icon = PhosphorIcons.Duotone.FilmSlate,
+                    action = DetailsAction.TrailerClicked,
+                )
+            )
+        }
+    }
+
+    private fun buildStatusButtons(isSeriesLike: Boolean): List<DetailsButtonUIState> = buildList {
         add(
             DetailsButtonUIState.WatchlistToggle(
-                contentDescription = if (item.type.isSeriesLike()) {
+                contentDescription = if (isSeriesLike) {
                     R.string.video_details_button_add_to_watchlist
                 } else {
                     R.string.video_details_button_add_to_bookmarks
@@ -117,7 +128,7 @@ internal class DetailsScreenUIMapper(
                 action = DetailsAction.WatchlistToggleClicked,
             )
         )
-        if (!item.type.isSeriesLike()) {
+        if (!isSeriesLike) {
             add(
                 DetailsButtonUIState.WatchedToggle(
                     contentDescription = R.string.video_details_button_mark_watched,

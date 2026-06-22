@@ -267,7 +267,7 @@ When `.todo/.current` exists, the agent recognizes intent from natural language:
 ### Before ANY Device Testing (MANDATORY)
 
 ```bash
-./gradlew installDevDebug && adb shell am start -n com.kino.puber.stage/com.kino.puber.ui.StartActivity
+./gradlew installDevDebug && adb shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
 ```
 
 ## Testing

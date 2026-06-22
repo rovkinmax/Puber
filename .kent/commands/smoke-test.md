@@ -23,7 +23,7 @@ Runs smoke test for a feature via MCP mobile.
 3. Connects to device via MCP mobile
 4. **Launches app via adb**:
    ```bash
-   adb shell am start -n com.kino.puber.stage/com.kino.puber.ui.StartActivity
+   adb shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
    ```
    Note: `com.kino.puber.stage` is the dev flavor package. For prod builds use `com.kino.puber`.
 5. Navigates to feature

@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package com.kino.puber.ui.feature.player.component
 
 import androidx.compose.runtime.Composable

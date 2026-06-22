@@ -37,6 +37,7 @@ import com.kino.puber.R
 import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
 
 private const val COUNTDOWN_TOTAL_SEC = 7
+private const val BUTTON_SHAPE_PERCENT = 50
 
 @Composable
 internal fun SkipSegmentOverlay(
@@ -119,7 +120,7 @@ private fun SkipButton(
         ),
         label = "skip_segment_progress",
     )
-    val shape = RoundedCornerShape(50)
+    val shape = RoundedCornerShape(percent = BUTTON_SHAPE_PERCENT)
     val progressColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f)
 
     Surface(

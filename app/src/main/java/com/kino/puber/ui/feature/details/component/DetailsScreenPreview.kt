@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package com.kino.puber.ui.feature.details.component
 
 import androidx.compose.runtime.Composable
@@ -26,7 +28,8 @@ import com.kino.puber.ui.feature.details.model.DetailsScreenState
 private val previewSeriesDetails = VideoDetailsUIState(
     id = 1,
     title = "Кибердеревня",
-    description = "Год 2049-й. Уже давно изобретены межпланетные перелёты, суперкомпьютеры и роботы. Но в российской глубинке об этом не слышали.",
+    description = "Год 2049-й. Уже давно изобретены межпланетные перелёты, суперкомпьютеры и роботы. " +
+        "Но в российской глубинке об этом не слышали.",
     imageUrl = "",
     trailerUrl = "",
     ratings = listOf(
@@ -42,7 +45,8 @@ private val previewSeriesDetails = VideoDetailsUIState(
 private val previewMovieDetails = VideoDetailsUIState(
     id = 2,
     title = "Граф Монте-Кристо",
-    description = "Молодой моряк Эдмон Дантес оказывается несправедливо заключён в замке Иф. Через 14 лет он бежит и возвращается, чтобы отомстить.",
+    description = "Молодой моряк Эдмон Дантес оказывается несправедливо заключён в замке Иф. " +
+        "Через 14 лет он бежит и возвращается, чтобы отомстить.",
     imageUrl = "",
     trailerUrl = "",
     ratings = listOf(

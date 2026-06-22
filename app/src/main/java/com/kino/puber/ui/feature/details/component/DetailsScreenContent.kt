@@ -52,6 +52,11 @@ import com.kino.puber.ui.feature.details.model.DetailsScreenState
 import com.kino.puber.ui.feature.player.component.EpisodesPanel
 import kotlinx.coroutines.delay
 
+private const val DETAILS_CONTENT_WEIGHT = 3F
+private const val SEASONS_PANEL_FOCUS_DELAY_MS = 150L
+private const val DETAILS_BUTTONS_FOCUS_DELAY_MS = 100L
+private const val CHEVRON_ALPHA = 0.5F
+
 @OptIn(UnstableApi::class)
 @Composable
 internal fun DetailsScreenContent(
@@ -69,7 +74,7 @@ internal fun DetailsScreenContent(
             val seasonsPanelFocusRequester = remember { FocusRequester() }
             LaunchedEffect(state.seasonsPanelVisible) {
                 if (state.seasonsPanelVisible) {
-                    delay(150)
+                    delay(SEASONS_PANEL_FOCUS_DELAY_MS)
                     try {
                         seasonsPanelFocusRequester.requestFocus()
                     } catch (_: Exception) {
@@ -116,7 +121,7 @@ private fun DetailsMainPage(
         VideoItemGridDetails(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(3F),
+                .weight(DETAILS_CONTENT_WEIGHT),
             state = state.details,
         )
 
@@ -150,7 +155,7 @@ private fun ActionButtonsRow(
     // Re-request focus after navigation return (Player → Back).
     // Skip when seasons panel is visible — it owns focus in that case.
     LaunchedEffect(Unit) {
-        delay(100)
+        delay(DETAILS_BUTTONS_FOCUS_DELAY_MS)
         if (!seasonsPanelVisible) {
             runCatching { focusRequester.requestFocus() }
         }
@@ -165,80 +170,105 @@ private fun ActionButtonsRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         buttons.forEachIndexed { index, button ->
-            val buttonModifier =
-                if (index == 0) Modifier.focusRequester(firstButtonFocusRequester) else Modifier
-
-            when (button) {
-                is DetailsButtonUIState.TextButton -> {
-                    Button(onClick = { onAction(button.action) }, modifier = buttonModifier) {
-                        Icon(
-                            imageVector = button.icon,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(text = button.textOverride ?: stringResource(button.textRes))
-                    }
-                }
-
-                is DetailsButtonUIState.IconOnly -> {
-                    IconButton(
-                        onClick = { onAction(button.action) },
-                        modifier = buttonModifier,
-                    ) {
-                        Icon(
-                            imageVector = button.icon,
-                            contentDescription = stringResource(button.contentDescription),
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-
-                is DetailsButtonUIState.WatchlistToggle -> {
-                    IconButton(
-                        onClick = { onAction(button.action) },
-                        modifier = buttonModifier,
-                    ) {
-                        Icon(
-                            imageVector = if (isInWatchlist) {
-                                PhosphorIcons.Fill.BookmarkSimple
-                            } else {
-                                PhosphorIcons.Duotone.BookmarkSimple
-                            },
-                            contentDescription = stringResource(button.contentDescription),
-                            modifier = Modifier.size(20.dp),
-                            tint = if (isInWatchlist) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                LocalContentColor.current
-                            },
-                        )
-                    }
-                }
-
-                is DetailsButtonUIState.WatchedToggle -> {
-                    IconButton(
-                        onClick = { onAction(button.action) },
-                        modifier = buttonModifier,
-                    ) {
-                        Icon(
-                            imageVector = if (isWatched) {
-                                PhosphorIcons.Fill.Eye
-                            } else {
-                                PhosphorIcons.Duotone.Eye
-                            },
-                            contentDescription = stringResource(button.contentDescription),
-                            modifier = Modifier.size(20.dp),
-                            tint = if (isWatched) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                LocalContentColor.current
-                            },
-                        )
-                    }
-                }
-            }
+            DetailsActionButton(
+                button = button,
+                isInWatchlist = isInWatchlist,
+                isWatched = isWatched,
+                onAction = onAction,
+                modifier = if (index == 0) Modifier.focusRequester(firstButtonFocusRequester) else Modifier,
+            )
         }
+    }
+}
+
+@Composable
+private fun DetailsActionButton(
+    button: DetailsButtonUIState,
+    isInWatchlist: Boolean,
+    isWatched: Boolean,
+    onAction: (UIAction) -> Unit,
+    modifier: Modifier,
+) {
+    when (button) {
+        is DetailsButtonUIState.TextButton -> DetailsTextButton(button, onAction, modifier)
+        is DetailsButtonUIState.IconOnly -> DetailsIconButton(button, onAction, modifier)
+        is DetailsButtonUIState.WatchlistToggle -> DetailsWatchlistButton(button, isInWatchlist, onAction, modifier)
+        is DetailsButtonUIState.WatchedToggle -> DetailsWatchedButton(button, isWatched, onAction, modifier)
+    }
+}
+
+@Composable
+private fun DetailsTextButton(
+    button: DetailsButtonUIState.TextButton,
+    onAction: (UIAction) -> Unit,
+    modifier: Modifier,
+) {
+    Button(onClick = { onAction(button.action) }, modifier = modifier) {
+        Icon(
+            imageVector = button.icon,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(text = button.textOverride ?: stringResource(button.textRes))
+    }
+}
+
+@Composable
+private fun DetailsIconButton(
+    button: DetailsButtonUIState.IconOnly,
+    onAction: (UIAction) -> Unit,
+    modifier: Modifier,
+) {
+    IconButton(
+        onClick = { onAction(button.action) },
+        modifier = modifier,
+    ) {
+        Icon(
+            imageVector = button.icon,
+            contentDescription = stringResource(button.contentDescription),
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+@Composable
+private fun DetailsWatchlistButton(
+    button: DetailsButtonUIState.WatchlistToggle,
+    checked: Boolean,
+    onAction: (UIAction) -> Unit,
+    modifier: Modifier,
+) {
+    IconButton(
+        onClick = { onAction(button.action) },
+        modifier = modifier,
+    ) {
+        Icon(
+            imageVector = if (checked) PhosphorIcons.Fill.BookmarkSimple else PhosphorIcons.Duotone.BookmarkSimple,
+            contentDescription = stringResource(button.contentDescription),
+            modifier = Modifier.size(20.dp),
+            tint = if (checked) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+        )
+    }
+}
+
+@Composable
+private fun DetailsWatchedButton(
+    button: DetailsButtonUIState.WatchedToggle,
+    checked: Boolean,
+    onAction: (UIAction) -> Unit,
+    modifier: Modifier,
+) {
+    IconButton(
+        onClick = { onAction(button.action) },
+        modifier = modifier,
+    ) {
+        Icon(
+            imageVector = if (checked) PhosphorIcons.Fill.Eye else PhosphorIcons.Duotone.Eye,
+            contentDescription = stringResource(button.contentDescription),
+            modifier = Modifier.size(20.dp),
+            tint = if (checked) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+        )
     }
 }
 
@@ -255,7 +285,7 @@ private fun ChevronIndicator() {
             contentDescription = null,
             modifier = Modifier
                 .size(24.dp)
-                .alpha(0.5f),
+                .alpha(CHEVRON_ALPHA),
         )
     }
 }
@@ -266,7 +296,7 @@ private fun DetailsContentSkeleton() {
         VideoItemGridDetails(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(3F),
+                .weight(DETAILS_CONTENT_WEIGHT),
             state = VideoDetailsUIState.Loading,
         )
 

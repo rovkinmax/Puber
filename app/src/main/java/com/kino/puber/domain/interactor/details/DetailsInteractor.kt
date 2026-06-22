@@ -1,6 +1,8 @@
 package com.kino.puber.domain.interactor.details
 
 import com.kino.puber.data.api.KinoPubApiClient
+import com.kino.puber.data.api.models.Bookmark
+import com.kino.puber.data.api.models.BookmarkFolder
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.repository.ItemDetailsRepository
 
@@ -18,8 +20,9 @@ internal class DetailsInteractor(
         return itemDetailsRepository.refresh(id)
     }
 
-    fun isInWatchLaterFolder(item: Item): Boolean {
-        return item.bookmarks.orEmpty().any { bookmark -> bookmark.title == WATCH_LATER_FOLDER_TITLE }
+    suspend fun isInWatchLaterFolder(item: Item): Boolean {
+        return item.bookmarks.orEmpty().any(::isWatchLaterBookmark) ||
+            api.getItemBookmarkFolders(item.id).getOrThrow().any(::isWatchLaterBookmark)
     }
 
     suspend fun setWatchLater(id: Int, inWatchLater: Boolean): Item {
@@ -40,8 +43,16 @@ internal class DetailsInteractor(
     private suspend fun watchLaterFolderId(): Int {
         val existing = api.getBookmarks()
             .getOrThrow()
-            .firstOrNull { bookmark -> bookmark.title == WATCH_LATER_FOLDER_TITLE }
+            .firstOrNull(::isWatchLaterBookmark)
         return existing?.id ?: api.createBookmark(WATCH_LATER_FOLDER_TITLE).getOrThrow().id
+    }
+
+    private fun isWatchLaterBookmark(bookmark: Bookmark): Boolean {
+        return bookmark.title == WATCH_LATER_FOLDER_TITLE
+    }
+
+    private fun isWatchLaterBookmark(folder: BookmarkFolder): Boolean {
+        return folder.title == WATCH_LATER_FOLDER_TITLE
     }
 
     private companion object {

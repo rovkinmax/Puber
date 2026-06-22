@@ -14,6 +14,7 @@ import com.kino.puber.data.api.models.ApiResponse
 import com.kino.puber.data.api.models.ApiResponseList
 import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.BookmarkFolder
+import com.kino.puber.data.api.models.BookmarkFoldersResponse
 import com.kino.puber.data.api.models.BookmarkToggleResult
 import com.kino.puber.data.api.models.Comment
 import com.kino.puber.data.api.models.Country
@@ -737,11 +738,12 @@ class KinoPubApiClient(
     /**
      * Get bookmark folders for specific item
      */
-    suspend fun getItemBookmarkFolders(itemId: Int): Result<List<BookmarkFolder>> = apiCall {
-        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/get-item-folders") {
-            parameter("item", itemId)
-        }
-    }
+    suspend fun getItemBookmarkFolders(itemId: Int): Result<List<BookmarkFolder>> =
+        apiCall<BookmarkFoldersResponse> {
+            httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/get-item-folders") {
+                parameter("item", itemId)
+            }
+        }.map { response -> response.folders }
 
     /**
      * Toggle bookmark (add/remove from folder)
@@ -940,34 +942,27 @@ class KinoPubApiClient(
     /**
      * Safe handling of API responses with error detection
      */
-    private suspend inline fun <reified T> handleApiResponse(response: HttpResponse): Result<T> {
+    private suspend inline fun <reified T> handleApiResponse(response: HttpResponse): Result<T> = runCatching {
+        if (!response.status.isSuccess()) {
+            val errorText = response.bodyAsText()
+            throw IllegalStateException("HTTP ${response.status.value}: $errorText")
+        }
+
+        val responseText = response.bodyAsText()
+        if (responseText.contains("\"error\"")) {
+            throw buildApiError(responseText)
+        }
+
+        json.decodeFromString<T>(responseText)
+    }
+
+    private fun buildApiError(responseText: String): Exception {
         return try {
-            if (!response.status.isSuccess()) {
-                val errorText = response.bodyAsText()
-                return Result.failure(
-                    Exception("HTTP ${response.status.value}: $errorText")
-                )
-            }
-
-            val responseText = response.bodyAsText()
-
-            // Проверяем на наличие ошибки в JSON
-            if (responseText.contains("\"error\"")) {
-                try {
-                    val error = json.decodeFromString<OAuthError>(responseText)
-                    return Result.failure(Exception("OAuth Error: ${error.error}${error.errorDescription?.let { " - $it" } ?: ""}"))
-                } catch (e: Exception) {
-                    // Если не удалось распарсить как OAuthError, возвращаем сырой текст
-                    return Result.failure(Exception("API Error: $responseText"))
-                }
-            }
-
-            // Пытаемся десериализовать как ожидаемый тип
-            val result = json.decodeFromString<T>(responseText)
-            Result.success(result)
-
+            val error = json.decodeFromString<OAuthError>(responseText)
+            val description = error.errorDescription?.let { " - $it" }.orEmpty()
+            Exception("OAuth Error: ${error.error}$description")
         } catch (e: Exception) {
-            Result.failure(e)
+            Exception("API Error: $responseText", e)
         }
     }
 

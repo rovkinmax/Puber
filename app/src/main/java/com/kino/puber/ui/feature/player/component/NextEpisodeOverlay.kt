@@ -36,6 +36,7 @@ import androidx.tv.material3.Text
 import com.kino.puber.R
 
 private const val COUNTDOWN_TOTAL_SEC = 15
+private const val BUTTON_SHAPE_PERCENT = 50
 
 @Composable
 internal fun NextEpisodeOverlay(
@@ -116,7 +117,7 @@ private fun NextEpisodeButton(
         ),
         label = "next_episode_progress",
     )
-    val shape = RoundedCornerShape(50)
+    val shape = RoundedCornerShape(percent = BUTTON_SHAPE_PERCENT)
     val progressColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.25f)
 
     Surface(
