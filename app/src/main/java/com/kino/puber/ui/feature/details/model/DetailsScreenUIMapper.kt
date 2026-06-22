@@ -12,7 +12,9 @@ import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.Video
 import com.kino.puber.data.api.models.isSeriesLike
 
 internal class DetailsScreenUIMapper(
@@ -23,6 +25,7 @@ internal class DetailsScreenUIMapper(
     fun map(item: Item, isInWatchlist: Boolean = item.inWatchlist ?: false): DetailsScreenState.Content {
         return DetailsScreenState.Content(
             details = itemMapper.mapDetailedItem(item),
+            info = buildInfo(item),
             buttons = buildButtons(item),
             isInWatchlist = isInWatchlist,
             isWatched = itemMapper.isItemWatched(item),
@@ -52,6 +55,14 @@ internal class DetailsScreenUIMapper(
                     imageUrl = episode.thumbnail ?: "",
                     bigImageUrl = episode.thumbnail ?: "",
                     showTitle = true,
+                    isWatched = episode.watched == 1,
+                    progressPercent = episode.watching?.let { watching ->
+                        if (watching.duration > 0) {
+                            watching.time.toFloat() / watching.duration.toFloat()
+                        } else {
+                            null
+                        }
+                    },
                 )
             } ?: emptyList()
             gridItems.add(VideoGridItemUIState.Items(items))
@@ -151,4 +162,102 @@ internal class DetailsScreenUIMapper(
         return null
     }
 
+    private fun buildInfo(item: Item): DetailsInfoUIState {
+        val details = itemMapper.mapDetailedItem(item)
+        return DetailsInfoUIState(
+            description = item.plot.orEmpty(),
+            ratings = details.ratings,
+            primaryRows = buildPrimaryRows(item),
+            secondaryRows = buildSecondaryRows(item),
+        )
+    }
+
+    private fun buildPrimaryRows(item: Item): List<DetailsInfoRowUIState> = buildList {
+        item.originalTitle()?.let { add(row(R.string.video_details_info_original_title, it)) }
+        item.year?.let { add(row(R.string.video_details_info_year, it.toString())) }
+        item.durationRowValue()?.let { add(row(it.first, it.second)) }
+        item.genres.orEmpty()
+            .joinToString(", ") { it.title }
+            .takeIf { it.isNotBlank() }
+            ?.let { add(row(R.string.video_details_info_genres, it)) }
+        item.countries.orEmpty()
+            .joinToString(", ") { it.title }
+            .takeIf { it.isNotBlank() }
+            ?.let { add(row(R.string.video_details_info_country, it)) }
+        item.ageRating?.takeIf { it.isNotBlank() }?.let { add(row(R.string.video_details_info_age_rating, it)) }
+    }
+
+    private fun buildSecondaryRows(item: Item): List<DetailsInfoRowUIState> = buildList {
+        item.voice?.takeIf { it.isNotBlank() }?.let { add(row(R.string.video_details_info_translation, it)) }
+        item.langs?.takeIf { it.isNotBlank() }?.let { add(row(R.string.video_details_info_audio_tracks, it)) }
+        item.subtitleCount().takeIf { it > 0 }?.let {
+            add(row(R.string.video_details_info_subtitles, it.toString()))
+        }
+        item.director?.takeIf { it.isNotBlank() }?.let { add(row(R.string.video_details_info_director, it)) }
+        item.cast?.takeIf { it.isNotBlank() }?.let { add(row(R.string.video_details_info_cast, it)) }
+        item.displayQuality()?.let { add(row(R.string.video_details_info_quality, it)) }
+        if (item.ac3 == 1 || item.mediaItemsHaveSurroundSound()) {
+            add(row(R.string.video_details_info_sound, resources.getString(R.string.video_details_info_sound_surround)))
+        }
+    }
+
+    private fun row(labelRes: Int, value: String): DetailsInfoRowUIState {
+        return DetailsInfoRowUIState(
+            label = resources.getString(labelRes),
+            value = value,
+        )
+    }
+
+    private fun Item.originalTitle(): String? {
+        return title.substringAfter("/", missingDelimiterValue = "")
+            .trim()
+            .takeIf { it.isNotBlank() }
+    }
+
+    private fun Item.durationRowValue(): Pair<Int, String>? {
+        return if (type.isSeriesLike()) {
+            seasons?.size?.takeIf { it > 0 }?.let { R.string.video_details_info_seasons to it.toString() }
+        } else {
+            duration?.total?.let { total ->
+                R.string.video_details_info_duration to itemMapper.run { total.formatDurationWithResources() }
+            }
+        }
+    }
+
+    private fun Item.subtitleCount(): Int {
+        return videos.orEmpty().sumOf { video -> video.subtitles.orEmpty().size } +
+            seasons.orEmpty()
+                .flatMap { season -> season.episodes.orEmpty() }
+                .sumOf { episode -> episode.subtitles.orEmpty().size }
+    }
+
+    private fun Item.displayQuality(): String? {
+        return videos.orEmpty()
+            .flatMap { video -> video.files.orEmpty() }
+            .mapNotNull { file ->
+                file.quality
+                    ?: file.h?.takeIf { it > 0 }?.let { "${it}p" }
+                    ?: file.url?.hls4?.takeIf { it.isNotBlank() }?.let { "4K" }
+            }
+            .firstOrNull()
+    }
+
+    private fun Item.mediaItemsHaveSurroundSound(): Boolean {
+        return videos.orEmpty().any { video -> video.hasSurroundSound() } ||
+            seasons.orEmpty()
+                .flatMap { it.episodes.orEmpty() }
+                .any { episode -> episode.hasSurroundSound() }
+    }
+
+    private fun Video.hasSurroundSound(): Boolean {
+        return ac3 == 1 || audios.orEmpty().any { audio -> (audio.channels ?: 0) >= SURROUND_CHANNELS }
+    }
+
+    private fun Episode.hasSurroundSound(): Boolean {
+        return ac3 == 1 || audios.orEmpty().any { audio -> (audio.channels ?: 0) >= SURROUND_CHANNELS }
+    }
+
+    private companion object {
+        const val SURROUND_CHANNELS = 6
+    }
 }

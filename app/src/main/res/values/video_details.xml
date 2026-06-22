@@ -25,4 +25,20 @@
     <string name="video_details_watchlist_removed">Удалено из «Я смотрю»</string>
     <string name="video_details_watched_added">Отмечено просмотренным</string>
     <string name="video_details_watched_removed">Отметка просмотра снята</string>
+    <string name="video_details_info_title">Подробнее</string>
+    <string name="video_details_info_original_title">Оригинальное название</string>
+    <string name="video_details_info_year">Год</string>
+    <string name="video_details_info_seasons">Сезонов</string>
+    <string name="video_details_info_duration">Длительность</string>
+    <string name="video_details_info_genres">Жанры</string>
+    <string name="video_details_info_country">Страна</string>
+    <string name="video_details_info_age_rating">Возраст</string>
+    <string name="video_details_info_translation">Перевод</string>
+    <string name="video_details_info_audio_tracks">Аудиодорожки</string>
+    <string name="video_details_info_subtitles">Субтитры</string>
+    <string name="video_details_info_director">Режиссёр</string>
+    <string name="video_details_info_cast">В ролях</string>
+    <string name="video_details_info_quality">Качество</string>
+    <string name="video_details_info_sound">Звук</string>
+    <string name="video_details_info_sound_surround">Объёмный звук</string>
 </resources>
