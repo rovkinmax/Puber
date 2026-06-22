@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -55,6 +57,8 @@ import com.kino.puber.core.ui.uikit.component.FullScreenError
 import com.kino.puber.core.ui.uikit.component.Rating
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItem
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.component.modifier.placeholder
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -142,8 +146,18 @@ private fun DetailsContentBody(
                 item(key = "info") {
                     DetailsInfoPage(
                         info = state.info,
+                        hasNextPage = state.similarItems.isNotEmpty(),
                         modifier = Modifier.height(pageHeight),
                     )
+                }
+                if (state.similarItems.isNotEmpty()) {
+                    item(key = "similar") {
+                        DetailsSimilarPage(
+                            items = state.similarItems,
+                            onAction = onAction,
+                            modifier = Modifier.height(pageHeight),
+                        )
+                    }
                 }
             }
         }
@@ -347,33 +361,40 @@ private fun DetailsWatchedButton(
 @Composable
 private fun DetailsInfoPage(
     info: DetailsInfoUIState,
+    hasNextPage: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        onClick = {},
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 96.dp, vertical = 72.dp),
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            focusedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 32.dp, vertical = 28.dp),
-            horizontalArrangement = Arrangement.spacedBy(64.dp),
+    Box(modifier = modifier.fillMaxWidth()) {
+        Surface(
+            onClick = {},
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 96.dp, vertical = 72.dp),
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
         ) {
-            DetailsInfoSummary(
-                info = info,
-                modifier = Modifier.weight(2F),
-            )
-            DetailsInfoText(
-                info = info,
-                modifier = Modifier.weight(5F),
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 32.dp, vertical = 28.dp),
+                horizontalArrangement = Arrangement.spacedBy(64.dp),
+            ) {
+                DetailsInfoSummary(
+                    info = info,
+                    modifier = Modifier.weight(2F),
+                )
+                DetailsInfoText(
+                    info = info,
+                    modifier = Modifier.weight(5F),
+                )
+            }
+        }
+
+        if (hasNextPage) {
+            ChevronIndicator(modifier = Modifier.align(Alignment.BottomCenter))
         }
     }
 }
@@ -442,9 +463,41 @@ private fun DetailsInfoRows(rows: List<DetailsInfoRowUIState>) {
 }
 
 @Composable
-private fun ChevronIndicator() {
+private fun DetailsSimilarPage(
+    items: List<VideoItemUIState>,
+    onAction: (UIAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 64.dp, vertical = 96.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = stringResource(R.string.video_details_similar_title),
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(end = 64.dp),
+        ) {
+            items(items, key = { item -> item.id }) { item ->
+                VideoItem(
+                    state = item,
+                    onClick = { onAction(DetailsAction.SimilarSelected(item)) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChevronIndicator(modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(bottom = 16.dp),
         contentAlignment = Alignment.Center,

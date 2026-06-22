@@ -46,6 +46,22 @@ internal class DetailsVM(
             val item = interactor.getItemDetails(params.itemId)
             currentItem = item
             updateViewState(mapper.map(item, isInWatchlist = interactor.isInWatchLaterFolder(item)))
+            loadSimilarItems()
+        }
+    }
+
+    private fun loadSimilarItems() {
+        launch {
+            runCatching { interactor.getSimilarItems(params.itemId) }
+                .onSuccess { items ->
+                    updateViewState<DetailsScreenState.Content> {
+                        copy(
+                            similarItems = mapper.mapSimilarItems(
+                                items.filterNot { item -> item.id == params.itemId }
+                            )
+                        )
+                    }
+                }
         }
     }
 
@@ -58,6 +74,7 @@ internal class DetailsVM(
             is DetailsAction.WatchlistToggleClicked -> onWatchlistToggle()
             is DetailsAction.WatchedToggleClicked -> onWatchedToggle()
             is DetailsAction.EpisodeSelected -> onEpisodeSelected(action.item)
+            is DetailsAction.SimilarSelected -> router.navigateTo(router.screens.details(action.item.id))
             is DetailsAction.CloseSeasonsPanel -> hideSeasonsPanel()
             is CommonAction.RetryClicked -> loadData()
             else -> super.onAction(action)
