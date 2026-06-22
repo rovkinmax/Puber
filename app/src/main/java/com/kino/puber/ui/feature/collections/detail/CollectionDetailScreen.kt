@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.collections.detail
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import cafe.adriel.voyager.core.screen.ScreenKey
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.PuberScreen
@@ -10,6 +11,7 @@ import com.kino.puber.domain.interactor.collections.CollectionInteractor
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.ui.feature.collections.detail.component.CollectionDetailScreenContent
 import com.kino.puber.ui.feature.collections.detail.vm.CollectionDetailVM
+import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
@@ -24,6 +26,9 @@ internal class CollectionDetailScreen(
     private val collectionId: Int,
     private val collectionTitle: String,
 ) : PuberScreen {
+
+    @IgnoredOnParcel
+    override val key: ScreenKey = "CollectionDetailScreen_$collectionId"
 
     @Suppress("unused")
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {

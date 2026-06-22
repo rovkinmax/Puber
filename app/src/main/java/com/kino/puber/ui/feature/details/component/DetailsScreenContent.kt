@@ -1,6 +1,7 @@
 package com.kino.puber.ui.feature.details.component
 
 import androidx.annotation.OptIn
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,7 +44,6 @@ import com.kino.puber.core.ui.uikit.component.FullScreenError
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
 import com.kino.puber.core.ui.uikit.component.modifier.placeholder
-import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.details.model.DetailsAction
@@ -133,6 +133,7 @@ private fun DetailsMainPage(
             isWatched = state.isWatched,
             onAction = onAction,
             seasonsPanelVisible = seasonsPanelVisible,
+            trailerVisible = state.trailerUrl != null,
         )
 
         Spacer(modifier = Modifier.weight(1F))
@@ -148,24 +149,24 @@ private fun ActionButtonsRow(
     isWatched: Boolean,
     onAction: (UIAction) -> Unit,
     seasonsPanelVisible: Boolean,
+    trailerVisible: Boolean,
 ) {
-    val focusRequester = rememberFocusRequesterOnLaunch()
     val firstButtonFocusRequester = remember { FocusRequester() }
 
-    // Re-request focus after navigation return (Player → Back).
-    // Skip when seasons panel is visible — it owns focus in that case.
-    LaunchedEffect(Unit) {
+    // Request a concrete child, not the Row container. TV focus can otherwise
+    // stay on the previous card/details area and make OK look unresponsive.
+    LaunchedEffect(seasonsPanelVisible, trailerVisible, buttons.size) {
         delay(DETAILS_BUTTONS_FOCUS_DELAY_MS)
-        if (!seasonsPanelVisible) {
-            runCatching { focusRequester.requestFocus() }
+        if (!seasonsPanelVisible && !trailerVisible) {
+            runCatching { firstButtonFocusRequester.requestFocus() }
         }
     }
 
     Row(
         modifier = Modifier
             .padding(horizontal = 16.dp)
-            .focusRequester(focusRequester)
-            .focusRestorer(firstButtonFocusRequester),
+            .focusRestorer(firstButtonFocusRequester)
+            .focusGroup(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.details.component
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import cafe.adriel.voyager.core.screen.ScreenKey
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.RootPuberScreen
 import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
@@ -11,6 +12,7 @@ import com.kino.puber.domain.interactor.details.DetailsInteractor
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
 import com.kino.puber.ui.feature.details.model.DetailsScreenUIMapper
 import com.kino.puber.ui.feature.details.vm.DetailsVM
+import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
@@ -22,6 +24,9 @@ import org.koin.dsl.module
 
 @Parcelize
 internal data class DetailsScreen(private val params: DetailsScreenParams) : RootPuberScreen {
+
+    @IgnoredOnParcel
+    override val key: ScreenKey = "DetailsScreen_${params.itemId}"
 
     @Suppress("unused")
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {

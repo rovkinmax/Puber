@@ -14,6 +14,7 @@ import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.showall.content.ShowAllScreenContent
 import com.kino.puber.ui.feature.showall.vm.ShowAllVM
+import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
@@ -28,6 +29,7 @@ internal class ShowAllScreen(
     private val config: SectionConfig,
 ) : PuberScreen {
 
+    @IgnoredOnParcel
     override val key: ScreenKey = "ShowAllScreen_${config.id}"
 
     @Suppress("unused")
