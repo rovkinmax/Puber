@@ -1,7 +1,6 @@
 package com.kino.puber.ui.feature.details.component
 
 import androidx.annotation.OptIn
-import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.BringIntoViewSpec
@@ -153,6 +152,14 @@ private fun DetailsContentBody(
         val infoPageFocusRequester = remember { FocusRequester() }
         val similarFirstItemFocusRequester = remember { FocusRequester() }
         val hasSimilarItems = state.similarItems.isNotEmpty()
+        val focusMainPage = remember {
+            {
+                coroutineScope.launch {
+                    pagerState.animateScrollToPage(MAIN_PAGE_INDEX)
+                }
+                Unit
+            }
+        }
         val focusInfoPage = remember {
             {
                 coroutineScope.launch {
@@ -179,6 +186,15 @@ private fun DetailsContentBody(
                     pagerState.currentPageOffsetFraction == 0F
             }
         }
+        LaunchedEffect(pagerState.currentPage, state.info.castMembers.size, hasSimilarItems) {
+            delay(DETAILS_PAGE_FOCUS_DELAY_MS)
+            when (pagerState.currentPage) {
+                INFO_PAGE_INDEX -> runCatching { infoPageFocusRequester.requestFocus() }
+                SIMILAR_PAGE_INDEX -> if (hasSimilarItems) {
+                    runCatching { similarFirstItemFocusRequester.requestFocus() }
+                }
+            }
+        }
         KeepFocusedChildVisibleWithoutRepositioning {
             VerticalPager(
                 state = pagerState,
@@ -199,6 +215,7 @@ private fun DetailsContentBody(
                         info = state.info,
                         hasNextPage = hasSimilarItems,
                         focusRequester = infoPageFocusRequester,
+                        onPreviousPageRequested = focusMainPage,
                         onNextPageRequested = focusSimilarPage,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -429,6 +446,7 @@ private fun DetailsInfoPage(
     info: DetailsInfoUIState,
     hasNextPage: Boolean,
     focusRequester: FocusRequester,
+    onPreviousPageRequested: () -> Unit,
     onNextPageRequested: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -436,8 +454,9 @@ private fun DetailsInfoPage(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .focusRequester(focusRequester)
+                .then(if (info.castMembers.isEmpty()) Modifier.focusRequester(focusRequester) else Modifier)
                 .focusable()
+                .onDirectionKey(Key.DirectionUp, onKey = onPreviousPageRequested)
                 .onDirectionKey(Key.DirectionDown, enabled = hasNextPage, onKey = onNextPageRequested)
                 .padding(horizontal = 96.dp, vertical = 36.dp),
         ) {
@@ -454,6 +473,10 @@ private fun DetailsInfoPage(
                 )
                 DetailsCastRow(
                     info = info,
+                    firstItemFocusRequester = focusRequester,
+                    hasNextPage = hasNextPage,
+                    onPreviousPageRequested = onPreviousPageRequested,
+                    onNextPageRequested = onNextPageRequested,
                 )
                 DetailsInfoGrid(rows = info.primaryRows + info.secondaryRows)
             }
@@ -537,6 +560,10 @@ private fun DetailsInfoRows(
 @Composable
 private fun DetailsCastRow(
     info: DetailsInfoUIState,
+    firstItemFocusRequester: FocusRequester,
+    hasNextPage: Boolean,
+    onPreviousPageRequested: () -> Unit,
+    onNextPageRequested: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (info.castMembers.isEmpty()) return
@@ -551,32 +578,53 @@ private fun DetailsCastRow(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64F),
         )
         LazyRow(
+            modifier = Modifier
+                .focusRestorer(firstItemFocusRequester)
+                .focusGroup(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(end = 64.dp),
         ) {
-            itemsIndexed(info.castMembers, key = { index, actor -> "$index:$actor" }) { _, actor ->
-                DetailsInfoChip(actor)
+            itemsIndexed(info.castMembers, key = { index, actor -> "$index:$actor" }) { index, actor ->
+                val itemModifier = if (index == 0) {
+                    Modifier.focusRequester(firstItemFocusRequester)
+                } else {
+                    Modifier
+                }
+                DetailsInfoChip(
+                    text = actor,
+                    modifier = itemModifier
+                        .onDirectionKey(Key.DirectionUp, onKey = onPreviousPageRequested)
+                        .onDirectionKey(Key.DirectionDown, enabled = hasNextPage, onKey = onNextPageRequested),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun DetailsInfoChip(text: String) {
-    Box(
-        modifier = Modifier
-            .background(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56F),
-                shape = RoundedCornerShape(100.dp),
-            )
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+private fun DetailsInfoChip(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = {},
+        modifier = modifier,
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(100.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56F),
+            focusedContainerColor = MaterialTheme.colorScheme.onSurface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            focusedContentColor = MaterialTheme.colorScheme.surface,
+        ),
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = INFO_CHIP_MAX_LINES,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = INFO_CHIP_MAX_LINES,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
