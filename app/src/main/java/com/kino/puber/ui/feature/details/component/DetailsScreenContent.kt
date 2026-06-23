@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -36,6 +37,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,6 +81,7 @@ import kotlinx.coroutines.launch
 private const val DETAILS_CONTENT_WEIGHT = 3F
 private const val SEASONS_PANEL_FOCUS_DELAY_MS = 150L
 private const val DETAILS_BUTTONS_FOCUS_DELAY_MS = 100L
+private const val DETAILS_PAGE_FOCUS_DELAY_MS = 50L
 private const val CHEVRON_ALPHA = 0.5F
 private const val INFO_DESCRIPTION_MAX_LINES = 7
 private const val INFO_ROW_MAX_LINES = 3
@@ -137,6 +140,30 @@ private fun DetailsContentBody(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val pageHeight = maxHeight
         val listState = rememberLazyListState()
+        val coroutineScope = rememberCoroutineScope()
+        val infoPageFocusRequester = remember { FocusRequester() }
+        val similarFirstItemFocusRequester = remember { FocusRequester() }
+        val hasSimilarItems = state.similarItems.isNotEmpty()
+        val focusInfoPage = remember {
+            {
+                coroutineScope.launch {
+                    listState.scrollToItem(index = INFO_PAGE_INDEX)
+                    delay(DETAILS_PAGE_FOCUS_DELAY_MS)
+                    runCatching { infoPageFocusRequester.requestFocus() }
+                }
+                Unit
+            }
+        }
+        val focusSimilarPage = remember {
+            {
+                coroutineScope.launch {
+                    listState.scrollToItem(index = SIMILAR_PAGE_INDEX)
+                    delay(DETAILS_PAGE_FOCUS_DELAY_MS)
+                    runCatching { similarFirstItemFocusRequester.requestFocus() }
+                }
+                Unit
+            }
+        }
         val isMainPageVisible by remember {
             derivedStateOf {
                 listState.firstVisibleItemIndex == MAIN_PAGE_INDEX &&
@@ -162,15 +189,19 @@ private fun DetailsContentBody(
                 item(key = "info") {
                     DetailsInfoPage(
                         info = state.info,
-                        hasNextPage = state.similarItems.isNotEmpty(),
+                        hasNextPage = hasSimilarItems,
+                        focusRequester = infoPageFocusRequester,
+                        onNextPageRequested = focusSimilarPage,
                         modifier = Modifier.height(pageHeight),
                     )
                 }
-                if (state.similarItems.isNotEmpty()) {
+                if (hasSimilarItems) {
                     item(key = "similar") {
                         DetailsSimilarPage(
                             items = state.similarItems,
                             onAction = onAction,
+                            firstItemFocusRequester = similarFirstItemFocusRequester,
+                            onPreviousPageRequested = focusInfoPage,
                             modifier = Modifier.height(pageHeight),
                         )
                     }
@@ -393,6 +424,8 @@ private fun DetailsWatchedButton(
 private fun DetailsInfoPage(
     info: DetailsInfoUIState,
     hasNextPage: Boolean,
+    focusRequester: FocusRequester,
+    onNextPageRequested: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
@@ -400,6 +433,7 @@ private fun DetailsInfoPage(
             onClick = {},
             modifier = Modifier
                 .fillMaxWidth()
+                .focusRequester(focusRequester)
                 .padding(horizontal = 96.dp, vertical = 72.dp),
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
             colors = ClickableSurfaceDefaults.colors(
@@ -425,6 +459,13 @@ private fun DetailsInfoPage(
         }
 
         if (hasNextPage) {
+            PageFocusBridge(
+                onFocused = onNextPageRequested,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(96.dp),
+            )
             ChevronIndicator(modifier = Modifier.align(Alignment.BottomCenter))
         }
     }
@@ -497,31 +538,78 @@ private fun DetailsInfoRows(rows: List<DetailsInfoRowUIState>) {
 private fun DetailsSimilarPage(
     items: List<VideoItemUIState>,
     onAction: (UIAction) -> Unit,
+    firstItemFocusRequester: FocusRequester,
+    onPreviousPageRequested: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 64.dp, vertical = 96.dp),
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = stringResource(R.string.video_details_similar_title),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
+    Box(modifier = modifier.fillMaxWidth()) {
+        PageFocusBridge(
+            onFocused = onPreviousPageRequested,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(96.dp),
         )
-        Spacer(modifier = Modifier.height(24.dp))
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(end = 64.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 64.dp, vertical = 96.dp),
+            verticalArrangement = Arrangement.Center,
         ) {
-            items(items, key = { item -> item.id }) { item ->
-                VideoItem(
-                    state = item,
-                    onClick = { onAction(DetailsAction.SimilarSelected(item)) },
-                )
+            Text(
+                text = stringResource(R.string.video_details_similar_title),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            LazyRow(
+                modifier = Modifier
+                    .focusRestorer(firstItemFocusRequester)
+                    .focusGroup(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(end = 64.dp),
+            ) {
+                itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+                    VideoItem(
+                        modifier = if (index == 0) {
+                            Modifier.focusRequester(firstItemFocusRequester)
+                        } else {
+                            Modifier
+                        },
+                        state = item,
+                        onClick = { onAction(DetailsAction.SimilarSelected(item)) },
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun PageFocusBridge(
+    onFocused: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // LazyColumn does not compose the next page until it scrolls into view, so
+    // D-pad focus needs an already-composed target to trigger page transitions.
+    Surface(
+        onClick = onFocused,
+        modifier = modifier
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    onFocused()
+                }
+            },
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
+            pressedContainerColor = Color.Transparent,
+            contentColor = Color.Transparent,
+            focusedContentColor = Color.Transparent,
+            pressedContentColor = Color.Transparent,
+        ),
+    ) {
+        Box(modifier = Modifier.fillMaxSize())
     }
 }
 
@@ -586,3 +674,5 @@ private fun DetailsContentSkeleton() {
 
 private const val FIRST_PAGE_DESCRIPTION_LINES = 3
 private const val MAIN_PAGE_INDEX = 0
+private const val INFO_PAGE_INDEX = 1
+private const val SIMILAR_PAGE_INDEX = 2

@@ -1,11 +1,10 @@
 package com.kino.puber.domain.interactor.details
 
 import com.kino.puber.data.api.KinoPubApiClient
+import com.kino.puber.data.api.models.ApiResponseList
 import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
-import com.kino.puber.data.api.models.PaginatedResponse
-import com.kino.puber.data.api.models.Pagination
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import io.mockk.coEvery
@@ -60,9 +59,8 @@ class DetailsInteractorTest {
     fun getSimilarItems_returnsApiItems() = runTest {
         val similar = Item(id = 100, title = "Similar", type = ItemType.MOVIE)
         coEvery { api.getSimilarItems(42) } returns Result.success(
-            PaginatedResponse(
+            ApiResponseList(
                 items = listOf(similar),
-                pagination = Pagination(current = 1, perpage = 20, total = 1),
             )
         )
 

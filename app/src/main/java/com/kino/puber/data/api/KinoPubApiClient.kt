@@ -289,7 +289,7 @@ class KinoPubApiClient(
     /**
      * Get similar items
      */
-    suspend fun getSimilarItems(id: Int): Result<PaginatedResponse<Item>> = apiCall {
+    suspend fun getSimilarItems(id: Int): Result<ApiResponseList<Item>> = apiCall {
         httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}items/similar") {
             parameter("id", id)
         }
