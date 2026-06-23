@@ -28,12 +28,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,6 +74,7 @@ import com.kino.puber.ui.feature.details.model.DetailsInfoUIState
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
 import com.kino.puber.ui.feature.player.component.EpisodesPanel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val DETAILS_CONTENT_WEIGHT = 3F
 private const val SEASONS_PANEL_FOCUS_DELAY_MS = 150L
@@ -258,6 +261,7 @@ private fun ActionButtonsRow(
     scrollToMainPage: suspend () -> Unit,
 ) {
     val firstButtonFocusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
 
     // Request a concrete child, not the Row container. TV focus can otherwise
     // stay on the previous card/details area and make OK look unresponsive.
@@ -272,6 +276,11 @@ private fun ActionButtonsRow(
     Row(
         modifier = Modifier
             .padding(horizontal = 16.dp)
+            .onFocusChanged { focusState ->
+                if (!seasonsPanelVisible && !trailerVisible && focusState.hasFocus) {
+                    coroutineScope.launch { scrollToMainPage() }
+                }
+            }
             .focusRestorer(firstButtonFocusRequester)
             .focusGroup(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
