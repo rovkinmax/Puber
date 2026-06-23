@@ -57,6 +57,7 @@ internal data class DetailsInfoUIState(
     val ratings: List<RatingUIState>,
     val primaryRows: List<DetailsInfoRowUIState>,
     val secondaryRows: List<DetailsInfoRowUIState>,
+    val castMembers: List<String>,
 )
 
 @Immutable

@@ -1,6 +1,8 @@
 package com.kino.puber.ui.feature.details.component
 
 import androidx.annotation.OptIn
+import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
@@ -19,9 +21,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -38,6 +40,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,8 +90,10 @@ private const val SEASONS_PANEL_FOCUS_DELAY_MS = 150L
 private const val DETAILS_BUTTONS_FOCUS_DELAY_MS = 100L
 private const val DETAILS_PAGE_FOCUS_DELAY_MS = 50L
 private const val CHEVRON_ALPHA = 0.5F
-private const val INFO_DESCRIPTION_MAX_LINES = 7
-private const val INFO_ROW_MAX_LINES = 3
+private const val INFO_DESCRIPTION_MAX_LINES = 4
+private const val INFO_ROW_MAX_LINES = 2
+private const val INFO_CHIP_MAX_LINES = 1
+private val DETAILS_PAGE_PEEK_HEIGHT = 32.dp
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -138,8 +147,8 @@ private fun DetailsContentBody(
     onAction: (UIAction) -> Unit,
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val pageHeight = maxHeight
-        val listState = rememberLazyListState()
+        val pageCount = if (state.similarItems.isNotEmpty()) DETAILS_PAGES_WITH_SIMILAR else DETAILS_PAGES_BASE
+        val pagerState = rememberPagerState(pageCount = { pageCount })
         val coroutineScope = rememberCoroutineScope()
         val infoPageFocusRequester = remember { FocusRequester() }
         val similarFirstItemFocusRequester = remember { FocusRequester() }
@@ -147,7 +156,7 @@ private fun DetailsContentBody(
         val focusInfoPage = remember {
             {
                 coroutineScope.launch {
-                    listState.scrollToItem(index = INFO_PAGE_INDEX)
+                    pagerState.animateScrollToPage(INFO_PAGE_INDEX)
                     delay(DETAILS_PAGE_FOCUS_DELAY_MS)
                     runCatching { infoPageFocusRequester.requestFocus() }
                 }
@@ -157,7 +166,7 @@ private fun DetailsContentBody(
         val focusSimilarPage = remember {
             {
                 coroutineScope.launch {
-                    listState.scrollToItem(index = SIMILAR_PAGE_INDEX)
+                    pagerState.animateScrollToPage(SIMILAR_PAGE_INDEX)
                     delay(DETAILS_PAGE_FOCUS_DELAY_MS)
                     runCatching { similarFirstItemFocusRequester.requestFocus() }
                 }
@@ -166,45 +175,40 @@ private fun DetailsContentBody(
         }
         val isMainPageVisible by remember {
             derivedStateOf {
-                listState.firstVisibleItemIndex == MAIN_PAGE_INDEX &&
-                    listState.firstVisibleItemScrollOffset == 0
+                pagerState.currentPage == MAIN_PAGE_INDEX &&
+                    pagerState.currentPageOffsetFraction == 0F
             }
         }
         KeepFocusedChildVisibleWithoutRepositioning {
-            LazyColumn(
-                state = listState,
+            VerticalPager(
+                state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 24.dp),
-            ) {
-                item(key = "main") {
-                    DetailsMainPage(
-                        modifier = Modifier.height(pageHeight),
+                contentPadding = PaddingValues(vertical = DETAILS_PAGE_PEEK_HEIGHT),
+                beyondViewportPageCount = 1,
+            ) { page ->
+                when (page) {
+                    MAIN_PAGE_INDEX -> DetailsMainPage(
+                        modifier = Modifier.fillMaxSize(),
                         state = state,
                         onAction = onAction,
                         seasonsPanelVisible = state.seasonsPanelVisible,
                         recoverActionFocus = isMainPageVisible,
-                        scrollToMainPage = { listState.scrollToItem(index = 0) },
+                        scrollToMainPage = { pagerState.animateScrollToPage(MAIN_PAGE_INDEX) },
                     )
-                }
-                item(key = "info") {
-                    DetailsInfoPage(
+                    INFO_PAGE_INDEX -> DetailsInfoPage(
                         info = state.info,
                         hasNextPage = hasSimilarItems,
                         focusRequester = infoPageFocusRequester,
                         onNextPageRequested = focusSimilarPage,
-                        modifier = Modifier.height(pageHeight),
+                        modifier = Modifier.fillMaxSize(),
                     )
-                }
-                if (hasSimilarItems) {
-                    item(key = "similar") {
-                        DetailsSimilarPage(
-                            items = state.similarItems,
-                            onAction = onAction,
-                            firstItemFocusRequester = similarFirstItemFocusRequester,
-                            onPreviousPageRequested = focusInfoPage,
-                            modifier = Modifier.height(pageHeight),
-                        )
-                    }
+                    SIMILAR_PAGE_INDEX -> DetailsSimilarPage(
+                        items = state.similarItems,
+                        onAction = onAction,
+                        firstItemFocusRequester = similarFirstItemFocusRequester,
+                        onPreviousPageRequested = focusInfoPage,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }
@@ -429,32 +433,29 @@ private fun DetailsInfoPage(
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
-        Surface(
-            onClick = {},
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .focusRequester(focusRequester)
-                .padding(horizontal = 96.dp, vertical = 72.dp),
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
-            colors = ClickableSurfaceDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                focusedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            ),
+                .focusable()
+                .onDirectionKey(Key.DirectionDown, enabled = hasNextPage, onKey = onNextPageRequested)
+                .padding(horizontal = 96.dp, vertical = 36.dp),
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 32.dp, vertical = 28.dp),
-                horizontalArrangement = Arrangement.spacedBy(64.dp),
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                DetailsInfoSummary(
-                    info = info,
-                    modifier = Modifier.weight(2F),
+                DetailsInfoHeader(info)
+                Text(
+                    text = info.description,
+                    style = MaterialTheme.typography.titleMedium,
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = INFO_DESCRIPTION_MAX_LINES,
                 )
-                DetailsInfoText(
+                DetailsCastRow(
                     info = info,
-                    modifier = Modifier.weight(5F),
                 )
+                DetailsInfoGrid(rows = info.primaryRows + info.secondaryRows)
             }
         }
 
@@ -472,13 +473,11 @@ private fun DetailsInfoPage(
 }
 
 @Composable
-private fun DetailsInfoSummary(
-    info: DetailsInfoUIState,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+private fun DetailsInfoHeader(info: DetailsInfoUIState) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = stringResource(R.string.video_details_info_title),
@@ -486,36 +485,37 @@ private fun DetailsInfoSummary(
             fontWeight = FontWeight.Bold,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            info.ratings.forEach { rating ->
-                Rating(rating)
-            }
+            info.ratings.forEach { rating -> Rating(rating) }
         }
-        DetailsInfoRows(rows = info.primaryRows)
     }
 }
 
 @Composable
-private fun DetailsInfoText(
-    info: DetailsInfoUIState,
+private fun DetailsInfoGrid(rows: List<DetailsInfoRowUIState>) {
+    val columnCount = DETAILS_INFO_COLUMN_COUNT
+    val chunkSize = ((rows.size + columnCount - 1) / columnCount).coerceAtLeast(1)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(32.dp),
+    ) {
+        rows.chunked(chunkSize).forEach { columnRows ->
+            DetailsInfoRows(
+                rows = columnRows,
+                modifier = Modifier.weight(1F),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailsInfoRows(
+    rows: List<DetailsInfoRowUIState>,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(28.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = info.description,
-            style = MaterialTheme.typography.titleMedium,
-            overflow = TextOverflow.Ellipsis,
-            maxLines = INFO_DESCRIPTION_MAX_LINES,
-        )
-        DetailsInfoRows(rows = info.secondaryRows)
-    }
-}
-
-@Composable
-private fun DetailsInfoRows(rows: List<DetailsInfoRowUIState>) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         rows.forEach { row ->
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
@@ -531,6 +531,52 @@ private fun DetailsInfoRows(rows: List<DetailsInfoRowUIState>) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun DetailsCastRow(
+    info: DetailsInfoUIState,
+    modifier: Modifier = Modifier,
+) {
+    if (info.castMembers.isEmpty()) return
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.video_details_info_cast),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64F),
+        )
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(end = 64.dp),
+        ) {
+            itemsIndexed(info.castMembers, key = { index, actor -> "$index:$actor" }) { _, actor ->
+                DetailsInfoChip(actor)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailsInfoChip(text: String) {
+    Box(
+        modifier = Modifier
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56F),
+                shape = RoundedCornerShape(100.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = INFO_CHIP_MAX_LINES,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -553,6 +599,7 @@ private fun DetailsSimilarPage(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .onDirectionKey(Key.DirectionUp, onKey = onPreviousPageRequested)
                 .padding(horizontal = 64.dp, vertical = 96.dp),
             verticalArrangement = Arrangement.Center,
         ) {
@@ -610,6 +657,29 @@ private fun PageFocusBridge(
         ),
     ) {
         Box(modifier = Modifier.fillMaxSize())
+    }
+}
+
+private fun Modifier.onDirectionKey(
+    key: Key,
+    enabled: Boolean = true,
+    onKey: () -> Unit,
+): Modifier {
+    if (!enabled) {
+        return this
+    }
+    return onPreviewKeyEvent { event ->
+        if (event.key != key) {
+            return@onPreviewKeyEvent false
+        }
+        when (event.type) {
+            KeyEventType.KeyDown -> {
+                onKey()
+                true
+            }
+            KeyEventType.KeyUp -> true
+            else -> false
+        }
     }
 }
 
@@ -676,3 +746,6 @@ private const val FIRST_PAGE_DESCRIPTION_LINES = 3
 private const val MAIN_PAGE_INDEX = 0
 private const val INFO_PAGE_INDEX = 1
 private const val SIMILAR_PAGE_INDEX = 2
+private const val DETAILS_INFO_COLUMN_COUNT = 4
+private const val DETAILS_PAGES_BASE = 2
+private const val DETAILS_PAGES_WITH_SIMILAR = 3
