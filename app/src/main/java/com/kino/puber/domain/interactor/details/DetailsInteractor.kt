@@ -17,7 +17,7 @@ internal class DetailsInteractor(
     }
 
     suspend fun getSimilarItems(id: Int): List<Item> {
-        return api.getSimilarItems(id).getOrThrow().items
+        return api.getSimilarItems(id).getOrThrow().items.orEmpty()
     }
 
     suspend fun toggleWatchlist(id: Int): Item {
