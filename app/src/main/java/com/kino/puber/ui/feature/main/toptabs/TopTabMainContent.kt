@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -23,7 +24,9 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import com.kino.puber.core.ui.navigation.TabRouter
+import com.kino.puber.core.ui.navigation.component.TabAppRouterHolder
 import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
 import com.kino.puber.core.ui.navigation.component.TabComponent
 import com.kino.puber.core.ui.uikit.component.modifier.LocalAutoFocusOnLaunchEnabled
@@ -32,6 +35,7 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -39,6 +43,7 @@ internal fun TopTabMainContent(
     state: MainViewState,
     onAction: (UIAction) -> Unit,
     tabRouter: TabRouter,
+    tabAppRouterHolder: TabAppRouterHolder,
     onSearchClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
@@ -76,19 +81,24 @@ internal fun TopTabMainContent(
         onAction = onAction,
     )
 
-    TabComponent(tabRouter = tabRouter) {
+    TabComponent(
+        tabRouter = tabRouter,
+        tabAppRouterHolder = tabAppRouterHolder,
+    ) {
         Column(Modifier.fillMaxSize()) {
             TopTabBar(
                 tabs = state.tabs,
                 selectedIndex = focusedTabIndex,
                 tabFocusRequesters = tabFocusRequesters,
+                contentFocusRequester = contentFocus,
                 onTabFocused = { index -> focusedTabIndex = index },
                 onTabClick = { contentFocus.requestFocus() },
                 onSearchClick = onSearchClick,
                 onSettingsClick = onSettingsClick,
                 modifier = Modifier
                     .onFocusChanged { if (it.hasFocus) isContentFocused = false },
-                tabRowModifier = Modifier.focusRequester(tabRowFocus),
+                tabRowModifier = Modifier
+                    .focusRequester(tabRowFocus),
             )
 
             CompositionLocalProvider(LocalAutoFocusOnLaunchEnabled provides false) {
@@ -184,18 +194,30 @@ private fun ColumnScope.TopTabContentBox(
     tabRowFocus: FocusRequester,
     onFocused: () -> Unit,
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     Box(
         Modifier
             .weight(1f)
             .focusRequester(contentFocus)
-            .onFocusChanged { if (it.hasFocus) onFocused() }
+            .onFocusChanged { focusState ->
+                if (focusState.hasFocus) {
+                    onFocused()
+                }
+                if (focusState.isFocused) {
+                    coroutineScope.launch {
+                        delay(CONTENT_CHILD_FOCUS_DELAY_MS)
+                        focusManager.moveFocus(FocusDirection.Down)
+                    }
+                }
+            }
             .focusProperties {
                 @Suppress("DEPRECATION")
                 exit = { direction ->
                     if (direction == FocusDirection.Up) {
                         tabRowFocus
                     } else {
-                        FocusRequester.Cancel
+                        FocusRequester.Default
                     }
                 }
             }
@@ -208,3 +230,4 @@ private fun ColumnScope.TopTabContentBox(
 
 private const val TAB_SELECTION_DELAY_MS = 300L
 private const val INITIAL_TAB_FOCUS_DELAY_MS = 100L
+private const val CONTENT_CHILD_FOCUS_DELAY_MS = 16L

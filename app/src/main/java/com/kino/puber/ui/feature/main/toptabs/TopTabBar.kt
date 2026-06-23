@@ -16,6 +16,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Icon
@@ -36,6 +41,7 @@ internal fun TopTabBar(
     tabs: List<MainTab>,
     selectedIndex: Int,
     tabFocusRequesters: List<FocusRequester>,
+    contentFocusRequester: FocusRequester,
     onTabFocused: (Int) -> Unit,
     onTabClick: () -> Unit,
     onSearchClick: () -> Unit,
@@ -72,7 +78,9 @@ internal fun TopTabBar(
                         selected = index == selectedIndex,
                         onFocus = { onTabFocused(index) },
                         onClick = onTabClick,
-                        modifier = Modifier.focusRequester(tabFocusRequesters[index]),
+                        modifier = Modifier
+                            .focusRequester(tabFocusRequesters[index])
+                            .onDownKey { contentFocusRequester.requestFocus() },
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -98,6 +106,22 @@ internal fun TopTabBar(
             contentDescription = "Settings",
             onClick = onSettingsClick,
         )
+    }
+}
+
+private fun Modifier.onDownKey(onDown: () -> Unit): Modifier {
+    return onPreviewKeyEvent { event ->
+        if (event.key != Key.DirectionDown) {
+            return@onPreviewKeyEvent false
+        }
+        when (event.type) {
+            KeyEventType.KeyDown -> {
+                onDown()
+                true
+            }
+            KeyEventType.KeyUp -> true
+            else -> false
+        }
     }
 }
 

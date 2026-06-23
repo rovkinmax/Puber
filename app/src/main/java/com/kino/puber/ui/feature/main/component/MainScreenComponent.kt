@@ -36,6 +36,7 @@ import androidx.tv.material3.NavigationDrawerScope
 import androidx.tv.material3.Text
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.navigation.TabRouter
+import com.kino.puber.core.ui.navigation.component.TabAppRouterHolder
 import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
 import com.kino.puber.core.ui.navigation.component.TabComponent
 import com.kino.puber.core.ui.uikit.component.drawer.DrawerState
@@ -58,11 +59,17 @@ internal fun MainScreenComponent() {
     val state by vm.collectViewState()
     val onAction: (UIAction) -> Unit = remember { vm::onAction }
     when (state.navigationMode) {
-        NavigationMode.SideDrawer -> DrawerMainContent(state, onAction = onAction, tabRouter = vm.tabRouter)
+        NavigationMode.SideDrawer -> DrawerMainContent(
+            state = state,
+            onAction = onAction,
+            tabRouter = vm.tabRouter,
+            tabAppRouterHolder = vm.tabAppRouterHolder,
+        )
         NavigationMode.TopTabs -> TopTabMainContent(
             state = state,
             onAction = onAction,
             tabRouter = vm.tabRouter,
+            tabAppRouterHolder = vm.tabAppRouterHolder,
             onSearchClick = vm::onSearchClick,
             onSettingsClick = vm::onSettingsClick,
         )
@@ -70,7 +77,12 @@ internal fun MainScreenComponent() {
 }
 
 @Composable
-private fun DrawerMainContent(state: MainViewState, onAction: (UIAction) -> Unit, tabRouter: TabRouter) {
+private fun DrawerMainContent(
+    state: MainViewState,
+    onAction: (UIAction) -> Unit,
+    tabRouter: TabRouter,
+    tabAppRouterHolder: TabAppRouterHolder,
+) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val mainContentFocus = rememberFocusRequesterOnLaunch()
     SideEffect { drawerState.contentFocusRequester = mainContentFocus }
@@ -91,7 +103,7 @@ private fun DrawerMainContent(state: MainViewState, onAction: (UIAction) -> Unit
                     mainContentFocus = mainContentFocus,
                 )
             },
-            content = { MainScreenContentBody(mainContentFocus, tabRouter) },
+            content = { MainScreenContentBody(mainContentFocus, tabRouter, tabAppRouterHolder) },
         )
     }
 }
@@ -204,6 +216,7 @@ private fun mainSideMenuItemBadge(tab: MainTab): @Composable (() -> Unit)? {
 private fun MainScreenContentBody(
     focusRequester: FocusRequester,
     tabRouter: TabRouter,
+    tabAppRouterHolder: TabAppRouterHolder,
 ) {
     val closeDrawerWidth = 60.dp
     // Re-request focus on content after navigation return (push/pop).
@@ -213,7 +226,10 @@ private fun MainScreenContentBody(
         delay(100)
         focusRequester.requestFocus()
     }
-    TabComponent(tabRouter = tabRouter) {
+    TabComponent(
+        tabRouter = tabRouter,
+        tabAppRouterHolder = tabAppRouterHolder,
+    ) {
         Box(
             Modifier
                 .padding(start = closeDrawerWidth)

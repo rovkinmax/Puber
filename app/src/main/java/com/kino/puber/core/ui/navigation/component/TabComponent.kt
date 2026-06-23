@@ -48,14 +48,26 @@ internal class TabAppRouterHolder(private val screens: Screens) {
 }
 
 @Composable
-fun TabComponent(
+internal fun TabComponent(
     tabRouter: TabRouter = koinInject(),
+    tabAppRouterHolder: TabAppRouterHolder? = null,
     content: @Composable () -> Unit,
 ) {
     val parentScope = LocalPuberKoinScope.current
     val screens: Screens? = remember(parentScope) { parentScope?.getOrNull() }
-    val holder = remember(screens) { screens?.let { TabAppRouterHolder(it) } }
-    DisposableEffect(Unit) { onDispose { holder?.dispose() } }
+    val rememberedHolder = remember(screens, tabAppRouterHolder) {
+        if (tabAppRouterHolder == null) {
+            screens?.let { TabAppRouterHolder(it) }
+        } else {
+            null
+        }
+    }
+    val holder = tabAppRouterHolder ?: rememberedHolder
+    DisposableEffect(rememberedHolder) {
+        onDispose {
+            rememberedHolder?.dispose()
+        }
+    }
 
     val scopeName = parentScope?.id ?: ""
     CompositionLocalProvider(LocalTabAppRouterHolder provides holder) {

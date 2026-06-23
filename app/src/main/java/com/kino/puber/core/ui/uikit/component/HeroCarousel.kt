@@ -39,6 +39,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,16 +63,20 @@ fun HeroCarousel(
     items: List<HeroItemState>,
     onItemClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    onFocusedItemChanged: (Int) -> Unit = {},
 ) {
     if (items.isEmpty()) return
 
     if (items.size == 1) {
+        val item = items.first()
         HeroItem(
-            state = items.first(),
-            onClick = { onItemClick(items.first().id) },
+            state = item,
+            onClick = { onItemClick(item.id) },
             modifier = modifier
                 .fillMaxWidth()
-                .height(280.dp),
+                .height(280.dp)
+                .onSelectKeyClick { onItemClick(item.id) }
+                .onFocusChanged { if (it.hasFocus) onFocusedItemChanged(item.id) },
         )
         return
     }
@@ -84,12 +93,23 @@ fun HeroCarousel(
             }
         }
     }
+    LaunchedEffect(pagerState.currentPage, isFocused) {
+        if (isFocused) {
+            onFocusedItemChanged(items[pagerState.currentPage].id)
+        }
+    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(280.dp)
-            .onFocusChanged { isFocused = it.hasFocus }
+            .onSelectKeyClick { onItemClick(items[pagerState.currentPage].id) }
+            .onFocusChanged { focusState ->
+                isFocused = focusState.hasFocus
+                if (focusState.hasFocus) {
+                    onFocusedItemChanged(items[pagerState.currentPage].id)
+                }
+            }
             .focusGroup(),
     ) {
         HorizontalPager(
@@ -147,6 +167,26 @@ fun HeroCarousel(
             }
         }
     }
+}
+
+private fun Modifier.onSelectKeyClick(onClick: () -> Unit): Modifier {
+    return onPreviewKeyEvent { event ->
+        if (!event.key.isSelectKey()) {
+            return@onPreviewKeyEvent false
+        }
+        when (event.type) {
+            KeyEventType.KeyDown -> true
+            KeyEventType.KeyUp -> {
+                onClick()
+                true
+            }
+            else -> false
+        }
+    }
+}
+
+private fun Key.isSelectKey(): Boolean {
+    return this == Key.DirectionCenter || this == Key.Enter
 }
 
 @Composable

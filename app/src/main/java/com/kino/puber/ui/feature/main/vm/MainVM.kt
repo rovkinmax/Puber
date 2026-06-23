@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.main.vm
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.TabRouter
+import com.kino.puber.core.ui.navigation.component.TabAppRouterHolder
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.core.model.NavigationMode
@@ -17,6 +18,7 @@ internal class MainVM(
     internal val tabRouter: TabRouter,
 ) : PuberVM<MainViewState>(router) {
     override val initialViewState = MainViewState()
+    internal val tabAppRouterHolder = TabAppRouterHolder(router.screens)
 
     override fun onStart() {
         val state = mainUIMapper.buildViewState()
@@ -49,5 +51,10 @@ internal class MainVM(
 
     fun onSettingsClick() {
         router.navigateTo(router.screens.deviceSettings())
+    }
+
+    override fun onCleared() {
+        tabAppRouterHolder.dispose()
+        super.onCleared()
     }
 }
