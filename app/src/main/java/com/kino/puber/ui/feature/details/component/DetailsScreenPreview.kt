@@ -117,9 +117,9 @@ private fun previewInfo(details: VideoDetailsUIState) = DetailsInfoUIState(
     ),
     secondaryRows = listOf(
         DetailsInfoRowUIState("Режиссёр", "Ларри Ян"),
-        DetailsInfoRowUIState("В ролях", "Джеки Чан, Чжан Цзыфэн, Тони Люн Ка-Фай"),
         DetailsInfoRowUIState("Качество", "1080p"),
     ),
+    castMembers = listOf("Джеки Чан", "Чжан Цзыфэн", "Тони Люн Ка-Фай"),
 )
 
 private val previewEpisodes = VideoGridUIState(

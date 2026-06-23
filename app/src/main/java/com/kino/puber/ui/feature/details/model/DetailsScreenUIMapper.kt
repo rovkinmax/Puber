@@ -174,6 +174,7 @@ internal class DetailsScreenUIMapper(
             ratings = details.ratings,
             primaryRows = buildPrimaryRows(item),
             secondaryRows = buildSecondaryRows(item),
+            castMembers = item.castMembers(),
         )
     }
 
@@ -199,7 +200,6 @@ internal class DetailsScreenUIMapper(
             add(row(R.string.video_details_info_subtitles, it.toString()))
         }
         item.director?.takeIf { it.isNotBlank() }?.let { add(row(R.string.video_details_info_director, it)) }
-        item.cast?.takeIf { it.isNotBlank() }?.let { add(row(R.string.video_details_info_cast, it)) }
         item.displayQuality()?.let { add(row(R.string.video_details_info_quality, it)) }
         if (item.ac3 == 1 || item.mediaItemsHaveSurroundSound()) {
             add(row(R.string.video_details_info_sound, resources.getString(R.string.video_details_info_sound_surround)))
@@ -252,6 +252,13 @@ internal class DetailsScreenUIMapper(
             seasons.orEmpty()
                 .flatMap { it.episodes.orEmpty() }
                 .any { episode -> episode.hasSurroundSound() }
+    }
+
+    private fun Item.castMembers(): List<String> {
+        return cast.orEmpty()
+            .split(",")
+            .map { actor -> actor.trim() }
+            .filter { actor -> actor.isNotBlank() }
     }
 
     private fun Video.hasSurroundSound(): Boolean {
