@@ -20,10 +20,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -130,8 +133,16 @@ private fun DetailsContentBody(
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val pageHeight = maxHeight
+        val listState = rememberLazyListState()
+        val isMainPageVisible by remember {
+            derivedStateOf {
+                listState.firstVisibleItemIndex == MAIN_PAGE_INDEX &&
+                    listState.firstVisibleItemScrollOffset == 0
+            }
+        }
         KeepFocusedChildVisibleWithoutRepositioning {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
@@ -141,6 +152,8 @@ private fun DetailsContentBody(
                         state = state,
                         onAction = onAction,
                         seasonsPanelVisible = state.seasonsPanelVisible,
+                        recoverActionFocus = isMainPageVisible,
+                        scrollToMainPage = { listState.scrollToItem(index = 0) },
                     )
                 }
                 item(key = "info") {
@@ -202,6 +215,8 @@ private fun DetailsMainPage(
     state: DetailsScreenState.Content,
     onAction: (UIAction) -> Unit,
     seasonsPanelVisible: Boolean,
+    recoverActionFocus: Boolean,
+    scrollToMainPage: suspend () -> Unit,
 ) {
     Column(modifier = modifier) {
         VideoItemGridDetails(
@@ -220,6 +235,9 @@ private fun DetailsMainPage(
             isWatched = state.isWatched,
             onAction = onAction,
             seasonsPanelVisible = seasonsPanelVisible,
+            trailerVisible = state.trailerUrl != null,
+            recoverActionFocus = recoverActionFocus,
+            scrollToMainPage = scrollToMainPage,
         )
 
         Spacer(modifier = Modifier.weight(1F))
@@ -235,14 +253,18 @@ private fun ActionButtonsRow(
     isWatched: Boolean,
     onAction: (UIAction) -> Unit,
     seasonsPanelVisible: Boolean,
+    trailerVisible: Boolean,
+    recoverActionFocus: Boolean,
+    scrollToMainPage: suspend () -> Unit,
 ) {
     val firstButtonFocusRequester = remember { FocusRequester() }
 
     // Request a concrete child, not the Row container. TV focus can otherwise
     // stay on the previous card/details area and make OK look unresponsive.
-    LaunchedEffect(seasonsPanelVisible, buttons.size) {
+    LaunchedEffect(seasonsPanelVisible, trailerVisible, recoverActionFocus, buttons.size) {
         delay(DETAILS_BUTTONS_FOCUS_DELAY_MS)
-        if (!seasonsPanelVisible) {
+        if (!seasonsPanelVisible && !trailerVisible && recoverActionFocus) {
+            scrollToMainPage()
             runCatching { firstButtonFocusRequester.requestFocus() }
         }
     }
@@ -554,3 +576,4 @@ private fun DetailsContentSkeleton() {
 }
 
 private const val FIRST_PAGE_DESCRIPTION_LINES = 3
+private const val MAIN_PAGE_INDEX = 0
