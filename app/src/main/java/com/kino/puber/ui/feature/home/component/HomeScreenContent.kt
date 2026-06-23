@@ -79,7 +79,9 @@ private fun HomeContent(
     onCollectionClick: (Int, String) -> Unit,
 ) {
     var focusedSectionIndex by rememberSaveable { mutableIntStateOf(0) }
-    var focusedTarget by remember { mutableStateOf<HomeFocusedTarget?>(null) }
+    var focusedTarget by remember(state.heroItems, state.sections) {
+        mutableStateOf(state.defaultFocusedTarget())
+    }
 
     PositionFocusedItemInLazyLayout {
         LazyColumn(
@@ -194,6 +196,21 @@ private sealed interface HomeFocusedTarget {
     data class Hero(val id: Int) : HomeFocusedTarget
     data class Video(val item: VideoItemUIState) : HomeFocusedTarget
     data class Collection(val id: Int, val title: String) : HomeFocusedTarget
+}
+
+private fun HomeViewState.Content.defaultFocusedTarget(): HomeFocusedTarget? {
+    val hero = heroItems.firstOrNull()
+    if (hero != null) {
+        return HomeFocusedTarget.Hero(hero.id)
+    }
+
+    val section = sections.firstOrNull { it.items.isNotEmpty() } ?: return null
+    val item = section.items.first()
+    return if (section.type == HomeSectionType.Collections) {
+        HomeFocusedTarget.Collection(id = item.id, title = item.title)
+    } else {
+        HomeFocusedTarget.Video(item)
+    }
 }
 
 private fun Modifier.onSelectKeyClick(
