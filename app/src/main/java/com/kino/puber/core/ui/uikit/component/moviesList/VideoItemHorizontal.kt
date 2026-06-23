@@ -24,6 +24,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +55,7 @@ fun VideoItemHorizontal(
 ) {
     Card(
         modifier = modifier
+            .onSelectKeyClick(onClick)
             .height(PuberTheme.Defaults.HorizontalVideoItemHeight)
             .aspectRatio(PuberTheme.Defaults.HorizontalVideoItemAspectRatio),
         scale = CardDefaults.scale(pressedScale = 1f, focusedScale = 1f),
@@ -172,6 +178,26 @@ fun VideoItemHorizontal(
             }
         }
     }
+}
+
+private fun Modifier.onSelectKeyClick(onClick: () -> Unit): Modifier {
+    return onPreviewKeyEvent { event ->
+        if (!event.key.isSelectKey()) {
+            return@onPreviewKeyEvent false
+        }
+        when (event.type) {
+            KeyEventType.KeyDown -> true
+            KeyEventType.KeyUp -> {
+                onClick()
+                true
+            }
+            else -> false
+        }
+    }
+}
+
+private fun Key.isSelectKey(): Boolean {
+    return this == Key.DirectionCenter || this == Key.Enter
 }
 
 // region Previews
