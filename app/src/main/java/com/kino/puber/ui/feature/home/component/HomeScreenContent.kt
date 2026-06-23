@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -24,6 +25,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -73,10 +79,23 @@ private fun HomeContent(
     onCollectionClick: (Int, String) -> Unit,
 ) {
     var focusedSectionIndex by rememberSaveable { mutableIntStateOf(0) }
+    var focusedTarget by remember { mutableStateOf<HomeFocusedTarget?>(null) }
 
     PositionFocusedItemInLazyLayout {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .onSelectKeyClick(
+                    canHandle = { focusedTarget != null },
+                    onClick = {
+                        when (val target = focusedTarget) {
+                            is HomeFocusedTarget.Collection -> onCollectionClick(target.id, target.title)
+                            is HomeFocusedTarget.Hero -> onHeroClick(target.id)
+                            is HomeFocusedTarget.Video -> onAction(CommonAction.ItemSelected(target.item))
+                            null -> Unit
+                        }
+                    },
+                ),
             contentPadding = PaddingValues(bottom = 32.dp),
         ) {
             if (state.heroItems.isNotEmpty()) {
@@ -84,6 +103,9 @@ private fun HomeContent(
                     HeroCarousel(
                         items = state.heroItems,
                         onItemClick = onHeroClick,
+                        onFocusedItemChanged = { id ->
+                            focusedTarget = HomeFocusedTarget.Hero(id)
+                        },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -110,6 +132,13 @@ private fun HomeContent(
                                     onAction(CommonAction.ItemSelected(item))
                                 }
                             },
+                            onItemFocused = { item ->
+                                focusedTarget = if (section.type == HomeSectionType.Collections) {
+                                    HomeFocusedTarget.Collection(id = item.id, title = item.title)
+                                } else {
+                                    HomeFocusedTarget.Video(item)
+                                }
+                            },
                         )
                     }
                 }
@@ -124,6 +153,7 @@ private fun HomeSectionRow(
     isTargetRow: Boolean,
     onSectionFocused: () -> Unit,
     onItemClick: (VideoItemUIState) -> Unit,
+    onItemFocused: (VideoItemUIState) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val savedItemFocusRequester = remember { FocusRequester() }
@@ -150,6 +180,7 @@ private fun HomeSectionRow(
                         if (it.isFocused) {
                             focusedItemIndex = index
                             onSectionFocused()
+                            onItemFocused(item)
                         }
                     },
                 state = item,
@@ -157,4 +188,37 @@ private fun HomeSectionRow(
             )
         }
     }
+}
+
+private sealed interface HomeFocusedTarget {
+    data class Hero(val id: Int) : HomeFocusedTarget
+    data class Video(val item: VideoItemUIState) : HomeFocusedTarget
+    data class Collection(val id: Int, val title: String) : HomeFocusedTarget
+}
+
+private fun Modifier.onSelectKeyClick(
+    canHandle: () -> Boolean,
+    onClick: () -> Unit,
+): Modifier {
+    return onPreviewKeyEvent { event ->
+        if (!event.key.isSelectKey()) {
+            return@onPreviewKeyEvent false
+        }
+        when (event.type) {
+            KeyEventType.KeyDown -> canHandle()
+            KeyEventType.KeyUp -> {
+                if (canHandle()) {
+                    onClick()
+                    true
+                } else {
+                    false
+                }
+            }
+            else -> false
+        }
+    }
+}
+
+private fun Key.isSelectKey(): Boolean {
+    return this == Key.DirectionCenter || this == Key.Enter
 }
