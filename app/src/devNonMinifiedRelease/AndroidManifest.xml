@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <receiver
+            android:name=".profile.BaselineProfileAuthReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.kino.puber.profile.SEED_AUTH" />
+            </intent-filter>
+        </receiver>
+
+        <provider
+            android:name=".profile.BaselineProfileAuthProvider"
+            android:authorities="${applicationId}.profile.auth"
+            android:exported="true" />
+    </application>
+
+</manifest>
