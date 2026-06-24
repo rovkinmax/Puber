@@ -185,10 +185,10 @@ internal class DetailsVM(
         }
         launch {
             try {
-                val item = interactor.setMovieWatched(params.itemId, watched = !previous)
-                currentItem = item
+                val update = interactor.setMovieWatched(params.itemId, watched = !previous)
+                currentItem = update.item
                 updateViewState<DetailsScreenState.Content> {
-                    copy(isWatched = mapper.map(item, isInWatchlist = isInWatchlist).isWatched)
+                    copy(isWatched = update.isWatched)
                 }
                 val messageRes = if (!previous) {
                     R.string.video_details_watched_added

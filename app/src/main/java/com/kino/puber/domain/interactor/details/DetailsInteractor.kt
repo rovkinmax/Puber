@@ -42,9 +42,19 @@ internal class DetailsInteractor(
         return itemDetailsRepository.refresh(id)
     }
 
-    suspend fun setMovieWatched(id: Int, watched: Boolean): Item {
-        api.toggleWatchingStatus(id = id, status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS).getOrThrow()
-        return itemDetailsRepository.refresh(id)
+    suspend fun setMovieWatched(id: Int, watched: Boolean): MovieWatchedUpdate {
+        val response = api.toggleWatchingStatus(
+            id = id,
+            status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS,
+        ).getOrThrow()
+        return MovieWatchedUpdate(
+            item = itemDetailsRepository.refresh(id),
+            isWatched = when {
+                response.watched != null -> response.watched == WATCHED_STATUS
+                response.watching?.status != null -> response.watching.status == WATCHED_STATUS
+                else -> watched
+            },
+        )
     }
 
     private companion object {
@@ -52,3 +62,8 @@ internal class DetailsInteractor(
         const val UNWATCHED_STATUS = 0
     }
 }
+
+internal data class MovieWatchedUpdate(
+    val item: Item,
+    val isWatched: Boolean,
+)
