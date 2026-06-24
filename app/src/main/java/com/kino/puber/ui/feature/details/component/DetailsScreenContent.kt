@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,6 +45,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -92,6 +94,7 @@ private const val CHEVRON_ALPHA = 0.5F
 private const val INFO_DESCRIPTION_MAX_LINES = 4
 private const val INFO_ROW_MAX_LINES = 2
 private const val INFO_CHIP_MAX_LINES = 1
+private val INFO_CHIP_FOCUS_SAFE_PADDING = 8.dp
 private val DETAILS_PAGE_PEEK_HEIGHT = 32.dp
 
 @OptIn(UnstableApi::class)
@@ -568,6 +571,12 @@ private fun DetailsCastRow(
 ) {
     if (info.castMembers.isEmpty()) return
 
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val safeScrollOffset = with(LocalDensity.current) {
+        -INFO_CHIP_FOCUS_SAFE_PADDING.roundToPx()
+    }
+
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -578,11 +587,17 @@ private fun DetailsCastRow(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64F),
         )
         LazyRow(
+            state = listState,
             modifier = Modifier
                 .focusRestorer(firstItemFocusRequester)
                 .focusGroup(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(end = 64.dp),
+            contentPadding = PaddingValues(
+                start = INFO_CHIP_FOCUS_SAFE_PADDING,
+                top = INFO_CHIP_FOCUS_SAFE_PADDING,
+                end = 64.dp,
+                bottom = INFO_CHIP_FOCUS_SAFE_PADDING,
+            ),
         ) {
             itemsIndexed(info.castMembers, key = { index, actor -> "$index:$actor" }) { index, actor ->
                 val itemModifier = if (index == 0) {
@@ -593,6 +608,16 @@ private fun DetailsCastRow(
                 DetailsInfoChip(
                     text = actor,
                     modifier = itemModifier
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                coroutineScope.launch {
+                                    listState.scrollToItem(
+                                        index = (index - 1).coerceAtLeast(0),
+                                        scrollOffset = safeScrollOffset,
+                                    )
+                                }
+                            }
+                        }
                         .onDirectionKey(Key.DirectionUp, onKey = onPreviousPageRequested)
                         .onDirectionKey(Key.DirectionDown, enabled = hasNextPage, onKey = onNextPageRequested),
                 )
