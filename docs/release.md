@@ -113,3 +113,14 @@ Run:
 ./gradlew :app:testProdDebugUnitTest
 ./gradlew :app:assembleProdRelease
 ```
+
+To sanity-check that the generated profile is available to the benchmark APK on an emulator, run:
+
+```bash
+./gradlew :baselineprofile:connectedDevBenchmarkReleaseAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.kino.puber.baselineprofile.StartupBenchmarks#startupWithProfile \
+  -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR
+```
+
+Use this only as a packaging/install check. Startup timing from an emulator is not representative; use a physical device
+for meaningful benchmark numbers.
