@@ -315,6 +315,13 @@ data class WatchingStatus(
 )
 
 @Serializable
+data class WatchingToggleResponse(
+    val status: Int,
+    val watched: Int? = null,
+    val watching: WatchingInfo? = null,
+)
+
+@Serializable
 data class WatchlistToggleResponse(
     val status: Int,
     val watching: Boolean,
