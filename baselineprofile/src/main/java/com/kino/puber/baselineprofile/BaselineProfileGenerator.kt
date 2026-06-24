@@ -138,7 +138,7 @@ class BaselineProfileGenerator {
             }
         )
 
-        check(!output.contains("result=2") && !output.contains("result=3") && !output.contains("Error", true)) {
+        check(output.contains("result=-1")) {
             "Failed to seed baseline profile auth state. Broadcast output: $output"
         }
     }
