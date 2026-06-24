@@ -41,7 +41,7 @@ internal fun TopTabBar(
     tabs: List<MainTab>,
     selectedIndex: Int,
     tabFocusRequesters: List<FocusRequester>,
-    contentFocusRequester: FocusRequester,
+    onContentFocusRequested: () -> Unit,
     onTabFocused: (Int) -> Unit,
     onTabClick: () -> Unit,
     onSearchClick: () -> Unit,
@@ -80,7 +80,7 @@ internal fun TopTabBar(
                         onClick = onTabClick,
                         modifier = Modifier
                             .focusRequester(tabFocusRequesters[index])
-                            .onDownKey { contentFocusRequester.requestFocus() },
+                            .onDownKey(onContentFocusRequested),
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
