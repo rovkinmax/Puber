@@ -119,7 +119,7 @@ android {
                     storeFile = keystoreFile
                     storePassword = System.getenv("STOREPASS")
                     keyAlias = System.getenv("KEYALIAS") ?: "puber"
-                    keyPassword = System.getenv("STOREPASS")
+                    keyPassword = System.getenv("KEYPASS") ?: System.getenv("STOREPASS")
                 }
                 // 3. CI: release.jks already present (e.g. copied in CI step) + env vars
                 !System.getenv("STOREPASS").isNullOrEmpty() -> {
