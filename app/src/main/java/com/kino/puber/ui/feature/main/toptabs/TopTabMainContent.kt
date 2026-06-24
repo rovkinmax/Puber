@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -49,12 +50,14 @@ internal fun TopTabMainContent(
 ) {
     val tabRowFocus = remember { FocusRequester() }
     val contentFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     val tabFocusRequesters = remember(state.tabs.size) {
         List(state.tabs.size) { FocusRequester() }
     }
     val selectedIndex = state.tabs.indexOfFirst { it.isSelected }.coerceAtLeast(0)
 
     var focusedTabIndex by rememberSaveable { mutableIntStateOf(selectedIndex) }
+    var lastFocusedRegion by rememberSaveable { mutableStateOf(TopTabFocusedRegion.Tabs) }
     var isContentFocused by remember { mutableStateOf(false) }
 
     SyncSelectedTabEffect(selectedIndex) { focusedTabIndex = selectedIndex }
@@ -68,6 +71,9 @@ internal fun TopTabMainContent(
         focusedTabIndex = focusedTabIndex,
         tabFocusRequesters = tabFocusRequesters,
         tabRowFocus = tabRowFocus,
+        contentFocus = contentFocus,
+        focusManager = focusManager,
+        lastFocusedRegion = lastFocusedRegion,
     )
     val isOnHome = state.tabs.getOrNull(focusedTabIndex)?.type == TabType.Home
 
@@ -77,6 +83,7 @@ internal fun TopTabMainContent(
         state = state,
         tabRowFocus = tabRowFocus,
         tabFocusRequesters = tabFocusRequesters,
+        onTabsFocused = { lastFocusedRegion = TopTabFocusedRegion.Tabs },
         onHomeFocused = { focusedTabIndex = it },
         onAction = onAction,
     )
@@ -85,18 +92,28 @@ internal fun TopTabMainContent(
         tabRouter = tabRouter,
         tabAppRouterHolder = tabAppRouterHolder,
     ) {
+        val requestContentFocus = {
+            lastFocusedRegion = TopTabFocusedRegion.Content
+            contentFocus.requestFocus()
+            Unit
+        }
+
         Column(Modifier.fillMaxSize()) {
             TopTabBar(
                 tabs = state.tabs,
                 selectedIndex = focusedTabIndex,
                 tabFocusRequesters = tabFocusRequesters,
-                contentFocusRequester = contentFocus,
+                onContentFocusRequested = requestContentFocus,
                 onTabFocused = { index -> focusedTabIndex = index },
-                onTabClick = { contentFocus.requestFocus() },
+                onTabClick = requestContentFocus,
                 onSearchClick = onSearchClick,
                 onSettingsClick = onSettingsClick,
                 modifier = Modifier
-                    .onFocusChanged { if (it.hasFocus) isContentFocused = false },
+                    .onFocusChanged {
+                        if (it.hasFocus) {
+                            isContentFocused = false
+                        }
+                    },
                 tabRowModifier = Modifier
                     .focusRequester(tabRowFocus),
             )
@@ -105,7 +122,11 @@ internal fun TopTabMainContent(
                 TopTabContentBox(
                     contentFocus = contentFocus,
                     tabRowFocus = tabRowFocus,
-                    onFocused = { isContentFocused = true },
+                    onExitToTabs = { lastFocusedRegion = TopTabFocusedRegion.Tabs },
+                    onFocused = {
+                        lastFocusedRegion = TopTabFocusedRegion.Content
+                        isContentFocused = true
+                    },
                 )
             }
         }
@@ -141,11 +162,40 @@ private fun InitialTabFocusEffect(
     focusedTabIndex: Int,
     tabFocusRequesters: List<FocusRequester>,
     tabRowFocus: FocusRequester,
+    contentFocus: FocusRequester,
+    focusManager: FocusManager,
+    lastFocusedRegion: TopTabFocusedRegion,
 ) {
     LaunchedEffect(Unit) {
         delay(INITIAL_TAB_FOCUS_DELAY_MS)
-        tabFocusRequesters.getOrNull(focusedTabIndex)?.requestFocus()
-            ?: tabRowFocus.requestFocus()
+        when (lastFocusedRegion) {
+            TopTabFocusedRegion.Tabs -> tabFocusRequesters.getOrNull(focusedTabIndex)?.requestFocus()
+                ?: tabRowFocus.requestFocus()
+            TopTabFocusedRegion.Content -> restoreContentChildFocus(
+                contentFocus = contentFocus,
+                focusManager = focusManager,
+            )
+        }
+    }
+}
+
+private suspend fun restoreContentChildFocus(
+    contentFocus: FocusRequester,
+    focusManager: FocusManager,
+) {
+    repeat(CONTENT_FOCUS_RESTORE_ATTEMPTS) {
+        if (contentFocus.restoreFocusedChild()) {
+            return
+        }
+        val contentFocused = contentFocus.requestFocus()
+        delay(CONTENT_CHILD_FOCUS_DELAY_MS)
+        if (contentFocus.restoreFocusedChild()) {
+            return
+        }
+        if (contentFocused && focusManager.moveFocus(FocusDirection.Down)) {
+            return
+        }
+        delay(CONTENT_FOCUS_RESTORE_RETRY_DELAY_MS)
     }
 }
 
@@ -156,13 +206,16 @@ private fun TopTabBackHandler(
     state: MainViewState,
     tabRowFocus: FocusRequester,
     tabFocusRequesters: List<FocusRequester>,
+    onTabsFocused: () -> Unit,
     onHomeFocused: (Int) -> Unit,
     onAction: (UIAction) -> Unit,
 ) {
     BackHandler(enabled = enabled) {
         if (isContentFocused) {
+            onTabsFocused()
             tabRowFocus.requestFocus()
         } else {
+            onTabsFocused()
             focusHomeTab(
                 state = state,
                 tabFocusRequesters = tabFocusRequesters,
@@ -192,6 +245,7 @@ private fun focusHomeTab(
 private fun ColumnScope.TopTabContentBox(
     contentFocus: FocusRequester,
     tabRowFocus: FocusRequester,
+    onExitToTabs: () -> Unit,
     onFocused: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -212,9 +266,18 @@ private fun ColumnScope.TopTabContentBox(
                 }
             }
             .focusProperties {
+                enter = {
+                    if (contentFocus.restoreFocusedChild()) {
+                        FocusRequester.Cancel
+                    } else {
+                        FocusRequester.Default
+                    }
+                }
                 @Suppress("DEPRECATION")
                 exit = { direction ->
+                    contentFocus.saveFocusedChild()
                     if (direction == FocusDirection.Up) {
+                        onExitToTabs()
                         tabRowFocus
                     } else {
                         FocusRequester.Default
@@ -231,3 +294,10 @@ private fun ColumnScope.TopTabContentBox(
 private const val TAB_SELECTION_DELAY_MS = 300L
 private const val INITIAL_TAB_FOCUS_DELAY_MS = 100L
 private const val CONTENT_CHILD_FOCUS_DELAY_MS = 16L
+private const val CONTENT_FOCUS_RESTORE_ATTEMPTS = 5
+private const val CONTENT_FOCUS_RESTORE_RETRY_DELAY_MS = 50L
+
+private enum class TopTabFocusedRegion {
+    Tabs,
+    Content,
+}
