@@ -26,11 +26,11 @@ internal data class HomeSectionState(
 
 internal enum class HomeSectionType {
     ContinueWatching,
+    WatchLater,
+    Bookmarks,
     Fresh,
     PopularMovies,
     PopularSeries,
-    WatchLater,
-    Bookmarks,
     Collections,
     Hot,
 }
