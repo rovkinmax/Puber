@@ -5,11 +5,13 @@ import androidx.annotation.OptIn
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.cache.CacheDataSource
@@ -29,6 +31,8 @@ import com.kino.puber.R
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.BufferPreset
+import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
+import java.util.Locale
 
 internal interface PlaybackControl {
     interface Callback {
@@ -65,7 +69,7 @@ internal interface PlaybackControl {
     fun seekTo(positionMs: Long)
     fun setSpeed(speed: Float)
     fun selectAudioTrack(groupIndex: Int)
-    fun selectSubtitle(index: Int)
+    fun selectSubtitle(track: SubtitleTrackUIState?)
     fun release()
 }
 
@@ -80,6 +84,7 @@ internal class PlaybackController(
     private var callback: PlaybackControl.Callback? = null
     private var ac3FallbackApplied = false
     private var useFastDns = true
+    private var pendingSubtitleTrack: SubtitleTrackUIState? = null
 
     @OptIn(UnstableApi::class)
     private val bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
@@ -106,6 +111,11 @@ internal class PlaybackController(
                 Player.STATE_BUFFERING -> notifyPlaybackState()
                 else -> {}
             }
+        }
+
+        override fun onTracksChanged(tracks: Tracks) {
+            notifyTracksUpdated()
+            applyPendingSubtitleSelection()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -253,29 +263,20 @@ internal class PlaybackController(
             .build()
     }
 
-    override fun selectSubtitle(index: Int) {
+    override fun selectSubtitle(track: SubtitleTrackUIState?) {
         val player = exoPlayer ?: return
-        if (index == 0) {
+        if (track == null || track.url.isEmpty()) {
+            pendingSubtitleTrack = null
             player.trackSelectionParameters = player.trackSelectionParameters
                 .buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                 .build()
-        } else {
-            val textGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-            val targetGroup = textGroups.getOrNull(index - 1)
-
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                .apply {
-                    if (targetGroup != null) {
-                        setOverrideForType(
-                            TrackSelectionOverride(targetGroup.mediaTrackGroup, 0)
-                        )
-                    }
-                }
-                .build()
+            return
         }
+
+        pendingSubtitleTrack = track
+        applySubtitleTrackSelection(track)
     }
 
     override fun release() {
@@ -314,15 +315,30 @@ internal class PlaybackController(
         val builder = MediaItem.Builder().setUri(streamUrl)
         if (!subtitles.isNullOrEmpty()) {
             val subtitleConfigs = subtitles.map { sub ->
+                val stableKey = sub.url.stableSubtitleKey()
                 MediaItem.SubtitleConfiguration.Builder(sub.url.toUri())
-                    .setMimeType(MimeTypes.APPLICATION_SUBRIP)
+                    .setMimeType(subtitleMimeType(sub.url))
                     .setLanguage(sub.lang)
-                    .setLabel(sub.lang)
+                    .setLabel(stableKey)
+                    .setId(stableKey)
                     .build()
             }
             builder.setSubtitleConfigurations(subtitleConfigs)
         }
         return builder.build()
+    }
+
+    private fun subtitleMimeType(url: String): String {
+        val normalizedUrl = url
+            .substringBefore('?')
+            .substringBefore('#')
+            .lowercase(Locale.ROOT)
+        return when {
+            normalizedUrl.endsWith(".vtt") || normalizedUrl.endsWith(".webvtt") -> MimeTypes.TEXT_VTT
+            normalizedUrl.endsWith(".ass") || normalizedUrl.endsWith(".ssa") -> MimeTypes.TEXT_SSA
+            normalizedUrl.endsWith(".ttml") || normalizedUrl.endsWith(".xml") -> MimeTypes.APPLICATION_TTML
+            else -> MimeTypes.APPLICATION_SUBRIP
+        }
     }
 
     @OptIn(UnstableApi::class)
@@ -427,6 +443,93 @@ internal class PlaybackController(
         val selectedIndex = audioGroups.indexOfFirst { it.isSelected }.coerceAtLeast(0)
         callback?.onTracksUpdated(audioTracks, selectedIndex)
     }
+
+    private fun applyPendingSubtitleSelection() {
+        pendingSubtitleTrack?.let(::applySubtitleTrackSelection)
+    }
+
+    private fun applySubtitleTrackSelection(track: SubtitleTrackUIState) {
+        val player = exoPlayer ?: return
+        val stableKey = track.url.stableSubtitleKey()
+        val textGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        val target = findTextTrack(track, stableKey, textGroups)
+        val builder = player.trackSelectionParameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setPreferredTextLanguage(track.language)
+        if (target != null) {
+            builder.setOverrideForType(
+                TrackSelectionOverride(target.group.mediaTrackGroup, target.trackIndex),
+            )
+        }
+        player.trackSelectionParameters = builder.build()
+    }
+
+    private fun findTextTrack(
+        track: SubtitleTrackUIState,
+        stableKey: String,
+        textGroups: List<Tracks.Group>,
+    ): TextTrackSelection? {
+        return findTextTrackBy(textGroups) { format ->
+            format.id == track.url
+        } ?: findTextTrackBy(textGroups) { format ->
+            format.id == stableKey || format.label == stableKey
+        } ?: findTextTrackBySubtitleIndex(textGroups, track.index)
+        ?: findUnambiguousTextTrackByLanguage(textGroups, track.language)
+    }
+
+    // Media3 may not expose SubtitleConfiguration id/label for every source type.
+    // The current track list still preserves the subtitle configuration order.
+    private fun findTextTrackBySubtitleIndex(
+        textGroups: List<Tracks.Group>,
+        subtitleIndex: Int,
+    ): TextTrackSelection? {
+        val targetIndex = subtitleIndex - 1
+        if (targetIndex < 0) return null
+        return textGroups
+            .flatMap { group ->
+                (0 until group.length).map { trackIndex ->
+                    TextTrackSelection(group = group, trackIndex = trackIndex)
+                }
+            }
+            .getOrNull(targetIndex)
+    }
+
+    private fun findUnambiguousTextTrackByLanguage(
+        textGroups: List<Tracks.Group>,
+        language: String,
+    ): TextTrackSelection? {
+        if (language.isEmpty()) return null
+        val matches = textGroups.flatMap { group ->
+            (0 until group.length).mapNotNull { trackIndex ->
+                group.getTrackFormat(trackIndex).takeIf { format ->
+                    format.language == language
+                }?.let {
+                    TextTrackSelection(group = group, trackIndex = trackIndex)
+                }
+            }
+        }
+        return matches.singleOrNull()
+    }
+
+    private fun findTextTrackBy(
+        textGroups: List<Tracks.Group>,
+        predicate: (Format) -> Boolean,
+    ): TextTrackSelection? {
+        return textGroups.firstNotNullOfOrNull { group ->
+            (0 until group.length).firstNotNullOfOrNull { trackIndex ->
+                group.getTrackFormat(trackIndex).takeIf(predicate)?.let {
+                    TextTrackSelection(group = group, trackIndex = trackIndex)
+                }
+            }
+        }
+    }
+
+    private data class TextTrackSelection(
+        val group: Tracks.Group,
+        val trackIndex: Int,
+    )
 
     private companion object {
         const val MIN_DURATION_FOR_QUALITY_INCREASE_MS = 10_000

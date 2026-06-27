@@ -169,7 +169,6 @@ internal class PlayerVM(
             files = resolved.files,
             subtitles = resolved.subtitles,
         )
-
         val resumeDialog = if (!forceFromBeginning) buildResumeDialog(resolved.watchingTime) else null
         val contentState = contentStateFactory.build(
             item = item,
@@ -228,6 +227,7 @@ internal class PlayerVM(
         val preferredLabel = interactor.getPreferredAudioLabel(params.itemId)
         val preferredLang = interactor.getPreferredAudioLang(params.itemId)
         val subtitleLang = interactor.getPreferredSubtitleLang(params.itemId)
+        val subtitleUrl = interactor.getPreferredSubtitleUrl(params.itemId)
         val content = (stateValue as? PlayerViewState.Content)?.content ?: return
         val audioIndex = audioTrackPreferenceResolver.findAudioTrackIndex(
             tracks = content.audioTracks,
@@ -236,15 +236,16 @@ internal class PlayerVM(
         )
 
         if (audioIndex >= 0) {
-            applyAudioTrackSelection(audioIndex)
+            applyAudioTrackSelection(audioIndex, persist = false)
         }
 
         val subtitleIndex = audioTrackPreferenceResolver.findSubtitleTrackIndex(
             tracks = content.subtitleTracks,
             preferredLang = subtitleLang,
+            preferredUrl = subtitleUrl,
         )
         if (subtitleIndex >= 0) {
-            applySubtitleSelection(subtitleIndex)
+            applySubtitleSelection(subtitleIndex, persist = false)
         }
     }
 
@@ -403,20 +404,26 @@ internal class PlayerVM(
         }
     }
 
-    private fun applyAudioTrackSelection(index: Int) {
+    private fun applyAudioTrackSelection(index: Int, persist: Boolean = true) {
         updateContent {
             copy(selectedAudioTrackIndex = index)
         }
         playbackController.selectAudioTrack(index)
-        saveTrackPreferences()
+        if (persist) {
+            saveTrackPreferences()
+        }
     }
 
-    private fun applySubtitleSelection(index: Int) {
+    private fun applySubtitleSelection(index: Int, persist: Boolean = true) {
+        val currentState = (stateValue as? PlayerViewState.Content)?.content ?: return
+        val subtitle = currentState.subtitleTracks.getOrNull(index) ?: return
         updateContent {
             copy(selectedSubtitleIndex = index)
         }
-        playbackController.selectSubtitle(index)
-        saveTrackPreferences()
+        playbackController.selectSubtitle(subtitle)
+        if (persist) {
+            saveTrackPreferences()
+        }
     }
 
     private fun selectSoundMode(index: Int) {
@@ -901,6 +908,7 @@ internal class PlayerVM(
             audioLang = audioTrack?.language?.takeIf { it.isNotEmpty() },
             audioLabel = audioTrack?.label?.takeIf { it.isNotEmpty() },
             subtitleLang = subtitle?.language?.takeIf { it.isNotEmpty() },
+            subtitleUrl = subtitle?.url?.takeIf { it.isNotEmpty() },
         )
     }
 

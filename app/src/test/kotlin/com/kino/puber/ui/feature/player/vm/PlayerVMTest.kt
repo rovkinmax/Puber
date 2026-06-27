@@ -87,11 +87,12 @@ class PlayerVMTest {
         every { interactor.getPreferredAudioLabel(any()) } returns null
         every { interactor.getPreferredAudioLang(any()) } returns null
         every { interactor.getPreferredSubtitleLang(any()) } returns null
+        every { interactor.getPreferredSubtitleUrl(any()) } returns null
         every { interactor.isDebugOverlayEnabled() } returns false
         every { interactor.getSubtitleSize() } returns SubtitleSize.MEDIUM
         every { interactor.getBufferPreset() } returns BufferPreset.AUTO
         every { interactor.isFastDnsEnabled() } returns true
-        every { interactor.saveTrackPreferences(any(), any(), any(), any()) } returns Unit
+        every { interactor.saveTrackPreferences(any(), any(), any(), any(), any()) } returns Unit
         every { interactor.findNextEpisode(any(), any(), any()) } returns null
         every { interactor.findPreviousEpisode(any(), any(), any()) } returns null
         coEvery { skipSegmentInteractor.loadSegments(any(), any(), any()) } returns emptyList()
@@ -202,7 +203,7 @@ class PlayerVMTest {
     @Test
     fun selectTrack_savesLangToPrefs() {
         startedVM().onAction(PlayerAction.SelectAudioTrack(1))
-        verify { interactor.saveTrackPreferences(42, "rus", any(), any()) }
+        verify { interactor.saveTrackPreferences(42, "rus", any(), any(), any()) }
     }
 
     // endregion
@@ -506,7 +507,72 @@ class PlayerVMTest {
         val vm = startedVM()
         vm.onAction(PlayerAction.SelectSubtitle(1))
         assertEquals(1, contentState(vm).selectedSubtitleIndex)
-        verify { playbackController.selectSubtitle(1) }
+        verify { playbackController.selectSubtitle(testSubtitleTracks[1]) }
+    }
+
+    @Test
+    fun selectSubtitleOff_disablesSubtitleTrack() {
+        val vm = startedVM()
+        vm.onAction(PlayerAction.SelectSubtitle(0))
+        assertEquals(0, contentState(vm).selectedSubtitleIndex)
+        verify { playbackController.selectSubtitle(testSubtitleTracks[0]) }
+    }
+
+    @Test
+    fun tracksUpdated_restoresPreferredSubtitleByUrl_beforeLanguage() {
+        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
+        every { interactor.getPreferredSubtitleUrl(42) } returns "https://test/subtitles/rus-forced.vtt"
+        val vm = startedVM()
+
+        val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
+        callbackSlot.captured.onTracksUpdated(tracks, 0)
+
+        verify { playbackController.selectSubtitle(testSubtitleTracks[2]) }
+        assertEquals(2, contentState(vm).selectedSubtitleIndex)
+    }
+
+    @Test
+    fun tracksUpdated_restoresPreferredSubtitleByStableUrl_whenSignedUrlChanges() {
+        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
+        every { interactor.getPreferredSubtitleUrl(42) } returns
+                "https://old-cdn.example/pd/expired-token/subtitles/rus-forced.vtt?e=1"
+        val vm = startedVM()
+
+        val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
+        callbackSlot.captured.onTracksUpdated(tracks, 0)
+
+        verify { playbackController.selectSubtitle(testSubtitleTracks[2]) }
+        assertEquals(2, contentState(vm).selectedSubtitleIndex)
+    }
+
+    @Test
+    fun tracksUpdated_doesNotRestoreAmbiguousSubtitleLanguage_whenUrlIsMissing() {
+        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
+        every { interactor.getPreferredSubtitleUrl(42) } returns null
+        val vm = startedVM()
+
+        val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
+        callbackSlot.captured.onTracksUpdated(tracks, 0)
+
+        verify(exactly = 0) { playbackController.selectSubtitle(any()) }
+        assertEquals(0, contentState(vm).selectedSubtitleIndex)
+    }
+
+    @Test
+    fun tracksUpdated_restoreDoesNotRewritePreferencesFromIntermediateState() {
+        every { interactor.getPreferredAudioLang(42) } returns "rus"
+        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
+        every { interactor.getPreferredSubtitleUrl(42) } returns "https://test/subtitles/rus-forced.vtt"
+        val vm = startedVM()
+
+        val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
+        callbackSlot.captured.onTracksUpdated(tracks, 0)
+
+        verify { playbackController.selectAudioTrack(1) }
+        verify { playbackController.selectSubtitle(testSubtitleTracks[2]) }
+        verify(exactly = 0) { interactor.saveTrackPreferences(any(), any(), any(), any(), any()) }
+        assertEquals(1, contentState(vm).selectedAudioTrackIndex)
+        assertEquals(2, contentState(vm).selectedSubtitleIndex)
     }
 
     // endregion
@@ -642,13 +708,24 @@ class PlayerVMTest {
         hasPrevious = true, seasonNumber = 1, episodeNumber = 1,
     )
 
+    private val testSubtitleTracks = listOf(
+        SubtitleTrackUIState(index = 0, label = "Off", language = "", url = ""),
+        SubtitleTrackUIState(index = 1, label = "Russian", language = "rus", url = "https://test/subtitles/rus.vtt"),
+        SubtitleTrackUIState(
+            index = 2,
+            label = "Russian forced",
+            language = "rus",
+            url = "https://test/subtitles/rus-forced.vtt",
+        ),
+    )
+
     private val testContentState = PlayerContentState(
         title = "Breaking Bad", subtitle = "S1E1", isPlaying = true,
         currentPosition = 0L, duration = 2_400_000L, bufferedPosition = 0L,
         controlsVisible = true, controlsFocusTarget = null,
         activePanel = ActivePanel.None, seekIndicator = null, playPauseIndicator = null,
         audioTracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus")),
-        selectedAudioTrackIndex = 0, subtitleTracks = emptyList(), selectedSubtitleIndex = 0,
+        selectedAudioTrackIndex = 0, subtitleTracks = testSubtitleTracks, selectedSubtitleIndex = 0,
         soundModes = emptyList(), selectedSoundModeIndex = 0, subtitleSize = SubtitleSize.MEDIUM,
         qualities = emptyList(), selectedQualityIndex = 0,
         speeds = emptyList(), selectedSpeedIndex = 0,

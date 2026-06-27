@@ -16,11 +16,21 @@ class PlayerPreferencesRepository(context: Context) {
         return prefs.getString("${KEY_SUBTITLE_LANG_PREFIX}$itemId", null)
     }
 
+    fun getPreferredSubtitleUrl(itemId: Int): String? {
+        return prefs.getString("${KEY_SUBTITLE_URL_PREFIX}$itemId", null)
+    }
+
     fun getPreferredAudioLabel(itemId: Int): String? {
         return prefs.getString("${KEY_AUDIO_LABEL_PREFIX}$itemId", null)
     }
 
-    fun saveTrackPreferences(itemId: Int, audioLang: String?, audioLabel: String?, subtitleLang: String?) {
+    fun saveTrackPreferences(
+        itemId: Int,
+        audioLang: String?,
+        audioLabel: String?,
+        subtitleLang: String?,
+        subtitleUrl: String?,
+    ) {
         prefs.edit().apply {
             if (audioLang != null) {
                 putString("${KEY_AUDIO_LANG_PREFIX}$itemId", audioLang)
@@ -36,6 +46,11 @@ class PlayerPreferencesRepository(context: Context) {
                 putString("${KEY_SUBTITLE_LANG_PREFIX}$itemId", subtitleLang)
             } else {
                 remove("${KEY_SUBTITLE_LANG_PREFIX}$itemId")
+            }
+            if (subtitleUrl != null) {
+                putString("${KEY_SUBTITLE_URL_PREFIX}$itemId", subtitleUrl)
+            } else {
+                remove("${KEY_SUBTITLE_URL_PREFIX}$itemId")
             }
             apply()
         }
@@ -86,6 +101,7 @@ class PlayerPreferencesRepository(context: Context) {
         const val KEY_AUDIO_LANG_PREFIX = "audio_lang_"
         const val KEY_AUDIO_LABEL_PREFIX = "audio_label_"
         const val KEY_SUBTITLE_LANG_PREFIX = "subtitle_lang_"
+        const val KEY_SUBTITLE_URL_PREFIX = "subtitle_url_"
         const val KEY_SUBTITLE_SIZE = "subtitle_size"
         const val KEY_SKIP_INTRO = "skip_intro_enabled"
         const val KEY_SKIP_RECAP = "skip_recap_enabled"

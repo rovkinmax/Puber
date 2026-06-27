@@ -232,12 +232,23 @@ internal class PlayerInteractor(
         return playerPreferencesRepository.getPreferredSubtitleLang(itemId)
     }
 
-    fun saveTrackPreferences(itemId: Int, audioLang: String?, audioLabel: String?, subtitleLang: String?) {
+    fun getPreferredSubtitleUrl(itemId: Int): String? {
+        return playerPreferencesRepository.getPreferredSubtitleUrl(itemId)
+    }
+
+    fun saveTrackPreferences(
+        itemId: Int,
+        audioLang: String?,
+        audioLabel: String?,
+        subtitleLang: String?,
+        subtitleUrl: String?,
+    ) {
         playerPreferencesRepository.saveTrackPreferences(
             itemId = itemId,
             audioLang = audioLang,
             audioLabel = audioLabel,
             subtitleLang = subtitleLang,
+            subtitleUrl = subtitleUrl,
         )
     }
 

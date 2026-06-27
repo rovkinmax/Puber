@@ -11,6 +11,7 @@
     <string name="player_panel_audio">АУДИО</string>
     <string name="player_panel_subtitles">СУБТИТРЫ</string>
     <string name="player_subtitles_off">Выкл.</string>
+    <string name="player_subtitle_variant_label">%1$s · вариант %2$d</string>
     <string name="player_subtitle_size">Аа Размер</string>
     <string name="player_subtitle_size_small">Маленький</string>
     <string name="player_subtitle_size_medium">Средний</string>

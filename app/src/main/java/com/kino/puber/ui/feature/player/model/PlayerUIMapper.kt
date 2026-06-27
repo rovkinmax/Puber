@@ -42,11 +42,25 @@ internal class PlayerUIMapper(private val context: Context) {
                 url = "",
             )
         )
+        val duplicateLanguages = subtitles
+            ?.groupingBy { it.lang }
+            ?.eachCount()
+            ?.filterValues { it > 1 }
+            ?.keys
+            .orEmpty()
+        val duplicateLanguageCounters = mutableMapOf<String, Int>()
         subtitles?.forEachIndexed { index, sub ->
+            val duplicateIndex = duplicateLanguageCounters.compute(sub.lang) { _, count ->
+                count?.inc() ?: 1
+            } ?: 1
             result.add(
                 SubtitleTrackUIState(
                     index = index + 1,
-                    label = sub.lang,
+                    label = if (sub.lang in duplicateLanguages) {
+                        context.getString(R.string.player_subtitle_variant_label, sub.lang, duplicateIndex)
+                    } else {
+                        sub.lang
+                    },
                     language = sub.lang,
                     url = sub.url,
                 )
