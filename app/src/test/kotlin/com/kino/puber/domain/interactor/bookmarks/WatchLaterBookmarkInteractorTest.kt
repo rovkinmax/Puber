@@ -65,6 +65,7 @@ class WatchLaterBookmarkInteractorTest {
         val result = interactor.add(itemId = 42)
 
         assertTrue(result.isSuccess)
+        assertEquals(createdFolder, result.getOrThrow())
         coVerify(exactly = 1) { api.createBookmark(WatchLaterBookmarkInteractor.FOLDER_TITLE) }
         coVerify(exactly = 1) { api.addBookmarkItem(itemId = 42, folderId = createdFolder.id) }
     }

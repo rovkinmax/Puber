@@ -3,6 +3,7 @@ package com.kino.puber.domain.interactor.details
 import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.data.api.models.ApiResponseList
 import com.kino.puber.data.api.models.Bookmark
+import com.kino.puber.data.api.models.BookmarkFolder
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.repository.ItemDetailsRepository
@@ -34,25 +35,26 @@ class DetailsInteractorTest {
     }
 
     @Test
-    fun isInWatchLaterFolder_fallsBackToLiveLookup_whenLocalBookmarksAreEmpty() = runTest {
+    fun isInWatchLaterFolder_fallsBackToLiveFolderLookup_whenLocalBookmarksAreEmpty() = runTest {
         val item = movie(bookmarks = emptyList())
-        coEvery { watchLaterBookmarkInteractor.isBookmarked(item.id) } returns Result.success(true)
+        coEvery { api.getItemBookmarkFolders(item.id) } returns Result.success(
+            listOf(BookmarkFolder(id = 8, title = "Other"))
+        )
 
         val result = interactor.isInWatchLaterFolder(item)
 
         assertEquals(true, result)
-        coVerify(exactly = 1) { watchLaterBookmarkInteractor.isBookmarked(item.id) }
+        coVerify(exactly = 1) { api.getItemBookmarkFolders(item.id) }
     }
 
     @Test
-    fun isInWatchLaterFolder_fallsBackToLiveLookup_whenLocalBookmarksDoNotContainWatchLater() = runTest {
+    fun isInWatchLaterFolder_returnsTrueFromAnyLocalBookmark_withoutLiveLookup() = runTest {
         val item = movie(bookmarks = listOf(Bookmark(id = 8, title = "Other")))
-        coEvery { watchLaterBookmarkInteractor.isBookmarked(item.id) } returns Result.success(true)
 
         val result = interactor.isInWatchLaterFolder(item)
 
         assertEquals(true, result)
-        coVerify(exactly = 1) { watchLaterBookmarkInteractor.isBookmarked(item.id) }
+        coVerify(exactly = 0) { api.getItemBookmarkFolders(any()) }
     }
 
     @Test
@@ -67,6 +69,55 @@ class DetailsInteractorTest {
         val result = interactor.getSimilarItems(42)
 
         assertEquals(listOf(similar), result)
+    }
+
+    @Test
+    fun setMovieBookmarked_removesItemFromActualBookmarkFolder() = runTest {
+        val folder = BookmarkFolder(id = 9, title = "For weekend")
+        val refreshed = movie(bookmarks = emptyList())
+        coEvery { api.getItemBookmarkFolders(42) } returns Result.success(listOf(folder)) andThen Result.success(emptyList())
+        coEvery { api.removeBookmarkItem(itemId = 42, folderId = folder.id) } returns Result.success(Unit)
+        coEvery { itemDetailsRepository.refresh(42) } returns refreshed
+
+        val result = interactor.setMovieBookmarked(id = 42, bookmarked = false)
+
+        assertEquals(false, result.isBookmarked)
+        assertEquals(folder.title, result.folderTitle)
+        assertEquals(refreshed, result.item)
+        coVerify(exactly = 1) { api.removeBookmarkItem(itemId = 42, folderId = folder.id) }
+    }
+
+    @Test
+    fun setMovieBookmarked_keepsBookmarkActiveWhenItemRemainsInAnotherFolder() = runTest {
+        val firstFolder = BookmarkFolder(id = 9, title = "For weekend")
+        val secondFolder = BookmarkFolder(id = 10, title = "Favorites")
+        val refreshed = movie(bookmarks = listOf(Bookmark(id = secondFolder.id, title = secondFolder.title)))
+        coEvery { api.getItemBookmarkFolders(42) } returns Result.success(
+            listOf(firstFolder, secondFolder),
+        ) andThen Result.success(listOf(secondFolder))
+        coEvery { api.removeBookmarkItem(itemId = 42, folderId = firstFolder.id) } returns Result.success(Unit)
+        coEvery { itemDetailsRepository.refresh(42) } returns refreshed
+
+        val result = interactor.setMovieBookmarked(id = 42, bookmarked = false)
+
+        assertEquals(true, result.isBookmarked)
+        assertEquals(firstFolder.title, result.folderTitle)
+        assertEquals(refreshed, result.item)
+        coVerify(exactly = 1) { api.removeBookmarkItem(itemId = 42, folderId = firstFolder.id) }
+    }
+
+    @Test
+    fun setMovieBookmarked_addsItemToWatchLaterFolderByDefault() = runTest {
+        val folder = Bookmark(id = 7, title = WatchLaterBookmarkInteractor.FOLDER_TITLE)
+        val refreshed = movie(bookmarks = listOf(folder))
+        coEvery { watchLaterBookmarkInteractor.add(42) } returns Result.success(folder)
+        coEvery { itemDetailsRepository.refresh(42) } returns refreshed
+
+        val result = interactor.setMovieBookmarked(id = 42, bookmarked = true)
+
+        assertEquals(true, result.isBookmarked)
+        assertEquals(WatchLaterBookmarkInteractor.FOLDER_TITLE, result.folderTitle)
+        assertEquals(refreshed, result.item)
     }
 
     private fun movie(bookmarks: List<Bookmark>?): Item {

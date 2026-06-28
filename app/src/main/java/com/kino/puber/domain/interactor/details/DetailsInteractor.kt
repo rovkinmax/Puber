@@ -1,6 +1,7 @@
 package com.kino.puber.domain.interactor.details
 
 import com.kino.puber.data.api.KinoPubApiClient
+import com.kino.puber.data.api.models.BookmarkFolder
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.isSeriesLike
 import com.kino.puber.data.repository.ItemDetailsRepository
@@ -27,19 +28,36 @@ internal class DetailsInteractor(
 
     suspend fun isInWatchLaterFolder(item: Item): Boolean {
         if (item.type.isSeriesLike()) return item.inWatchlist ?: false
-        if (item.bookmarks.orEmpty().any { bookmark -> bookmark.title == WatchLaterBookmarkInteractor.FOLDER_TITLE }) {
+        if (item.bookmarks.orEmpty().isNotEmpty()) {
             return true
         }
-        return watchLaterBookmarkInteractor.isBookmarked(item.id).getOrThrow()
+        return getMovieBookmarkFolders(item.id).isNotEmpty()
     }
 
-    suspend fun setWatchLater(id: Int, inWatchLater: Boolean): Item {
-        if (inWatchLater) {
-            watchLaterBookmarkInteractor.add(id).getOrThrow()
-        } else {
-            watchLaterBookmarkInteractor.remove(id).getOrThrow()
+    suspend fun setMovieBookmarked(id: Int, bookmarked: Boolean): MovieBookmarkUpdate {
+        if (bookmarked) {
+            val folder = watchLaterBookmarkInteractor.add(id).getOrThrow().let { bookmark ->
+                BookmarkFolder(id = bookmark.id, title = bookmark.title, count = bookmark.count ?: 0)
+            }
+            return MovieBookmarkUpdate(
+                item = itemDetailsRepository.refresh(id),
+                isBookmarked = true,
+                folderTitle = folder.title,
+            )
         }
-        return itemDetailsRepository.refresh(id)
+
+        val folder = getMovieBookmarkFolders(id).firstOrNull()
+        val remainingFolders = if (folder != null) {
+            api.removeBookmarkItem(itemId = id, folderId = folder.id).getOrThrow()
+            getMovieBookmarkFolders(id)
+        } else {
+            emptyList()
+        }
+        return MovieBookmarkUpdate(
+            item = itemDetailsRepository.refresh(id),
+            isBookmarked = remainingFolders.isNotEmpty(),
+            folderTitle = folder?.title,
+        )
     }
 
     suspend fun setMovieWatched(id: Int, watched: Boolean): MovieWatchedUpdate {
@@ -61,9 +79,19 @@ internal class DetailsInteractor(
         const val WATCHED_STATUS = 1
         const val UNWATCHED_STATUS = 0
     }
+
+    private suspend fun getMovieBookmarkFolders(id: Int): List<BookmarkFolder> {
+        return api.getItemBookmarkFolders(id).getOrThrow()
+    }
 }
 
 internal data class MovieWatchedUpdate(
     val item: Item,
     val isWatched: Boolean,
+)
+
+internal data class MovieBookmarkUpdate(
+    val item: Item,
+    val isBookmarked: Boolean,
+    val folderTitle: String?,
 )

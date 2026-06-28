@@ -11,6 +11,7 @@ import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.isSeriesLike
+import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import com.kino.puber.domain.interactor.details.DetailsInteractor
 import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
@@ -143,7 +144,24 @@ internal class DetailsVM(
                 val item = if (itemIsSeriesLike()) {
                     interactor.toggleWatchlist(params.itemId)
                 } else {
-                    interactor.setWatchLater(params.itemId, inWatchLater = !previous)
+                    val update = interactor.setMovieBookmarked(params.itemId, bookmarked = !previous)
+                    currentItem = update.item
+                    updateViewState<DetailsScreenState.Content> {
+                        copy(isInWatchlist = update.isBookmarked)
+                    }
+                    val message = if (update.isBookmarked) {
+                        resources.getString(
+                            R.string.video_details_bookmark_added_to_folder,
+                            update.folderTitle ?: WatchLaterBookmarkInteractor.FOLDER_TITLE,
+                        )
+                    } else {
+                        resources.getString(
+                            R.string.video_details_bookmark_removed_from_folder,
+                            update.folderTitle ?: WatchLaterBookmarkInteractor.FOLDER_TITLE,
+                        )
+                    }
+                    showMessage(message)
+                    return@launch
                 }
                 currentItem = item
                 val inWatchlist = if (itemIsSeriesLike()) {
@@ -208,4 +226,5 @@ internal class DetailsVM(
     private fun itemIsSeriesLike(): Boolean {
         return currentItem?.type?.isSeriesLike() ?: false
     }
+
 }

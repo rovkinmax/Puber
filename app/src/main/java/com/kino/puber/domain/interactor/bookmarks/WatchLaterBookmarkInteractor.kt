@@ -21,9 +21,10 @@ class WatchLaterBookmarkInteractor(
         }
     }
 
-    suspend fun add(itemId: Int): Result<Unit> {
+    suspend fun add(itemId: Int): Result<Bookmark> {
         return ensureFolder().mapCatching { folder ->
             api.addBookmarkItem(itemId = itemId, folderId = folder.id).getOrThrow()
+            folder
         }
     }
 
