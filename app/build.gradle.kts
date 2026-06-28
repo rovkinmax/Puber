@@ -52,6 +52,10 @@ fun getTmdbReadAccessToken(): String {
     return ""
 }
 
+fun envOrNull(name: String): String? {
+    return System.getenv(name)?.takeIf { it.isNotBlank() }
+}
+
 android {
     namespace = "com.kino.puber"
     compileSdk = Versions.CompileSdk
@@ -112,20 +116,20 @@ android {
                     storeFile = file("release.jks")
                 }
                 // 2. CI: base64-encoded keystore from RELEASE_KEYSTORE_BASE64 env var
-                !System.getenv("RELEASE_KEYSTORE_BASE64").isNullOrEmpty() -> {
-                    val decoded = Base64.getDecoder().decode(System.getenv("RELEASE_KEYSTORE_BASE64"))
+                envOrNull("RELEASE_KEYSTORE_BASE64") != null -> {
+                    val decoded = Base64.getDecoder().decode(envOrNull("RELEASE_KEYSTORE_BASE64"))
                     val keystoreFile = file("release.jks")
                     keystoreFile.writeBytes(decoded)
                     storeFile = keystoreFile
-                    storePassword = System.getenv("STOREPASS")
-                    keyAlias = System.getenv("KEYALIAS") ?: "puber"
-                    keyPassword = System.getenv("KEYPASS") ?: System.getenv("STOREPASS")
+                    storePassword = envOrNull("STOREPASS")
+                    keyAlias = envOrNull("KEYALIAS") ?: "puber"
+                    keyPassword = envOrNull("KEYPASS") ?: envOrNull("STOREPASS")
                 }
                 // 3. CI: release.jks already present (e.g. copied in CI step) + env vars
-                !System.getenv("STOREPASS").isNullOrEmpty() -> {
-                    storePassword = System.getenv("STOREPASS")
-                    keyAlias = System.getenv("KEYALIAS") ?: "puber"
-                    keyPassword = System.getenv("KEYPASS") ?: System.getenv("STOREPASS")
+                envOrNull("STOREPASS") != null -> {
+                    storePassword = envOrNull("STOREPASS")
+                    keyAlias = envOrNull("KEYALIAS") ?: "puber"
+                    keyPassword = envOrNull("KEYPASS") ?: envOrNull("STOREPASS")
                     storeFile = file("release.jks")
                 }
                 // 4. Fallback: debug signing (allows build without release keys)
