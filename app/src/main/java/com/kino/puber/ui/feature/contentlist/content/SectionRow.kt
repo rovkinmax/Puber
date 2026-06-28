@@ -70,10 +70,10 @@ internal fun SectionRowContent(
                 onRetry = onRetry,
             )
             is SectionState.Content -> {
-                val shouldTransferFocus = hasFocusRef[0]
                 ContentSectionCards(
                     state = s,
                     isTargetRow = isTargetRow,
+                    shouldRequestInitialFocus = hasFocusRef[0],
                     contentFocusRequester = contentFocusRequester,
                     onItemClick = onItemClick,
                     onItemFocused = onItemFocused,
@@ -81,11 +81,6 @@ internal fun SectionRowContent(
                     onLoadMore = onLoadMore,
                     onShowAll = onShowAll,
                 )
-                LaunchedEffect(Unit) {
-                    if (shouldTransferFocus) {
-                        contentFocusRequester.requestFocus()
-                    }
-                }
             }
         }
     }
@@ -95,6 +90,7 @@ internal fun SectionRowContent(
 private fun ContentSectionCards(
     state: SectionState.Content,
     isTargetRow: Boolean,
+    shouldRequestInitialFocus: Boolean,
     contentFocusRequester: FocusRequester,
     onItemClick: (VideoItemUIState) -> Unit,
     onItemFocused: (VideoItemUIState) -> Unit,
@@ -171,6 +167,13 @@ private fun ContentSectionCards(
                 }
             }
             FadeGradient(listState)
+        }
+    }
+
+    LaunchedEffect(state.items.firstOrNull()?.id) {
+        if (shouldRequestInitialFocus) {
+            runCatching { savedItemFocusRequester.requestFocus() }
+                .recoverCatching { contentFocusRequester.requestFocus() }
         }
     }
 
