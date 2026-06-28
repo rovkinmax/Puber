@@ -176,6 +176,13 @@ private fun DeviceSettingsList(
                 onToggle = { onAction(DeviceSettingsActions.ToggleSurroundAudio) },
             )
         }
+        item {
+            LocalToggleItem(
+                label = stringResource(R.string.settings_watched_indicators),
+                checked = state.watchedIndicatorsEnabled,
+                onToggle = { onAction(DeviceSettingsActions.ToggleWatchedIndicators) },
+            )
+        }
 
         // Skip segments section (local-only preferences)
         item {

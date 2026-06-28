@@ -28,7 +28,7 @@ internal class HomeScreen : PuberScreen {
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
         scope(named(scopeId)) {
             scopedOf(::HomeInteractor)
-            scoped { VideoItemUIMapper(get()) }
+            scoped { VideoItemUIMapper(get(), get()) }
             scoped { HomeUIMapper(get(), get()) }
             viewModelOf(::HomeVM)
         }

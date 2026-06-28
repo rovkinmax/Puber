@@ -10,13 +10,17 @@ import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.data.api.models.VideoFile
+import com.kino.puber.data.repository.PlayerPreferencesRepository
 import java.util.Locale
 
 private const val MILLIS_PER_SECOND = 1_000L
 private const val SECONDS_PER_HOUR = 3_600L
 private const val SECONDS_PER_MINUTE = 60L
 
-internal class PlayerUIMapper(private val context: Context) {
+internal class PlayerUIMapper(
+    private val context: Context,
+    private val playerPreferencesRepository: PlayerPreferencesRepository? = null,
+) {
 
     fun mapAudioTracks(audios: List<Audio>?): List<AudioTrackUIState> {
         return audios?.mapIndexed { index, audio ->
@@ -122,11 +126,17 @@ internal class PlayerUIMapper(private val context: Context) {
                     imageUrl = episode.thumbnail ?: "",
                     bigImageUrl = episode.thumbnail ?: "",
                     showTitle = true,
+                    isWatched = episode.watched == 1,
+                    showWatchedIndicator = watchedIndicatorsEnabled(),
                 )
             } ?: emptyList()
             gridItems.add(VideoGridItemUIState.Items(items))
         }
         return VideoGridUIState(list = gridItems)
+    }
+
+    fun watchedIndicatorsEnabled(): Boolean {
+        return playerPreferencesRepository?.watchedIndicatorsEnabled ?: true
     }
 
     fun buildTitle(item: Item, seasonNumber: Int?, episodeNumber: Int?): String {

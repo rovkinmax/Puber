@@ -11,15 +11,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -27,13 +24,17 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
+import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.fill.Eye
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.kino.puber.core.ui.uikit.component.Rating
 import com.kino.puber.core.ui.uikit.component.RatingUIState
+import com.kino.puber.core.ui.uikit.component.SkeletonAsyncImage
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 
 @Immutable
@@ -48,6 +49,7 @@ data class VideoItemUIState(
     val ratings: List<RatingUIState> = emptyList(),
     val progressPercent: Float? = null,
     val isWatched: Boolean = false,
+    val showWatchedIndicator: Boolean = true,
 )
 
 @Composable
@@ -68,15 +70,16 @@ fun VideoItem(
         Box(modifier = Modifier.fillMaxSize()) {
             val context = LocalContext.current
             val imageRequest = remember(state.imageUrl) {
-                ImageRequest.Builder(context)
-                    .data(state.imageUrl)
-                    .crossfade(true)
-                    .build()
+                state.imageUrl.takeIf { it.isNotBlank() }?.let { imageUrl ->
+                    ImageRequest.Builder(context)
+                        .data(imageUrl)
+                        .crossfade(true)
+                        .build()
+                }
             }
-            AsyncImage(
+            SkeletonAsyncImage(
                 modifier = Modifier.fillMaxSize(),
                 model = imageRequest,
-                placeholder = rememberVectorPainter(Icons.Default.LocalMovies),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
             )
@@ -99,6 +102,10 @@ fun VideoItem(
                     )
                 }
             }
+            WatchedIndicatorBadge(
+                visible = state.isWatched && state.showWatchedIndicator,
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
             val hasRatings = state.ratings.isNotEmpty()
             val hasTitle = state.showTitle && state.title.isNotEmpty()
             if (hasRatings || hasTitle) {
@@ -139,6 +146,32 @@ fun VideoItem(
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun WatchedIndicatorBadge(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (!visible) return
+
+    Box(
+        modifier = modifier
+            .padding(6.dp)
+            .background(
+                MaterialTheme.colorScheme.scrim.copy(alpha = 0.48F),
+                RoundedCornerShape(6.dp),
+            )
+            .padding(4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = PhosphorIcons.Fill.Eye,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.9F),
+        )
     }
 }
 

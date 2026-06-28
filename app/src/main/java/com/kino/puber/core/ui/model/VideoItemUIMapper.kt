@@ -7,8 +7,12 @@ import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.data.api.models.History
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.repository.PlayerPreferencesRepository
 
-class VideoItemUIMapper(private val resources: ResourceProvider) {
+class VideoItemUIMapper(
+    private val resources: ResourceProvider,
+    private val playerPreferencesRepository: PlayerPreferencesRepository? = null,
+) {
 
     fun mapShortItemList(items: List<Item>): List<VideoItemUIState> {
         return items.map { mapShortItem(it) }
@@ -24,6 +28,7 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
             unwatchedCount = item.new,
             ratings = buildRatings(item),
             isWatched = isItemWatched(item),
+            showWatchedIndicator = watchedIndicatorsEnabled(),
         )
     }
 
@@ -121,5 +126,9 @@ class VideoItemUIMapper(private val resources: ResourceProvider) {
 
     private fun String.ensureHttps(): String {
         return if (startsWith("http://")) replaceFirst("http://", "https://") else this
+    }
+
+    fun watchedIndicatorsEnabled(): Boolean {
+        return playerPreferencesRepository?.watchedIndicatorsEnabled ?: true
     }
 }

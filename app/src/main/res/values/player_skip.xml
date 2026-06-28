@@ -16,6 +16,7 @@
 
     <!-- Audio -->
     <string name="settings_prefer_surround_audio">Объемный звук (AC3)</string>
+    <string name="settings_watched_indicators">Показывать отметки просмотренного</string>
 
     <!-- Debug -->
     <string name="settings_debug_title">Отладка</string>

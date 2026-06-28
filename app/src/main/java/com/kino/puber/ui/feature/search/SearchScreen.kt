@@ -26,7 +26,7 @@ internal class SearchScreen : PuberScreen {
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
         scope(named(scopeId)) {
             scopedOf(::SearchInteractor)
-            scoped { VideoItemUIMapper(get()) }
+            scoped { VideoItemUIMapper(get(), get()) }
             viewModelOf(::SearchVM)
         }
     }

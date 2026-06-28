@@ -36,7 +36,7 @@ internal class ShowAllScreen(
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
         scope(named(scopeId)) {
             scopedOf(::ContentListInteractor)
-            scoped { VideoItemUIMapper(get()) }
+            scoped { VideoItemUIMapper(get(), get()) }
             viewModel {
                 ShowAllVM(
                     paginator = Paginator.Store { old, new -> old.id == new.id },

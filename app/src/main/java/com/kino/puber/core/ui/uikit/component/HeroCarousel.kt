@@ -23,8 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,7 +36,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -53,7 +50,6 @@ import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import kotlinx.coroutines.delay
@@ -210,50 +206,48 @@ private fun HeroItem(
             var urlIndex by remember(state.id) { mutableIntStateOf(0) }
             val currentUrl = urls.getOrNull(urlIndex)
 
-            if (currentUrl != null) {
-                val imageRequest = remember(currentUrl) {
+            val imageRequest = remember(currentUrl) {
+                currentUrl?.let {
                     ImageRequest.Builder(context)
-                        .data(currentUrl)
+                        .data(it)
                         .crossfade(true)
                         .build()
                 }
-                val driftDirection = remember(state.id) { if ((state.id % 2) == 0) 1f else -1f }
-                val infiniteTransition = rememberInfiniteTransition(label = "kenBurns")
-                val scale by infiniteTransition.animateFloat(
-                    initialValue = 1.0f,
-                    targetValue = 1.08f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(durationMillis = 10_000, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse,
-                    ),
-                    label = "kenBurnsScale",
-                )
-                val translateX by infiniteTransition.animateFloat(
-                    initialValue = 0f,
-                    targetValue = 20f * driftDirection,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(durationMillis = 10_000, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse,
-                    ),
-                    label = "kenBurnsTranslateX",
-                )
-                AsyncImage(
-                    model = imageRequest,
-                    placeholder = rememberVectorPainter(Icons.Default.LocalMovies),
-                    error = rememberVectorPainter(Icons.Default.LocalMovies),
-                    onError = { if (urlIndex < urls.lastIndex) urlIndex++ },
-                    contentDescription = null,
-                    alignment = Alignment.TopCenter,
-                    contentScale = ContentScale.FillWidth,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                            translationX = translateX
-                        },
-                )
             }
+            val driftDirection = remember(state.id) { if ((state.id % 2) == 0) 1f else -1f }
+            val infiniteTransition = rememberInfiniteTransition(label = "kenBurns")
+            val scale by infiniteTransition.animateFloat(
+                initialValue = 1.0f,
+                targetValue = 1.08f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 10_000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "kenBurnsScale",
+            )
+            val translateX by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 20f * driftDirection,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 10_000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "kenBurnsTranslateX",
+            )
+            SkeletonAsyncImage(
+                model = imageRequest,
+                onError = { if (urlIndex < urls.lastIndex) urlIndex++ },
+                contentDescription = null,
+                alignment = Alignment.TopCenter,
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = translateX
+                    },
+            )
 
             val scrimColor = MaterialTheme.colorScheme.scrim
             val gradientBrush = remember(scrimColor) {
