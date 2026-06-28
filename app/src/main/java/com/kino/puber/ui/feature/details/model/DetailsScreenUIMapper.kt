@@ -61,6 +61,7 @@ internal class DetailsScreenUIMapper(
                     bigImageUrl = episode.thumbnail ?: "",
                     showTitle = true,
                     isWatched = episode.watched == 1,
+                    showWatchedIndicator = itemMapper.watchedIndicatorsEnabled(),
                     progressPercent = episode.watching?.let { watching ->
                         if (watching.duration > 0) {
                             watching.time.toFloat() / watching.duration.toFloat()
@@ -195,7 +196,9 @@ internal class DetailsScreenUIMapper(
 
     private fun buildSecondaryRows(item: Item): List<DetailsInfoRowUIState> = buildList {
         item.voice?.takeIf { it.isNotBlank() }?.let { add(row(R.string.video_details_info_translation, it)) }
-        item.langs?.takeIf { it.isNotBlank() }?.let { add(row(R.string.video_details_info_audio_tracks, it)) }
+        item.playbackAudioTrackCount().takeIf { it > 0 }?.let { count ->
+            add(row(R.string.video_details_info_audio_tracks, count.toString()))
+        }
         item.subtitleCount().takeIf { it > 0 }?.let {
             add(row(R.string.video_details_info_subtitles, it.toString()))
         }
@@ -234,6 +237,23 @@ internal class DetailsScreenUIMapper(
             seasons.orEmpty()
                 .flatMap { season -> season.episodes.orEmpty() }
                 .sumOf { episode -> episode.subtitles.orEmpty().size }
+    }
+
+    private fun Item.playbackAudioTrackCount(): Int {
+        return if (type.isSeriesLike()) {
+            firstPlayableEpisode()?.audios.orEmpty().size
+        } else {
+            videos?.firstOrNull()?.audios.orEmpty().size
+        }
+    }
+
+    private fun Item.firstPlayableEpisode(): Episode? {
+        val seasons = seasons.orEmpty()
+        for (season in seasons) {
+            val firstUnwatched = season.episodes.orEmpty().firstOrNull { episode -> episode.watched != 1 }
+            if (firstUnwatched != null) return firstUnwatched
+        }
+        return seasons.firstOrNull()?.episodes?.firstOrNull()
     }
 
     private fun Item.displayQuality(): String? {

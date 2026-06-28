@@ -64,6 +64,7 @@ import com.adamglin.phosphoricons.Duotone
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.duotone.BookmarkSimple
 import com.adamglin.phosphoricons.duotone.CaretDown
+import com.adamglin.phosphoricons.duotone.CaretUp
 import com.adamglin.phosphoricons.duotone.Eye
 import com.adamglin.phosphoricons.fill.BookmarkSimple
 import com.adamglin.phosphoricons.fill.Eye
@@ -91,11 +92,11 @@ private const val SEASONS_PANEL_FOCUS_DELAY_MS = 150L
 private const val DETAILS_BUTTONS_FOCUS_DELAY_MS = 100L
 private const val DETAILS_PAGE_FOCUS_DELAY_MS = 50L
 private const val CHEVRON_ALPHA = 0.5F
-private const val INFO_DESCRIPTION_MAX_LINES = 4
 private const val INFO_ROW_MAX_LINES = 2
 private const val INFO_CHIP_MAX_LINES = 1
 private val INFO_CHIP_FOCUS_SAFE_PADDING = 8.dp
 private val DETAILS_PAGE_PEEK_HEIGHT = 32.dp
+private val PAGE_FOCUS_BRIDGE_HEIGHT = 56.dp
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -189,6 +190,9 @@ private fun DetailsContentBody(
                     pagerState.currentPageOffsetFraction == 0F
             }
         }
+        val currentPage by remember {
+            derivedStateOf { pagerState.currentPage }
+        }
         LaunchedEffect(pagerState.currentPage, state.info.castMembers.size, hasSimilarItems) {
             delay(DETAILS_PAGE_FOCUS_DELAY_MS)
             when (pagerState.currentPage) {
@@ -212,11 +216,13 @@ private fun DetailsContentBody(
                         onAction = onAction,
                         seasonsPanelVisible = state.seasonsPanelVisible,
                         recoverActionFocus = isMainPageVisible,
+                        showPageChevron = currentPage == MAIN_PAGE_INDEX,
                         scrollToMainPage = { pagerState.animateScrollToPage(MAIN_PAGE_INDEX) },
                     )
                     INFO_PAGE_INDEX -> DetailsInfoPage(
                         info = state.info,
                         hasNextPage = hasSimilarItems,
+                        showPageChevrons = currentPage == INFO_PAGE_INDEX,
                         focusRequester = infoPageFocusRequester,
                         onPreviousPageRequested = focusMainPage,
                         onNextPageRequested = focusSimilarPage,
@@ -227,6 +233,7 @@ private fun DetailsContentBody(
                         onAction = onAction,
                         firstItemFocusRequester = similarFirstItemFocusRequester,
                         onPreviousPageRequested = focusInfoPage,
+                        showPageChevron = currentPage == SIMILAR_PAGE_INDEX,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -274,6 +281,7 @@ private fun DetailsMainPage(
     onAction: (UIAction) -> Unit,
     seasonsPanelVisible: Boolean,
     recoverActionFocus: Boolean,
+    showPageChevron: Boolean,
     scrollToMainPage: suspend () -> Unit,
 ) {
     Column(modifier = modifier) {
@@ -300,7 +308,9 @@ private fun DetailsMainPage(
 
         Spacer(modifier = Modifier.weight(1F))
 
-        ChevronIndicator()
+        if (showPageChevron) {
+            ChevronIndicator()
+        }
     }
 }
 
@@ -448,12 +458,27 @@ private fun DetailsWatchedButton(
 private fun DetailsInfoPage(
     info: DetailsInfoUIState,
     hasNextPage: Boolean,
+    showPageChevrons: Boolean,
     focusRequester: FocusRequester,
     onPreviousPageRequested: () -> Unit,
     onNextPageRequested: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
+        PageFocusBridge(
+            enabled = showPageChevrons,
+            onFocused = onPreviousPageRequested,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(PAGE_FOCUS_BRIDGE_HEIGHT),
+        )
+        if (showPageChevrons) {
+            ChevronIndicator(
+                direction = ChevronDirection.Up,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -461,18 +486,16 @@ private fun DetailsInfoPage(
                 .focusable()
                 .onDirectionKey(Key.DirectionUp, onKey = onPreviousPageRequested)
                 .onDirectionKey(Key.DirectionDown, enabled = hasNextPage, onKey = onNextPageRequested)
-                .padding(horizontal = 96.dp, vertical = 36.dp),
+                .padding(start = 96.dp, top = 44.dp, end = 96.dp, bottom = 20.dp),
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 DetailsInfoHeader(info)
                 Text(
                     text = info.description,
-                    style = MaterialTheme.typography.titleMedium,
-                    overflow = TextOverflow.Ellipsis,
-                    maxLines = INFO_DESCRIPTION_MAX_LINES,
+                    style = MaterialTheme.typography.bodyMedium,
                 )
                 DetailsCastRow(
                     info = info,
@@ -487,13 +510,19 @@ private fun DetailsInfoPage(
 
         if (hasNextPage) {
             PageFocusBridge(
+                enabled = showPageChevrons,
                 onFocused = onNextPageRequested,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(96.dp),
+                    .height(PAGE_FOCUS_BRIDGE_HEIGHT),
             )
-            ChevronIndicator(modifier = Modifier.align(Alignment.BottomCenter))
+            if (showPageChevrons) {
+                ChevronIndicator(
+                    direction = ChevronDirection.Down,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
         }
     }
 }
@@ -659,16 +688,24 @@ private fun DetailsSimilarPage(
     onAction: (UIAction) -> Unit,
     firstItemFocusRequester: FocusRequester,
     onPreviousPageRequested: () -> Unit,
+    showPageChevron: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
         PageFocusBridge(
+            enabled = showPageChevron,
             onFocused = onPreviousPageRequested,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .height(96.dp),
+                .height(PAGE_FOCUS_BRIDGE_HEIGHT),
         )
+        if (showPageChevron) {
+            ChevronIndicator(
+                direction = ChevronDirection.Up,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -707,9 +744,15 @@ private fun DetailsSimilarPage(
 
 @Composable
 private fun PageFocusBridge(
+    enabled: Boolean,
     onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (!enabled) {
+        Box(modifier = modifier)
+        return
+    }
+
     // LazyColumn does not compose the next page until it scrolls into view, so
     // D-pad focus needs an already-composed target to trigger page transitions.
     Surface(
@@ -756,16 +799,30 @@ private fun Modifier.onDirectionKey(
     }
 }
 
+private enum class ChevronDirection {
+    Up,
+    Down,
+}
+
 @Composable
-private fun ChevronIndicator(modifier: Modifier = Modifier) {
+private fun ChevronIndicator(
+    modifier: Modifier = Modifier,
+    direction: ChevronDirection = ChevronDirection.Down,
+) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 16.dp),
+            .padding(
+                top = if (direction == ChevronDirection.Up) 12.dp else 0.dp,
+                bottom = if (direction == ChevronDirection.Down) 16.dp else 0.dp,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = PhosphorIcons.Duotone.CaretDown,
+            imageVector = when (direction) {
+                ChevronDirection.Up -> PhosphorIcons.Duotone.CaretUp
+                ChevronDirection.Down -> PhosphorIcons.Duotone.CaretDown
+            },
             contentDescription = null,
             modifier = Modifier
                 .size(24.dp)
