@@ -72,7 +72,7 @@ android {
         buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"${getTmdbReadAccessToken()}\"")
 
         ndk {
-            abiFilters += "arm64-v8a"
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
