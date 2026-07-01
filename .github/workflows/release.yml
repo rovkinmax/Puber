@@ -103,8 +103,10 @@ jobs:
           fi
 
           cp "$apk_path" "release-artifacts/puber-${RELEASE_TAG}.apk"
-          shasum -a 256 "release-artifacts/puber-${RELEASE_TAG}.apk" \
-            > "release-artifacts/puber-${RELEASE_TAG}.apk.sha256"
+          (
+            cd release-artifacts
+            shasum -a 256 "puber-${RELEASE_TAG}.apk" > "puber-${RELEASE_TAG}.apk.sha256"
+          )
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
