@@ -100,6 +100,10 @@ class PlayerPreferencesRepository(context: Context) {
         get() = prefs.getBoolean(KEY_WATCHED_INDICATORS, true)
         set(value) = prefs.edit().putBoolean(KEY_WATCHED_INDICATORS, value).apply()
 
+    var posterProxyEnabled: Boolean
+        get() = prefs.getBoolean(KEY_POSTER_PROXY, false)
+        set(value) = prefs.edit().putBoolean(KEY_POSTER_PROXY, value).apply()
+
     private companion object {
         const val PREFS_NAME = "player_preferences"
         const val KEY_AUDIO_LANG_PREFIX = "audio_lang_"
@@ -115,5 +119,6 @@ class PlayerPreferencesRepository(context: Context) {
         const val KEY_BUFFER_PRESET = "buffer_preset"
         const val KEY_FAST_DNS = "fast_dns_enabled"
         const val KEY_WATCHED_INDICATORS = "watched_indicators_enabled"
+        const val KEY_POSTER_PROXY = "poster_proxy_enabled"
     }
 }

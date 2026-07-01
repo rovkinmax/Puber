@@ -1,10 +1,13 @@
 package com.kino.puber.ui.feature.device.settings.model
 
 import com.kino.puber.core.model.NavigationMode
+import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.domain.interactor.device.DeviceSettingType
 
 internal data class DeviceSettingsViewState(
     val state: DeviceSettingsState = DeviceSettingsState.Loading,
+    val apiDomain: ApiDomainDialogState,
+    val isApiDomainDialogOpen: Boolean = false,
 )
 
 internal sealed interface DeviceSettingsState {
@@ -22,6 +25,7 @@ internal sealed interface DeviceSettingsState {
         val debugOverlayEnabled: Boolean = false,
         val preferSurroundAudio: Boolean = false,
         val watchedIndicatorsEnabled: Boolean = true,
+        val posterProxyEnabled: Boolean = false,
         val navigationMode: NavigationMode = NavigationMode.TopTabs,
     ) : DeviceSettingsState
 }

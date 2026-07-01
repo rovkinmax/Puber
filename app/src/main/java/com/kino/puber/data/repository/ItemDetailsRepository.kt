@@ -18,4 +18,8 @@ class ItemDetailsRepository(private val api: KinoPubApiClient) {
         cache.remove(id)
         return getItemDetails(id)
     }
+
+    fun clear() {
+        cache.clear()
+    }
 }

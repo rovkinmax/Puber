@@ -21,6 +21,10 @@ class GenreInteractor(private val api: KinoPubApiClient) {
         fun isExpired(): Boolean = System.currentTimeMillis() - timestamp > CACHE_TTL_MS
     }
 
+    fun clearCache() {
+        cache.clear()
+    }
+
     private companion object {
         const val CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
     }

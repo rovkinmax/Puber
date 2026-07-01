@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -54,6 +58,7 @@ fun VideoItemGridDetails(
                     .fillMaxHeight()
                     .weight(5F),
                 imageUrl = state.imageUrl,
+                imageFallbackUrls = state.imageFallbackUrls,
             )
         }
     } else {
@@ -68,6 +73,7 @@ fun VideoItemGridDetails(
                     .fillMaxHeight()
                     .weight(5F),
                 imageUrl = state.imageUrl,
+                imageFallbackUrls = state.imageFallbackUrls,
             )
         }
     }
@@ -156,19 +162,33 @@ fun VideoDetailsDescription(
 private fun VideoDetailsPoster(
     modifier: Modifier,
     imageUrl: String,
+    imageFallbackUrls: List<String>,
 ) {
     Box(
         modifier = modifier,
     ) {
+        val imageUrls = remember(imageUrl, imageFallbackUrls) {
+            (listOf(imageUrl) + imageFallbackUrls)
+                .filter { it.isNotBlank() }
+                .distinct()
+        }
+        var urlIndex by remember(imageUrls) { mutableIntStateOf(0) }
+        val currentUrl = imageUrls.getOrNull(urlIndex)
+
         AsyncImage(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth()
-                .placeholder(visible = imageUrl.isEmpty()),
+                .placeholder(visible = currentUrl.isNullOrEmpty()),
             model = ImageRequest.Builder(LocalContext.current)
-                .data(imageUrl)
+                .data(currentUrl)
                 .crossfade(true)
                 .build(),
+            onError = {
+                if (urlIndex < imageUrls.lastIndex) {
+                    urlIndex++
+                }
+            },
             contentDescription = null,
             contentScale = ContentScale.FillWidth,
         )

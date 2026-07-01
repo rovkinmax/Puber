@@ -11,6 +11,7 @@ data class VideoDetailsUIState(
     val title: String,
     val description: String,
     val imageUrl: String,
+    val imageFallbackUrls: List<String> = emptyList(),
     val trailerUrl: String,
     val ratings: List<RatingUIState>,
     val year: String,

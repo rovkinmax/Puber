@@ -200,10 +200,12 @@ private fun HeroItem(
     ) {
         Box(Modifier.fillMaxSize()) {
             val context = LocalContext.current
-            val urls = remember(state.id) {
-                listOf(state.wideImageUrl, state.fallbackImageUrl).filter { it.isNotEmpty() }
+            val urls = remember(state.id, state.wideImageUrl, state.fallbackImageUrl, state.fallbackImageUrls) {
+                (listOf(state.wideImageUrl, state.fallbackImageUrl) + state.fallbackImageUrls)
+                    .filter { it.isNotEmpty() }
+                    .distinct()
             }
-            var urlIndex by remember(state.id) { mutableIntStateOf(0) }
+            var urlIndex by remember(state.id, urls) { mutableIntStateOf(0) }
             val currentUrl = urls.getOrNull(urlIndex)
 
             val imageRequest = remember(currentUrl) {

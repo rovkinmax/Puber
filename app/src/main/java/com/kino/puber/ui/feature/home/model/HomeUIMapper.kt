@@ -16,11 +16,15 @@ internal class HomeUIMapper(
 
     fun mapHeroItems(items: List<Item>): List<HeroItemState> {
         return items.map { item ->
+            val widePosterUrls = videoItemMapper.mapPosterUrls(item.posters?.wide)
+            val bigPosterUrls = videoItemMapper.mapPosterUrls(item.posters?.big)
+            val heroPosterUrls = (widePosterUrls + bigPosterUrls).distinct()
             HeroItemState(
                 id = item.id,
                 title = item.title,
-                wideImageUrl = item.posters?.wide.orEmpty(),
-                fallbackImageUrl = item.posters?.big.orEmpty(),
+                wideImageUrl = heroPosterUrls.firstOrNull().orEmpty(),
+                fallbackImageUrl = heroPosterUrls.drop(1).firstOrNull().orEmpty(),
+                fallbackImageUrls = heroPosterUrls.drop(2),
                 year = item.year?.toString().orEmpty(),
                 ratings = videoItemMapper.buildRatings(item),
                 genres = item.genres?.joinToString(", ") { it.title }.orEmpty(),
@@ -60,12 +64,20 @@ internal class HomeUIMapper(
         return HomeSectionState(
             title = resources.getString(R.string.home_section_collections),
             items = collections.map { collection ->
+                val mediumPosterUrls = videoItemMapper.mapPosterUrls(collection.posters?.medium)
+                val bigPosterUrls = videoItemMapper.mapPosterUrls(collection.posters?.big)
+                val widePosterUrls = videoItemMapper.mapPosterUrls(collection.posters?.wide)
                 VideoItemUIState(
                     id = collection.id,
                     title = collection.title,
-                    imageUrl = collection.posters?.medium.orEmpty(),
-                    bigImageUrl = collection.posters?.big.orEmpty(),
-                    wideImageUrl = collection.posters?.wide.orEmpty(),
+                    imageUrl = mediumPosterUrls.firstOrNull().orEmpty(),
+                    bigImageUrl = bigPosterUrls.firstOrNull().orEmpty(),
+                    wideImageUrl = widePosterUrls.firstOrNull().orEmpty(),
+                    imageFallbackUrls = (
+                        mediumPosterUrls.drop(1) +
+                            bigPosterUrls.drop(1) +
+                            widePosterUrls.drop(1)
+                        ).distinct(),
                     showTitle = true,
                 )
             },

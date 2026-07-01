@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -44,6 +47,7 @@ data class VideoItemUIState(
     val imageUrl: String,
     val bigImageUrl: String,
     val wideImageUrl: String = "",
+    val imageFallbackUrls: List<String> = emptyList(),
     val showTitle: Boolean = false,
     val unwatchedCount: Int? = null,
     val ratings: List<RatingUIState> = emptyList(),
@@ -69,8 +73,15 @@ fun VideoItem(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val context = LocalContext.current
-            val imageRequest = remember(state.imageUrl) {
-                state.imageUrl.takeIf { it.isNotBlank() }?.let { imageUrl ->
+            val urls = remember(state.imageUrl, state.imageFallbackUrls) {
+                (listOf(state.imageUrl) + state.imageFallbackUrls)
+                    .filter { it.isNotBlank() }
+                    .distinct()
+            }
+            var urlIndex by remember(state.id, urls) { mutableIntStateOf(0) }
+            val currentUrl = urls.getOrNull(urlIndex)
+            val imageRequest = remember(currentUrl) {
+                currentUrl?.let { imageUrl ->
                     ImageRequest.Builder(context)
                         .data(imageUrl)
                         .crossfade(true)
@@ -80,6 +91,11 @@ fun VideoItem(
             SkeletonAsyncImage(
                 modifier = Modifier.fillMaxSize(),
                 model = imageRequest,
+                onError = {
+                    if (urlIndex < urls.lastIndex) {
+                        urlIndex++
+                    }
+                },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
             )

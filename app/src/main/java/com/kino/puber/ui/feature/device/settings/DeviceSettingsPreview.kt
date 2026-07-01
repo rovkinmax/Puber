@@ -6,6 +6,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.domain.interactor.device.DeviceSettingType
+import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingUIModel
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
@@ -72,6 +73,11 @@ private val previewAllSettings = DeviceSettingsListUi(
     previewToggleSettings + previewStreamingType + previewServerLocation
 )
 
+private val previewApiDomain = ApiDomainDialogState(
+    currentDomain = "service-kp.com",
+    customDomain = null,
+)
+
 internal class DeviceSettingsStateProvider : PreviewParameterProvider<DeviceSettingsState> {
     override val values = sequenceOf(
         DeviceSettingsState.Loading,
@@ -97,13 +103,16 @@ internal class DeviceSettingsStateProvider : PreviewParameterProvider<DeviceSett
 @Preview(name = "Loading", device = TV_1080p)
 @Composable
 private fun LoadingPreview() = PuberTheme {
-    DeviceSettingsContent(state = DeviceSettingsState.Loading)
+    DeviceSettingsContent(state = DeviceSettingsState.Loading, apiDomain = previewApiDomain)
 }
 
 @Preview(name = "Error", device = TV_1080p)
 @Composable
 private fun ErrorPreview() = PuberTheme {
-    DeviceSettingsContent(state = DeviceSettingsState.Error("Не удалось загрузить настройки"))
+    DeviceSettingsContent(
+        state = DeviceSettingsState.Error("Не удалось загрузить настройки"),
+        apiDomain = previewApiDomain,
+    )
 }
 
 @Preview(name = "Success — collapsed", device = TV_1080p)
@@ -114,6 +123,7 @@ private fun SuccessCollapsedPreview() = PuberTheme {
             settings = previewAllSettings,
             device = previewDevice,
         ),
+        apiDomain = previewApiDomain,
     )
 }
 
@@ -126,6 +136,7 @@ private fun SuccessExpandedPreview() = PuberTheme {
             device = previewDevice,
             expandedType = DeviceSettingType.STREAMING_TYPE,
         ),
+        apiDomain = previewApiDomain,
     )
 }
 
@@ -139,6 +150,7 @@ private fun SuccessSavingPreview() = PuberTheme {
             expandedType = DeviceSettingType.STREAMING_TYPE,
             savingOptionId = 2,
         ),
+        apiDomain = previewApiDomain,
     )
 }
 
@@ -151,6 +163,7 @@ private fun SuccessSavingTogglePreview() = PuberTheme {
             device = previewDevice,
             savingToggleType = DeviceSettingType.SUPPORT_SSL,
         ),
+        apiDomain = previewApiDomain,
     )
 }
 
@@ -182,5 +195,6 @@ private fun UnsupportedPreview() = PuberTheme {
             ),
             device = previewDevice,
         ),
+        apiDomain = previewApiDomain,
     )
 }

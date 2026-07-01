@@ -40,7 +40,7 @@ internal class ContentListScreen(
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
         scope(named(scopeId)) {
             scopedOf(::ContentListInteractor)
-            scoped { VideoItemUIMapper(get(), get()) }
+            scoped { VideoItemUIMapper(get(), get(), get()) }
             viewModel {
                 ContentListVM(
                     router = get(),

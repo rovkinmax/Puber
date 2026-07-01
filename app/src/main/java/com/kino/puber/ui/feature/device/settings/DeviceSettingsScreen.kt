@@ -5,7 +5,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.ui.navigation.PuberScreen
+import com.kino.puber.core.ui.uikit.component.ApiDomainDialog
 import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
+import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
 import com.kino.puber.ui.feature.device.settings.vm.DeviceSettingsVM
 import kotlinx.parcelize.Parcelize
@@ -36,7 +38,15 @@ internal class DeviceSettingsScreen : PuberScreen {
         Box {
             DeviceSettingsContent(
                 state = state.state,
+                apiDomain = state.apiDomain,
                 onAction = viewModel::onAction,
+            )
+            ApiDomainDialog(
+                state = state.apiDomain.takeIf { state.isApiDomainDialogOpen },
+                onSave = { viewModel.onAction(DeviceSettingsActions.SaveApiDomain(it)) },
+                onReset = { viewModel.onAction(DeviceSettingsActions.ResetApiDomain) },
+                onDetect = { viewModel.onAction(DeviceSettingsActions.DetectApiDomain) },
+                onDismiss = { viewModel.onAction(DeviceSettingsActions.CloseApiDomainDialog) },
             )
             ScaffoldMessage(
                 message = message,

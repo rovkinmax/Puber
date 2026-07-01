@@ -7,10 +7,15 @@ import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
+import com.kino.puber.domain.interactor.api.ApiDomainDetectionResult
+import com.kino.puber.domain.interactor.api.ApiDomainInteractor
+import com.kino.puber.domain.interactor.api.ApiDomainState
+import com.kino.puber.domain.interactor.api.ApiDomainUpdateResult
 import com.kino.puber.domain.interactor.device.DeviceSettingType
 import com.kino.puber.domain.interactor.device.IDeviceInfoInteractor
 import com.kino.puber.domain.interactor.device.IDeviceSettingInteractor
@@ -28,6 +33,7 @@ internal class DeviceSettingsVM(
     private val deviceUiSettingsMapper: DeviceUiSettingsMapper,
     private val playerPreferencesRepository: PlayerPreferencesRepository,
     private val navigationPreferencesRepository: NavigationPreferencesRepository,
+    private val apiDomainInteractor: ApiDomainInteractor,
     override val errorHandler: ErrorHandler,
     private val resources: ResourceProvider,
     router: AppRouter,
@@ -42,7 +48,7 @@ internal class DeviceSettingsVM(
     }
 
     override val initialViewState: DeviceSettingsViewState
-        get() = DeviceSettingsViewState()
+        get() = DeviceSettingsViewState(apiDomain = apiDomainInteractor.getState().toDialogState())
 
     override fun onStart() {
         loadDeviceSettings()
@@ -68,11 +74,14 @@ internal class DeviceSettingsVM(
                                 debugOverlayEnabled = playerPreferencesRepository.debugOverlayEnabled,
                                 preferSurroundAudio = playerPreferencesRepository.preferSurroundAudio,
                                 watchedIndicatorsEnabled = playerPreferencesRepository.watchedIndicatorsEnabled,
+                                posterProxyEnabled = playerPreferencesRepository.posterProxyEnabled,
                                 navigationMode = navigationPreferencesRepository.getNavigationMode(),
                             )
                         )
                     )
-                } else throw IllegalStateException(currentDevice.exceptionOrNull())
+                } else {
+                    throw IllegalStateException(currentDevice.exceptionOrNull())
+                }
             }
         }
     }
@@ -85,11 +94,19 @@ internal class DeviceSettingsVM(
             DeviceSettingsActions.UnlinkDevice -> onUnlinkDevice()
             DeviceSettingsActions.ToggleSkipIntro -> toggleSkipPref { it.copy(skipIntroEnabled = !it.skipIntroEnabled) }
             DeviceSettingsActions.ToggleSkipRecap -> toggleSkipPref { it.copy(skipRecapEnabled = !it.skipRecapEnabled) }
-            DeviceSettingsActions.ToggleSkipCredits -> toggleSkipPref { it.copy(skipCreditsEnabled = !it.skipCreditsEnabled) }
+            DeviceSettingsActions.ToggleSkipCredits -> toggleSkipPref {
+                it.copy(skipCreditsEnabled = !it.skipCreditsEnabled)
+            }
             DeviceSettingsActions.ToggleDebugOverlay -> toggleDebugOverlay()
             DeviceSettingsActions.ToggleSurroundAudio -> toggleSurroundAudio()
             DeviceSettingsActions.ToggleWatchedIndicators -> toggleWatchedIndicators()
+            DeviceSettingsActions.TogglePosterProxy -> togglePosterProxy()
             is DeviceSettingsActions.ChangeNavigationMode -> onChangeNavigationMode(action.mode)
+            DeviceSettingsActions.OpenApiDomainDialog -> openApiDomainDialog()
+            DeviceSettingsActions.CloseApiDomainDialog -> closeApiDomainDialog()
+            is DeviceSettingsActions.SaveApiDomain -> saveApiDomain(action.domain)
+            DeviceSettingsActions.DetectApiDomain -> detectApiDomain()
+            DeviceSettingsActions.ResetApiDomain -> resetApiDomain()
             CommonAction.RetryClicked -> onRetry()
             else -> super.onAction(action)
         }
@@ -106,6 +123,8 @@ internal class DeviceSettingsVM(
                     )
                 )
             )
+        } else {
+            updateViewState(stateValue.copy(state = DeviceSettingsState.Error(error.message)))
         }
         showMessage(error.message)
     }
@@ -249,6 +268,15 @@ internal class DeviceSettingsVM(
         updateViewState(stateValue.copy(state = currentState.copy(watchedIndicatorsEnabled = newValue)))
     }
 
+    private fun togglePosterProxy() {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        val newValue = !currentState.posterProxyEnabled
+        playerPreferencesRepository.posterProxyEnabled = newValue
+        updateViewState(stateValue.copy(state = currentState.copy(posterProxyEnabled = newValue)))
+        router.newRootScreen(router.screens.main())
+    }
+
     private fun onChangeNavigationMode(mode: NavigationMode) {
         val currentState = stateValue.state
         if (currentState !is DeviceSettingsState.Success) return
@@ -263,5 +291,76 @@ internal class DeviceSettingsVM(
 
     private fun onRetry() {
         loadDeviceSettings()
+    }
+
+    private fun openApiDomainDialog() {
+        updateViewState(
+            stateValue.copy(
+                apiDomain = apiDomainInteractor.getState().toDialogState(),
+                isApiDomainDialogOpen = true,
+            )
+        )
+    }
+
+    private fun closeApiDomainDialog() {
+        updateViewState(stateValue.copy(isApiDomainDialogOpen = false))
+    }
+
+    private fun saveApiDomain(domain: String) {
+        when (val result = apiDomainInteractor.saveCustomDomain(domain)) {
+            ApiDomainUpdateResult.Empty -> showMessage(resources.getString(R.string.api_domain_empty))
+            ApiDomainUpdateResult.Invalid -> showMessage(resources.getString(R.string.api_domain_invalid))
+            is ApiDomainUpdateResult.Success -> {
+                updateViewState(
+                    stateValue.copy(
+                        apiDomain = result.state.toDialogState(),
+                        isApiDomainDialogOpen = false,
+                    )
+                )
+                router.newRootScreen(router.screens.main())
+            }
+        }
+    }
+
+    private fun detectApiDomain() {
+        if (stateValue.apiDomain.isDetecting) return
+        updateViewState(stateValue.copy(apiDomain = stateValue.apiDomain.copy(isDetecting = true)))
+
+        launch {
+            when (val result = apiDomainInteractor.detectAndSaveWorkingDomain()) {
+                ApiDomainDetectionResult.NotFound -> {
+                    updateViewState(stateValue.copy(apiDomain = stateValue.apiDomain.copy(isDetecting = false)))
+                    showMessage(resources.getString(R.string.api_domain_detect_failed))
+                }
+
+                is ApiDomainDetectionResult.Success -> {
+                    updateViewState(
+                        stateValue.copy(
+                            apiDomain = result.state.toDialogState(),
+                            isApiDomainDialogOpen = false,
+                        )
+                    )
+                    router.newRootScreen(router.screens.main())
+                }
+            }
+        }
+    }
+
+    private fun resetApiDomain() {
+        val state = apiDomainInteractor.resetToDefault()
+        updateViewState(
+            stateValue.copy(
+                apiDomain = state.toDialogState(),
+                isApiDomainDialogOpen = false,
+            )
+        )
+        router.newRootScreen(router.screens.main())
+    }
+
+    private fun ApiDomainState.toDialogState(): ApiDomainDialogState {
+        return ApiDomainDialogState(
+            currentDomain = domain,
+            customDomain = customDomain,
+        )
     }
 }

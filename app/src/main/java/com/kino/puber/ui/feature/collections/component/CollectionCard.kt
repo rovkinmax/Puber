@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
@@ -42,9 +45,15 @@ internal fun CollectionCard(
     ) {
         Box(Modifier.fillMaxSize()) {
             val context = LocalContext.current
-            val imageUrl = state.wideImageUrl.ifEmpty { state.imageUrl }
-            val imageRequest = remember(imageUrl) {
-                imageUrl.takeIf { it.isNotBlank() }?.let {
+            val imageUrls = remember(state.wideImageUrl, state.imageUrl, state.fallbackImageUrls) {
+                (listOf(state.wideImageUrl, state.imageUrl) + state.fallbackImageUrls)
+                    .filter { it.isNotBlank() }
+                    .distinct()
+            }
+            var urlIndex by remember(state.id, imageUrls) { mutableIntStateOf(0) }
+            val currentUrl = imageUrls.getOrNull(urlIndex)
+            val imageRequest = remember(currentUrl) {
+                currentUrl?.let {
                     ImageRequest.Builder(context)
                         .data(it)
                         .crossfade(true)
@@ -53,6 +62,11 @@ internal fun CollectionCard(
             }
             SkeletonAsyncImage(
                 model = imageRequest,
+                onError = {
+                    if (urlIndex < imageUrls.lastIndex) {
+                        urlIndex++
+                    }
+                },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),

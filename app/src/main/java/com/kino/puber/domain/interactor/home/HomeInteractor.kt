@@ -19,8 +19,8 @@ class HomeInteractor(
         return api.getWatchingList(onlySubscribed = true).map { it.items.orEmpty() }
     }
 
-    suspend fun getFreshItems(): Result<List<Item>> {
-        return api.getItemsByShortcut("fresh").map { it.items }
+    suspend fun getFreshItems(type: String): Result<List<Item>> {
+        return api.getItemsByShortcut("fresh", type = type).map { it.items }
     }
 
     suspend fun getPopularByType(type: String): Result<List<Item>> {

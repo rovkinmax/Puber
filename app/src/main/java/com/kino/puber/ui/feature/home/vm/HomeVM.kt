@@ -74,7 +74,8 @@ internal class HomeVM(
                 val hotMoviesDeferred = async { interactor.getHotItems("movie", HOT_ITEMS_COUNT).logFailure("hot movies") }
                 val hotSeriesDeferred = async { interactor.getHotItems("serial", HOT_ITEMS_COUNT).logFailure("hot series") }
                 val watchingDeferred = async { interactor.getWatchingItems().logFailure("watching") }
-                val freshDeferred = async { interactor.getFreshItems().logFailure("fresh") }
+                val freshMoviesDeferred = async { interactor.getFreshItems("movie").logFailure("fresh movies") }
+                val freshSeriesDeferred = async { interactor.getFreshItems("serial").logFailure("fresh series") }
                 val popularMoviesDeferred = async { interactor.getPopularByType("movie").logFailure("popular movies") }
                 val popularSeriesDeferred = async { interactor.getPopularByType("serial").logFailure("popular series") }
                 val watchLaterDeferred = async { interactor.getWatchLaterItems().logFailure("watch later") }
@@ -84,10 +85,12 @@ internal class HomeVM(
                 val hotMovies = hotMoviesDeferred.await().orEmpty()
                 val hotSeries = hotSeriesDeferred.await().orEmpty()
                 val hotItems = (hotMovies + hotSeries).sortedByDescending { it.ratingPercentage ?: 0 }
+                val freshItems = (freshMoviesDeferred.await().orEmpty() + freshSeriesDeferred.await().orEmpty())
+                    .sortedByDescending { it.updatedAt.orEmpty() }
 
                 val sections = listOfNotNull(
                     watchingDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.ContinueWatching) },
-                    freshDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.Fresh) },
+                    mapper.mapItemSection(freshItems, HomeSectionType.Fresh),
                     popularMoviesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularMovies) },
                     popularSeriesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularSeries) },
                     watchLaterDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.WatchLater) },

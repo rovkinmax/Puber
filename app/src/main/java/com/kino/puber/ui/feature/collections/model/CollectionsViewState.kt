@@ -21,5 +21,6 @@ internal data class CollectionUIState(
     val title: String,
     val imageUrl: String,
     val wideImageUrl: String,
+    val fallbackImageUrls: List<String> = emptyList(),
     val count: Int,
 )

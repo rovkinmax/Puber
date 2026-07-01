@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="api_domain_dialog_title">Зеркало KinoPub</string>
+    <string name="api_domain_dialog_description">Если основной сайт не открывается, укажи актуальное зеркало. Зеркало можно получить на https://mos-gorsud.site/: входи там с тем же логином и паролем, что и на обычном сайте KinoPub.</string>
+    <string name="api_domain_current">Сейчас используется: %1$s</string>
+    <string name="api_domain_dialog_input_hint">Вводи только домен без https:// и слеша. Например: rbmb.kkj.ovh</string>
+    <string name="api_domain_input_placeholder">rbmb.kkj.ovh</string>
+    <string name="api_domain_save">Сохранить</string>
+    <string name="api_domain_reset">Сбросить</string>
+    <string name="api_domain_detect">Найти рабочее</string>
+    <string name="api_domain_detecting">Проверяю...</string>
+    <string name="api_domain_close">Закрыть</string>
+    <string name="api_domain_invalid">Не похоже на домен зеркала. Пример: rbmb.kkj.ovh</string>
+    <string name="api_domain_empty">Введи домен зеркала. Например: rbmb.kkj.ovh</string>
+    <string name="api_domain_saved">Зеркало сохранено: %1$s</string>
+    <string name="api_domain_detected">Найден рабочий домен: %1$s</string>
+    <string name="api_domain_detect_failed">Не удалось найти рабочее встроенное зеркало. Введи домен вручную.</string>
+    <string name="api_domain_reset_done">Зеркало сброшено. Используется основной домен.</string>
+    <string name="api_domain_open_action">Сменить зеркало KinoPub</string>
+    <string name="api_domain_settings_title">Доступ к KinoPub</string>
+    <string name="api_domain_settings_subtitle">Если сервис не открывается, обнови зеркало.</string>
+    <string name="settings_poster_proxy">Проксировать постеры</string>
+    <string name="settings_poster_proxy_hint">Пробует грузить постеры через текущее зеркало. Если постеры стали грузиться дольше или пропали, выключи эту опцию.</string>
+    <string name="api_domain_qr_caption">Где получить зеркало</string>
+    <string name="api_domain_mirror_site">https://mos-gorsud.site/</string>
+    <string name="api_domain_qr_content_description">QR-код сайта https://mos-gorsud.site/</string>
+    <string name="auth_mirror_loading_hint">Вижу проблемы с загрузкой. Возможно, нужно установить или обновить зеркало KinoPub. Нажми и держи OK/Enter, чтобы открыть настройку зеркала.</string>
+    <string name="auth_mirror_content_hint">Если код не обновляется или сайт недоступен, нажми и держи OK/Enter, чтобы сменить зеркало.</string>
+</resources>

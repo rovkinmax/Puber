@@ -58,11 +58,12 @@ fun VideoItemHorizontal(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val context = LocalContext.current
-            val fallbackUrls = remember(state.id) {
-                listOf(state.wideImageUrl, state.bigImageUrl, state.imageUrl)
+            val fallbackUrls = remember(state.id, state.wideImageUrl, state.bigImageUrl, state.imageUrl, state.imageFallbackUrls) {
+                (listOf(state.wideImageUrl, state.bigImageUrl, state.imageUrl) + state.imageFallbackUrls)
                     .filter { it.isNotEmpty() }
+                    .distinct()
             }
-            var urlIndex by remember(state.id) { mutableIntStateOf(0) }
+            var urlIndex by remember(state.id, fallbackUrls) { mutableIntStateOf(0) }
             val currentUrl = fallbackUrls.getOrNull(urlIndex)
 
             val imageRequest = remember(currentUrl) {

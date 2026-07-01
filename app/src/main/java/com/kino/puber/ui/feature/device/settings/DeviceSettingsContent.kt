@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.kino.puber.R
 import com.kino.puber.core.model.NavigationMode
+import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.core.ui.uikit.theme.highlightOnFocus
@@ -50,6 +51,7 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceUi
 @Composable
 internal fun DeviceSettingsContent(
     state: DeviceSettingsState,
+    apiDomain: ApiDomainDialogState,
     onAction: (UIAction) -> Unit = {},
 ) {
     Box(
@@ -60,10 +62,12 @@ internal fun DeviceSettingsContent(
             is DeviceSettingsState.Error -> ErrorView(
                 error = state.error,
                 onRetry = { onAction(CommonAction.RetryClicked) },
+                onConfigureApiDomain = { onAction(DeviceSettingsActions.OpenApiDomainDialog) },
             )
             is DeviceSettingsState.Loading -> LoadingView()
             is DeviceSettingsState.Success -> DeviceSettingsList(
                 state = state,
+                apiDomain = apiDomain,
                 onAction = onAction,
             )
         }
@@ -79,6 +83,7 @@ private fun LoadingView() {
 private fun ErrorView(
     error: String,
     onRetry: () -> Unit,
+    onConfigureApiDomain: () -> Unit,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -94,17 +99,22 @@ private fun ErrorView(
         Button(onClick = onRetry) {
             Text(stringResource(R.string.device_settings_retry))
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onConfigureApiDomain) {
+            Text(stringResource(R.string.api_domain_open_action))
+        }
     }
 }
 
 @Composable
 private fun DeviceSettingsList(
     state: DeviceSettingsState.Success,
+    apiDomain: ApiDomainDialogState,
     onAction: (UIAction) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
-    val headerItemsCount = (if (state.device != null) 1 else 0) + 2
+    val headerItemsCount = 6
 
     LaunchedEffect(Unit) {
         delay(100)
@@ -120,22 +130,50 @@ private fun DeviceSettingsList(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        if (state.device != null) {
-            item {
-                Column(modifier = Modifier.selectableGroup()) {
-                    Text(
-                        text = stringResource(R.string.device_settings_current_device),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    DeviceInfoCard(device = state.device)
-                }
+        item {
+            Column(modifier = Modifier.selectableGroup()) {
+                Text(
+                    text = stringResource(R.string.device_settings_current_device),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                DeviceInfoCard(device = state.device)
             }
         }
 
         item {
             Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        item {
+            Column {
+                Text(
+                    text = stringResource(R.string.api_domain_settings_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = stringResource(R.string.api_domain_settings_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        item {
+            LocalActionItem(
+                label = stringResource(R.string.api_domain_open_action),
+                value = apiDomain.currentDomain,
+                onClick = { onAction(DeviceSettingsActions.OpenApiDomainDialog) },
+            )
+        }
+        item {
+            LocalToggleItem(
+                label = stringResource(R.string.settings_poster_proxy),
+                description = stringResource(R.string.settings_poster_proxy_hint),
+                checked = state.posterProxyEnabled,
+                onToggle = { onAction(DeviceSettingsActions.TogglePosterProxy) },
+            )
         }
 
         item {
@@ -275,8 +313,44 @@ private fun DeviceSettingsList(
 }
 
 @Composable
+private fun LocalActionItem(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .highlightOnFocus(isFocused)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun LocalToggleItem(
     label: String,
+    description: String? = null,
     checked: Boolean,
     onToggle: () -> Unit,
 ) {
@@ -295,12 +369,21 @@ private fun LocalToggleItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.weight(1f),
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+            if (description != null) {
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
         Switch(
             checked = checked,
             onCheckedChange = null,

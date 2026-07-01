@@ -3,6 +3,7 @@ package com.kino.puber.domain.interactor.contentlist
 import com.kino.puber.core.collections.TypedTtlCache
 import com.kino.puber.core.collections.TypedTtlCacheImpl
 import com.kino.puber.data.api.KinoPubApiClient
+import com.kino.puber.data.api.config.KinoPubConfig
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
@@ -12,11 +13,19 @@ internal class ContentListInteractor(
     private val api: KinoPubApiClient,
 ) {
 
-    private val detailedItemsCache: TypedTtlCache<Int, Item> = TypedTtlCacheImpl()
+    private val detailedItemsCache: TypedTtlCache<String, Item> = TypedTtlCacheImpl()
 
     suspend fun loadPage(config: SectionConfig, page: Int): PaginatedResponse<Item> {
         if (page == 1) {
-            val cacheKey = "${config.id}_${config.genre.orEmpty()}"
+            val cacheKey = listOf(
+                KinoPubConfig.CURRENT_API_DOMAIN,
+                config.id,
+                config.shortcut.orEmpty(),
+                config.type,
+                config.sort,
+                config.quality,
+                config.genre.orEmpty(),
+            ).joinToString(separator = "_")
             return firstPageCache.getOrPut(cacheKey) { fetchPage(config, page) }
         }
         return fetchPage(config, page)
@@ -33,7 +42,8 @@ internal class ContentListInteractor(
     }
 
     suspend fun getItemDetails(id: Int): Item {
-        return detailedItemsCache.getOrPut(id) {
+        val cacheKey = "${KinoPubConfig.CURRENT_API_DOMAIN}_$id"
+        return detailedItemsCache.getOrPut(cacheKey) {
             api.getItemDetails(id).getOrThrow().item!!
         }
     }

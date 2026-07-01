@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.collections.vm
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
+import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.collections.CollectionInteractor
@@ -13,6 +14,7 @@ import com.kino.puber.ui.feature.collections.model.CollectionsViewState
 internal class CollectionsVM(
     router: AppRouter,
     private val interactor: CollectionInteractor,
+    private val videoItemMapper: VideoItemUIMapper,
     override val errorHandler: ErrorHandler,
 ) : PuberVM<CollectionsViewState>(router) {
 
@@ -49,11 +51,14 @@ internal class CollectionsVM(
         launch {
             val response = interactor.getCollections(currentPage)
             val items = response.items.map { c ->
+                val mediumPosterUrls = videoItemMapper.mapPosterUrls(c.posters?.medium)
+                val widePosterUrls = videoItemMapper.mapPosterUrls(c.posters?.wide)
                 CollectionUIState(
                     id = c.id,
                     title = c.title,
-                    imageUrl = c.posters?.medium.orEmpty(),
-                    wideImageUrl = c.posters?.wide.orEmpty(),
+                    imageUrl = mediumPosterUrls.firstOrNull().orEmpty(),
+                    wideImageUrl = widePosterUrls.firstOrNull().orEmpty(),
+                    fallbackImageUrls = (widePosterUrls.drop(1) + mediumPosterUrls).distinct(),
                     count = c.count ?: 0,
                 )
             }

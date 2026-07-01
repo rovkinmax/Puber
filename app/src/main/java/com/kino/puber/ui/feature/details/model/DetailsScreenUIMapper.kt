@@ -49,6 +49,7 @@ internal class DetailsScreenUIMapper(
                 )
             )
             val items = season.episodes?.map { episode ->
+                val thumbnailUrls = itemMapper.mapPosterUrls(episode.thumbnail)
                 val title = buildString {
                     append(episode.number)
                     append(". ")
@@ -57,8 +58,9 @@ internal class DetailsScreenUIMapper(
                 VideoItemUIState(
                     id = episode.id,
                     title = title,
-                    imageUrl = episode.thumbnail ?: "",
-                    bigImageUrl = episode.thumbnail ?: "",
+                    imageUrl = thumbnailUrls.firstOrNull().orEmpty(),
+                    bigImageUrl = thumbnailUrls.firstOrNull().orEmpty(),
+                    imageFallbackUrls = thumbnailUrls.drop(1),
                     showTitle = true,
                     isWatched = episode.watched == 1,
                     showWatchedIndicator = itemMapper.watchedIndicatorsEnabled(),

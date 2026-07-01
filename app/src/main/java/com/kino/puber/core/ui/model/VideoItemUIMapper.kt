@@ -12,6 +12,7 @@ import com.kino.puber.data.repository.PlayerPreferencesRepository
 class VideoItemUIMapper(
     private val resources: ResourceProvider,
     private val playerPreferencesRepository: PlayerPreferencesRepository? = null,
+    private val posterUrlMapper: PosterUrlMapper? = null,
 ) {
 
     fun mapShortItemList(items: List<Item>): List<VideoItemUIState> {
@@ -19,12 +20,17 @@ class VideoItemUIMapper(
     }
 
     fun mapShortItem(item: Item): VideoItemUIState {
+        val mediumPosterUrls = mapPosterUrls(item.posters?.medium)
+        val bigPosterUrls = mapPosterUrls(item.posters?.big)
+        val widePosterUrls = mapPosterUrls(item.posters?.wide)
         return VideoItemUIState(
             id = item.id,
             title = item.title,
-            imageUrl = item.posters?.medium.orEmpty().ensureHttps(),
-            bigImageUrl = item.posters?.big.orEmpty().ensureHttps(),
-            wideImageUrl = item.posters?.wide.orEmpty().ensureHttps(),
+            imageUrl = mediumPosterUrls.firstOrEmpty(),
+            bigImageUrl = bigPosterUrls.firstOrEmpty(),
+            wideImageUrl = widePosterUrls.firstOrEmpty(),
+            imageFallbackUrls = (mediumPosterUrls.drop(1) + bigPosterUrls.drop(1) + widePosterUrls.drop(1))
+                .distinct(),
             unwatchedCount = item.new,
             ratings = buildRatings(item),
             isWatched = isItemWatched(item),
@@ -40,11 +46,14 @@ class VideoItemUIMapper(
     }
 
     fun mapDetailedItem(item: Item): VideoDetailsUIState {
+        val widePosterUrls = mapPosterUrls(item.posters?.wide)
+        val bigPosterUrls = mapPosterUrls(item.posters?.big)
         return VideoDetailsUIState(
             id = item.id,
             title = item.title.formatTitle(),
             description = item.plot.orEmpty(),
-            imageUrl = item.posters?.wide.orEmpty().ensureHttps(),
+            imageUrl = widePosterUrls.firstOrEmpty(),
+            imageFallbackUrls = (widePosterUrls.drop(1) + bigPosterUrls).distinct(),
             trailerUrl = item.trailer?.url.orEmpty(),
             ratings = buildRatings(item),
             genres = item.genres.orEmpty().joinToString(", ") { it.title },
@@ -124,11 +133,21 @@ class VideoItemUIMapper(
         return split("/").joinToString(separator = "\n") { it.trim() }
     }
 
-    private fun String.ensureHttps(): String {
-        return if (startsWith("http://")) replaceFirst("http://", "https://") else this
+    fun mapPosterUrl(url: String?): String = mapPosterUrls(url).firstOrEmpty()
+
+    fun mapPosterUrls(url: String?): List<String> {
+        return posterUrlMapper?.mapWithFallback(url) ?: url.orEmpty().ensureHttps().takeIf { it.isNotBlank() }
+            ?.let(::listOf)
+            .orEmpty()
     }
 
     fun watchedIndicatorsEnabled(): Boolean {
         return playerPreferencesRepository?.watchedIndicatorsEnabled ?: true
     }
+}
+
+private fun List<String>.firstOrEmpty(): String = firstOrNull().orEmpty()
+
+private fun String.ensureHttps(): String {
+    return if (startsWith("http://")) replaceFirst("http://", "https://") else this
 }

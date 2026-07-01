@@ -2,6 +2,7 @@ package com.kino.puber.domain.interactor.collections
 
 import com.kino.puber.core.collections.TypedTtlCacheImpl
 import com.kino.puber.data.api.KinoPubApiClient
+import com.kino.puber.data.api.config.KinoPubConfig
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.KCollection
 import com.kino.puber.data.api.models.PaginatedResponse
@@ -11,7 +12,8 @@ class CollectionInteractor(private val api: KinoPubApiClient) {
 
     suspend fun getCollections(page: Int): PaginatedResponse<KCollection> {
         if (page == 1) {
-            return firstPageCache.getOrPut(FIRST_PAGE_KEY) {
+            val cacheKey = "${KinoPubConfig.CURRENT_API_DOMAIN}_$FIRST_PAGE_KEY"
+            return firstPageCache.getOrPut(cacheKey) {
                 api.getCollections(page = page).getOrThrow()
             }
         }

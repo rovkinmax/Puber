@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.collections.component
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import com.kino.puber.core.di.DIScope
+import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.domain.interactor.collections.CollectionInteractor
 import com.kino.puber.ui.feature.collections.vm.CollectionsVM
@@ -22,6 +23,7 @@ internal class CollectionsScreen : PuberScreen {
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
         scope(named(scopeId)) {
             scopedOf(::CollectionInteractor)
+            scoped { VideoItemUIMapper(get(), get(), get()) }
             viewModelOf(::CollectionsVM)
         }
     }

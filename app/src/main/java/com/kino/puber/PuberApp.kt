@@ -19,6 +19,7 @@ import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.data.di.apiModule
 import com.kino.puber.data.di.repositoryModule
 import com.kino.puber.domain.di.interactorModule
+import com.kino.puber.domain.interactor.api.ApiDomainInteractor
 import okio.Path.Companion.toOkioPath
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
@@ -44,7 +45,7 @@ class PuberApp : Application(), SingletonImageLoader.Factory {
     }
 
     private fun initDi() {
-        startKoin {
+        val koinApplication = startKoin {
             androidContext(this@PuberApp)
             modules(
                 resourceModule,
@@ -54,6 +55,7 @@ class PuberApp : Application(), SingletonImageLoader.Factory {
                 interactorModule,
             )
         }
+        koinApplication.koin.get<ApiDomainInteractor>().initialize()
     }
 
     private fun initLogger() {
