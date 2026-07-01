@@ -3,18 +3,29 @@ package com.kino.puber.ui.feature.home.model
 import androidx.compose.runtime.Immutable
 import com.kino.puber.core.ui.uikit.component.HeroItemState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 
 @Immutable
 internal sealed class HomeViewState {
-    data object Loading : HomeViewState()
+    abstract val apiDomainDialog: ApiDomainDialogState?
+
+    @Immutable
+    data class Loading(
+        val message: String? = null,
+        override val apiDomainDialog: ApiDomainDialogState? = null,
+    ) : HomeViewState()
 
     @Immutable
     data class Content(
         val heroItems: List<HeroItemState> = emptyList(),
         val sections: List<HomeSectionState> = emptyList(),
+        override val apiDomainDialog: ApiDomainDialogState? = null,
     ) : HomeViewState()
 
-    data class Error(val message: String) : HomeViewState()
+    data class Error(
+        val message: String,
+        override val apiDomainDialog: ApiDomainDialogState? = null,
+    ) : HomeViewState()
 }
 
 @Immutable

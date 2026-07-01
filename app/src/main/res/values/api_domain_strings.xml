@@ -15,6 +15,9 @@
     <string name="api_domain_saved">Зеркало сохранено: %1$s</string>
     <string name="api_domain_detected">Найден рабочий домен: %1$s</string>
     <string name="api_domain_detect_failed">Не удалось найти рабочее встроенное зеркало. Введи домен вручную.</string>
+    <string name="api_domain_auto_searching">Проверяю доступ к KinoPub и ищу рабочий домен...</string>
+    <string name="api_domain_auto_switched">Переключился на рабочий домен: %1$s</string>
+    <string name="api_domain_auto_failed">Не удалось автоматически найти рабочий домен KinoPub. Укажи актуальное зеркало вручную.</string>
     <string name="api_domain_reset_done">Зеркало сброшено. Используется основной домен.</string>
     <string name="api_domain_open_action">Сменить зеркало KinoPub</string>
     <string name="api_domain_settings_title">Доступ к KinoPub</string>

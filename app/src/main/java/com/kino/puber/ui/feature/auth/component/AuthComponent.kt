@@ -70,7 +70,10 @@ internal fun AuthScreenComponent() {
                 url = state.url,
                 timeLeft = state.timeLeft,
             )
-            is AuthViewState.Loading -> LoadingInfo(showMirrorHint = state.showMirrorHint)
+            is AuthViewState.Loading -> LoadingInfo(
+                showMirrorHint = state.showMirrorHint,
+                statusMessage = state.statusMessage,
+            )
         }
         ApiDomainDialog(
             state = dialogState,
@@ -87,9 +90,20 @@ internal fun AuthScreenComponent() {
 }
 
 @Composable
-private fun LoadingInfo(showMirrorHint: Boolean) {
+private fun LoadingInfo(
+    showMirrorHint: Boolean,
+    statusMessage: String?,
+) {
     Box(modifier = Modifier.fillMaxSize()) {
         FullScreenProgressIndicator()
+        if (statusMessage != null) {
+            Text(
+                text = statusMessage,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(top = 160.dp),
+            )
+        }
         if (showMirrorHint) {
             Text(
                 text = stringResource(R.string.auth_mirror_loading_hint),

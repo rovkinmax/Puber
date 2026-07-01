@@ -3,16 +3,25 @@ package com.kino.puber.ui.feature.home.vm
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.logger.log
+import com.kino.puber.core.system.ResourceProvider
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
+import com.kino.puber.R
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.domain.interactor.api.ApiDomainAutoResolveResult
+import com.kino.puber.domain.interactor.api.ApiDomainDetectionResult
+import com.kino.puber.domain.interactor.api.ApiDomainInteractor
+import com.kino.puber.domain.interactor.api.ApiDomainState
+import com.kino.puber.domain.interactor.api.ApiDomainUpdateResult
 import com.kino.puber.domain.interactor.home.HomeInteractor
 import com.kino.puber.ui.feature.collections.detail.CollectionDetailScreen
+import com.kino.puber.ui.feature.home.model.HomeAction
 import com.kino.puber.ui.feature.home.model.HomeSectionType
 import com.kino.puber.ui.feature.home.model.HomeUIMapper
 import com.kino.puber.ui.feature.home.model.HomeViewState
@@ -21,6 +30,8 @@ internal class HomeVM(
     router: AppRouter,
     private val interactor: HomeInteractor,
     private val mapper: HomeUIMapper,
+    private val apiDomainInteractor: ApiDomainInteractor,
+    private val resources: ResourceProvider,
     override val errorHandler: ErrorHandler,
 ) : PuberVM<HomeViewState>(router) {
 
@@ -29,13 +40,13 @@ internal class HomeVM(
         private const val HERO_ITEMS_COUNT = 10
     }
 
-    override val initialViewState: HomeViewState = HomeViewState.Loading
+    override val initialViewState: HomeViewState = HomeViewState.Loading()
 
     override fun dispatchError(error: ErrorEntity) {
         if (stateValue is HomeViewState.Content) {
             showMessage(error.message)
         } else {
-            updateViewState(HomeViewState.Error(error.message))
+            updateViewState(HomeViewState.Error(error.message, apiDomainDialog = currentDialogState()))
         }
     }
 
@@ -51,6 +62,11 @@ internal class HomeVM(
             }
             is CommonAction.RetryClicked -> loadHome()
             is CommonAction.OnResume -> silentRefresh()
+            HomeAction.OpenApiDomainDialog -> openApiDomainDialog()
+            HomeAction.CloseApiDomainDialog -> closeApiDomainDialog()
+            is HomeAction.SaveApiDomain -> saveApiDomain(action.domain)
+            HomeAction.DetectApiDomain -> detectApiDomain()
+            HomeAction.ResetApiDomain -> resetApiDomain()
             else -> super.onAction(action)
         }
     }
@@ -65,11 +81,43 @@ internal class HomeVM(
 
     private fun silentRefresh() {
         if (stateValue !is HomeViewState.Content) return
-        loadHome()
+        loadHome(showDomainSearch = false)
     }
 
-    private fun loadHome() {
+    private fun loadHome(showDomainSearch: Boolean = stateValue !is HomeViewState.Content) {
         launch {
+            val preserveContentOnResolveFailure = !showDomainSearch && stateValue is HomeViewState.Content
+            if (showDomainSearch) {
+                updateViewState(
+                    HomeViewState.Loading(
+                        message = resources.getString(R.string.api_domain_auto_searching),
+                        apiDomainDialog = currentDialogState(),
+                    )
+                )
+            }
+
+            when (val result = apiDomainInteractor.autoResolveWorkingDomain()) {
+                ApiDomainAutoResolveResult.NotFound -> {
+                    if (preserveContentOnResolveFailure) {
+                        showMessage(resources.getString(R.string.api_domain_auto_failed))
+                        return@launch
+                    }
+                    updateViewState(
+                        HomeViewState.Error(
+                            message = resources.getString(R.string.api_domain_auto_failed),
+                            apiDomainDialog = currentDialogState(),
+                        )
+                    )
+                    return@launch
+                }
+
+                is ApiDomainAutoResolveResult.Success -> {
+                    if (result.changed) {
+                        showMessage(resources.getString(R.string.api_domain_auto_switched, result.state.domain))
+                    }
+                }
+            }
+
             supervisorScope {
                 val hotMoviesDeferred = async { interactor.getHotItems("movie", HOT_ITEMS_COUNT).logFailure("hot movies") }
                 val hotSeriesDeferred = async { interactor.getHotItems("serial", HOT_ITEMS_COUNT).logFailure("hot series") }
@@ -103,6 +151,7 @@ internal class HomeVM(
                     HomeViewState.Content(
                         heroItems = mapper.mapHeroItems(hotItems.take(HERO_ITEMS_COUNT)),
                         sections = sections,
+                        apiDomainDialog = currentDialogState(),
                     )
                 )
             }
@@ -116,5 +165,74 @@ internal class HomeVM(
     private fun <T> Result<T>.logFailure(section: String): T? {
         onFailure { log(it, "Failed to load $section") }
         return getOrNull()
+    }
+
+    private fun openApiDomainDialog() {
+        updateApiDomainDialog(apiDomainInteractor.getState().toDialogState())
+    }
+
+    private fun closeApiDomainDialog() {
+        updateApiDomainDialog(null)
+    }
+
+    private fun updateApiDomainDialog(dialogState: ApiDomainDialogState?) {
+        updateViewState(
+            when (val state = stateValue) {
+                is HomeViewState.Content -> state.copy(apiDomainDialog = dialogState)
+                is HomeViewState.Error -> state.copy(apiDomainDialog = dialogState)
+                is HomeViewState.Loading -> state.copy(apiDomainDialog = dialogState)
+            }
+        )
+    }
+
+    private fun saveApiDomain(domain: String) {
+        when (val result = apiDomainInteractor.saveCustomDomain(domain)) {
+            ApiDomainUpdateResult.Empty -> showMessage(resources.getString(R.string.api_domain_empty))
+            ApiDomainUpdateResult.Invalid -> showMessage(resources.getString(R.string.api_domain_invalid))
+            is ApiDomainUpdateResult.Success -> {
+                closeApiDomainDialog()
+                showMessage(resources.getString(R.string.api_domain_saved, result.state.domain))
+                loadHome()
+            }
+        }
+    }
+
+    private fun detectApiDomain() {
+        val dialogState = currentDialogState() ?: return
+        if (dialogState.isDetecting) return
+        updateApiDomainDialog(dialogState.copy(isDetecting = true))
+
+        launch {
+            when (val result = apiDomainInteractor.detectAndSaveWorkingDomain()) {
+                ApiDomainDetectionResult.NotFound -> {
+                    updateApiDomainDialog(dialogState.copy(isDetecting = false))
+                    showMessage(resources.getString(R.string.api_domain_detect_failed))
+                }
+
+                is ApiDomainDetectionResult.Success -> {
+                    closeApiDomainDialog()
+                    showMessage(resources.getString(R.string.api_domain_detected, result.state.domain))
+                    loadHome()
+                }
+            }
+        }
+    }
+
+    private fun resetApiDomain() {
+        apiDomainInteractor.resetToDefault()
+        closeApiDomainDialog()
+        showMessage(resources.getString(R.string.api_domain_reset_done))
+        loadHome()
+    }
+
+    private fun currentDialogState(): ApiDomainDialogState? {
+        return stateValue.apiDomainDialog
+    }
+
+    private fun ApiDomainState.toDialogState(): ApiDomainDialogState {
+        return ApiDomainDialogState(
+            currentDomain = domain,
+            customDomain = customDomain,
+        )
     }
 }

@@ -5,6 +5,7 @@ import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.domain.interactor.api.ApiDomainAutoResolveResult
 import com.kino.puber.domain.interactor.api.ApiDomainInteractor
 import com.kino.puber.domain.interactor.api.ApiDomainDetectionResult
 import com.kino.puber.domain.interactor.api.ApiDomainState
@@ -38,6 +39,7 @@ internal class AuthVM(
     private var authJob: Job? = null
     private var timerJob: Job? = null
     private var loadingHintJob: Job? = null
+    private var hasRetriedAlternativeDomainAfterAuthError = false
 
     override fun onStart() {
         startAuth()
@@ -47,9 +49,38 @@ internal class AuthVM(
         authJob?.cancel()
         timerJob?.cancel()
         loadingHintJob?.cancel()
-        updateViewState(AuthViewState.Loading(apiDomainDialog = currentDialogState()))
+        updateViewState(
+            AuthViewState.Loading(
+                statusMessage = resources.getString(R.string.api_domain_auto_searching),
+                apiDomainDialog = currentDialogState(),
+            )
+        )
         scheduleLoadingHint()
         authJob = launch {
+            when (val result = apiDomainInteractor.autoResolveWorkingDomain()) {
+                ApiDomainAutoResolveResult.NotFound -> {
+                    updateViewState(
+                        AuthViewState.Loading(
+                            showMirrorHint = true,
+                            statusMessage = resources.getString(R.string.api_domain_auto_failed),
+                            apiDomainDialog = apiDomainInteractor.getState().toDialogState(),
+                        )
+                    )
+                    return@launch
+                }
+
+                is ApiDomainAutoResolveResult.Success -> {
+                    updateViewState(
+                        AuthViewState.Loading(
+                            apiDomainDialog = currentDialogState(),
+                        )
+                    )
+                    if (result.changed) {
+                        showMessage(resources.getString(R.string.api_domain_auto_switched, result.state.domain))
+                    }
+                }
+            }
+
             authInteractor.getAuthState()
                 .flatMapConcat { state ->
                     when (state) {
@@ -96,7 +127,38 @@ internal class AuthVM(
 
     override fun dispatchError(error: ErrorEntity) {
         showMessage(error.message)
-        updateViewState(AuthViewState.Loading(showMirrorHint = true, apiDomainDialog = currentDialogState()))
+        if (!hasRetriedAlternativeDomainAfterAuthError) {
+            hasRetriedAlternativeDomainAfterAuthError = true
+            updateViewState(
+                AuthViewState.Loading(
+                    showMirrorHint = true,
+                    statusMessage = resources.getString(R.string.api_domain_auto_searching),
+                    apiDomainDialog = currentDialogState(),
+                )
+            )
+            launch {
+                when (val result = apiDomainInteractor.detectAndSaveAlternativeBuiltInDomain()) {
+                    ApiDomainDetectionResult.NotFound -> showManualFallback()
+                    is ApiDomainDetectionResult.Success -> {
+                        showMessage(resources.getString(R.string.api_domain_auto_switched, result.state.domain))
+                        startAuth()
+                    }
+                }
+            }
+            return
+        }
+
+        showManualFallback()
+    }
+
+    private fun showManualFallback() {
+        updateViewState(
+            AuthViewState.Loading(
+                showMirrorHint = true,
+                statusMessage = resources.getString(R.string.api_domain_auto_failed),
+                apiDomainDialog = apiDomainInteractor.getState().toDialogState(),
+            )
+        )
     }
 
     private fun startTimer(expireTimeSeconds: Int) {
@@ -142,6 +204,7 @@ internal class AuthVM(
             ApiDomainUpdateResult.Empty -> showMessage(resources.getString(R.string.api_domain_empty))
             ApiDomainUpdateResult.Invalid -> showMessage(resources.getString(R.string.api_domain_invalid))
             is ApiDomainUpdateResult.Success -> {
+                hasRetriedAlternativeDomainAfterAuthError = false
                 closeApiDomainDialog()
                 showMessage(resources.getString(R.string.api_domain_saved, result.state.domain))
                 startAuth()
@@ -162,6 +225,7 @@ internal class AuthVM(
                 }
 
                 is ApiDomainDetectionResult.Success -> {
+                    hasRetriedAlternativeDomainAfterAuthError = false
                     closeApiDomainDialog()
                     showMessage(resources.getString(R.string.api_domain_detected, result.state.domain))
                     startAuth()
@@ -171,6 +235,7 @@ internal class AuthVM(
     }
 
     private fun resetApiDomain() {
+        hasRetriedAlternativeDomainAfterAuthError = false
         apiDomainInteractor.resetToDefault()
         closeApiDomainDialog()
         showMessage(resources.getString(R.string.api_domain_reset_done))

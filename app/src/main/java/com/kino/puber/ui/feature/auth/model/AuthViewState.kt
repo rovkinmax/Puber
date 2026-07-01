@@ -8,6 +8,7 @@ internal sealed class AuthViewState {
     @Immutable
     data class Loading(
         val showMirrorHint: Boolean = false,
+        val statusMessage: String? = null,
         val apiDomainDialog: ApiDomainDialogState? = null,
     ) : AuthViewState()
 

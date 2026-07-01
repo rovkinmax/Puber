@@ -66,7 +66,7 @@ private val previewSections = listOf(
 @Composable
 private fun HomeLoadingPreview() = PuberTheme {
     HomeScreenContent(
-        state = HomeViewState.Loading,
+        state = HomeViewState.Loading(),
         onAction = {},
         onHeroClick = {},
         onCollectionClick = { _, _ -> },

@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,17 +33,23 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.kino.puber.R
+import com.kino.puber.core.ui.uikit.component.ApiDomainDialog
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.core.ui.uikit.component.HeroCarousel
 import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
+import com.kino.puber.core.ui.uikit.component.TvSafeButton
 import com.kino.puber.core.ui.uikit.component.dpadScrollOptimization
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.ui.feature.home.model.HomeAction
 import com.kino.puber.ui.feature.home.model.HomeSectionType
 import com.kino.puber.ui.feature.home.model.HomeViewState
 
@@ -52,23 +60,86 @@ internal fun HomeScreenContent(
     onHeroClick: (Int) -> Unit,
     onCollectionClick: (Int, String) -> Unit,
 ) {
-    when (state) {
-        is HomeViewState.Loading -> {
-            FullScreenProgressIndicator()
-        }
-        is HomeViewState.Error -> {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = state.message)
+    Box(Modifier.fillMaxSize()) {
+        when (state) {
+            is HomeViewState.Loading -> {
+                LoadingView(message = state.message)
+            }
+
+            is HomeViewState.Error -> {
+                ErrorView(
+                    message = state.message,
+                    onRetry = { onAction(CommonAction.RetryClicked) },
+                    onConfigureApiDomain = { onAction(HomeAction.OpenApiDomainDialog) },
+                )
+            }
+
+            is HomeViewState.Content -> {
+                HomeContent(
+                    state = state,
+                    onAction = onAction,
+                    onHeroClick = onHeroClick,
+                    onCollectionClick = onCollectionClick,
+                )
             }
         }
-        is HomeViewState.Content -> {
-            HomeContent(
-                state = state,
-                onAction = onAction,
-                onHeroClick = onHeroClick,
-                onCollectionClick = onCollectionClick,
+
+        ApiDomainDialog(
+            state = state.apiDomainDialog,
+            onSave = { onAction(HomeAction.SaveApiDomain(it)) },
+            onReset = { onAction(HomeAction.ResetApiDomain) },
+            onDetect = { onAction(HomeAction.DetectApiDomain) },
+            onDismiss = { onAction(HomeAction.CloseApiDomainDialog) },
+        )
+    }
+}
+
+@Composable
+private fun LoadingView(message: String?) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        FullScreenProgressIndicator()
+        if (message != null) {
+            Text(
+                text = message,
+                modifier = Modifier.padding(top = 160.dp),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center,
             )
         }
+    }
+}
+
+@Composable
+private fun ErrorView(
+    message: String,
+    onRetry: () -> Unit,
+    onConfigureApiDomain: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 64.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(24.dp))
+        TvSafeButton(
+            text = stringResource(R.string.error_button_retry),
+            onClick = onRetry,
+            primary = true,
+        )
+        Spacer(Modifier.height(8.dp))
+        TvSafeButton(
+            text = stringResource(R.string.api_domain_open_action),
+            onClick = onConfigureApiDomain,
+        )
     }
 }
 

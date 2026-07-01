@@ -33,6 +33,15 @@ internal sealed interface ApiDomainDetectionResult {
     data object NotFound : ApiDomainDetectionResult
 }
 
+internal sealed interface ApiDomainAutoResolveResult {
+    data class Success(
+        val state: ApiDomainState,
+        val changed: Boolean,
+    ) : ApiDomainAutoResolveResult
+
+    data object NotFound : ApiDomainAutoResolveResult
+}
+
 internal class ApiDomainInteractor(
     private val preferences: ICryptoPreferenceRepository,
     private val itemDetailsRepository: ItemDetailsRepository,
@@ -72,10 +81,40 @@ internal class ApiDomainInteractor(
         val preset = KinoPubConfig.BUILT_IN_ENDPOINTS.firstOrNull(::isEndpointReachable)
             ?: return@withContext ApiDomainDetectionResult.NotFound
 
-        preferences.saveApiDomain(preset.domain.takeIf { it != KinoPubConfig.DEFAULT_API_DOMAIN })
-        KinoPubConfig.setDomainOverride(preset.domain.takeIf { it != KinoPubConfig.DEFAULT_API_DOMAIN })
-        clearDomainSensitiveCaches()
+        applyEndpoint(preset)
         ApiDomainDetectionResult.Success(getState())
+    }
+
+    suspend fun detectAndSaveAlternativeBuiltInDomain(): ApiDomainDetectionResult = withContext(Dispatchers.IO) {
+        val currentEndpoint = KinoPubConfig.CURRENT_ENDPOINT
+        val preset = KinoPubConfig.BUILT_IN_ENDPOINTS
+            .filterNot { it.domain == currentEndpoint.domain }
+            .filterNot { it.oauthBaseUrl == currentEndpoint.oauthBaseUrl }
+            .firstOrNull(::isEndpointReachable)
+            ?: return@withContext ApiDomainDetectionResult.NotFound
+
+        applyEndpoint(preset)
+        ApiDomainDetectionResult.Success(getState())
+    }
+
+    suspend fun autoResolveWorkingDomain(): ApiDomainAutoResolveResult = withContext(Dispatchers.IO) {
+        val currentDomain = KinoPubConfig.CURRENT_API_DOMAIN
+        val endpoint = buildAutoResolveCandidates().firstOrNull(::isEndpointReachable)
+            ?: return@withContext ApiDomainAutoResolveResult.NotFound
+
+        val persistedDomain = endpoint.domain.takeIf { it != KinoPubConfig.DEFAULT_API_DOMAIN }
+        val changed = endpoint.domain != currentDomain
+
+        if (changed) {
+            preferences.saveApiDomain(persistedDomain)
+            KinoPubConfig.setDomainOverride(persistedDomain)
+            clearDomainSensitiveCaches()
+        }
+
+        ApiDomainAutoResolveResult.Success(
+            state = getState(),
+            changed = changed,
+        )
     }
 
     fun resetToDefault(): ApiDomainState {
@@ -93,6 +132,19 @@ internal class ApiDomainInteractor(
     private fun clearDomainSensitiveCaches() {
         itemDetailsRepository.clear()
         genreInteractor.clearCache()
+    }
+
+    private fun applyEndpoint(endpoint: com.kino.puber.data.api.config.ApiEndpointPreset) {
+        val persistedDomain = endpoint.domain.takeIf { it != KinoPubConfig.DEFAULT_API_DOMAIN }
+        preferences.saveApiDomain(persistedDomain)
+        KinoPubConfig.setDomainOverride(persistedDomain)
+        clearDomainSensitiveCaches()
+    }
+
+    private fun buildAutoResolveCandidates(): List<com.kino.puber.data.api.config.ApiEndpointPreset> {
+        val currentEndpoint = KinoPubConfig.CURRENT_ENDPOINT
+        return (listOf(currentEndpoint) + KinoPubConfig.BUILT_IN_ENDPOINTS)
+            .distinctBy { it.domain }
     }
 
     private fun isEndpointReachable(endpoint: com.kino.puber.data.api.config.ApiEndpointPreset): Boolean {

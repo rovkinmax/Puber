@@ -56,6 +56,7 @@ object KinoPubConfig {
     val DEFAULT_API_DOMAIN: String get() = defaultDomain
     val CURRENT_API_DOMAIN: String get() = activeEndpoint.domain
     val CURRENT_API_HOST: String get() = activeEndpoint.apiHost
+    val CURRENT_ENDPOINT: ApiEndpointPreset get() = activeEndpoint
     val CUSTOM_API_DOMAIN: String? get() = domainOverride
     val BUILT_IN_ENDPOINTS: List<ApiEndpointPreset>
         get() = listOf(defaultEndpoint, aladorEndpoint, legacyCdnEndpoint)

@@ -5,9 +5,6 @@ package com.kino.puber.core.ui.uikit.component
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,18 +32,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -61,8 +50,6 @@ private val DialogWidth = 900.dp
 private val DialogPadding = 20.dp
 private val DialogCornerRadius = 18.dp
 private val ContentSpacing = 20.dp
-private val ActionButtonHeight = 48.dp
-private val ActionButtonCornerRadius = 24.dp
 private val FieldCornerRadius = 12.dp
 private val QrSize = 160.dp
 
@@ -232,7 +219,7 @@ private fun DialogActions(
     saveFocusRequester: FocusRequester,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        DialogActionButton(
+        TvSafeButton(
             text = stringResource(R.string.api_domain_save),
             onClick = onSave,
             enabled = !isDetecting,
@@ -240,12 +227,12 @@ private fun DialogActions(
             modifier = Modifier
                 .focusRequester(saveFocusRequester),
         )
-        DialogActionButton(
+        TvSafeButton(
             text = stringResource(R.string.api_domain_reset),
             onClick = onReset,
             enabled = !isDetecting,
         )
-        DialogActionButton(
+        TvSafeButton(
             text = stringResource(
                 if (isDetecting) {
                     R.string.api_domain_detecting
@@ -256,120 +243,12 @@ private fun DialogActions(
             onClick = onDetect,
             enabled = !isDetecting,
         )
-        DialogActionButton(
+        TvSafeButton(
             text = stringResource(R.string.api_domain_close),
             onClick = onDismiss,
         )
     }
 }
-
-@Composable
-private fun DialogActionButton(
-    text: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    primary: Boolean = false,
-    modifier: Modifier = Modifier,
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    var isSelectPressed by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(ActionButtonCornerRadius)
-    val colorScheme = MaterialTheme.colorScheme
-    val containerColor = when {
-        !enabled -> colorScheme.surfaceVariant.copy(alpha = 0.36f)
-        isFocused -> colorScheme.primary
-        primary -> colorScheme.primaryContainer
-        else -> colorScheme.surface
-    }
-    val contentColor = when {
-        !enabled -> colorScheme.onSurface.copy(alpha = 0.38f)
-        isFocused -> colorScheme.onPrimary
-        primary -> colorScheme.onPrimaryContainer
-        else -> colorScheme.onSurface
-    }
-    val borderColor = when {
-        primary -> null
-        isFocused -> colorScheme.primary
-        else -> colorScheme.outline
-    }
-
-    Box(
-        modifier = modifier
-            .height(ActionButtonHeight)
-            .background(containerColor, shape)
-            .then(
-                if (borderColor == null) {
-                    Modifier
-                } else {
-                    Modifier.border(width = 1.dp, color = borderColor, shape = shape)
-                }
-            )
-            .onFocusChanged {
-                isFocused = it.isFocused
-                if (!it.isFocused) {
-                    isSelectPressed = false
-                }
-            }
-            .onTvSelectClick(
-                enabled = enabled,
-                isPressed = { isSelectPressed },
-                setPressed = { isSelectPressed = it },
-                onClick = onClick,
-            )
-            .clickable(
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .focusable(enabled)
-            .padding(horizontal = 18.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = contentColor,
-        )
-    }
-}
-
-private fun Modifier.onTvSelectClick(
-    enabled: Boolean,
-    isPressed: () -> Boolean,
-    setPressed: (Boolean) -> Unit,
-    onClick: () -> Unit,
-): Modifier {
-    fun handleEvent(event: androidx.compose.ui.input.key.KeyEvent): Boolean {
-        if (!enabled) {
-            setPressed(false)
-            return false
-        }
-        if (!event.key.isSelectKey()) {
-            return false
-        }
-
-        return when (event.type) {
-            KeyEventType.KeyDown -> {
-                setPressed(true)
-                true
-            }
-            KeyEventType.KeyUp -> {
-                if (isPressed()) {
-                    setPressed(false)
-                    onClick()
-                    true
-                } else {
-                    false
-                }
-            }
-            else -> false
-        }
-    }
-
-    return onPreviewKeyEvent(::handleEvent).onKeyEvent(::handleEvent)
-}
-
-private fun Key.isSelectKey(): Boolean = this == Key.DirectionCenter || this == Key.Enter
 
 @Composable
 private fun MirrorQr() {
