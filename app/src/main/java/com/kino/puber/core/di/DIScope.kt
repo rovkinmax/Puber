@@ -12,6 +12,7 @@ import org.koin.core.scope.ScopeID
 import org.koin.dsl.module
 
 val LocalPuberKoinScope: ProvidableCompositionLocal<Scope?> = staticCompositionLocalOf { null }
+val LocalPuberScopePrefix: ProvidableCompositionLocal<String?> = staticCompositionLocalOf { null }
 
 @Composable
 inline fun <reified VM : ViewModel> puberViewModel(
@@ -29,9 +30,15 @@ fun DIScope(
     },
     content: @Composable () -> Unit,
 ) {
+    val scopePrefix = LocalPuberScopePrefix.current
+    val effectiveScopeName = if (scopePrefix == null) {
+        scopeName
+    } else {
+        "$scopePrefix:$scopeName"
+    }
     CompositionLocalProvider(
         value = LocalPuberKoinScope provides rememberDIScope(
-            scopeName = scopeName,
+            scopeName = effectiveScopeName,
             moduleFactory = moduleFactory,
         ),
         content = content,

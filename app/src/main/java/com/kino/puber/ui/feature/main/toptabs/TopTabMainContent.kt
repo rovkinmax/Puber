@@ -62,6 +62,7 @@ internal fun TopTabMainContent(
     var lastFocusedRegion by rememberSaveable { mutableStateOf(TopTabFocusedRegion.Tabs) }
     var isContentFocused by remember { mutableStateOf(false) }
     var contextMenuTabIndex by remember { mutableStateOf<Int?>(null) }
+    var refreshFocusRequestVersion by rememberSaveable { mutableIntStateOf(0) }
 
     SyncSelectedTabEffect(selectedIndex) { focusedTabIndex = selectedIndex }
     DelayedTabSelectionEffect(
@@ -77,6 +78,11 @@ internal fun TopTabMainContent(
         contentFocus = contentFocus,
         focusManager = focusManager,
         lastFocusedRegion = lastFocusedRegion,
+    )
+    RefreshContentFocusEffect(
+        requestVersion = refreshFocusRequestVersion,
+        contentFocus = contentFocus,
+        focusManager = focusManager,
     )
     val isOnHome = state.tabs.getOrNull(focusedTabIndex)?.type == TabType.Home
 
@@ -139,13 +145,30 @@ internal fun TopTabMainContent(
                 title = contextMenuTab?.label,
                 onRefresh = {
                     contextMenuTab?.let { tab ->
+                        lastFocusedRegion = TopTabFocusedRegion.Content
+                        refreshFocusRequestVersion++
                         onAction(MainAction.RefreshTab(tab))
-                        requestContentFocus()
                     }
                 },
                 onDismiss = { contextMenuTabIndex = null },
             )
         }
+    }
+}
+
+@Composable
+private fun RefreshContentFocusEffect(
+    requestVersion: Int,
+    contentFocus: FocusRequester,
+    focusManager: FocusManager,
+) {
+    LaunchedEffect(requestVersion) {
+        if (requestVersion == 0) return@LaunchedEffect
+        delay(REFRESH_CONTENT_FOCUS_DELAY_MS)
+        restoreContentChildFocus(
+            contentFocus = contentFocus,
+            focusManager = focusManager,
+        )
     }
 }
 
@@ -312,6 +335,7 @@ private const val INITIAL_TAB_FOCUS_DELAY_MS = 100L
 private const val CONTENT_CHILD_FOCUS_DELAY_MS = 16L
 private const val CONTENT_FOCUS_RESTORE_ATTEMPTS = 5
 private const val CONTENT_FOCUS_RESTORE_RETRY_DELAY_MS = 50L
+private const val REFRESH_CONTENT_FOCUS_DELAY_MS = 150L
 
 private enum class TopTabFocusedRegion {
     Tabs,

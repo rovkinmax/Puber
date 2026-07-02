@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,7 +35,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -69,10 +79,25 @@ internal fun ApiDomainDialog(
     }
     val inputFocusRequester = remember { FocusRequester() }
     val saveFocusRequester = remember { FocusRequester() }
+    var isInputFocused by remember { mutableStateOf(false) }
+    var wasKeyboardOpen by rememberSaveable { mutableStateOf(false) }
+
+    fun requestActionsFocus() {
+        runCatching { saveFocusRequester.requestFocus() }
+    }
 
     LaunchedEffect(state) {
         delay(FOCUS_DELAY_MS)
-        saveFocusRequester.requestFocus()
+        requestActionsFocus()
+    }
+
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    val isKeyboardOpen = imeBottom > 0
+    LaunchedEffect(isKeyboardOpen) {
+        if (wasKeyboardOpen && !isKeyboardOpen) {
+            requestActionsFocus()
+        }
+        wasKeyboardOpen = isKeyboardOpen
     }
 
     Dialog(
@@ -98,6 +123,8 @@ internal fun ApiDomainDialog(
                     inputFocusRequester = inputFocusRequester,
                     onInputChange = { input = it },
                     onSave = { onSave(input) },
+                    onInputFocusChanged = { isInputFocused = it },
+                    onKeyboardClosed = ::requestActionsFocus,
                     onReset = onReset,
                     onDetect = onDetect,
                     onDismiss = onDismiss,
@@ -118,6 +145,8 @@ private fun DomainForm(
     inputFocusRequester: FocusRequester,
     onInputChange: (String) -> Unit,
     onSave: () -> Unit,
+    onInputFocusChanged: (Boolean) -> Unit,
+    onKeyboardClosed: () -> Unit,
     onReset: () -> Unit,
     onDetect: () -> Unit,
     onDismiss: () -> Unit,
@@ -148,7 +177,8 @@ private fun DomainForm(
             input = input,
             inputFocusRequester = inputFocusRequester,
             onInputChange = onInputChange,
-            onSave = onSave,
+            onInputFocusChanged = onInputFocusChanged,
+            onKeyboardClosed = onKeyboardClosed,
         )
         Text(
             text = stringResource(R.string.api_domain_dialog_input_hint),
@@ -171,8 +201,10 @@ private fun DomainInput(
     input: String,
     inputFocusRequester: FocusRequester,
     onInputChange: (String) -> Unit,
-    onSave: () -> Unit,
+    onInputFocusChanged: (Boolean) -> Unit,
+    onKeyboardClosed: () -> Unit,
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -187,14 +219,27 @@ private fun DomainInput(
             onValueChange = onInputChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(inputFocusRequester),
+                .focusRequester(inputFocusRequester)
+                .onFocusChanged { onInputFocusChanged(it.isFocused) }
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyUp && (event.key == Key.Back || event.key == Key.Escape)) {
+                        onKeyboardClosed()
+                        return@onPreviewKeyEvent true
+                    }
+                    false
+                },
             textStyle = MaterialTheme.typography.bodyLarge.copy(
                 color = MaterialTheme.colorScheme.onSurface,
             ),
             singleLine = true,
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { onSave() }),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    keyboardController?.hide()
+                    onKeyboardClosed()
+                },
+            ),
             decorationBox = { innerTextField ->
                 if (input.isEmpty()) {
                     Text(

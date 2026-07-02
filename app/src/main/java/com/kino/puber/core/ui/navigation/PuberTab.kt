@@ -34,7 +34,7 @@ data class PuberTab(
     override val options: TabOptions
         @Composable
         get() {
-            throw NotImplementedError()
+            return TabOptions(index = 0U, title = key, icon = null)
         }
 
     @Composable

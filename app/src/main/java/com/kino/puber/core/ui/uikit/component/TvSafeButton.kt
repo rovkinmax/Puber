@@ -2,8 +2,8 @@ package com.kino.puber.core.ui.uikit.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -22,10 +22,14 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role as SemanticsRole
 import androidx.compose.ui.unit.dp
 
 private val ButtonHeight = 48.dp
@@ -41,18 +45,17 @@ internal fun TvSafeButton(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var isSelectPressed by remember { mutableStateOf(false) }
-    val interactionSource = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(ButtonCornerRadius)
     val colorScheme = MaterialTheme.colorScheme
     val containerColor = when {
         !enabled -> colorScheme.surfaceVariant.copy(alpha = 0.36f)
-        isFocused -> colorScheme.primary
+        isFocused -> colorScheme.onSurface
         primary -> colorScheme.primaryContainer
         else -> colorScheme.surface
     }
     val contentColor = when {
         !enabled -> colorScheme.onSurface.copy(alpha = 0.38f)
-        isFocused -> colorScheme.onPrimary
+        isFocused -> colorScheme.surface
         primary -> colorScheme.onPrimaryContainer
         else -> colorScheme.onSurface
     }
@@ -79,19 +82,30 @@ internal fun TvSafeButton(
                     isSelectPressed = false
                 }
             }
+            .focusable(enabled = enabled)
+            .semantics {
+                role = SemanticsRole.Button
+                if (!enabled) {
+                    disabled()
+                }
+                onClick {
+                    if (enabled) {
+                        onClick()
+                    }
+                    enabled
+                }
+            }
             .onTvSelectClick(
                 enabled = enabled,
                 isPressed = { isSelectPressed },
                 setPressed = { isSelectPressed = it },
                 onClick = onClick,
             )
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            )
+            .pointerInput(enabled, onClick) {
+                if (enabled) {
+                    detectTapGestures(onTap = { onClick() })
+                }
+            }
             .padding(horizontal = 18.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -136,7 +150,7 @@ private fun Modifier.onTvSelectClick(
         }
     }
 
-    return onPreviewKeyEvent(::handleEvent).onKeyEvent(::handleEvent)
+    return onPreviewKeyEvent(::handleEvent)
 }
 
 private fun Key.isSelectKey(): Boolean = this == Key.DirectionCenter || this == Key.Enter

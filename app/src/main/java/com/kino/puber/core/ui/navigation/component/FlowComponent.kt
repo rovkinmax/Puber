@@ -41,6 +41,7 @@ import kotlinx.coroutines.yield
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.parcelize.Parcelize
 import com.kino.puber.core.di.LocalPuberKoinScope
+import com.kino.puber.core.di.LocalPuberScopePrefix
 import org.koin.core.module.Module
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -184,7 +185,10 @@ private fun CurrentScreen(key: String) {
     val currentScreen = navigator.lastItem
     val screenKey = key + currentScreen.key
 
-    CompositionLocalProvider(LocalScreenKey provides screenKey) {
+    CompositionLocalProvider(
+        LocalScreenKey provides screenKey,
+        LocalPuberScopePrefix provides screenKey,
+    ) {
         navigator.saveableState(screenKey) {
             currentScreen.Content()
         }
