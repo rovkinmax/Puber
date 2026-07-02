@@ -7,19 +7,39 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 
 private const val DialogScrimAlpha = 0.62f
+
+internal data class TvDialogFocusRestorer(
+    val onDialogOpening: () -> Unit,
+    val onDialogClosed: () -> Unit,
+)
+
+internal val LocalTvDialogFocusRestorer = compositionLocalOf<TvDialogFocusRestorer?> { null }
 
 @Composable
 internal fun TvDialogOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     contentAlignment: Alignment = Alignment.Center,
-    content: @Composable () -> Unit,
+    content: @Composable (dismiss: () -> Unit) -> Unit,
 ) {
-    BackHandler(onBack = onDismiss)
+    val focusRestorer = LocalTvDialogFocusRestorer.current
+    val latestFocusRestorer = rememberUpdatedState(focusRestorer)
+    val dismiss: () -> Unit = {
+        onDismiss()
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            latestFocusRestorer.value?.onDialogClosed()
+        }
+    }
+    BackHandler(onBack = dismiss)
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -27,6 +47,6 @@ internal fun TvDialogOverlay(
             .focusGroup(),
         contentAlignment = contentAlignment,
     ) {
-        content()
+        content(dismiss)
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -30,7 +31,9 @@ import com.kino.puber.core.ui.navigation.TabRouter
 import com.kino.puber.core.ui.navigation.component.TabAppRouterHolder
 import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
 import com.kino.puber.core.ui.navigation.component.TabComponent
+import com.kino.puber.core.ui.uikit.component.LocalTvDialogFocusRestorer
 import com.kino.puber.core.ui.uikit.component.TopTabContextMenuDialog
+import com.kino.puber.core.ui.uikit.component.TvDialogFocusRestorer
 import com.kino.puber.core.ui.uikit.component.modifier.LocalAutoFocusOnLaunchEnabled
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -53,6 +56,7 @@ internal fun TopTabMainContent(
     val tabRowFocus = remember { FocusRequester() }
     val contentFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
     val tabFocusRequesters = remember(state.tabs.size) {
         List(state.tabs.size) { FocusRequester() }
     }
@@ -63,6 +67,20 @@ internal fun TopTabMainContent(
     var isContentFocused by remember { mutableStateOf(false) }
     var contextMenuTabIndex by remember { mutableStateOf<Int?>(null) }
     var refreshFocusRequestVersion by rememberSaveable { mutableIntStateOf(0) }
+    val currentFocusedTabIndex by rememberUpdatedState(focusedTabIndex)
+    val currentTabFocusRequesters by rememberUpdatedState(tabFocusRequesters)
+    val tabDialogFocusRestorer = remember(tabRowFocus, coroutineScope) {
+        TvDialogFocusRestorer(
+            onDialogOpening = { tabRowFocus.saveFocusedChild() },
+            onDialogClosed = {
+                coroutineScope.launch {
+                    delay(CONTENT_CHILD_FOCUS_DELAY_MS)
+                    currentTabFocusRequesters.getOrNull(currentFocusedTabIndex)?.requestFocus()
+                        ?: tabRowFocus.requestFocus()
+                }
+            },
+        )
+    }
 
     SyncSelectedTabEffect(selectedIndex) { focusedTabIndex = selectedIndex }
     DelayedTabSelectionEffect(
@@ -107,51 +125,53 @@ internal fun TopTabMainContent(
             Unit
         }
 
-        Column(Modifier.fillMaxSize()) {
-            TopTabBar(
-                tabs = state.tabs,
-                selectedIndex = focusedTabIndex,
-                tabFocusRequesters = tabFocusRequesters,
-                onContentFocusRequested = requestContentFocus,
-                onTabFocused = { index -> focusedTabIndex = index },
-                onTabClick = requestContentFocus,
-                onTabContextMenu = { index -> contextMenuTabIndex = index },
-                onSearchClick = onSearchClick,
-                onSettingsClick = onSettingsClick,
-                modifier = Modifier
-                    .onFocusChanged {
-                        if (it.hasFocus) {
-                            isContentFocused = false
+        CompositionLocalProvider(LocalTvDialogFocusRestorer provides tabDialogFocusRestorer) {
+            Column(Modifier.fillMaxSize()) {
+                TopTabBar(
+                    tabs = state.tabs,
+                    selectedIndex = focusedTabIndex,
+                    tabFocusRequesters = tabFocusRequesters,
+                    onContentFocusRequested = requestContentFocus,
+                    onTabFocused = { index -> focusedTabIndex = index },
+                    onTabClick = requestContentFocus,
+                    onTabContextMenu = { index -> contextMenuTabIndex = index },
+                    onSearchClick = onSearchClick,
+                    onSettingsClick = onSettingsClick,
+                    modifier = Modifier
+                        .onFocusChanged {
+                            if (it.hasFocus) {
+                                isContentFocused = false
+                            }
+                        },
+                    tabRowModifier = Modifier
+                        .focusRequester(tabRowFocus),
+                )
+
+                CompositionLocalProvider(LocalAutoFocusOnLaunchEnabled provides false) {
+                    TopTabContentBox(
+                        contentFocus = contentFocus,
+                        tabRowFocus = tabRowFocus,
+                        onExitToTabs = { lastFocusedRegion = TopTabFocusedRegion.Tabs },
+                        onFocused = {
+                            lastFocusedRegion = TopTabFocusedRegion.Content
+                            isContentFocused = true
+                        },
+                    )
+                }
+
+                val contextMenuTab = contextMenuTabIndex?.let(state.tabs::getOrNull)
+                TopTabContextMenuDialog(
+                    title = contextMenuTab?.label,
+                    onRefresh = {
+                        contextMenuTab?.let { tab ->
+                            lastFocusedRegion = TopTabFocusedRegion.Content
+                            refreshFocusRequestVersion++
+                            onAction(MainAction.RefreshTab(tab))
                         }
                     },
-                tabRowModifier = Modifier
-                    .focusRequester(tabRowFocus),
-            )
-
-            CompositionLocalProvider(LocalAutoFocusOnLaunchEnabled provides false) {
-                TopTabContentBox(
-                    contentFocus = contentFocus,
-                    tabRowFocus = tabRowFocus,
-                    onExitToTabs = { lastFocusedRegion = TopTabFocusedRegion.Tabs },
-                    onFocused = {
-                        lastFocusedRegion = TopTabFocusedRegion.Content
-                        isContentFocused = true
-                    },
+                    onDismiss = { contextMenuTabIndex = null },
                 )
             }
-
-            val contextMenuTab = contextMenuTabIndex?.let(state.tabs::getOrNull)
-            TopTabContextMenuDialog(
-                title = contextMenuTab?.label,
-                onRefresh = {
-                    contextMenuTab?.let { tab ->
-                        lastFocusedRegion = TopTabFocusedRegion.Content
-                        refreshFocusRequestVersion++
-                        onAction(MainAction.RefreshTab(tab))
-                    }
-                },
-                onDismiss = { contextMenuTabIndex = null },
-            )
         }
     }
 }
@@ -289,6 +309,20 @@ private fun ColumnScope.TopTabContentBox(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val contentDialogFocusRestorer = remember(contentFocus, coroutineScope, focusManager) {
+        TvDialogFocusRestorer(
+            onDialogOpening = { contentFocus.saveFocusedChild() },
+            onDialogClosed = {
+                coroutineScope.launch {
+                    delay(CONTENT_CHILD_FOCUS_DELAY_MS)
+                    restoreContentChildFocus(
+                        contentFocus = contentFocus,
+                        focusManager = focusManager,
+                    )
+                }
+            },
+        )
+    }
     Box(
         Modifier
             .weight(1f)
@@ -326,7 +360,11 @@ private fun ColumnScope.TopTabContentBox(
             .focusRestorer()
             .focusGroup()
     ) {
-        PuberCurrentTab()
+        CompositionLocalProvider(
+            LocalTvDialogFocusRestorer provides contentDialogFocusRestorer
+        ) {
+            PuberCurrentTab()
+        }
     }
 }
 

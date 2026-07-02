@@ -7,10 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -81,7 +78,7 @@ internal fun TvContextMenuDialog(
         }
     }
 
-    TvDialogOverlay(onDismiss = onDismiss) {
+    TvDialogOverlay(onDismiss = onDismiss) { dismiss ->
         Card(
             modifier = modifier.width(ContextMenuWidth),
         ) {
@@ -99,7 +96,10 @@ internal fun TvContextMenuDialog(
                 actions.forEachIndexed { index, action ->
                     TvSafeButton(
                         text = action.title,
-                        onClick = { onAction(action) },
+                        onClick = {
+                            dismiss()
+                            onAction(action)
+                        },
                         enabled = action.enabled,
                         primary = index == 0,
                         modifier = if (index == initialFocusActionIndex) {
@@ -111,7 +111,7 @@ internal fun TvContextMenuDialog(
                 }
                 TvSafeButton(
                     text = stringResource(R.string.context_menu_close),
-                    onClick = onDismiss,
+                    onClick = dismiss,
                     modifier = if (initialFocusActionIndex < 0) {
                         Modifier.focusRequester(closeFocusRequester)
                     } else {
@@ -157,7 +157,6 @@ internal fun VideoItemContextMenuDialog(
             savedAction,
         ),
         onAction = { action ->
-            onDismiss()
             when (action.id) {
                 ACTION_WATCH -> onAction(CommonAction.ItemPlayed(item))
                 ACTION_ADD_TO_SAVED -> onAction(CommonAction.ItemSavedChanged(item, true))
@@ -209,7 +208,6 @@ internal fun EpisodeContextMenuDialog(
             ),
         ),
         onAction = { action ->
-            onDismiss()
             when (action.id) {
                 ACTION_WATCH -> onPlay(episode)
                 ACTION_MARK_EPISODE_WATCHED -> onMarkEpisodeWatched(episode, true)
@@ -238,7 +236,6 @@ internal fun TopTabContextMenuDialog(
             ),
         ),
         onAction = { action ->
-            onDismiss()
             when (action.id) {
                 ACTION_REFRESH_TAB -> onRefresh()
             }
@@ -252,33 +249,74 @@ internal fun Modifier.onTvContextMenuKey(
     enabled: Boolean = true,
     onOpen: () -> Unit,
 ): Modifier {
-    var suppressSelectUp by remember { mutableStateOf(false) }
+    val longSelectState = remember { TvContextMenuLongSelectState() }
+    val focusRestorer = LocalTvDialogFocusRestorer.current
+    val openWithFocusSave = {
+        focusRestorer?.onDialogOpening()
+        onOpen()
+    }
     return onPreviewKeyEvent { event ->
         if (!enabled) return@onPreviewKeyEvent false
 
         val native = event.nativeKeyEvent
         when {
             event.type == KeyEventType.KeyDown && native.keyCode.isContextMenuKeyCode() -> {
-                onOpen()
+                openWithFocusSave()
                 true
             }
 
             event.type == KeyEventType.KeyDown &&
                 event.key.isSelectKey() &&
                 native.repeatCount >= LONG_SELECT_REPEAT_THRESHOLD -> {
-                suppressSelectUp = true
+                when (longSelectState.onSelectKeyDown(native.repeatCount)) {
+                    TvContextMenuLongSelectDecision.Open -> openWithFocusSave()
+                    TvContextMenuLongSelectDecision.Consume -> Unit
+                    TvContextMenuLongSelectDecision.Ignore -> return@onPreviewKeyEvent false
+                }
                 true
             }
 
-            event.type == KeyEventType.KeyUp && event.key.isSelectKey() && suppressSelectUp -> {
-                suppressSelectUp = false
-                onOpen()
-                true
+            event.type == KeyEventType.KeyUp && event.key.isSelectKey() -> {
+                longSelectState.onSelectKeyUp()
             }
 
             else -> false
         }
     }
+}
+
+internal class TvContextMenuLongSelectState(
+    private val repeatThreshold: Int = LONG_SELECT_REPEAT_THRESHOLD,
+) {
+    private var suppressSelectUp = false
+    private var opened = false
+
+    fun onSelectKeyDown(repeatCount: Int): TvContextMenuLongSelectDecision {
+        if (repeatCount < repeatThreshold) return TvContextMenuLongSelectDecision.Ignore
+        suppressSelectUp = true
+        return if (opened) {
+            TvContextMenuLongSelectDecision.Consume
+        } else {
+            opened = true
+            TvContextMenuLongSelectDecision.Open
+        }
+    }
+
+    fun onSelectKeyUp(): Boolean {
+        return if (suppressSelectUp) {
+            suppressSelectUp = false
+            opened = false
+            true
+        } else {
+            false
+        }
+    }
+}
+
+internal enum class TvContextMenuLongSelectDecision {
+    Ignore,
+    Consume,
+    Open,
 }
 
 private fun Int.isContextMenuKeyCode(): Boolean {

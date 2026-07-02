@@ -97,7 +97,7 @@ internal fun ApiDomainDialog(
         wasKeyboardOpen = isKeyboardOpen
     }
 
-    TvDialogOverlay(onDismiss = onDismiss) {
+    TvDialogOverlay(onDismiss = onDismiss) { dismiss ->
         Card(
             modifier = Modifier
                 .then(modifier)
@@ -120,7 +120,7 @@ internal fun ApiDomainDialog(
                     onKeyboardClosed = ::requestActionsFocus,
                     onReset = onReset,
                     onDetect = onDetect,
-                    onDismiss = onDismiss,
+                    onDismiss = dismiss,
                     isDetecting = state.isDetecting,
                     saveFocusRequester = saveFocusRequester,
                     modifier = Modifier.weight(1f),
