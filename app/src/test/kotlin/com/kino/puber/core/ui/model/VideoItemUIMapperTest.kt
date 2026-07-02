@@ -1,5 +1,6 @@
 package com.kino.puber.core.ui.model
 
+import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.util.FakeResourceProvider
@@ -85,6 +86,30 @@ class VideoItemUIMapperTest {
         assertEquals(42, mapper.mapShortItem(item).id)
     }
 
+    @Test
+    fun mapShortItem_marksMovieSaved_whenBookmarksExist() {
+        val item = testItem(type = ItemType.MOVIE, bookmarks = listOf(Bookmark(id = 1, title = "Saved")))
+        assertEquals(true, mapper.mapShortItem(item).isSaved)
+    }
+
+    @Test
+    fun mapShortItem_marksSeriesSaved_whenInWatchlist() {
+        val item = testItem(type = ItemType.SERIAL, inWatchlist = true)
+        assertEquals(true, mapper.mapShortItem(item).isSaved)
+    }
+
+    @Test
+    fun mapShortItem_marksSeriesSaved_whenSubscribed() {
+        val item = testItem(type = ItemType.SERIAL, subscribed = true)
+        assertEquals(true, mapper.mapShortItem(item).isSaved)
+    }
+
+    @Test
+    fun mapShortItem_doesNotTreatSeriesBookmarkFoldersAsWatchlist() {
+        val item = testItem(type = ItemType.SERIAL, bookmarks = listOf(Bookmark(id = 1, title = "Folder")))
+        assertEquals(false, mapper.mapShortItem(item).isSaved)
+    }
+
     // endregion
 
     private fun testItem(
@@ -93,11 +118,17 @@ class VideoItemUIMapperTest {
         type: ItemType = ItemType.MOVIE,
         watched: Int? = null,
         new: Int? = null,
+        subscribed: Boolean? = null,
+        inWatchlist: Boolean? = null,
+        bookmarks: List<Bookmark>? = null,
     ) = Item(
         id = id,
         title = title,
         type = type,
         watched = watched,
         new = new,
+        subscribed = subscribed,
+        inWatchlist = inWatchlist,
+        bookmarks = bookmarks,
     )
 }

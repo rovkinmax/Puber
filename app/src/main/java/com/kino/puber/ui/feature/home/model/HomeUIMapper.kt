@@ -86,7 +86,9 @@ internal class HomeUIMapper(
     }
 
     private fun List<VideoItemUIState>.mapSavedBySection(type: HomeSectionType): List<VideoItemUIState> {
-        val isSavedSection = type == HomeSectionType.WatchLater || type == HomeSectionType.Bookmarks
+        val isSavedSection = type == HomeSectionType.ContinueWatching ||
+            type == HomeSectionType.WatchLater ||
+            type == HomeSectionType.Bookmarks
         if (!isSavedSection) return this
         return map { item -> item.copy(isSaved = true) }
     }
