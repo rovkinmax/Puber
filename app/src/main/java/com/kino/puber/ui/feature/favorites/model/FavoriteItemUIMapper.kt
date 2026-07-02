@@ -33,7 +33,7 @@ internal class FavoriteItemUIMapper(
                     if (groupedItems.size > 1) {
                         add(VideoGridItemUIState.Title(typeMapper.map(type)))
                     }
-                    add(VideoGridItemUIState.Items(videoItemUIMapper.mapShortItemList(items)))
+                    add(VideoGridItemUIState.Items(videoItemUIMapper.mapShortItemList(items).mapSaved()))
                 }
             },
         )
@@ -42,5 +42,8 @@ internal class FavoriteItemUIMapper(
     fun mapDetailedItem(item: Item): VideoDetailsUIState {
         return videoItemUIMapper.mapDetailedItem(item)
     }
+
+    private fun List<com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState>.mapSaved() =
+        map { item -> item.copy(isSaved = true) }
 
 }

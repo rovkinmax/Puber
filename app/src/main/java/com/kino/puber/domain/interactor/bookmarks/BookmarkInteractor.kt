@@ -14,4 +14,12 @@ class BookmarkInteractor(private val api: KinoPubApiClient) {
     suspend fun getBookmarkItems(id: Int, page: Int): PaginatedResponse<Item> {
         return api.getBookmarkItems(id, page).getOrThrow()
     }
+
+    suspend fun setItemSaved(itemId: Int, folderId: Int, saved: Boolean) {
+        if (saved) {
+            api.addBookmarkItem(itemId = itemId, folderId = folderId).getOrThrow()
+        } else {
+            api.removeBookmarkItem(itemId = itemId, folderId = folderId).getOrThrow()
+        }
+    }
 }

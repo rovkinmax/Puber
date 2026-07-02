@@ -58,6 +58,7 @@ internal class ContentListScreen(
                         paginator = Paginator.Store { old, new -> old.id == new.id },
                         config = sec,
                         interactor = get(),
+                        savedItemInteractor = get(),
                         mapper = get(),
                         router = get(),
                         errorHandler = get(),

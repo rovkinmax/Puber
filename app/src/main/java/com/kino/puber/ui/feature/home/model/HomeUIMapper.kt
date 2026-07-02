@@ -54,7 +54,7 @@ internal class HomeUIMapper(
         }
         return HomeSectionState(
             title = title,
-            items = videoItemMapper.mapShortItemList(items),
+            items = videoItemMapper.mapShortItemList(items).mapSavedBySection(type),
             type = type,
         )
     }
@@ -83,5 +83,11 @@ internal class HomeUIMapper(
             },
             type = HomeSectionType.Collections,
         )
+    }
+
+    private fun List<VideoItemUIState>.mapSavedBySection(type: HomeSectionType): List<VideoItemUIState> {
+        val isSavedSection = type == HomeSectionType.WatchLater || type == HomeSectionType.Bookmarks
+        if (!isSavedSection) return this
+        return map { item -> item.copy(isSaved = true) }
     }
 }

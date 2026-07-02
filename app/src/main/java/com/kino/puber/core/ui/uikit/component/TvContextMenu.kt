@@ -37,12 +37,16 @@ import kotlinx.coroutines.delay
 
 private const val ACTION_WATCH = "watch"
 private const val ACTION_DETAILS = "details"
+private const val ACTION_ADD_TO_SAVED = "add_to_saved"
+private const val ACTION_REMOVE_FROM_SAVED = "remove_from_saved"
 private const val ACTION_REFRESH_TAB = "refresh_tab"
 private const val ACTION_MARK_EPISODE_WATCHED = "mark_episode_watched"
 private const val ACTION_MARK_EPISODE_UNWATCHED = "mark_episode_unwatched"
 private const val ACTION_MARK_SEASON_WATCHED = "mark_season_watched"
 private const val ACTION_MARK_SEASON_UNWATCHED = "mark_season_unwatched"
 private const val CONTEXT_MENU_FOCUS_DELAY_MS = 100L
+private const val CONTEXT_MENU_FOCUS_ATTEMPTS = 4
+private const val CONTEXT_MENU_FOCUS_RETRY_DELAY_MS = 50L
 private const val LONG_SELECT_REPEAT_THRESHOLD = 1
 
 private val ContextMenuWidth = 520.dp
@@ -57,11 +61,27 @@ internal fun TvContextMenuDialog(
 ) {
     if (actions.isEmpty()) return
 
-    val firstActionFocusRequester = remember { FocusRequester() }
+    val actionFocusRequester = remember { FocusRequester() }
+    val closeFocusRequester = remember { FocusRequester() }
+    val initialFocusActionIndex = remember(actions) {
+        actions.indexOfFirst { it.enabled }
+    }
 
     LaunchedEffect(actions) {
         delay(CONTEXT_MENU_FOCUS_DELAY_MS)
-        firstActionFocusRequester.requestFocus()
+        repeat(CONTEXT_MENU_FOCUS_ATTEMPTS) {
+            val focused = runCatching {
+                if (initialFocusActionIndex >= 0) {
+                    actionFocusRequester.requestFocus()
+                } else {
+                    closeFocusRequester.requestFocus()
+                }
+            }.getOrDefault(false)
+            if (focused) {
+                return@LaunchedEffect
+            }
+            delay(CONTEXT_MENU_FOCUS_RETRY_DELAY_MS)
+        }
     }
 
     Dialog(
@@ -89,8 +109,8 @@ internal fun TvContextMenuDialog(
                         onClick = { onAction(action) },
                         enabled = action.enabled,
                         primary = index == 0,
-                        modifier = if (index == 0) {
-                            Modifier.focusRequester(firstActionFocusRequester)
+                        modifier = if (index == initialFocusActionIndex) {
+                            Modifier.focusRequester(actionFocusRequester)
                         } else {
                             Modifier
                         },
@@ -99,6 +119,11 @@ internal fun TvContextMenuDialog(
                 TvSafeButton(
                     text = stringResource(R.string.context_menu_close),
                     onClick = onDismiss,
+                    modifier = if (initialFocusActionIndex < 0) {
+                        Modifier.focusRequester(closeFocusRequester)
+                    } else {
+                        Modifier
+                    },
                 )
             }
         }
@@ -112,6 +137,17 @@ internal fun VideoItemContextMenuDialog(
     onAction: (UIAction) -> Unit,
 ) {
     if (item == null) return
+    val savedAction = TvContextMenuAction(
+        id = if (item.isSaved) ACTION_REMOVE_FROM_SAVED else ACTION_ADD_TO_SAVED,
+        title = stringResource(
+            when {
+                item.isSeriesLike && item.isSaved -> R.string.context_menu_remove_from_watchlist
+                item.isSeriesLike -> R.string.context_menu_add_to_watchlist
+                item.isSaved -> R.string.context_menu_remove_from_bookmarks
+                else -> R.string.context_menu_add_to_bookmarks
+            }
+        ),
+    )
     TvContextMenuDialog(
         title = item.title,
         actions = listOf(
@@ -129,12 +165,15 @@ internal fun VideoItemContextMenuDialog(
                 id = ACTION_DETAILS,
                 title = stringResource(R.string.context_menu_details),
             ),
+            savedAction,
         ),
         onAction = { action ->
             onDismiss()
             when (action.id) {
                 ACTION_WATCH -> onAction(CommonAction.ItemPlayed(item))
                 ACTION_DETAILS -> onAction(CommonAction.ItemSelected(item))
+                ACTION_ADD_TO_SAVED -> onAction(CommonAction.ItemSavedChanged(item, true))
+                ACTION_REMOVE_FROM_SAVED -> onAction(CommonAction.ItemSavedChanged(item, false))
             }
         },
         onDismiss = onDismiss,

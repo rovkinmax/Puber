@@ -46,6 +46,10 @@ internal class BookmarksVM(
                 val item = action.item as VideoItemUIState
                 router.navigateTo(router.screens.player(item.id))
             }
+            is CommonAction.ItemSavedChanged<*> -> {
+                val item = action.item as VideoItemUIState
+                setItemSaved(item, action.isSaved)
+            }
             else -> super.onAction(action)
         }
     }
@@ -70,7 +74,7 @@ internal class BookmarksVM(
                 BookmarksViewState.Content(
                     folders = folders,
                     selectedFolderId = firstFolder?.id,
-                    items = mapper.mapShortItemList(items),
+                    items = mapper.mapShortItemList(items).markSaved(),
                     isLoadingItems = false,
                 )
             )
@@ -82,10 +86,30 @@ internal class BookmarksVM(
             val response = interactor.getBookmarkItems(folderId, page = 1)
             updateViewState<BookmarksViewState.Content> {
                 copy(
-                    items = mapper.mapShortItemList(response.items),
+                    items = mapper.mapShortItemList(response.items).markSaved(),
                     isLoadingItems = false,
                 )
             }
+        }
+    }
+
+    private fun setItemSaved(item: VideoItemUIState, saved: Boolean) {
+        val folderId = (stateValue as? BookmarksViewState.Content)?.selectedFolderId ?: return
+        launch {
+            interactor.setItemSaved(itemId = item.id, folderId = folderId, saved = saved)
+            updateViewState<BookmarksViewState.Content> {
+                copy(items = items.updateSaved(item.id, saved).filterNot { video -> !video.isSaved })
+            }
+        }
+    }
+
+    private fun List<VideoItemUIState>.markSaved(): List<VideoItemUIState> {
+        return map { item -> item.copy(isSaved = true) }
+    }
+
+    private fun List<VideoItemUIState>.updateSaved(itemId: Int, saved: Boolean): List<VideoItemUIState> {
+        return map { item ->
+            if (item.id == itemId) item.copy(isSaved = saved) else item
         }
     }
 }

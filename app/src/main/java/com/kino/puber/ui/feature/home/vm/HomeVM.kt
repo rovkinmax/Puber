@@ -19,6 +19,7 @@ import com.kino.puber.domain.interactor.api.ApiDomainDetectionResult
 import com.kino.puber.domain.interactor.api.ApiDomainInteractor
 import com.kino.puber.domain.interactor.api.ApiDomainState
 import com.kino.puber.domain.interactor.api.ApiDomainUpdateResult
+import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.home.HomeInteractor
 import com.kino.puber.ui.feature.collections.detail.CollectionDetailScreen
 import com.kino.puber.ui.feature.home.model.HomeAction
@@ -31,6 +32,7 @@ internal class HomeVM(
     private val interactor: HomeInteractor,
     private val mapper: HomeUIMapper,
     private val apiDomainInteractor: ApiDomainInteractor,
+    private val savedItemInteractor: SavedItemInteractor,
     private val resources: ResourceProvider,
     override val errorHandler: ErrorHandler,
 ) : PuberVM<HomeViewState>(router) {
@@ -63,6 +65,10 @@ internal class HomeVM(
             is CommonAction.ItemPlayed<*> -> {
                 val item = action.item as VideoItemUIState
                 router.navigateTo(router.screens.player(item.id))
+            }
+            is CommonAction.ItemSavedChanged<*> -> {
+                val item = action.item as VideoItemUIState
+                setItemSaved(item, action.isSaved)
             }
             is CommonAction.RetryClicked -> loadHome()
             is CommonAction.OnResume -> silentRefresh()
@@ -231,6 +237,51 @@ internal class HomeVM(
 
     private fun currentDialogState(): ApiDomainDialogState? {
         return stateValue.apiDomainDialog
+    }
+
+    private fun setItemSaved(item: VideoItemUIState, saved: Boolean) {
+        updateSavedItem(item.id, saved)
+        launch {
+            savedItemInteractor.setSaved(
+                itemId = item.id,
+                isSeriesLike = item.isSeriesLike,
+                saved = saved,
+            ).onSuccess { actualSaved ->
+                updateSavedItem(item.id, actualSaved)
+                showMessage(savedMessage(item, actualSaved))
+            }.onFailure {
+                updateSavedItem(item.id, item.isSaved)
+                throw it
+            }
+        }
+    }
+
+    private fun updateSavedItem(itemId: Int, saved: Boolean) {
+        updateViewState<HomeViewState.Content> {
+            copy(
+                sections = sections.map { section ->
+                    if (section.type == HomeSectionType.Collections) {
+                        section
+                    } else {
+                        section.copy(
+                            items = section.items.map { item ->
+                                if (item.id == itemId) item.copy(isSaved = saved) else item
+                            },
+                        )
+                    }
+                },
+            )
+        }
+    }
+
+    private fun savedMessage(item: VideoItemUIState, saved: Boolean): String {
+        val messageRes = when {
+            item.isSeriesLike && saved -> R.string.video_details_watchlist_added
+            item.isSeriesLike -> R.string.video_details_watchlist_removed
+            saved -> R.string.video_details_watch_later_added
+            else -> R.string.video_details_watch_later_removed
+        }
+        return resources.getString(messageRes)
     }
 
     private fun ApiDomainState.toDialogState(): ApiDomainDialogState {

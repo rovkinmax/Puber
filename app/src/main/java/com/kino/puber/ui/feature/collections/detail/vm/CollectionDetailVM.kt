@@ -8,6 +8,7 @@ import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.collections.CollectionInteractor
 import com.kino.puber.ui.feature.collections.detail.model.CollectionDetailViewState
 
@@ -16,6 +17,7 @@ internal class CollectionDetailVM(
     private val collectionId: Int,
     private val collectionTitle: String,
     private val interactor: CollectionInteractor,
+    private val savedItemInteractor: SavedItemInteractor,
     private val mapper: VideoItemUIMapper,
     override val errorHandler: ErrorHandler,
 ) : PuberVM<CollectionDetailViewState>(router) {
@@ -44,6 +46,10 @@ internal class CollectionDetailVM(
                 val item = action.item as VideoItemUIState
                 router.navigateTo(router.screens.player(item.id))
             }
+            is CommonAction.ItemSavedChanged<*> -> {
+                val item = action.item as VideoItemUIState
+                setItemSaved(item, action.isSaved)
+            }
             is CommonAction.RetryClicked -> loadItems()
             else -> super.onAction(action)
         }
@@ -58,6 +64,32 @@ internal class CollectionDetailVM(
                     title = collectionTitle,
                     items = mapper.mapShortItemList(items),
                 )
+            )
+        }
+    }
+
+    private fun setItemSaved(item: VideoItemUIState, saved: Boolean) {
+        updateSavedItem(item.id, saved)
+        launch {
+            savedItemInteractor.setSaved(
+                itemId = item.id,
+                isSeriesLike = item.isSeriesLike,
+                saved = saved,
+            ).onSuccess { actualSaved ->
+                updateSavedItem(item.id, actualSaved)
+            }.onFailure {
+                updateSavedItem(item.id, item.isSaved)
+                throw it
+            }
+        }
+    }
+
+    private fun updateSavedItem(itemId: Int, saved: Boolean) {
+        updateViewState<CollectionDetailViewState.Content> {
+            copy(
+                items = items.map { item ->
+                    if (item.id == itemId) item.copy(isSaved = saved) else item
+                },
             )
         }
     }

@@ -41,6 +41,7 @@ internal class CollectionDetailScreen(
                     collectionId = collectionId,
                     collectionTitle = collectionTitle,
                     interactor = get(),
+                    savedItemInteractor = get(),
                     mapper = get(),
                     errorHandler = get(),
                 )

@@ -12,6 +12,7 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.contentlist.model.SectionState
@@ -20,6 +21,7 @@ internal class SectionVM(
     paginator: Paginator.Store<Item>,
     private val config: SectionConfig,
     private val interactor: ContentListInteractor,
+    private val savedItemInteractor: SavedItemInteractor,
     private val mapper: VideoItemUIMapper,
     router: AppRouter,
     errorHandler: ErrorHandler,
@@ -63,6 +65,10 @@ internal class SectionVM(
         when (action) {
             is CommonAction.LoadMore -> notifyLoadNextPage()
             is CommonAction.RetryClicked -> resetPaging()
+            is CommonAction.ItemSavedChanged<*> -> {
+                val item = action.item as VideoItemUIState
+                setItemSaved(item, action.isSaved)
+            }
         }
     }
 
@@ -100,5 +106,31 @@ internal class SectionVM(
             is Paginator.State.PageErrorPrev<*> -> return
         }
         updateViewState(newState)
+    }
+
+    private fun setItemSaved(item: VideoItemUIState, saved: Boolean) {
+        updateSavedItem(item.id, saved)
+        launch {
+            savedItemInteractor.setSaved(
+                itemId = item.id,
+                isSeriesLike = item.isSeriesLike,
+                saved = saved,
+            ).onSuccess { actualSaved ->
+                updateSavedItem(item.id, actualSaved)
+            }.onFailure {
+                updateSavedItem(item.id, item.isSaved)
+                throw it
+            }
+        }
+    }
+
+    private fun updateSavedItem(itemId: Int, saved: Boolean) {
+        updateViewState<SectionState.Content> {
+            copy(
+                items = items.map { item ->
+                    if (item.id == itemId) item.copy(isSaved = saved) else item
+                },
+            )
+        }
     }
 }

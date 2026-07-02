@@ -6,6 +6,7 @@ import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.favorites.FavoritesInteractor
 import com.kino.puber.ui.feature.favorites.model.FavoriteItemUIMapper
 import com.kino.puber.ui.feature.favorites.model.FavoriteViewState
@@ -14,6 +15,7 @@ import kotlinx.coroutines.Job
 internal class FavoriteVM(
     router: AppRouter,
     private val interactor: FavoritesInteractor,
+    private val savedItemInteractor: SavedItemInteractor,
     private val favoriteItemUIMapper: FavoriteItemUIMapper,
 ) : PuberVM<FavoriteViewState>(router) {
 
@@ -44,6 +46,11 @@ internal class FavoriteVM(
             is CommonAction.ItemSelected<*> -> onItemSelected(action.item as VideoItemUIState)
             is CommonAction.ItemPlayed<*> -> onItemPlayed(action.item as VideoItemUIState)
             is CommonAction.ItemFocused<*> -> onItemFocused(action.item as VideoItemUIState)
+            is CommonAction.ItemSavedChanged<*> -> {
+                val item = action.item as VideoItemUIState
+                setItemSaved(item, action.isSaved)
+            }
+            is CommonAction.RetryClicked -> loadData()
             else -> super.onAction(action)
         }
     }
@@ -68,6 +75,17 @@ internal class FavoriteVM(
             updateViewState<FavoriteViewState.Content> {
                 copy(selectedItem = favoriteItemUIMapper.mapDetailedItem(details))
             }
+        }
+    }
+
+    private fun setItemSaved(item: VideoItemUIState, saved: Boolean) {
+        launch {
+            savedItemInteractor.setSaved(
+                itemId = item.id,
+                isSeriesLike = item.isSeriesLike,
+                saved = saved,
+            ).getOrThrow()
+            loadData()
         }
     }
 }

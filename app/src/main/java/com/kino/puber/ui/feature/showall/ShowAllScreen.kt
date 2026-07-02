@@ -42,6 +42,7 @@ internal class ShowAllScreen(
                     paginator = Paginator.Store { old, new -> old.id == new.id },
                     config = config,
                     interactor = get(),
+                    savedItemInteractor = get(),
                     mapper = get(),
                     router = get(),
                     errorHandler = get(),

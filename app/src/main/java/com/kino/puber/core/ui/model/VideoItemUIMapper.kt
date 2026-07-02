@@ -37,6 +37,7 @@ class VideoItemUIMapper(
             isWatched = isItemWatched(item),
             showWatchedIndicator = watchedIndicatorsEnabled(),
             isSeriesLike = item.type.isSeriesLike(),
+            isSaved = item.inWatchlist == true || item.bookmarks.orEmpty().isNotEmpty(),
         )
     }
 

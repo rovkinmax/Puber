@@ -44,7 +44,7 @@ internal fun ContentListScreenContent(
 ) {
     val mainContentFocus = rememberFocusRequesterOnLaunch()
     var focusedSectionIndex by rememberSaveable { mutableIntStateOf(0) }
-    var contextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
+    var contextMenuTarget by remember { mutableStateOf<ContentListContextMenuTarget?>(null) }
 
     val scope = LocalPuberKoinScope.current ?: return
     val sectionVms = remember {
@@ -123,7 +123,7 @@ internal fun ContentListScreenContent(
                             config = config,
                             isTargetRow = index == focusedSectionIndex,
                             onItemClick = rememberedOnItemClick,
-                            onItemContextMenu = { contextMenuItem = it },
+                            onItemContextMenu = { contextMenuTarget = ContentListContextMenuTarget(it, sectionVms[index]) },
                             onItemFocused = rememberedOnItemFocused,
                             onSectionFocused = rememberedOnSectionFocused,
                             onRetry = { sectionVms[index].onAction(CommonAction.RetryClicked) },
@@ -135,10 +135,22 @@ internal fun ContentListScreenContent(
             }
         }
 
+        val activeContextMenuTarget = contextMenuTarget
         VideoItemContextMenuDialog(
-            item = contextMenuItem,
-            onDismiss = { contextMenuItem = null },
-            onAction = onAction,
+            item = activeContextMenuTarget?.item,
+            onDismiss = { contextMenuTarget = null },
+            onAction = { action ->
+                if (action is CommonAction.ItemSavedChanged<*>) {
+                    activeContextMenuTarget?.sectionVm?.onAction(action)
+                } else {
+                    onAction(action)
+                }
+            },
         )
     }
 }
+
+private data class ContentListContextMenuTarget(
+    val item: VideoItemUIState,
+    val sectionVm: SectionVM,
+)

@@ -11,6 +11,7 @@ import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.isSeriesLike
+import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import com.kino.puber.domain.interactor.details.DetailsInteractor
 import com.kino.puber.ui.feature.details.model.DetailsAction
@@ -23,6 +24,7 @@ internal class DetailsVM(
     private val params: DetailsScreenParams,
     private val mapper: DetailsScreenUIMapper,
     private val interactor: DetailsInteractor,
+    private val savedItemInteractor: SavedItemInteractor,
     private val resources: ResourceProvider,
     override val errorHandler: ErrorHandler,
 ) : PuberVM<DetailsScreenState>(router) {
@@ -86,6 +88,10 @@ internal class DetailsVM(
             is CommonAction.ItemPlayed<*> -> {
                 val item = action.item as VideoItemUIState
                 router.navigateTo(router.screens.player(item.id))
+            }
+            is CommonAction.ItemSavedChanged<*> -> {
+                val item = action.item as VideoItemUIState
+                setSimilarItemSaved(item, action.isSaved)
             }
             is CommonAction.RetryClicked -> loadData()
             else -> super.onAction(action)
@@ -277,6 +283,32 @@ internal class DetailsVM(
                 }
                 throw e
             }
+        }
+    }
+
+    private fun setSimilarItemSaved(item: VideoItemUIState, saved: Boolean) {
+        updateSimilarItemSaved(item.id, saved)
+        launch {
+            savedItemInteractor.setSaved(
+                itemId = item.id,
+                isSeriesLike = item.isSeriesLike,
+                saved = saved,
+            ).onSuccess { actualSaved ->
+                updateSimilarItemSaved(item.id, actualSaved)
+            }.onFailure {
+                updateSimilarItemSaved(item.id, item.isSaved)
+                throw it
+            }
+        }
+    }
+
+    private fun updateSimilarItemSaved(itemId: Int, saved: Boolean) {
+        updateViewState<DetailsScreenState.Content> {
+            copy(
+                similarItems = similarItems.map { item ->
+                    if (item.id == itemId) item.copy(isSaved = saved) else item
+                },
+            )
         }
     }
 

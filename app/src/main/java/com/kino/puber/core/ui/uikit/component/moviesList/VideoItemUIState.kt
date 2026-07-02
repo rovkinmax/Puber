@@ -56,6 +56,7 @@ data class VideoItemUIState(
     val isWatched: Boolean = false,
     val showWatchedIndicator: Boolean = true,
     val isSeriesLike: Boolean = false,
+    val isSaved: Boolean = false,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
     val isSeasonWatched: Boolean? = null,
