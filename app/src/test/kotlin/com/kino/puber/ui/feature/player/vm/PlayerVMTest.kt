@@ -21,6 +21,7 @@ import com.kino.puber.ui.feature.player.model.ResumeDialogState
 import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 import com.kino.puber.data.api.models.SkipSegmentType
+import com.kino.puber.util.FakeResourceProvider
 import com.kino.puber.util.MainDispatcherExtension
 import org.junit.jupiter.api.Assertions.assertFalse
 import io.mockk.clearAllMocks
@@ -115,6 +116,7 @@ class PlayerVMTest {
     private fun createVM() = PlayerVM(
         router = router, errorHandler = errorHandler, params = params,
         mapper = mapper, interactor = interactor,
+        resources = FakeResourceProvider(),
         skipSegmentInteractor = skipSegmentInteractor,
         contentStateFactory = contentStateFactory,
         playbackController = playbackController,
