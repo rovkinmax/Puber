@@ -18,8 +18,8 @@ class SavedItemInteractor(
     }
 
     private suspend fun setSeriesSaved(itemId: Int, saved: Boolean): Result<Boolean> {
-        return api.getItemDetails(itemId).mapCatching { response ->
-            val current = response.item?.inWatchlist
+        return api.getWatchingList(onlySubscribed = true).mapCatching { response ->
+            val current = response.items.orEmpty().any { item -> item.id == itemId }
             if (current == saved) {
                 saved
             } else {

@@ -2,7 +2,6 @@
 
 package com.kino.puber.core.ui.uikit.component
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -48,8 +47,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import kotlinx.coroutines.delay
@@ -100,11 +97,7 @@ internal fun ApiDomainDialog(
         wasKeyboardOpen = isKeyboardOpen
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        BackHandler(onBack = onDismiss)
+    TvDialogOverlay(onDismiss = onDismiss) {
         Card(
             modifier = Modifier
                 .then(modifier)

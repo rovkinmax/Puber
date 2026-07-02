@@ -1,7 +1,6 @@
 package com.kino.puber.core.ui.uikit.component
 
 import android.view.KeyEvent
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -23,8 +22,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.Card
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -84,11 +81,7 @@ internal fun TvContextMenuDialog(
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        BackHandler(onBack = onDismiss)
+    TvDialogOverlay(onDismiss = onDismiss) {
         Card(
             modifier = modifier.width(ContextMenuWidth),
         ) {
@@ -161,17 +154,12 @@ internal fun VideoItemContextMenuDialog(
                     }
                 ),
             ),
-            TvContextMenuAction(
-                id = ACTION_DETAILS,
-                title = stringResource(R.string.context_menu_details),
-            ),
             savedAction,
         ),
         onAction = { action ->
             onDismiss()
             when (action.id) {
                 ACTION_WATCH -> onAction(CommonAction.ItemPlayed(item))
-                ACTION_DETAILS -> onAction(CommonAction.ItemSelected(item))
                 ACTION_ADD_TO_SAVED -> onAction(CommonAction.ItemSavedChanged(item, true))
                 ACTION_REMOVE_FROM_SAVED -> onAction(CommonAction.ItemSavedChanged(item, false))
             }
