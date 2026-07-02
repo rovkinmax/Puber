@@ -117,6 +117,7 @@ internal class PlayerUIMapper(
                 )
             )
             val items = season.episodes?.map { episode ->
+                val isSeasonWatched = season.episodes.all { it.watched == 1 }
                 val thumbnailUrls = mapPosterUrls(episode.thumbnail)
                 val title = buildString {
                     append(episode.number)
@@ -132,6 +133,10 @@ internal class PlayerUIMapper(
                     showTitle = true,
                     isWatched = episode.watched == 1,
                     showWatchedIndicator = watchedIndicatorsEnabled(),
+                    isSeriesLike = false,
+                    seasonNumber = season.number,
+                    episodeNumber = episode.number,
+                    isSeasonWatched = isSeasonWatched,
                 )
             } ?: emptyList()
             gridItems.add(VideoGridItemUIState.Items(items))

@@ -3,7 +3,7 @@ package com.kino.puber.core.ui.uikit.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -41,6 +41,7 @@ internal fun TvSafeButton(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var isSelectPressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(ButtonCornerRadius)
     val colorScheme = MaterialTheme.colorScheme
     val containerColor = when {
@@ -85,11 +86,12 @@ internal fun TvSafeButton(
                 onClick = onClick,
             )
             .clickable(
+                interactionSource = interactionSource,
+                indication = null,
                 enabled = enabled,
                 role = Role.Button,
                 onClick = onClick,
             )
-            .focusable(enabled)
             .padding(horizontal = 18.dp),
         contentAlignment = Alignment.Center,
     ) {

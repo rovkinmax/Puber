@@ -40,6 +40,7 @@ import coil3.request.crossfade
 import com.kino.puber.core.ui.uikit.component.Rating
 import com.kino.puber.core.ui.uikit.component.RatingUIState
 import com.kino.puber.core.ui.uikit.component.SkeletonAsyncImage
+import com.kino.puber.core.ui.uikit.component.onTvContextMenuKey
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 
 @Composable
@@ -47,9 +48,17 @@ fun VideoItemHorizontal(
     modifier: Modifier = Modifier,
     state: VideoItemUIState,
     onClick: () -> Unit,
+    onContextMenu: (() -> Unit)? = null,
 ) {
     Card(
         modifier = modifier
+            .then(
+                if (onContextMenu != null) {
+                    Modifier.onTvContextMenuKey(onOpen = onContextMenu)
+                } else {
+                    Modifier
+                }
+            )
             .onSelectKeyClick(onClick)
             .height(PuberTheme.Defaults.HorizontalVideoItemHeight)
             .aspectRatio(PuberTheme.Defaults.HorizontalVideoItemAspectRatio),

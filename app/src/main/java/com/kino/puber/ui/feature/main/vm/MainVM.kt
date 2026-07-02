@@ -7,6 +7,7 @@ import com.kino.puber.core.ui.navigation.component.TabAppRouterHolder
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.core.model.NavigationMode
+import com.kino.puber.ui.feature.main.model.MainAction
 import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.MainUIMapper
 import com.kino.puber.ui.feature.main.model.MainViewState
@@ -19,6 +20,7 @@ internal class MainVM(
 ) : PuberVM<MainViewState>(router) {
     override val initialViewState = MainViewState()
     internal val tabAppRouterHolder = TabAppRouterHolder(router.screens)
+    private val tabRefreshVersions = mutableMapOf<TabType, Int>()
 
     override fun onStart() {
         val state = mainUIMapper.buildViewState()
@@ -28,12 +30,13 @@ internal class MainVM(
         } else {
             TabType.Favourites
         }
-        tabRouter.openTab(mainUIMapper.buildTabContent(startTab))
+        tabRouter.openTab(buildTabContent(startTab))
     }
 
     override fun onAction(action: UIAction) {
         when (action) {
             is CommonAction.ItemSelected<*> -> onTabSelected(action.item as MainTab)
+            is MainAction.RefreshTab -> onTabRefresh(action.tab)
             else -> super.onAction(action)
         }
     }
@@ -42,8 +45,22 @@ internal class MainVM(
         updateViewState<MainViewState> {
             mainUIMapper.updateSelectedTab(state = this, item)
         }
-        tabRouter.openTab(mainUIMapper.buildTabContent(item.type))
+        tabRouter.openTab(buildTabContent(item.type))
     }
+
+    private fun onTabRefresh(item: MainTab) {
+        tabAppRouterHolder.dispose(buildTabContent(item.type).key)
+        tabRefreshVersions[item.type] = (tabRefreshVersions[item.type] ?: 0) + 1
+        updateViewState<MainViewState> {
+            mainUIMapper.updateSelectedTab(state = this, item)
+        }
+        tabRouter.openTab(buildTabContent(item.type))
+    }
+
+    private fun buildTabContent(type: TabType) = mainUIMapper.buildTabContent(
+        type = type,
+        refreshVersion = tabRefreshVersions[type] ?: 0,
+    )
 
     fun onSearchClick() {
         router.navigateTo(router.screens.search())

@@ -30,8 +30,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -69,13 +71,16 @@ import com.adamglin.phosphoricons.duotone.Eye
 import com.adamglin.phosphoricons.fill.BookmarkSimple
 import com.adamglin.phosphoricons.fill.Eye
 import com.kino.puber.R
+import com.kino.puber.core.ui.uikit.component.EpisodeContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.FullScreenError
 import com.kino.puber.core.ui.uikit.component.Rating
+import com.kino.puber.core.ui.uikit.component.VideoItemContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItem
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.component.modifier.placeholder
+import com.kino.puber.core.ui.uikit.component.onTvContextMenuKey
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.details.model.DetailsAction
@@ -113,6 +118,7 @@ internal fun DetailsScreenContent(
 
         is DetailsScreenState.Content -> {
             val seasonsPanelFocusRequester = remember { FocusRequester() }
+            var episodeContextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
             LaunchedEffect(state.seasonsPanelVisible) {
                 if (state.seasonsPanelVisible) {
                     delay(SEASONS_PANEL_FOCUS_DELAY_MS)
@@ -126,16 +132,29 @@ internal fun DetailsScreenContent(
                 DetailsContentBody(
                     state = state,
                     onAction = onAction,
+                    onEpisodeContextMenu = { episodeContextMenuItem = it },
                 )
                 if (state.episodes != null) {
                     EpisodesPanel(
                         visible = state.seasonsPanelVisible,
                         episodes = state.episodes,
                         onEpisodeSelected = { item -> onAction(DetailsAction.EpisodeSelected(item)) },
+                        onEpisodeContextMenu = { episodeContextMenuItem = it },
                         onBackPressed = { onAction(DetailsAction.CloseSeasonsPanel) },
                         modifier = Modifier.focusRequester(seasonsPanelFocusRequester),
                     )
                 }
+                EpisodeContextMenuDialog(
+                    episode = episodeContextMenuItem,
+                    onDismiss = { episodeContextMenuItem = null },
+                    onPlay = { onAction(DetailsAction.EpisodeSelected(it)) },
+                    onMarkEpisodeWatched = { item, watched ->
+                        onAction(DetailsAction.EpisodeWatchedChanged(item, watched))
+                    },
+                    onMarkSeasonWatched = { item, watched ->
+                        onAction(DetailsAction.SeasonWatchedChanged(item, watched))
+                    },
+                )
                 TrailerOverlay(
                     url = state.trailerUrl,
                 )
@@ -148,6 +167,7 @@ internal fun DetailsScreenContent(
 private fun DetailsContentBody(
     state: DetailsScreenState.Content,
     onAction: (UIAction) -> Unit,
+    onEpisodeContextMenu: (VideoItemUIState) -> Unit,
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val pageCount = if (state.similarItems.isNotEmpty()) DETAILS_PAGES_WITH_SIMILAR else DETAILS_PAGES_BASE
@@ -214,6 +234,7 @@ private fun DetailsContentBody(
                         modifier = Modifier.fillMaxSize(),
                         state = state,
                         onAction = onAction,
+                        onEpisodeContextMenu = onEpisodeContextMenu,
                         seasonsPanelVisible = state.seasonsPanelVisible,
                         recoverActionFocus = isMainPageVisible,
                         showPageChevron = currentPage == MAIN_PAGE_INDEX,
@@ -279,6 +300,7 @@ private fun DetailsMainPage(
     modifier: Modifier,
     state: DetailsScreenState.Content,
     onAction: (UIAction) -> Unit,
+    onEpisodeContextMenu: (VideoItemUIState) -> Unit,
     seasonsPanelVisible: Boolean,
     recoverActionFocus: Boolean,
     showPageChevron: Boolean,
@@ -300,6 +322,8 @@ private fun DetailsMainPage(
             isInWatchlist = state.isInWatchlist,
             isWatched = state.isWatched,
             onAction = onAction,
+            currentEpisode = state.currentEpisode,
+            onEpisodeContextMenu = onEpisodeContextMenu,
             seasonsPanelVisible = seasonsPanelVisible,
             trailerVisible = state.trailerUrl != null,
             recoverActionFocus = recoverActionFocus,
@@ -320,6 +344,8 @@ private fun ActionButtonsRow(
     isInWatchlist: Boolean,
     isWatched: Boolean,
     onAction: (UIAction) -> Unit,
+    currentEpisode: VideoItemUIState?,
+    onEpisodeContextMenu: (VideoItemUIState) -> Unit,
     seasonsPanelVisible: Boolean,
     trailerVisible: Boolean,
     recoverActionFocus: Boolean,
@@ -357,6 +383,8 @@ private fun ActionButtonsRow(
                 isInWatchlist = isInWatchlist,
                 isWatched = isWatched,
                 onAction = onAction,
+                currentEpisode = currentEpisode,
+                onEpisodeContextMenu = onEpisodeContextMenu,
                 modifier = if (index == 0) Modifier.focusRequester(firstButtonFocusRequester) else Modifier,
             )
         }
@@ -369,10 +397,18 @@ private fun DetailsActionButton(
     isInWatchlist: Boolean,
     isWatched: Boolean,
     onAction: (UIAction) -> Unit,
+    currentEpisode: VideoItemUIState?,
+    onEpisodeContextMenu: (VideoItemUIState) -> Unit,
     modifier: Modifier,
 ) {
     when (button) {
-        is DetailsButtonUIState.TextButton -> DetailsTextButton(button, onAction, modifier)
+        is DetailsButtonUIState.TextButton -> DetailsTextButton(
+            button = button,
+            onAction = onAction,
+            currentEpisode = currentEpisode,
+            onEpisodeContextMenu = onEpisodeContextMenu,
+            modifier = modifier,
+        )
         is DetailsButtonUIState.IconOnly -> DetailsIconButton(button, onAction, modifier)
         is DetailsButtonUIState.WatchlistToggle -> DetailsWatchlistButton(button, isInWatchlist, onAction, modifier)
         is DetailsButtonUIState.WatchedToggle -> DetailsWatchedButton(button, isWatched, onAction, modifier)
@@ -383,9 +419,16 @@ private fun DetailsActionButton(
 private fun DetailsTextButton(
     button: DetailsButtonUIState.TextButton,
     onAction: (UIAction) -> Unit,
+    currentEpisode: VideoItemUIState?,
+    onEpisodeContextMenu: (VideoItemUIState) -> Unit,
     modifier: Modifier,
 ) {
-    Button(onClick = { onAction(button.action) }, modifier = modifier) {
+    val buttonModifier = if (button.action == DetailsAction.PlayClicked && currentEpisode != null) {
+        modifier.onTvContextMenuKey(onOpen = { onEpisodeContextMenu(currentEpisode) })
+    } else {
+        modifier
+    }
+    Button(onClick = { onAction(button.action) }, modifier = buttonModifier) {
         Icon(
             imageVector = button.icon,
             contentDescription = null,
@@ -691,6 +734,7 @@ private fun DetailsSimilarPage(
     showPageChevron: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    var contextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
     Box(modifier = modifier.fillMaxWidth()) {
         PageFocusBridge(
             enabled = showPageChevron,
@@ -735,10 +779,16 @@ private fun DetailsSimilarPage(
                         },
                         state = item,
                         onClick = { onAction(DetailsAction.SimilarSelected(item)) },
+                        onContextMenu = { contextMenuItem = item },
                     )
                 }
             }
         }
+        VideoItemContextMenuDialog(
+            item = contextMenuItem,
+            onDismiss = { contextMenuItem = null },
+            onAction = onAction,
+        )
     }
 }
 

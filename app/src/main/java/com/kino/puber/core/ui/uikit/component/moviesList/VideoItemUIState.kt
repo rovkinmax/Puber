@@ -38,6 +38,7 @@ import coil3.request.crossfade
 import com.kino.puber.core.ui.uikit.component.Rating
 import com.kino.puber.core.ui.uikit.component.RatingUIState
 import com.kino.puber.core.ui.uikit.component.SkeletonAsyncImage
+import com.kino.puber.core.ui.uikit.component.onTvContextMenuKey
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 
 @Immutable
@@ -54,6 +55,10 @@ data class VideoItemUIState(
     val progressPercent: Float? = null,
     val isWatched: Boolean = false,
     val showWatchedIndicator: Boolean = true,
+    val isSeriesLike: Boolean = false,
+    val seasonNumber: Int? = null,
+    val episodeNumber: Int? = null,
+    val isSeasonWatched: Boolean? = null,
 )
 
 @Composable
@@ -61,9 +66,17 @@ fun VideoItem(
     modifier: Modifier = Modifier,
     state: VideoItemUIState,
     onClick: () -> Unit,
+    onContextMenu: (() -> Unit)? = null,
 ) {
     Card(
         modifier = modifier
+            .then(
+                if (onContextMenu != null) {
+                    Modifier.onTvContextMenuKey(onOpen = onContextMenu)
+                } else {
+                    Modifier
+                }
+            )
             .size(
                 PuberTheme.Defaults.VideoItemWidth,
                 PuberTheme.Defaults.VideoItemHeight,

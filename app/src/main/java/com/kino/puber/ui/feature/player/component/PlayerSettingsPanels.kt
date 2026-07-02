@@ -1,7 +1,12 @@
 package com.kino.puber.ui.feature.player.component
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.core.ui.uikit.component.EpisodeContextMenuDialog
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.player.model.ActivePanel
 import com.kino.puber.ui.feature.player.model.PlayerAction
@@ -12,6 +17,8 @@ internal fun PlayerSettingsPanels(
     content: PlayerContentState,
     onAction: (UIAction) -> Unit,
 ) {
+    var episodeContextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
+
     AudioSubtitlesPanel(
         visible = content.activePanel == ActivePanel.AudioSubtitles,
         soundModes = content.soundModes,
@@ -50,7 +57,16 @@ internal fun PlayerSettingsPanels(
         visible = content.activePanel == ActivePanel.Episodes,
         episodes = content.episodes,
         onEpisodeSelected = { item -> onAction(PlayerAction.SelectEpisodeById(item.id)) },
+        onEpisodeContextMenu = { episodeContextMenuItem = it },
         onBackPressed = rememberAction(onAction, PlayerAction.ClosePanel),
+    )
+
+    EpisodeContextMenuDialog(
+        episode = episodeContextMenuItem,
+        onDismiss = { episodeContextMenuItem = null },
+        onPlay = { onAction(PlayerAction.SelectEpisodeById(it.id)) },
+        onMarkEpisodeWatched = { item, watched -> onAction(PlayerAction.EpisodeWatchedChanged(item, watched)) },
+        onMarkSeasonWatched = { item, watched -> onAction(PlayerAction.SeasonWatchedChanged(item, watched)) },
     )
 }
 

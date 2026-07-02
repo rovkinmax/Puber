@@ -84,10 +84,11 @@ internal class MainUIMapper(
         )
     }
 
-    fun buildTabContent(type: TabType): PuberTab {
+    fun buildTabContent(type: TabType, refreshVersion: Int = 0): PuberTab {
         return PuberTab(
             screen = tabScreen(type),
             tag = type,
+            instanceKey = refreshVersion.takeIf { it > 0 }?.let { "refresh_$it" }.orEmpty(),
         )
     }
 

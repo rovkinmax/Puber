@@ -10,7 +10,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
@@ -23,6 +26,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
+import com.kino.puber.core.ui.uikit.component.VideoItemContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
@@ -59,36 +63,45 @@ private fun BookmarksContent(
     onAction: (UIAction) -> Unit,
     onFolderSelected: (Int) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
-        if (state.folders.size > 1) {
-            FolderChips(
-                folders = state.folders,
-                selectedFolderId = state.selectedFolderId,
-                onFolderSelected = onFolderSelected,
-            )
-        }
+    var contextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            if (state.folders.size > 1) {
+                FolderChips(
+                    folders = state.folders,
+                    selectedFolderId = state.selectedFolderId,
+                    onFolderSelected = onFolderSelected,
+                )
+            }
 
-        if (state.isLoadingItems) {
-            FullScreenProgressIndicator()
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(32.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                itemsIndexed(state.items, key = { _, item -> item.id }) { _, item ->
-                    val clickCallback = remember(item.id) {
-                        { onAction(CommonAction.ItemSelected(item)) }
+            if (state.isLoadingItems) {
+                FullScreenProgressIndicator()
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(32.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    itemsIndexed(state.items, key = { _, item -> item.id }) { _, item ->
+                        val clickCallback = remember(item.id) {
+                            { onAction(CommonAction.ItemSelected(item)) }
+                        }
+                        VideoItemHorizontal(
+                            state = item,
+                            onClick = clickCallback,
+                            onContextMenu = { contextMenuItem = item },
+                        )
                     }
-                    VideoItemHorizontal(
-                        state = item,
-                        onClick = clickCallback,
-                    )
                 }
             }
         }
+        VideoItemContextMenuDialog(
+            item = contextMenuItem,
+            onDismiss = { contextMenuItem = null },
+            onAction = onAction,
+        )
     }
 }
 

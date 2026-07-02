@@ -29,6 +29,7 @@ internal class SearchVM(
         when (action) {
             is CommonAction.TextChanged -> onQueryChanged(action.text)
             is CommonAction.ItemSelected<*> -> onItemSelected(action.item as VideoItemUIState)
+            is CommonAction.ItemPlayed<*> -> onItemPlayed(action.item as VideoItemUIState)
             is CommonAction.RetryClicked -> executeSearch()
             else -> super.onAction(action)
         }
@@ -62,6 +63,10 @@ internal class SearchVM(
 
     private fun onItemSelected(item: VideoItemUIState) {
         router.navigateTo(router.screens.details(itemId = item.id))
+    }
+
+    private fun onItemPlayed(item: VideoItemUIState) {
+        router.navigateTo(router.screens.player(itemId = item.id))
     }
 
     override fun dispatchError(error: ErrorEntity) {

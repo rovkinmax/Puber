@@ -41,6 +41,10 @@ internal class TabAppRouterHolder(private val screens: Screens) {
         }.router
     }
 
+    fun dispose(key: ScreenKey) {
+        entries.remove(key)?.scope?.cancel()
+    }
+
     fun dispose() {
         entries.values.forEach { it.scope.cancel() }
         entries.clear()

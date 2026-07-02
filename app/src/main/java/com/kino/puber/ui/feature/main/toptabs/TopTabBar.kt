@@ -33,6 +33,7 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Duotone
 import com.adamglin.phosphoricons.duotone.GearSix
 import com.adamglin.phosphoricons.duotone.MagnifyingGlass
+import com.kino.puber.core.ui.uikit.component.onTvContextMenuKey
 import com.kino.puber.ui.feature.main.model.MainTab
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -44,6 +45,7 @@ internal fun TopTabBar(
     onContentFocusRequested: () -> Unit,
     onTabFocused: (Int) -> Unit,
     onTabClick: () -> Unit,
+    onTabContextMenu: (Int) -> Unit,
     onSearchClick: () -> Unit,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -80,6 +82,7 @@ internal fun TopTabBar(
                         onClick = onTabClick,
                         modifier = Modifier
                             .focusRequester(tabFocusRequesters[index])
+                            .onTvContextMenuKey { onTabContextMenu(index) }
                             .onDownKey(onContentFocusRequested),
                     ) {
                         Row(

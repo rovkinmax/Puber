@@ -30,6 +30,7 @@ internal class DetailsScreenUIMapper(
             isInWatchlist = isInWatchlist,
             isWatched = itemMapper.isItemWatched(item),
             episodes = if (item.type.isSeriesLike()) mapEpisodes(item) else null,
+            currentEpisode = if (item.type.isSeriesLike()) mapCurrentEpisode(item) else null,
         )
     }
 
@@ -42,40 +43,55 @@ internal class DetailsScreenUIMapper(
         val seasons = item.seasons ?: return null
         val gridItems = mutableListOf<VideoGridItemUIState>()
         for (season in seasons) {
-            val episodeCount = season.episodes?.size ?: 0
+            val episodes = season.episodes.orEmpty()
             gridItems.add(
                 VideoGridItemUIState.Title(
-                    resources.getString(R.string.player_season_episodes_count, season.number, episodeCount)
+                    resources.getString(R.string.player_season_episodes_count, season.number, episodes.size)
                 )
             )
-            val items = season.episodes?.map { episode ->
-                val thumbnailUrls = itemMapper.mapPosterUrls(episode.thumbnail)
-                val title = buildString {
-                    append(episode.number)
-                    append(". ")
-                    append(episode.title ?: resources.getString(R.string.player_episode_untitled))
-                }
-                VideoItemUIState(
-                    id = episode.id,
-                    title = title,
-                    imageUrl = thumbnailUrls.firstOrNull().orEmpty(),
-                    bigImageUrl = thumbnailUrls.firstOrNull().orEmpty(),
-                    imageFallbackUrls = thumbnailUrls.drop(1),
-                    showTitle = true,
-                    isWatched = episode.watched == 1,
-                    showWatchedIndicator = itemMapper.watchedIndicatorsEnabled(),
-                    progressPercent = episode.watching?.let { watching ->
-                        if (watching.duration > 0) {
-                            watching.time.toFloat() / watching.duration.toFloat()
-                        } else {
-                            null
-                        }
-                    },
-                )
-            } ?: emptyList()
+            val items = episodes.map { episode -> mapEpisode(season.number, episodes, episode) }
             gridItems.add(VideoGridItemUIState.Items(items))
         }
         return VideoGridUIState(list = gridItems)
+    }
+
+    private fun mapCurrentEpisode(item: Item): VideoItemUIState? {
+        val (seasonNumber, episodes, episode) = findFirstUnwatchedEpisode(item) ?: return null
+        return mapEpisode(seasonNumber, episodes, episode)
+    }
+
+    private fun mapEpisode(
+        seasonNumber: Int,
+        seasonEpisodes: List<Episode>,
+        episode: Episode,
+    ): VideoItemUIState {
+        val thumbnailUrls = itemMapper.mapPosterUrls(episode.thumbnail)
+        val title = buildString {
+            append(episode.number)
+            append(". ")
+            append(episode.title ?: resources.getString(R.string.player_episode_untitled))
+        }
+        return VideoItemUIState(
+            id = episode.id,
+            title = title,
+            imageUrl = thumbnailUrls.firstOrNull().orEmpty(),
+            bigImageUrl = thumbnailUrls.firstOrNull().orEmpty(),
+            imageFallbackUrls = thumbnailUrls.drop(1),
+            showTitle = true,
+            isWatched = episode.watched == 1,
+            showWatchedIndicator = itemMapper.watchedIndicatorsEnabled(),
+            isSeriesLike = false,
+            seasonNumber = seasonNumber,
+            episodeNumber = episode.number,
+            isSeasonWatched = seasonEpisodes.all { it.watched == 1 },
+            progressPercent = episode.watching?.let { watching ->
+                if (watching.duration > 0) {
+                    watching.time.toFloat() / watching.duration.toFloat()
+                } else {
+                    null
+                }
+            },
+        )
     }
 
     private fun buildButtons(item: Item): List<DetailsButtonUIState> {
@@ -88,8 +104,8 @@ internal class DetailsScreenUIMapper(
     }
 
     private fun buildSeriesButtons(item: Item): List<DetailsButtonUIState> = buildList {
-        val continueText = findFirstUnwatchedEpisode(item)?.let { (season, episode) ->
-            resources.getString(R.string.player_season_episode, season, episode)
+        val continueText = findFirstUnwatchedEpisode(item)?.let { (season, _, episode) ->
+            resources.getString(R.string.player_season_episode, season, episode.number)
         }
         add(
             DetailsButtonUIState.TextButton(
@@ -157,18 +173,24 @@ internal class DetailsScreenUIMapper(
         }
     }
 
-    private fun findFirstUnwatchedEpisode(item: Item): Pair<Int, Int>? {
+    private fun findFirstUnwatchedEpisode(item: Item): FirstEpisode? {
         val seasons = item.seasons ?: return null
         for (season in seasons) {
             val episodes = season.episodes ?: continue
             for (episode in episodes) {
                 if (episode.watched != 1) {
-                    return season.number to episode.number
+                    return FirstEpisode(season.number, episodes, episode)
                 }
             }
         }
         return null
     }
+
+    private data class FirstEpisode(
+        val seasonNumber: Int,
+        val episodes: List<Episode>,
+        val episode: Episode,
+    )
 
     private fun buildInfo(item: Item): DetailsInfoUIState {
         val details = itemMapper.mapDetailedItem(item)

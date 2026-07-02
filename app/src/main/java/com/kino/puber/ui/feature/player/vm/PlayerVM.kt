@@ -3,11 +3,14 @@ package com.kino.puber.ui.feature.player.vm
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.kino.puber.R
 import com.kino.puber.core.logger.log
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.SkipSegment
@@ -43,6 +46,7 @@ internal class PlayerVM(
     private val skipSegmentInteractor: SkipSegmentInteractor,
     private val contentStateFactory: ContentStateFactory,
     private val playbackController: PlaybackControl,
+    private val resources: ResourceProvider,
 ) : PuberVM<PlayerViewState>(router) {
 
     override val initialViewState: PlayerViewState = PlayerViewState.Loading
@@ -272,6 +276,8 @@ internal class PlayerVM(
             is PlayerAction.ToggleFastDns -> toggleFastDns()
             is PlayerAction.SelectEpisode -> switchEpisode(action.seasonNumber, action.episodeNumber)
             is PlayerAction.SelectEpisodeById -> selectEpisodeById(action.episodeId)
+            is PlayerAction.EpisodeWatchedChanged -> onEpisodeWatchedChanged(action.item, action.watched)
+            is PlayerAction.SeasonWatchedChanged -> onSeasonWatchedChanged(action.item, action.watched)
             is PlayerAction.NextEpisode -> playNextEpisode()
             is PlayerAction.PreviousEpisode -> playPreviousEpisode()
             is PlayerAction.CancelNextEpisodeCountdown -> cancelCountdown()
@@ -547,6 +553,56 @@ internal class PlayerVM(
 
     private fun switchEpisode(episode: Pair<Int, Int>) {
         switchEpisode(episode.first, episode.second)
+    }
+
+    private fun onEpisodeWatchedChanged(item: VideoItemUIState, watched: Boolean) {
+        val season = item.seasonNumber ?: return
+        val episode = item.episodeNumber ?: return
+        launch {
+            runCatching {
+                interactor.setEpisodeWatched(params.itemId, season, episode, watched)
+            }.onSuccess { updated ->
+                updateEpisodes(updated)
+                showMessage(
+                    resources.getString(
+                        if (watched) {
+                            R.string.context_menu_episode_watched
+                        } else {
+                            R.string.context_menu_episode_unwatched
+                        }
+                    )
+                )
+            }.onFailure { throwable ->
+                showMessage(errorHandler.map(throwable).message)
+            }
+        }
+    }
+
+    private fun onSeasonWatchedChanged(item: VideoItemUIState, watched: Boolean) {
+        val season = item.seasonNumber ?: return
+        launch {
+            runCatching {
+                interactor.setSeasonWatched(params.itemId, season, watched)
+            }.onSuccess { updated ->
+                updateEpisodes(updated)
+                showMessage(
+                    resources.getString(
+                        if (watched) {
+                            R.string.context_menu_season_watched
+                        } else {
+                            R.string.context_menu_season_unwatched
+                        }
+                    )
+                )
+            }.onFailure { throwable ->
+                showMessage(errorHandler.map(throwable).message)
+            }
+        }
+    }
+
+    private fun updateEpisodes(item: Item) {
+        currentMedia = currentMedia?.copy(item = item)
+        updateContent { copy(episodes = mapper.mapEpisodes(item)) }
     }
 
     private fun currentEpisode(): CurrentEpisode? {

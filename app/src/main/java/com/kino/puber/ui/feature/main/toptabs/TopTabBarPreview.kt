@@ -33,6 +33,7 @@ private fun TopTabBarHomePreview() = PuberTheme {
         onContentFocusRequested = {},
         onTabFocused = {},
         onTabClick = {},
+        onTabContextMenu = {},
         onSearchClick = {},
         onSettingsClick = {},
     )
@@ -49,6 +50,7 @@ private fun TopTabBarMoviesPreview() = PuberTheme {
         onContentFocusRequested = {},
         onTabFocused = {},
         onTabClick = {},
+        onTabContextMenu = {},
         onSearchClick = {},
         onSettingsClick = {},
     )

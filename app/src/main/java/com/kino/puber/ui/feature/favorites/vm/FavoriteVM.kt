@@ -42,6 +42,7 @@ internal class FavoriteVM(
     override fun onAction(action: UIAction) {
         when (action) {
             is CommonAction.ItemSelected<*> -> onItemSelected(action.item as VideoItemUIState)
+            is CommonAction.ItemPlayed<*> -> onItemPlayed(action.item as VideoItemUIState)
             is CommonAction.ItemFocused<*> -> onItemFocused(action.item as VideoItemUIState)
             else -> super.onAction(action)
         }
@@ -49,6 +50,10 @@ internal class FavoriteVM(
 
     private fun onItemSelected(state: VideoItemUIState) {
         router.navigateTo(router.screens.details(itemId = state.id))
+    }
+
+    private fun onItemPlayed(state: VideoItemUIState) {
+        router.navigateTo(router.screens.player(itemId = state.id))
     }
 
     private fun onItemFocused(selectedItem: VideoItemUIState) {

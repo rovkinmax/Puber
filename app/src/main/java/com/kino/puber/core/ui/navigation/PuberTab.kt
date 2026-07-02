@@ -18,10 +18,18 @@ import kotlinx.parcelize.Parcelize
 data class PuberTab(
     private val screen: PuberScreen,
     val tag: Parcelable,
+    private val instanceKey: String = "",
 ) : PuberScreen, Tab {
 
     @IgnoredOnParcel
-    override val key: ScreenKey = "Tab:${screen.key}"
+    override val key: ScreenKey = buildString {
+        append("Tab:")
+        append(screen.key)
+        if (instanceKey.isNotBlank()) {
+            append(":")
+            append(instanceKey)
+        }
+    }
 
     override val options: TabOptions
         @Composable

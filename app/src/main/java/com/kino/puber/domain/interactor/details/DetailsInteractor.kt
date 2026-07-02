@@ -75,6 +75,25 @@ internal class DetailsInteractor(
         )
     }
 
+    suspend fun setEpisodeWatched(id: Int, season: Int, episode: Int, watched: Boolean): Item {
+        api.toggleWatchingStatus(
+            id = id,
+            status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS,
+            season = season,
+            video = episode,
+        ).getOrThrow()
+        return itemDetailsRepository.refresh(id)
+    }
+
+    suspend fun setSeasonWatched(id: Int, season: Int, watched: Boolean): Item {
+        api.toggleWatchingStatus(
+            id = id,
+            status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS,
+            season = season,
+        ).getOrThrow()
+        return itemDetailsRepository.refresh(id)
+    }
+
     private companion object {
         const val WATCHED_STATUS = 1
         const val UNWATCHED_STATUS = 0

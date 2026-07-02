@@ -7,6 +7,7 @@ import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.data.api.models.History
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.isSeriesLike
 import com.kino.puber.data.repository.PlayerPreferencesRepository
 
 class VideoItemUIMapper(
@@ -35,6 +36,7 @@ class VideoItemUIMapper(
             ratings = buildRatings(item),
             isWatched = isItemWatched(item),
             showWatchedIndicator = watchedIndicatorsEnabled(),
+            isSeriesLike = item.type.isSeriesLike(),
         )
     }
 

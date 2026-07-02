@@ -44,9 +44,11 @@ import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.core.ui.uikit.component.HeroCarousel
 import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
 import com.kino.puber.core.ui.uikit.component.TvSafeButton
+import com.kino.puber.core.ui.uikit.component.VideoItemContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.dpadScrollOptimization
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.core.ui.uikit.component.onTvContextMenuKey
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.home.model.HomeAction
@@ -154,71 +156,90 @@ private fun HomeContent(
     var focusedTarget by remember(state.heroItems, state.sections) {
         mutableStateOf(state.defaultFocusedTarget())
     }
+    var contextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
 
     PositionFocusedItemInLazyLayout {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .focusRestorer()
-                .focusGroup()
-                .onSelectKeyClick(
-                    canHandle = { focusedTarget != null },
-                    onClick = {
-                        when (val target = focusedTarget) {
-                            is HomeFocusedTarget.Collection -> onCollectionClick(target.id, target.title)
-                            is HomeFocusedTarget.Hero -> onHeroClick(target.id)
-                            is HomeFocusedTarget.Video -> onAction(CommonAction.ItemSelected(target.item))
-                            null -> Unit
-                        }
-                    },
-                ),
-            contentPadding = PaddingValues(bottom = 32.dp),
-        ) {
-            if (state.heroItems.isNotEmpty()) {
-                item(key = "hero") {
-                    HeroCarousel(
-                        items = state.heroItems,
-                        onItemClick = onHeroClick,
-                        onFocusedItemChanged = { id ->
-                            focusedTarget = HomeFocusedTarget.Hero(id)
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .focusRestorer()
+                    .focusGroup()
+                    .onTvContextMenuKey(
+                        enabled = focusedTarget is HomeFocusedTarget.Video,
+                        onOpen = {
+                            contextMenuItem = (focusedTarget as? HomeFocusedTarget.Video)?.item
                         },
-                        modifier = Modifier.fillMaxWidth(),
                     )
-                }
-            }
-
-            state.sections.forEachIndexed { index, section ->
-                item(key = "section_${section.type.name}") {
-                    Column {
-                        Text(
-                            text = section.title,
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                        HomeSectionRow(
-                            items = section.items,
-                            isTargetRow = index == focusedSectionIndex,
-                            onSectionFocused = { focusedSectionIndex = index },
-                            onItemClick = { item ->
-                                if (section.type == HomeSectionType.Collections) {
-                                    onCollectionClick(item.id, item.title)
-                                } else {
-                                    onAction(CommonAction.ItemSelected(item))
-                                }
+                    .onSelectKeyClick(
+                        canHandle = { focusedTarget != null },
+                        onClick = {
+                            when (val target = focusedTarget) {
+                                is HomeFocusedTarget.Collection -> onCollectionClick(target.id, target.title)
+                                is HomeFocusedTarget.Hero -> onHeroClick(target.id)
+                                is HomeFocusedTarget.Video -> onAction(CommonAction.ItemSelected(target.item))
+                                null -> Unit
+                            }
+                        },
+                    ),
+                contentPadding = PaddingValues(bottom = 32.dp),
+            ) {
+                if (state.heroItems.isNotEmpty()) {
+                    item(key = "hero") {
+                        HeroCarousel(
+                            items = state.heroItems,
+                            onItemClick = onHeroClick,
+                            onFocusedItemChanged = { id ->
+                                focusedTarget = HomeFocusedTarget.Hero(id)
                             },
-                            onItemFocused = { item ->
-                                focusedTarget = if (section.type == HomeSectionType.Collections) {
-                                    HomeFocusedTarget.Collection(id = item.id, title = item.title)
-                                } else {
-                                    HomeFocusedTarget.Video(item)
-                                }
-                            },
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }
+
+                state.sections.forEachIndexed { index, section ->
+                    item(key = "section_${section.type.name}") {
+                        Column {
+                            Text(
+                                text = section.title,
+                                style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                            HomeSectionRow(
+                                items = section.items,
+                                isTargetRow = index == focusedSectionIndex,
+                                onSectionFocused = { focusedSectionIndex = index },
+                                onItemClick = { item ->
+                                    if (section.type == HomeSectionType.Collections) {
+                                        onCollectionClick(item.id, item.title)
+                                    } else {
+                                        onAction(CommonAction.ItemSelected(item))
+                                    }
+                                },
+                                onItemContextMenu = if (section.type == HomeSectionType.Collections) {
+                                    null
+                                } else {
+                                    { item -> contextMenuItem = item }
+                                },
+                                onItemFocused = { item ->
+                                    focusedTarget = if (section.type == HomeSectionType.Collections) {
+                                        HomeFocusedTarget.Collection(id = item.id, title = item.title)
+                                    } else {
+                                        HomeFocusedTarget.Video(item)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
             }
+            VideoItemContextMenuDialog(
+                item = contextMenuItem,
+                onDismiss = { contextMenuItem = null },
+                onAction = onAction,
+            )
         }
     }
 }
@@ -229,6 +250,7 @@ private fun HomeSectionRow(
     isTargetRow: Boolean,
     onSectionFocused: () -> Unit,
     onItemClick: (VideoItemUIState) -> Unit,
+    onItemContextMenu: ((VideoItemUIState) -> Unit)?,
     onItemFocused: (VideoItemUIState) -> Unit,
 ) {
     val listState = rememberLazyListState()
@@ -261,6 +283,7 @@ private fun HomeSectionRow(
                     },
                 state = item,
                 onClick = { onItemClick(item) },
+                onContextMenu = onItemContextMenu?.let { callback -> { callback(item) } },
             )
         }
     }

@@ -46,6 +46,7 @@ internal class ContentListVM(
         when (action) {
             is CommonAction.ItemFocused<*> -> onItemFocused(action.item as VideoItemUIState)
             is CommonAction.ItemSelected<*> -> onItemSelected(action.item as VideoItemUIState)
+            is CommonAction.ItemPlayed<*> -> onItemPlayed(action.item as VideoItemUIState)
             is ContentListAction.ShowAll -> router.navigateTo(ShowAllScreen(action.config))
             is ContentListAction.GenreSelected -> onGenreSelected(action.genreId)
         }
@@ -64,8 +65,7 @@ internal class ContentListVM(
     }
 
     private fun onItemFocused(item: VideoItemUIState) {
-        val state = stateValue as? ContentListViewState ?: return
-        if (!state.showDetailPanel) return
+        if (!stateValue.showDetailPanel) return
         focusedItemJob?.cancel()
         focusedItemJob = launch {
             delay(150L)
@@ -77,5 +77,9 @@ internal class ContentListVM(
 
     private fun onItemSelected(item: VideoItemUIState) {
         router.navigateTo(router.screens.details(item.id))
+    }
+
+    private fun onItemPlayed(item: VideoItemUIState) {
+        router.navigateTo(router.screens.player(item.id))
     }
 }

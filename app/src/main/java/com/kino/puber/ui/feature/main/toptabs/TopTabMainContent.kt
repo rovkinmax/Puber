@@ -30,9 +30,11 @@ import com.kino.puber.core.ui.navigation.TabRouter
 import com.kino.puber.core.ui.navigation.component.TabAppRouterHolder
 import com.kino.puber.core.ui.navigation.component.PuberCurrentTab
 import com.kino.puber.core.ui.navigation.component.TabComponent
+import com.kino.puber.core.ui.uikit.component.TopTabContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.modifier.LocalAutoFocusOnLaunchEnabled
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.ui.feature.main.model.MainAction
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.coroutines.delay
@@ -59,6 +61,7 @@ internal fun TopTabMainContent(
     var focusedTabIndex by rememberSaveable { mutableIntStateOf(selectedIndex) }
     var lastFocusedRegion by rememberSaveable { mutableStateOf(TopTabFocusedRegion.Tabs) }
     var isContentFocused by remember { mutableStateOf(false) }
+    var contextMenuTabIndex by remember { mutableStateOf<Int?>(null) }
 
     SyncSelectedTabEffect(selectedIndex) { focusedTabIndex = selectedIndex }
     DelayedTabSelectionEffect(
@@ -106,6 +109,7 @@ internal fun TopTabMainContent(
                 onContentFocusRequested = requestContentFocus,
                 onTabFocused = { index -> focusedTabIndex = index },
                 onTabClick = requestContentFocus,
+                onTabContextMenu = { index -> contextMenuTabIndex = index },
                 onSearchClick = onSearchClick,
                 onSettingsClick = onSettingsClick,
                 modifier = Modifier
@@ -129,6 +133,18 @@ internal fun TopTabMainContent(
                     },
                 )
             }
+
+            val contextMenuTab = contextMenuTabIndex?.let(state.tabs::getOrNull)
+            TopTabContextMenuDialog(
+                title = contextMenuTab?.label,
+                onRefresh = {
+                    contextMenuTab?.let { tab ->
+                        onAction(MainAction.RefreshTab(tab))
+                        requestContentFocus()
+                    }
+                },
+                onDismiss = { contextMenuTabIndex = null },
+            )
         }
     }
 }

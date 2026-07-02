@@ -75,8 +75,18 @@ internal class DetailsVM(
             is DetailsAction.WatchlistToggleClicked -> onWatchlistToggle()
             is DetailsAction.WatchedToggleClicked -> onWatchedToggle()
             is DetailsAction.EpisodeSelected -> onEpisodeSelected(action.item)
+            is DetailsAction.EpisodeWatchedChanged -> onEpisodeWatchedChanged(action.item, action.watched)
+            is DetailsAction.SeasonWatchedChanged -> onSeasonWatchedChanged(action.item, action.watched)
             is DetailsAction.SimilarSelected -> router.navigateTo(router.screens.details(action.item.id))
             is DetailsAction.CloseSeasonsPanel -> hideSeasonsPanel()
+            is CommonAction.ItemSelected<*> -> {
+                val item = action.item as VideoItemUIState
+                router.navigateTo(router.screens.details(item.id))
+            }
+            is CommonAction.ItemPlayed<*> -> {
+                val item = action.item as VideoItemUIState
+                router.navigateTo(router.screens.player(item.id))
+            }
             is CommonAction.RetryClicked -> loadData()
             else -> super.onAction(action)
         }
@@ -106,6 +116,53 @@ internal class DetailsVM(
                 return
             }
         }
+    }
+
+    private fun onEpisodeWatchedChanged(episodeItem: VideoItemUIState, watched: Boolean) {
+        val season = episodeItem.seasonNumber ?: return
+        val episode = episodeItem.episodeNumber ?: return
+        launch {
+            val item = interactor.setEpisodeWatched(params.itemId, season, episode, watched)
+            updateCurrentItem(item)
+            showMessage(
+                resources.getString(
+                    if (watched) {
+                        R.string.context_menu_episode_watched
+                    } else {
+                        R.string.context_menu_episode_unwatched
+                    }
+                )
+            )
+        }
+    }
+
+    private fun onSeasonWatchedChanged(episodeItem: VideoItemUIState, watched: Boolean) {
+        val season = episodeItem.seasonNumber ?: return
+        launch {
+            val item = interactor.setSeasonWatched(params.itemId, season, watched)
+            updateCurrentItem(item)
+            showMessage(
+                resources.getString(
+                    if (watched) {
+                        R.string.context_menu_season_watched
+                    } else {
+                        R.string.context_menu_season_unwatched
+                    }
+                )
+            )
+        }
+    }
+
+    private suspend fun updateCurrentItem(item: Item) {
+        val state = stateValue as? DetailsScreenState.Content
+        currentItem = item
+        updateViewState(
+            mapper.map(item, isInWatchlist = interactor.isInWatchLaterFolder(item)).copy(
+                seasonsPanelVisible = state?.seasonsPanelVisible ?: false,
+                similarItems = state?.similarItems.orEmpty(),
+                trailerUrl = state?.trailerUrl,
+            )
+        )
     }
 
     private fun showTrailer() {

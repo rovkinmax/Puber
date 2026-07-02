@@ -44,6 +44,7 @@ import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.modifier.placeholder
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.core.ui.uikit.component.VideoItemContextMenuDialog
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -107,6 +108,7 @@ internal fun SearchScreenContent(
         SearchResultsArea(
             state = state,
             gridFocusRequester = gridFocusRequester,
+            onAction = onAction,
             onItemClick = { item ->
                 focusTarget = FOCUS_TARGET_GRID
                 onAction(CommonAction.ItemSelected(item))
@@ -178,6 +180,7 @@ private fun SearchInputField(
 private fun SearchResultsArea(
     state: SearchViewState,
     gridFocusRequester: FocusRequester,
+    onAction: (UIAction) -> Unit,
     onItemClick: (VideoItemUIState) -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -189,6 +192,7 @@ private fun SearchResultsArea(
             is SearchViewState.Content -> SearchResultsGrid(
                 state = state,
                 gridFocusRequester = gridFocusRequester,
+                onAction = onAction,
                 onItemClick = onItemClick,
             )
         }
@@ -199,24 +203,37 @@ private fun SearchResultsArea(
 private fun SearchResultsGrid(
     state: SearchViewState.Content,
     gridFocusRequester: FocusRequester,
+    onAction: (UIAction) -> Unit,
     onItemClick: (VideoItemUIState) -> Unit,
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(GRID_COLUMNS),
-        modifier = Modifier
-            .fillMaxSize()
-            .focusRequester(gridFocusRequester)
-            .focusRestorer(),
-        contentPadding = PaddingValues(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(32.dp),
-    ) {
-        itemsIndexed(state.items, key = { _, item -> item.id }) { _, item ->
-            VideoItemHorizontal(
-                state = item.copy(showTitle = true),
-                onClick = { onItemClick(item) },
-            )
+    var contextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
+    Box(Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(GRID_COLUMNS),
+            modifier = Modifier
+                .fillMaxSize()
+                .focusRequester(gridFocusRequester)
+                .focusRestorer(),
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(32.dp),
+        ) {
+            itemsIndexed(state.items, key = { _, item -> item.id }) { _, item ->
+                VideoItemHorizontal(
+                    state = item.copy(showTitle = true),
+                    onClick = { onItemClick(item) },
+                    onContextMenu = { contextMenuItem = item },
+                )
+            }
         }
+        VideoItemContextMenuDialog(
+            item = contextMenuItem,
+            onDismiss = { contextMenuItem = null },
+            onAction = { action ->
+                contextMenuItem = null
+                onAction(action)
+            },
+        )
     }
 }
 

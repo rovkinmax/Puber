@@ -1,5 +1,6 @@
 package com.kino.puber.ui.feature.player.model
 
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.UIAction
 
 internal sealed class PlayerAction : UIAction {
@@ -36,6 +37,8 @@ internal sealed class PlayerAction : UIAction {
     // Episodes
     data class SelectEpisode(val seasonNumber: Int, val episodeNumber: Int) : PlayerAction()
     data class SelectEpisodeById(val episodeId: Int) : PlayerAction()
+    data class EpisodeWatchedChanged(val item: VideoItemUIState, val watched: Boolean) : PlayerAction()
+    data class SeasonWatchedChanged(val item: VideoItemUIState, val watched: Boolean) : PlayerAction()
     data object NextEpisode : PlayerAction()
     data object PreviousEpisode : PlayerAction()
     data object CancelNextEpisodeCountdown : PlayerAction()

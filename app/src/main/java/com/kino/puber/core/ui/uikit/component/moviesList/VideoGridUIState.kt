@@ -54,6 +54,7 @@ fun VideoGrid(
     state: VideoGridUIState,
     onItemClick: (VideoItemUIState) -> Unit = {},
     onItemFocused: (VideoItemUIState) -> Unit = {},
+    onItemContextMenu: ((VideoItemUIState) -> Unit)? = null,
     enableTopSideGradient: Boolean = true,
 ) {
     val lazyListState = rememberLazyListState()
@@ -88,6 +89,7 @@ fun VideoGrid(
                         columnIndex = indexC,
                         isTargetRow = indexC == focusedColumnIndex,
                         onItemClick = onItemClick,
+                        onItemContextMenu = onItemContextMenu,
                         onItemFocused = { item ->
                             focusedColumnIndex = indexC
                             onItemFocused(item)
@@ -124,6 +126,7 @@ private fun VideoGridItems(
     columnIndex: Int,
     isTargetRow: Boolean,
     onItemClick: (VideoItemUIState) -> Unit,
+    onItemContextMenu: ((VideoItemUIState) -> Unit)?,
     onItemFocused: (VideoItemUIState) -> Unit,
 ) {
     Box(
@@ -177,6 +180,7 @@ private fun VideoGridItems(
                             .then(focusModifier),
                         state = item,
                         onClick = clickCallback,
+                        onContextMenu = onItemContextMenu?.let { callback -> { callback(item) } },
                     )
                 }
             }
@@ -184,4 +188,3 @@ private fun VideoGridItems(
         }
     }
 }
-

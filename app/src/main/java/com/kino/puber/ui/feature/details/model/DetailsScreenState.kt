@@ -20,6 +20,7 @@ internal sealed class DetailsScreenState {
         val isWatched: Boolean,
         val seasonsPanelVisible: Boolean = false,
         val episodes: VideoGridUIState? = null,
+        val currentEpisode: VideoItemUIState? = null,
         val similarItems: List<VideoItemUIState> = emptyList(),
         val trailerUrl: String? = null,
     ) : DetailsScreenState()
@@ -74,6 +75,8 @@ internal sealed class DetailsAction : UIAction {
     data object WatchlistToggleClicked : DetailsAction()
     data object WatchedToggleClicked : DetailsAction()
     data class EpisodeSelected(val item: VideoItemUIState) : DetailsAction()
+    data class EpisodeWatchedChanged(val item: VideoItemUIState, val watched: Boolean) : DetailsAction()
+    data class SeasonWatchedChanged(val item: VideoItemUIState, val watched: Boolean) : DetailsAction()
     data class SimilarSelected(val item: VideoItemUIState) : DetailsAction()
     data object CloseSeasonsPanel : DetailsAction()
     data object CloseTrailer : DetailsAction()

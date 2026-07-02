@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
@@ -15,9 +19,11 @@ import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.FullScreenError
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
+import com.kino.puber.core.ui.uikit.component.VideoItemContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
 import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGrid
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.favorites.model.FavoriteViewState
@@ -58,6 +64,7 @@ private fun FavoriteScreenContentBody(
     onAction: (UIAction) -> Unit,
 ) {
     val mainContentFocus = rememberFocusRequesterOnLaunch()
+    var contextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -76,7 +83,13 @@ private fun FavoriteScreenContentBody(
                 state = state.gridState,
                 onItemClick = { onAction(CommonAction.ItemSelected(it)) },
                 onItemFocused = { onAction(CommonAction.ItemFocused(it)) },
+                onItemContextMenu = { contextMenuItem = it },
             )
         }
     }
+    VideoItemContextMenuDialog(
+        item = contextMenuItem,
+        onDismiss = { contextMenuItem = null },
+        onAction = onAction,
+    )
 }

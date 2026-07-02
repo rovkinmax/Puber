@@ -60,6 +60,10 @@ internal class HomeVM(
                 val item = action.item as VideoItemUIState
                 router.navigateTo(router.screens.details(item.id))
             }
+            is CommonAction.ItemPlayed<*> -> {
+                val item = action.item as VideoItemUIState
+                router.navigateTo(router.screens.player(item.id))
+            }
             is CommonAction.RetryClicked -> loadHome()
             is CommonAction.OnResume -> silentRefresh()
             HomeAction.OpenApiDomainDialog -> openApiDomainDialog()

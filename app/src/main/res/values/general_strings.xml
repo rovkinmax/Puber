@@ -4,4 +4,18 @@
     <string name="show_all">Показать\nвсе</string>
     <string name="under_development">В разработке</string>
     <string name="video_item_watched">Просмотрено</string>
+    <string name="context_menu_close">Закрыть</string>
+    <string name="context_menu_details">Подробнее</string>
+    <string name="context_menu_watch_movie">Смотреть фильм</string>
+    <string name="context_menu_watch_series">Смотреть сериал</string>
+    <string name="context_menu_watch_episode">Смотреть серию</string>
+    <string name="context_menu_refresh_tab">Обновить раздел</string>
+    <string name="context_menu_mark_episode_watched">Отметить серию просмотренной</string>
+    <string name="context_menu_unmark_episode_watched">Снять отметку с серии</string>
+    <string name="context_menu_mark_season_watched">Отметить сезон просмотренным</string>
+    <string name="context_menu_unmark_season_watched">Снять отметку с сезона</string>
+    <string name="context_menu_episode_watched">Серия отмечена просмотренной</string>
+    <string name="context_menu_episode_unwatched">Отметка серии снята</string>
+    <string name="context_menu_season_watched">Сезон отмечен просмотренным</string>
+    <string name="context_menu_season_unwatched">Отметка сезона снята</string>
 </resources>

@@ -12,6 +12,9 @@ import com.kino.puber.data.repository.PlayerPreferencesRepository
 import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.feature.player.model.BufferPreset
 
+private const val WATCHED_STATUS = 1
+private const val UNWATCHED_STATUS = 0
+
 internal data class ResolvedMedia(
     val files: List<VideoFile>?,
     val audios: List<Audio>?,
@@ -217,7 +220,26 @@ internal class PlayerInteractor(
     }
 
     suspend fun markAsWatched(id: Int, season: Int? = null, videoNumber: Int? = null) {
-        api.toggleWatchingStatus(id, status = 1, season = season, video = videoNumber)
+        api.toggleWatchingStatus(id, status = WATCHED_STATUS, season = season, video = videoNumber)
+    }
+
+    suspend fun setEpisodeWatched(id: Int, season: Int, episode: Int, watched: Boolean): Item {
+        api.toggleWatchingStatus(
+            id = id,
+            status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS,
+            season = season,
+            video = episode,
+        ).getOrThrow()
+        return itemDetailsRepository.refresh(id)
+    }
+
+    suspend fun setSeasonWatched(id: Int, season: Int, watched: Boolean): Item {
+        api.toggleWatchingStatus(
+            id = id,
+            status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS,
+            season = season,
+        ).getOrThrow()
+        return itemDetailsRepository.refresh(id)
     }
 
     fun getPreferredAudioLang(itemId: Int): String? {

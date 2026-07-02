@@ -26,6 +26,7 @@ internal fun EpisodesPanel(
     visible: Boolean,
     episodes: VideoGridUIState?,
     onEpisodeSelected: (VideoItemUIState) -> Unit,
+    onEpisodeContextMenu: ((VideoItemUIState) -> Unit)? = null,
     onBackPressed: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -47,6 +48,7 @@ internal fun EpisodesPanel(
                 VideoGrid(
                     state = episodes,
                     onItemClick = onEpisodeSelected,
+                    onItemContextMenu = onEpisodeContextMenu,
                     enableTopSideGradient = true,
                 )
             }

@@ -52,6 +52,7 @@ internal fun SectionRowContent(
     config: SectionConfig,
     isTargetRow: Boolean,
     onItemClick: (VideoItemUIState) -> Unit,
+    onItemContextMenu: (VideoItemUIState) -> Unit,
     onItemFocused: (VideoItemUIState) -> Unit,
     onSectionFocused: () -> Unit,
     onRetry: () -> Unit,
@@ -76,6 +77,7 @@ internal fun SectionRowContent(
                     shouldRequestInitialFocus = hasFocusRef[0],
                     contentFocusRequester = contentFocusRequester,
                     onItemClick = onItemClick,
+                    onItemContextMenu = onItemContextMenu,
                     onItemFocused = onItemFocused,
                     onSectionFocused = onSectionFocused,
                     onLoadMore = onLoadMore,
@@ -93,6 +95,7 @@ private fun ContentSectionCards(
     shouldRequestInitialFocus: Boolean,
     contentFocusRequester: FocusRequester,
     onItemClick: (VideoItemUIState) -> Unit,
+    onItemContextMenu: (VideoItemUIState) -> Unit,
     onItemFocused: (VideoItemUIState) -> Unit,
     onSectionFocused: () -> Unit,
     onLoadMore: () -> Unit,
@@ -143,6 +146,7 @@ private fun ContentSectionCards(
                             .then(focusModifier),
                         state = item,
                         onClick = clickCallback,
+                        onContextMenu = { onItemContextMenu(item) },
                     )
                 }
                 if (onShowAll != null) {
