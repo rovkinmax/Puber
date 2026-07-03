@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.kino.puber.BuildConfig
 import com.kino.puber.R
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
@@ -439,7 +440,10 @@ private fun NavigationModeRadioGroup(
 }
 
 @Composable
-private fun DeviceInfoCard(device: DeviceUi) {
+private fun DeviceInfoCard(
+    device: DeviceUi,
+    appVersionName: String = BuildConfig.VERSION_NAME,
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -451,7 +455,7 @@ private fun DeviceInfoCard(device: DeviceUi) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = stringResource(R.string.device_settings_name, device.title),
+                text = stringResource(R.string.device_settings_name_with_version, device.title, appVersionName),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
             )
