@@ -33,7 +33,8 @@ and implements them step by step.
 
 ### Phase 2: Analysis
 
-Use the **android-codebase-analyst** agent (Kent subagent, `agent: "android-codebase-analyst"`) to analyze the target path:
+Use `kent run --agent=project-researcher --workspace "$PWD" "<bounded testability analysis prompt>"` to analyze the
+target path:
 
 1. **Find all source files:**
    - VMs, Interactors, Mappers, Validators
@@ -110,12 +111,15 @@ For each step:
    - Call `.kent/adapters/mcp/mcp-call.sh jetbrains.get_file_problems` on the created test file
    - If errors → fix them before running tests
    - If MCP unavailable → skip, proceed to Gradle
-5. **Reformat** (skip if in worktree): `.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file` on the created test file
+5. **Reformat** (skip if in worktree): after explicit user approval,
+   `.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file path="<test-file>" --allow-mutate` on the created test file
 6. Run the tests:
    ```bash
-   ./gradlew :app:testDevDebugUnitTest
-     --tests "<TestClassName>" 2>&1 |
-     grep -E "PASSED|FAILED|tests"
+   if pwd | grep -q '/.kent/worktrees/'; then
+     ./tools/agentw :app:testDevDebugUnitTest --tests "<TestClassName>"
+   else
+     ./gradlew :app:testDevDebugUnitTest --tests "<TestClassName>"
+   fi 2>&1 | grep -E "PASSED|FAILED|tests"
    ```
 7. Fix any failing tests
 8. Mark step `[x]` in plan.md

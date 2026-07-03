@@ -21,8 +21,6 @@ and executes it with compilation checks after each step.
 ## What it does
 
 ### Phase 1: Bootstrap
-- Read `.todo/.current` — if active feature, note it (refactor
-  may be within active feature or standalone)
 - Create workspace: `.todo/refactor-<kebab-name>/`
 - Write `meta.json`:
   ```json
@@ -36,7 +34,7 @@ and executes it with compilation checks after each step.
 
 ### Phase 2: Analysis
 
-Use the **android-codebase-analyst** agent (Kent subagent, `agent: "android-codebase-analyst"`) to analyze the code:
+Use `kent run --agent=project-researcher --workspace "$PWD" "<bounded analysis prompt>"` to analyze the code:
 - Identify all files affected by the refactoring
 - Map dependencies: who uses the code being refactored
 - Find all call sites, imports, DI bindings (Koin modules)
@@ -117,17 +115,20 @@ Before executing, present the plan to the user and wait for confirmation:
 **Code comment rule:** When replacing a pattern with a non-obvious alternative (e.g., `Set` instead of previous tracking approach), add a short comment (1-2 lines) explaining WHY the new approach is used. Do not add comments for self-evident changes.
 
 **JetBrains MCP helpers** (skip if in worktree — path contains `.kent/worktrees/`):
-- **Renames**: use `.kent/adapters/mcp/mcp-call.sh jetbrains.rename_refactoring` instead of manual find-and-replace — IDE updates all references (imports, type hints, configs) in one call
+- **Renames**: after explicit user approval, use `.kent/adapters/mcp/mcp-call.sh jetbrains.rename_refactoring ... --allow-mutate` instead of manual find-and-replace — IDE updates all references (imports, type hints, configs) in one call
 - **Quick verify**: after each change, call `.kent/adapters/mcp/mcp-call.sh jetbrains.get_file_problems` on modified files before running Gradle
-- **Reformat**: call `.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file` on created/modified files
+- **Reformat**: after explicit user approval, call `.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file path="<file>" --allow-mutate` on created/modified files
 - If JetBrains MCP unavailable → use manual edit + Gradle as before
 
 For each step:
 1. Apply the change (prefer `rename_refactoring` for renames when MCP available)
 2. Quick verify via `get_file_problems` (or Gradle if in worktree — path contains `.kent/worktrees/`):
    ```bash
-   ./gradlew :app:compileDevDebugKotlin 2>&1 |
-     grep -E "e: |error:|FAILURE|What went wrong" -A3
+   if pwd | grep -q '/.kent/worktrees/'; then
+     ./tools/agentw :app:compileDevDebugKotlin
+   else
+     ./gradlew :app:compileDevDebugKotlin
+   fi 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
    ```
 3. If compilation fails → fix immediately
 4. Mark step `[x]` in plan.md
@@ -138,13 +139,19 @@ For each step:
 After all steps:
 1. Run full compile:
    ```bash
-   ./gradlew :app:compileDevDebugKotlin 2>&1 |
-     grep -E "e: |error:|FAILURE|What went wrong" -A3
+   if pwd | grep -q '/.kent/worktrees/'; then
+     ./tools/agentw :app:compileDevDebugKotlin
+   else
+     ./gradlew :app:compileDevDebugKotlin
+   fi 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
    ```
 2. Run tests if they exist:
    ```bash
-   ./gradlew :app:testDevDebugUnitTest 2>&1 |
-     grep -E "FAILED|PASSED|tests"
+   if pwd | grep -q '/.kent/worktrees/'; then
+     ./tools/agentw :app:testDevDebugUnitTest
+   else
+     ./gradlew :app:testDevDebugUnitTest
+   fi 2>&1 | grep -E "FAILED|PASSED|tests"
    ```
 3. Report results:
    ```

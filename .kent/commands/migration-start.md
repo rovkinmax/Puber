@@ -34,7 +34,7 @@ and executes it file by file with build verification.
 
 ### Phase 2: Analysis
 
-Use the **android-codebase-analyst** agent (Kent subagent, `agent: "android-codebase-analyst"`) to analyze migration scope:
+Use `kent run --agent=project-researcher --workspace "$PWD" "<bounded analysis prompt>"` to analyze migration scope:
 
 1. **Identify all files in scope** (single `:app` module)
 2. **Build dependency graph:**
@@ -113,17 +113,20 @@ Before executing, present the plan to the user and wait for confirmation:
 **Sequential execution** (order matters for migrations):
 
 **JetBrains MCP helpers** (skip if in worktree — path contains `.kent/worktrees/`):
-- **Renames**: use `.kent/adapters/mcp/mcp-call.sh jetbrains.rename_refactoring` for class/method renames — IDE updates all references automatically
+- **Renames**: after explicit user approval, use `.kent/adapters/mcp/mcp-call.sh jetbrains.rename_refactoring ... --allow-mutate` for class/method renames — IDE updates all references automatically
 - **Quick verify**: `.kent/adapters/mcp/mcp-call.sh jetbrains.get_file_problems` on modified files before Gradle
-- **Reformat**: `.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file` on created/modified files
+- **Reformat**: after explicit user approval, `.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file path="<file>" --allow-mutate` on created/modified files
 - If JetBrains MCP unavailable → use manual edit + Gradle
 
 For each step:
 1. Apply the migration change (prefer `rename_refactoring` for renames when MCP available)
 2. Quick verify via `get_file_problems`, then compile:
    ```bash
-   ./gradlew :app:compileDevDebugKotlin 2>&1 |
-     grep -E "e: |error:|FAILURE|What went wrong" -A3
+   if pwd | grep -q '/.kent/worktrees/'; then
+     ./tools/agentw :app:compileDevDebugKotlin
+   else
+     ./gradlew :app:compileDevDebugKotlin
+   fi 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
    ```
 3. If fails → fix (migration-specific issues are expected)
 4. Mark `[x]` in plan.md
@@ -132,8 +135,11 @@ For each step:
 **After all steps:**
 1. Full project compile:
    ```bash
-   ./gradlew assembleDevDebug 2>&1 |
-     grep -E "e: |error:|FAILURE|What went wrong" -A3
+   if pwd | grep -q '/.kent/worktrees/'; then
+     ./tools/agentw assembleDevDebug
+   else
+     ./gradlew assembleDevDebug
+   fi 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
    ```
 2. Run tests for affected code (if tests exist)
 3. Report results

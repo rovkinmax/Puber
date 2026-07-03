@@ -1,5 +1,5 @@
 ---
-description: Load cached design, spec and plan context for the active feature
+description: Load cached design, spec and plan context for an explicit feature workspace
 ---
 
 # Feature Context
@@ -11,18 +11,22 @@ Loads cached feature data (design screens, spec, plan) into the current session 
 /prompt:feature-context                  # Load full context summary
 /prompt:feature-context <screen-name>    # Load specific screen details only
 /prompt:feature-context plan             # Load plan with progress status
+/prompt:feature-context .todo/<feature> plan
 ```
 
 ## Parameters
 - screen-name: load only the specified screen's design file (optional)
 - "plan": load only the plan with current progress (optional)
+- feature target: feature name, `.todo/<feature>` path, or workflow-provided workspace path
 
 ## What it does
 
 ### Step 1: Determine feature
-- Read `.todo/.current` (plain text) → get feature name
+- Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
+- Resolve the feature target from arguments or Kent workflow task context.
 - Read `.todo/<name>/meta.json` → quick-access metadata (`screens`, `currentStep`, `totalSteps`)
-- If no `.current` — list available feature dirs in `.todo/` and ask which to activate
+- If no target is available, list available feature dirs in `.todo/` and ask which one to use. Do not create or update
+  `.todo/.current`.
 
 ### Step 2: Load and summarize
 

@@ -10,18 +10,23 @@ Generates a step-by-step implementation plan based on design and spec data colle
 ## Usage
 ```
 /prompt:feature-plan
+/prompt:feature-plan .todo/<feature>
 ```
 
 ## What it does
 
 ### Step 1: Load context
-- Read `.todo/.current` (plain text) → get feature name, then read `.todo/<name>/meta.json` for `screens`, `figmaUrl`
-- Read `.todo/<feature>/design.md` (screen map) + `.todo/<feature>/layouts.md` (detailed layouts, tokens, components)
-- Read `.todo/<feature>/navigation-flow.md` if it exists — use transition types and triggers for the Navigation section of the plan (navigateTo vs showOver)
-- Read `.todo/<feature>/spec.md`
-- If design or spec is missing, warn and suggest running the appropriate command first:
-  - No design? → suggest running `/prompt:feature-design <url>` first
-  - No spec? → suggest running `/prompt:feature-spec` first
+- Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
+- Resolve the feature target from arguments or Kent workflow task context, then read `.todo/<name>/meta.json` for
+  `screens`, `figmaUrl`
+- Read `.todo/<feature>/spec.md`; this is required for every feature plan.
+- If present, read `.todo/<feature>/design.md` (screen map) + `.todo/<feature>/layouts.md` (detailed layouts, tokens,
+  components). These are optional for non-visual/code-only features.
+- Read `.todo/<feature>/navigation-flow.md` if it exists — use transition types and triggers for the Navigation section
+  of the plan (navigateTo vs showOver).
+- If `spec.md` is missing, stop and suggest running `/prompt:feature-spec .todo/<feature>` first.
+- If the feature is visual and design artifacts are missing, stop and suggest running
+  `/prompt:feature-design .todo/<feature> <url>` first.
 
 ### Step 1b: Load shared knowledge
 - Read `.todo/_shared/patterns-learned.md` — accumulated patterns from past features
@@ -31,7 +36,10 @@ Generates a step-by-step implementation plan based on design and spec data colle
 - Use this knowledge to inform the plan (avoid known pitfalls, reuse proven patterns)
 
 ### Step 2: Analyze existing codebase
-**Recommended**: Use the **android-codebase-analyst** agent (Kent subagent, `agent: "android-codebase-analyst"`) for codebase analysis — it can explore multiple files efficiently without polluting the main context. For simple file searches (checking if a file exists, finding imports), use a **Haiku subagent** (`model: "haiku"`) instead — faster and cheaper.
+**Recommended**: Use the `project-researcher` Kent subagent for codebase analysis:
+`kent run --agent=project-researcher --workspace "$PWD" "<bounded analysis prompt>"`. It can explore multiple files
+efficiently without polluting the main context. For simple file searches, use direct `rg`, `find`, or `ls` instead of
+starting an agent.
 
 **JetBrains MCP shortcuts** (use directly, without subagent, for quick lookups):
 - `.kent/adapters/mcp/mcp-call.sh jetbrains.get_symbol_info` — inspect an existing class/method signature (e.g., check current interactor interface before planning new methods)
@@ -48,7 +56,7 @@ The subagent should:
 - Read AGENTS.md for project patterns and conventions
 - Check the relevant feature package for existing code (VMs, screens, models, interactors) — use specific file paths, not broad glob searches
 - Check API client: do needed endpoints already exist in `KinoPubApiClient`?
-- Identify reusable components — give specific component names to search for (from design layouts.md)
+- Identify reusable UI components when design/layout context exists — give specific component names to search for.
 - Check navigation patterns (how screens are registered, router usage)
 - **Find all files constructing modified models**: for each API model being modified, search for files that construct it (previews, mappers, UI mappers, ViewState factories). These MUST be included in the plan's Files list for the relevant step
 - Return a structured summary: existing files, missing pieces, API coverage, reusable components
@@ -57,7 +65,8 @@ The subagent should:
 - List specific model/screen names to search for — don't let it discover them
 - Give exact file paths for key files instead of "search for stubs"
 - For API coverage, search in `KinoPubApiClient.kt`
-- For reusable components, give the exact names from layouts.md (e.g., "VideoItem", "VideoGrid", "VideoItemGridDetails") — one grep per name
+- For reusable components, give the exact names from layouts.md when available (e.g., "VideoItem", "VideoGrid",
+  "VideoItemGridDetails") — one grep per name
 - Set `max_turns` on the subagent to limit runaway exploration (30 is usually enough)
 
 ### Step 3: Generate plan
@@ -68,7 +77,7 @@ Create a detailed implementation plan with:
 2. **Files to create/modify** — exact paths
 3. **Per-step details:**
    - What to implement
-   - Which design screen it relates to (+ screenshot filenames for UI steps)
+   - Which design screen it relates to (+ screenshot filenames for UI steps), when design artifacts exist
    - API endpoints to integrate
    - Patterns to follow (from AGENTS.md)
    - What already exists vs what's new
@@ -121,7 +130,7 @@ Save to `.todo/<feature>/plan.md`:
 # <Feature Name> — Implementation Plan
 
 > Generated: <YYYY-MM-DD>
-> Screens: <N screens from design.md>
+> Screens: <N screens from design.md, or "not visual">
 > Spec: <source from spec.md>
 
 ## Summary
@@ -148,7 +157,7 @@ Check each and mark as met or add as a blocker:
 
 ### [ ] Step 2: <ViewModel>  `type: viewmodel`  `complexity: medium`  `parallel-group: A`
 - **Files:** `app/src/main/java/com/kino/puber/ui/feature/<name>/vm/<Name>VM.kt` (create)
-- **Design ref:** `layouts.md` → <Name> section
+- **Design ref:** `layouts.md` → <Name> section, or `—` for non-visual steps
 - **Spec ref:** Screen Behavior → <Name>
 - **What:** VM with states (Loading, Content, Error), actions
 - **Depends on:** Step 1
@@ -226,10 +235,11 @@ When a step is completed during implementation:
 1. Update the step's checkbox from `[ ]` to `[x]` in plan.md
 2. Optionally add a completion note: `[x] Done — see commit abc1234`
 
-The `/prompt:feature-context plan` command shows progress summary: "3/7 steps completed, next: Step 4".
+The `/prompt:feature-context .todo/<feature> plan` command shows progress summary:
+"3/7 steps completed, next: Step 4".
 
 ## Important
-- Always reference `design.md` / `layouts.md` and spec sections in each step
+- Always reference spec sections in each step; reference `design.md` / `layouts.md` only when design artifacts exist.
 - Follow project patterns from AGENTS.md strictly
 - Order steps by dependency: data layer → VM → UI → navigation → DI
 - Check what ALREADY exists — don't plan to recreate existing code
@@ -237,8 +247,8 @@ The `/prompt:feature-context plan` command shows progress summary: "3/7 steps co
 - Do NOT start implementing — only create the plan
 - Use `[ ]` / `[x]` checkboxes on step headers for progress tracking
 - Add `complexity: low/medium/high` to each step header — helps estimate effort
-- For Android codebase analysis: use `agent: "android-codebase-analyst"`
-- Use Haiku subagents for simple file searches (existence checks, import lookups)
+- For Android codebase analysis: use `kent run --agent=project-researcher --workspace "$PWD" "<prompt>"`.
+- Use direct shell searches for simple existence checks and import lookups.
 - For UI steps, always include **Screenshots** field with relevant PNG filenames
 - Load `.todo/_shared/` knowledge to avoid repeating past mistakes
 - **Parallel groups**: After generating all steps, scan for parallel candidates — steps with no mutual file conflicts and no mutual dependencies. Assign `parallel-group: <letter>` tags. This is NOT optional — always look for parallelization opportunities. Even 2 steps in parallel saves significant time.

@@ -5,10 +5,11 @@ Recognize common workflow requests even when the user does not type a slash comm
 ## Feature Workflow
 
 - If the user shares a Figma URL or says "start feature", run the feature-start flow.
-- If the user says "next step", "let's code", "implement step N", or similar, run feature implementation.
-- If the user says "review", "audit", or "check against design", run review.
-- If the user asks "status", "where are we", or "progress", read `.todo/.current` and summarize current plan progress.
-- If `.todo/.current` exists, mention the active feature at the start of a feature-related session.
+- If the user says "next step", "let's code", "implement step N", or similar, resolve an explicit `.todo/<feature>`
+  workspace from the message or workflow task context, then run feature implementation.
+- If the user says "review", "audit", or "check against design", resolve an explicit feature workspace, then run review.
+- If the user asks "status", "where are we", or "progress", summarize the explicitly named workspace; if no workspace is
+  named, list available `.todo/<feature>` candidates and ask which one to use.
 
 ## Build Workflow
 
@@ -17,6 +18,6 @@ Recognize common workflow requests even when the user does not type a slash comm
 
 ## Constraints
 
-- Do not change `.todo/.current` during status, review, or implementation unless explicitly requested.
+- Do not create or update global feature pointer files such as `.todo/.current`.
 - Do not load every recipe eagerly. Load only recipes relevant to the current workflow.
 - Prefer Kent subagents for focused research or review instead of broad context-heavy searches.

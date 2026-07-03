@@ -12,22 +12,27 @@ Full pipeline that runs the entire feature preparation flow: init → design →
 /prompt:feature-start <figma-url1> <figma-url2> ...
 /prompt:feature-start <figma-url> /path/to/spec.md
 /prompt:feature-start <description without URLs>
+/prompt:feature-start .todo/<feature> <figma-url-or-description>
 ```
 
 ## Parameters
 - figma-url: one or more Figma URLs with node-id (optional — will ask if not provided)
 - spec-source: path or URL to specification (optional — if omitted, enters interview mode)
+- feature target: optional feature name, `.todo/<feature>` path, or workflow-provided workspace path
 
 ## What it does
 
 ### Phase 1: Bootstrap (silent)
-- Read `.todo/.current` — if no active feature, ask user for feature name (free-form, normalize to kebab-case)
+- Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
+- Resolve the feature target from arguments or Kent workflow task context. If no target is available, derive a
+  kebab-case name from the task title/body or ask the user.
 - Ensure `.todo/` directory exists (create if missing)
 - **Check .gitignore** — if `.todo/` is not in `.gitignore`, add it (feature workspace is local-only, should not be committed):
   ```bash
   grep -q '\.todo/' .gitignore 2>/dev/null || echo '.todo/' >> .gitignore
   ```
-- Create workspace if needed (`.todo/<name>/` + `meta.json` + `.current`)
+- Create workspace if needed (`.todo/<name>/` + `meta.json`)
+- Do not create or update `.todo/.current`.
 
 ### Phase 1b: Detect task type
 
@@ -37,9 +42,11 @@ Determine if this is a **visual feature** (has UI design) or a **code-only chang
 - **Code-only indicators:** no Figma URL, user mentions "refactor", "migrate", "replace", "extract", "split", "universal component", "consolidate"
 
 **If code-only:**
-- Skip Phase 2 (Design) and Phase 3 (Spec) entirely
-- Proceed directly to Phase 4 (Plan) — invoke `/prompt:feature-plan` which will do codebase analysis
-- The plan phase handles its own codebase analysis via `android-codebase-analyst`
+- If this is a refactor or migration, route to `/prompt:refactor-start` or `/prompt:migration-start` instead of this
+  feature flow.
+- If this is a non-visual feature, skip Phase 2 (Design), still run Phase 3 (Spec) to create `.todo/<feature>/spec.md`
+  from the task description or interview, then proceed to Phase 4 (Plan).
+- The plan phase handles its own codebase analysis via `project-researcher`.
 - If unsure, ask the user via `ask_question`: "Is there a Figma design for this, or is it a code-only change?"
 
 ### Phase 2: Design (semi-interactive)
@@ -52,11 +59,13 @@ Determine if this is a **visual feature** (has UI design) or a **code-only chang
 - **Save user's annotated URL groups** to `.todo/<feature>/url-annotations.md` — preserves the user's comments and grouping context for design/spec phases
 
 **Invoking design:**
-- If Figma URL(s) provided → **use the Kent prompt command to invoke `/prompt:feature-design`** with deduplicated URLs as arguments
+- If Figma URL(s) provided → **use the Kent prompt command to invoke `/prompt:feature-design`** with the explicit
+  workspace path and deduplicated URLs as arguments
 - If no Figma URL(s) → ask user via ask_question for Figma links
   - User can provide one or many URLs, possibly with comments — extract all valid Figma URLs
   - User can answer "no design" → skip design phase entirely
-  - If URLs provided → deduplicate, then **use the Kent prompt command to invoke `/prompt:feature-design`** with them
+  - If URLs provided → deduplicate, then **use the Kent prompt command to invoke `/prompt:feature-design`** with the
+    explicit workspace path and URLs
 - **CRITICAL**: Do NOT extract design data inline. ALWAYS delegate to `/prompt:feature-design` via Kent prompt command. This ensures all steps (REST API screenshot saving, URL dedup, screen classification, nodes.json) are followed exactly.
 - **Verification checkpoint** after `/prompt:feature-design` completes — check artifacts:
   - `.todo/<feature>/design.md` — **required** (stop if missing)
@@ -69,14 +78,16 @@ Determine if this is a **visual feature** (has UI design) or a **code-only chang
 **IMPORTANT**: Spec phase runs AFTER design is complete. This is intentional — design answers many questions that would otherwise need to be asked in the spec interview.
 
 **If spec source provided:**
-- **Use the Kent prompt command to invoke `/prompt:feature-spec`** with the source path/URL as argument
+- **Use the Kent prompt command to invoke `/prompt:feature-spec`** with the explicit workspace path and source path/URL
+  as arguments
 - Pause only if ambiguous questions arise
 
 **If no spec source:**
-- **Use the Kent prompt command to invoke `/prompt:feature-spec`** (no arguments → interview mode)
+- **Use the Kent prompt command to invoke `/prompt:feature-spec`** with the explicit workspace path (no source →
+  interview mode)
 - The spec skill will automatically:
-  - Load design context (design.md, layouts.md, screenshots)
-  - Only ask questions about things NOT answerable from the design
+  - Load design context when design artifacts exist
+  - Only ask questions about things NOT answerable from available sources
   - Save spec.md when enough info collected
 - **CRITICAL**: Do NOT run the spec interview inline. ALWAYS delegate to `/prompt:feature-spec` via Kent prompt command.
 - **Verification checkpoint** after `/prompt:feature-spec` completes:
@@ -84,9 +95,10 @@ Determine if this is a **visual feature** (has UI design) or a **code-only chang
   - If missing → report error and stop
 
 ### Phase 4: Plan (silent)
-- **Validation checkpoint**: verify design.md and spec.md both exist before proceeding
-- If either is missing → stop and report what's missing
-- **Use the Kent prompt command to invoke `/prompt:feature-plan`** (no arguments needed)
+- **Validation checkpoint**: verify `spec.md` exists before proceeding.
+- For visual features, also verify `design.md` and `layouts.md` exist before proceeding.
+- If a required artifact is missing → stop and report what's missing.
+- **Use the Kent prompt command to invoke `/prompt:feature-plan`** with the explicit workspace path
 - The plan skill will automatically analyze codebase and generate steps
 - **CRITICAL**: Do NOT generate the plan inline. ALWAYS delegate to `/prompt:feature-plan` via Kent prompt command.
 - **Verification checkpoint** after `/prompt:feature-plan` completes:
@@ -101,7 +113,7 @@ Determine if this is a **visual feature** (has UI design) or a **code-only chang
   Spec: saved (source: file/url/interview)
   Plan: P implementation steps
 
-  Ready to implement. Run /prompt:feature-context to load context for coding.
+  Ready to implement. Run /prompt:feature-context .todo/<feature> to load context for coding.
   ```
 - Present plan steps overview for user review
 - Ask if anything needs adjustment

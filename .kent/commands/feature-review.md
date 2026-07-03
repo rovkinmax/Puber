@@ -11,15 +11,18 @@ Compares the current implementation with the cached design screens and spec. Rep
 ```
 /prompt:feature-review                  # review all implemented steps
 /prompt:feature-review <screen-name>    # review specific screen only
+/prompt:feature-review .todo/<feature> <screen-name>
 ```
 
 ## Parameters
 - screen-name: review only the specified screen (optional)
+- feature target: feature name, `.todo/<feature>` path, or workflow-provided workspace path
 
 ## What it does
 
 ### Step 1: Load references
-- Read `.todo/.current` (plain text) → get feature name
+- Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
+- Resolve the feature target from arguments or Kent workflow task context.
 - Read design files: try `design/screens/*.md` first, then `design.md` + `layouts.md`
 - Read `.todo/<feature>/navigation-flow.md` if it exists — verify navigation transitions match the design flow map
 - **Load screenshots** from `screenshots/` using Read tool — visual reference for comparison
@@ -37,8 +40,10 @@ Compares the current implementation with the cached design screens and spec. Rep
 
 ### Step 2b: Parallel review agents (optional, for large features)
 If the feature has both screen and data-layer steps completed (3+ files to review), launch review agents in parallel:
-- **compose-reviewer** (Task, `agent: "compose-reviewer"`) — review all screen/component files
-- **domain-model-reviewer** (Task, `agent: "domain-model-reviewer"`) — audit interactor/mapper quality
+- `kent run --agent=compose-reviewer --workspace "$PWD" "<bounded Compose review prompt>"` — review all
+  screen/component files
+- `kent run --agent=domain-model-reviewer --workspace "$PWD" "<bounded domain review prompt>"` — audit
+  interactor/mapper quality
 
 These agents are independent — launch them simultaneously. Merge their findings into the final report.
 

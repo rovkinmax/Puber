@@ -4,7 +4,7 @@ description: Initialize feature workspace in .todo/ for design, spec and plan da
 
 # Feature Init
 
-Sets the active feature and creates a minimal workspace directory in `.todo/`.
+Creates a minimal feature workspace directory in `.todo/`.
 
 ## Usage
 ```
@@ -33,16 +33,17 @@ Sets the active feature and creates a minimal workspace directory in `.todo/`.
      "currentStep": 0
    }
    ```
-5. Writes `.todo/.current` — plain text file with just the feature name (pointer only)
-6. Reports readiness and suggests next step: `/prompt:feature-design <figma-url>`
+5. Reports the explicit workspace path: `.todo/<normalized-name>`.
+6. Suggests next step: `/prompt:feature-design .todo/<normalized-name> <figma-url>`.
 
-## Switching features
-- Running `/prompt:feature-init` with a different name updates `.current` pointer
-- Old feature's `meta.json` and all data stay intact in `.todo/<old-name>/`
-- To resume an old feature, run `/prompt:feature-init <old-name>` — it reuses existing folder and meta.json
+## Reusing features
+- Running `/prompt:feature-init` with an existing name reuses `.todo/<name>/` and `meta.json` unless the user explicitly
+  asks to reset it.
+- To resume an old feature, pass the feature name or `.todo/<feature>` path explicitly to the command you are running.
 
 ## Important
-- `.current` contains ONLY the feature name — a plain string, not JSON
-- All metadata lives in `.todo/<feature>/meta.json` — survives feature switching
+- There is no global active feature pointer.
+- Do not create or update `.todo/.current`.
+- All metadata lives in `.todo/<feature>/meta.json`.
 - Creates ONLY the root directory — sub-folders are created by commands that populate them
 - If `.todo/<name>/` already exists, ask user whether to reset or keep existing data

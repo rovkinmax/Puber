@@ -240,21 +240,22 @@ Plan steps tagged with `parallel-group: <letter>` are executed simultaneously by
 
 ### Auto-detection (no /slash-command needed)
 
-When `.todo/.current` exists, the agent recognizes intent from natural language:
+The agent recognizes intent from natural language, but feature target selection is explicit:
 
 | User says / does | Agent action |
 |------------------|--------------|
-| Shares a Figma URL | `/prompt:feature-design` |
+| Shares a Figma URL | `/prompt:feature-start` or `/prompt:feature-design` with an explicit `.todo/<feature>` target |
 | "new feature", "start feature" | `/prompt:feature-start` |
-| Shares a spec file/URL | `/prompt:feature-spec` |
-| "next step", "let's code", "implement step 3" | `/prompt:feature-implement` |
-| "status", "where are we", "progress" | Show plan progress |
-| "load context", "remind me" | `/prompt:feature-context` |
-| "review", "check against design" | `/prompt:feature-review` |
-| "update mockup", "refresh design" | `/prompt:feature-design --refresh` |
+| Shares a spec file/URL | `/prompt:feature-spec` with an explicit `.todo/<feature>` target |
+| "next step", "let's code", "implement step 3" | `/prompt:feature-implement` for the explicitly named workspace |
+| "status", "where are we", "progress" | Show plan progress for the explicitly named workspace; ask if ambiguous |
+| "load context", "remind me" | `/prompt:feature-context` for the explicitly named workspace |
+| "review", "check against design" | `/prompt:feature-review` for the explicitly named workspace |
+| "update mockup", "refresh design" | `/prompt:feature-design --refresh` with an explicit `.todo/<feature>` target |
 
 ### Session rules
-- Check `.todo/.current` at session start — if exists, mention the active feature
+- Do not infer feature state from `.todo/.current`; resolve a `.todo/<feature>` workspace from the request or task
+  context.
 - Reference cached design/spec from `.todo/` instead of calling Figma MCP
 - After completing a plan step, update `[ ]` → `[x]` in `plan.md`
 

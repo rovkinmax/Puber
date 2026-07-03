@@ -25,6 +25,14 @@ model_verbosity = "low"
 [subagents."android-researcher".tools]
 patch = false
 
+[subagents."project-researcher"]
+system_prompt_file = "subagents/android-codebase-analyst.md"
+thinking_level = "medium"
+model_verbosity = "low"
+
+[subagents."project-researcher".tools]
+patch = false
+
 [subagents."gradle-build-doctor"]
 system_prompt_file = "subagents/gradle-build-doctor.md"
 thinking_level = "medium"
@@ -32,6 +40,14 @@ thinking_level = "medium"
 [subagents."build-doctor"]
 system_prompt_file = "subagents/gradle-build-doctor.md"
 thinking_level = "medium"
+
+[subagents."implementation-worker"]
+system_prompt_file = "subagents/feature-step-worker.md"
+thinking_level = "medium"
+
+[subagents."feature-orchestrator"]
+system_prompt_file = "subagents/feature-parallel-orchestrator.md"
+thinking_level = "high"
 
 [subagents."compose-reviewer"]
 system_prompt_file = "subagents/compose-reviewer.md"

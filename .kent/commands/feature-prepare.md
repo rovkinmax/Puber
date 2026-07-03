@@ -11,32 +11,42 @@ Composite flow that chains `/prompt:feature-design` → `/prompt:feature-spec` t
 /prompt:feature-prepare <figma-url>
 /prompt:feature-prepare <figma-url> /path/to/spec.md
 /prompt:feature-prepare <figma-url> https://notion.so/...
+/prompt:feature-prepare .todo/<feature> <figma-url> /path/to/spec.md
 ```
 
 ## Parameters
 - figma-url: one or more Figma URLs with node-id (optional — will ask if not provided)
 - spec-source: path or URL to specification (optional — if omitted, enters interview mode after design)
+- feature target: optional feature name, `.todo/<feature>` path, or workflow-provided workspace path
 
 ## What it does
 
 ### Phase 1: Bootstrap (silent)
-- Read `.todo/.current` — if no active feature, ask user for feature name (free-form, normalize to kebab-case)
-- Create workspace if needed (like `/prompt:feature-init`)
+- Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
+- Resolve the feature target from arguments or Kent workflow task context. If no target is available, ask for a feature
+  name and normalize it to kebab-case.
+- Create workspace if needed (like `/prompt:feature-init`).
+- Do not create or update `.todo/.current`.
 
 ### Phase 2: Design (semi-interactive)
-- If Figma URL(s) provided → **use the Kent prompt command to invoke `/prompt:feature-design`** with all URLs as arguments
+- If Figma URL(s) provided → **use the Kent prompt command to invoke `/prompt:feature-design`** with the explicit
+  workspace path and all URLs as arguments
 - If no Figma URL → ask user via ask_question (user can also skip design)
-  - If URLs provided → **use the Kent prompt command to invoke `/prompt:feature-design`** with them
+  - If URLs provided → **use the Kent prompt command to invoke `/prompt:feature-design`** with the explicit workspace
+    path and URLs
 - **CRITICAL**: Do NOT extract design data inline. ALWAYS delegate to `/prompt:feature-design` via Kent prompt command.
-- **Verification checkpoint**: confirm `.todo/<feature>/screenshots/`, `design.md`, `layouts.md`, `nodes.json` exist
+- **Verification checkpoint**: if design was not skipped, confirm `.todo/<feature>/screenshots/`, `design.md`,
+  `layouts.md`, and `nodes.json` exist.
 
 ### Phase 3: Spec (interactive if no source)
 
 **If spec source provided:**
-- **Use the Kent prompt command to invoke `/prompt:feature-spec`** with the source path/URL as argument
+- **Use the Kent prompt command to invoke `/prompt:feature-spec`** with the explicit workspace path and source path/URL
+  as arguments
 
 **If no spec source:**
-- **Use the Kent prompt command to invoke `/prompt:feature-spec`** (no arguments → interview mode)
+- **Use the Kent prompt command to invoke `/prompt:feature-spec`** with the explicit workspace path (no source →
+  interview mode)
 - **CRITICAL**: Do NOT run the spec interview inline. ALWAYS delegate to `/prompt:feature-spec` via Kent prompt command.
 - **Verification checkpoint**: confirm `.todo/<feature>/spec.md` exists
 
@@ -46,7 +56,7 @@ Composite flow that chains `/prompt:feature-design` → `/prompt:feature-spec` t
   Feature: <name>
   Design: N screens saved
   Spec: saved (source: file/interview)
-  Next: run /prompt:feature-plan to generate implementation plan
+  Next: run /prompt:feature-plan .todo/<feature> to generate implementation plan
   ```
 
 ## Important

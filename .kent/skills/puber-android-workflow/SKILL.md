@@ -8,8 +8,9 @@ command, phase, or plan step.
 
 ## State
 
-- Active feature pointer: `.todo/.current`
 - Feature artifacts: `.todo/<feature>/meta.json`, `design.md`, `layouts.md`, `spec.md`, `plan.md`
+- Feature target is explicit: command arguments, Kent workflow task context, or a `.todo/<feature>` path/name.
+- There is no implicit global feature pointer.
 - MCP raw artifacts: `.todo/<feature-or-task>/mcp/`
 - Generic MCP raw fallback: `.todo/_mcp-raw/`
 - MCP call log: `.todo/_mcp-log/mcporter-calls.jsonl`
@@ -60,6 +61,8 @@ Load rules lazily from:
 Use:
 
 - `rules/workflow.md` for Kent-specific workflow, worktree, and Gradle behavior.
+- `rules/feature-target-resolution.md` whenever a feature command needs to find or create a `.todo/<feature>`
+  workspace.
 - `rules/mcp.md` for MCP bridge usage.
 - `rules/serena.md` for semantic Kotlin navigation when available.
 - `rules/web-access-policy.md` for web search/fetch boundaries.
@@ -92,7 +95,7 @@ Use subagents for broad search, noisy diagnostics, implementation slices, and re
 
 ## Safety
 
-- Preserve `.todo/.current` unless the user asks to switch active feature.
+- Do not create or update global feature pointer files such as `.todo/.current`.
 - Do not modify `.claude/` during Kent migration follow-up work unless explicitly requested.
 - Do not commit or push unless explicitly requested.
 - Keep local paths, tokens, MCP configs, raw MCP outputs, and call logs out of git.

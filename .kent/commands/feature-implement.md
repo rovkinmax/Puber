@@ -11,15 +11,19 @@ Implements a step from the feature plan. Loads relevant context, recipes, and wr
 ```
 /prompt:feature-implement            # implement next unchecked step
 /prompt:feature-implement 3          # implement step 3 specifically
+/prompt:feature-implement .todo/<feature> 3
 ```
 
 ## Parameters
 - step-number: specific step to implement (optional — defaults to next unchecked `[ ]` step)
+- feature target: feature name, `.todo/<feature>` path, or workflow-provided workspace path
 
 ## What it does
 
 ### Step 1: Load plan
-- Read `.todo/.current` (plain text) → get feature name, then read `.todo/<name>/meta.json` for `currentStep`
+- Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
+- Resolve the feature target from arguments or Kent workflow task context, then read `.todo/<name>/meta.json` for
+  `currentStep`
 - Read `.todo/<feature>/plan.md`
 - Find the target step:
   - If step number given → use that step
@@ -106,13 +110,17 @@ If no triggers match → skip advanced recipes (core is sufficient for most step
 
 **Gradle fallback** (always use `./tools/agentw` in worktrees; use `./gradlew` in the main checkout):
 ```bash
-./tools/agentw :app:compileDevDebugKotlin 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
+if pwd | grep -q '/.kent/worktrees/'; then
+  ./tools/agentw :app:compileDevDebugKotlin
+else
+  ./gradlew :app:compileDevDebugKotlin
+fi 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
 ```
 - Fix any compilation errors
 
-If running in the main checkout and MCP was unavailable, direct `./gradlew` is acceptable.
-
-**After fixing errors**, call `.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file` on each created/modified file (skip in worktree).
+**After fixing errors**, ask before mutating IDE state. If approved and not in a worktree, call
+`.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file path="<file>" --allow-mutate --raw-dir ".todo/<feature>/mcp"`
+on each created/modified file.
 
 ### Step 5b: Add/update previews (for `screen` type steps)
 - If step type is `screen`:
@@ -181,7 +189,7 @@ After previews are ready, compare implementation with the Figma design screensho
 
 ### Step 6b: Smoke-test prompt (for `screen` + `navigation` steps only)
 - If the implemented screen is now reachable (navigation wired):
-  1. First check if a device/emulator is connected: call `.kent/adapters/mcp/mcp-call.sh mobile.list_devices`
+  1. First check if a device/emulator is connected: call `.kent/adapters/mcp/mcp-call.sh mobile.device action=list --raw-dir ".todo/<feature>/mcp"`
   2. If no devices found → skip smoke-test silently (don't ask the user)
   3. If device available → ask user: "Screen is reachable. Run smoke-test on device? (y/n)"
   4. If yes → **use Kent prompt command to invoke `/prompt:smoke-test`** with the screen name
@@ -202,7 +210,7 @@ When Step 1b detects a parallel group with 2+ ready steps, delegate to the **fea
 
 ### How to delegate:
 
-Launch a single Task with `agent: "feature-parallel-orchestrator"` and provide:
+Launch one bounded subagent with `kent run --agent=feature-orchestrator --workspace "$PWD" "<prompt>"` and provide:
 
 ```
 Feature: <name>

@@ -1,6 +1,6 @@
 # Feature Audit
 
-Run a read-only audit of the current feature plan or implementation.
+Run a read-only audit of an explicit feature plan or implementation.
 
 This is the Kent alias for the existing Puber review workflow. Use `.kent/commands/feature-review.md` as the detailed
 review procedure, but keep this command read-only unless the user explicitly asks for fixes.
@@ -8,7 +8,8 @@ review procedure, but keep this command read-only unless the user explicitly ask
 ## Runtime Rules
 
 - Follow `.kent/skills/puber-android-workflow/SKILL.md`.
-- Load `references/rules/workflow.md`, `references/rules/mcp.md`, and only recipes relevant to changed files.
+- Load `references/rules/feature-target-resolution.md`, `references/rules/workflow.md`, `references/rules/mcp.md`, and
+  only recipes relevant to changed files.
 - Use `kent run --agent compose-reviewer --workspace "$PWD" "<prompt>"` for Compose-heavy review.
 - Use `kent run --agent domain-model-reviewer --workspace "$PWD" "<prompt>"` for data/domain mapping review.
 - Do not edit files, commit, or push.

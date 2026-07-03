@@ -10,22 +10,26 @@ Parses Figma design via MCP, extracts screen layouts, and saves them as markdown
 ```
 /prompt:feature-design https://www.figma.com/design/XXXXX/Puber?node-id=1234-5678
 /prompt:feature-design <url1> <url2> <url3>
+/prompt:feature-design .todo/<feature> <url1> <url2>
 /prompt:feature-design                       # asks for URLs interactively
-/prompt:feature-design --refresh details
+/prompt:feature-design .todo/<feature> --refresh details
 ```
 
 ## Parameters
 - url: one or more Figma URLs with node-id (ask user via ask_question if not provided)
 - --refresh <screen-name>: only update the specified screen (optional)
+- feature target: feature name, `.todo/<feature>` path, or workflow-provided workspace path
 
 ## What it does
 
 ### Step 1: Determine feature
-- Read `.todo/.current` (plain text) to get feature name, then read `.todo/<name>/meta.json` for metadata
-- If no `.todo/.current`:
-  - Ask user for feature name (free-form, normalize to kebab-case)
-  - Auto-create workspace: `.todo/<name>/` + `meta.json` + write `.todo/.current` (like `/prompt:feature-init`)
-- This makes `/prompt:feature-init` optional — design can bootstrap everything itself
+- Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
+- Resolve the feature target from arguments or Kent workflow task context, then read `.todo/<name>/meta.json` for
+  metadata.
+- If no target is available, ask user for a feature name, normalize it to kebab-case, and auto-create
+  `.todo/<name>/` + `meta.json` (like `/prompt:feature-init`).
+- Do not create or update `.todo/.current`.
+- This makes `/prompt:feature-init` optional — design can bootstrap the explicit workspace itself.
 
 ### Step 2: Collect Figma URLs
 - If URLs provided as arguments → use them
@@ -67,19 +71,21 @@ If HTTP code is not 200 → warn user, switch to MCP-only mode (same as NO_TOKEN
      "https://api.figma.com/v1/images/<fileKey>?ids=${IDS}&format=png&scale=2"
    ```
 2. Parse JSON response → extract CDN URLs from `images` object. If `err` is not null → log error and retry with smaller batch.
-3. Create `screenshots/` directory in `.todo/<feature>/`
+3. Create `SCREENSHOT_DIR=".todo/<feature>/screenshots"` and run `mkdir -p "$SCREENSHOT_DIR"`.
 4. Download all PNGs in parallel:
    ```bash
-   curl -sL -o screenshots/<name>.png "<cdn-url>" &
+   curl -sL -o "$SCREENSHOT_DIR/<name>.png" "<cdn-url>" &
+   # repeat for all image URLs, then:
+   wait
    ```
 5. **Name files by screen-state pattern** from the start: `list-content.png`, `details-loading.png`, `favorites-empty.png`. If screen classification isn't done yet, use the node ID as suffix: `screen-2042-62613.png` — then rename in Step 8 after classification.
-6. Verify downloads: `ls screenshots/*.png | wc -l` should match expected count
+6. Verify downloads: `ls "$SCREENSHOT_DIR"/*.png | wc -l` should match expected count
 
 ### Step 5: Visual analysis
 
 **If REST API succeeded** (local PNGs exist): use the `Read` tool to view them — faster and avoids MCP overhead.
 
-**If MCP-only mode** (no token or REST failed): use `.kent/adapters/mcp/mcp-call.sh figma.get_screenshot(nodeId)` for each node. Note: these are visual-only (bytes not extractable), sufficient for analysis but no local files saved.
+**If MCP-only mode** (no token or REST failed): use `.kent/adapters/mcp/mcp-call.sh figma.get_screenshot nodeId="<node-id>" --raw-dir ".todo/<feature>/mcp"` for each node. Note: these are visual-only (bytes not extractable), sufficient for analysis but no local files saved.
 
 Read images in parallel batches (up to 4 at a time).
 
@@ -101,7 +107,7 @@ Read images in parallel batches (up to 4 at a time).
        if c.get('type') in ('FRAME','COMPONENT','INSTANCE'):
          print(f\"{c['id']} {c.get('name','')}\")"
      ```
-  3. **Fallback**: If REST API fails → use `.kent/adapters/mcp/mcp-call.sh figma.get_design_context` for the section node
+  3. **Fallback**: If REST API fails → use `.kent/adapters/mcp/mcp-call.sh figma.get_design_context nodeId="<node-id>" --raw-dir ".todo/<feature>/mcp"` for the section node
   4. Parse child node IDs from the response
   5. Add only **new** child node IDs to the processing queue (skip IDs already in the list)
   6. Re-run Step 4 for the new nodes if needed
@@ -116,7 +122,7 @@ This tool wastes significant context on generated React/Tailwind code (~80% of r
 - A second call only if another screen uses visually different tokens/spacing
 - **Skip** for simple screens (lists, empty states, dialogs) — screenshots are sufficient
 
-For selected nodes, attempt `.kent/adapters/mcp/mcp-call.sh figma.get_design_context(nodeId)`:
+For selected nodes, attempt `.kent/adapters/mcp/mcp-call.sh figma.get_design_context nodeId="<node-id>" clientLanguages=kotlin clientFrameworks=compose artifactType=WEB_PAGE_OR_APP_SCREEN --raw-dir ".todo/<feature>/mcp"`:
 - `clientLanguages: "kotlin"`, `clientFrameworks: "compose"`, `artifactType: "WEB_PAGE_OR_APP_SCREEN"`
 - **If response mentions Code Connect** → this is normal, not an error. Ignore Code Connect mappings and continue extracting layout data
 - **From each response, extract ONLY:**
@@ -203,7 +209,7 @@ Create `.todo/<feature>/layouts.md` with for each screen:
 
 Rename screenshot files to meaningful names based on classification:
 ```bash
-mv screenshots/screen-01.png screenshots/favorites-content.png
+mv ".todo/<feature>/screenshots/screen-01.png" ".todo/<feature>/screenshots/favorites-content.png"
 ```
 
 ### Step 9: Save nodes mapping

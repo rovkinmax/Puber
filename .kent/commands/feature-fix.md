@@ -12,17 +12,20 @@ then re-runs review. Up to 3 iterations (boomerang pattern).
 ```
 /prompt:feature-fix              # fix all issues from last review
 /prompt:feature-fix <screen>     # fix issues for specific screen
+/prompt:feature-fix .todo/<feature> <screen>
 ```
 
 ## Parameters
 - screen-name: fix issues for a specific screen only (optional)
+- feature target: feature name, `.todo/<feature>` path, or workflow-provided workspace path
 
 ## What it does
 
 ### Step 1: Load review report
-- Read `.todo/.current` → get feature name
+- Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
+- Resolve the feature target from arguments or Kent workflow task context.
 - Read `.todo/<feature>/review-report.md`
-- If no report exists → suggest running `/prompt:feature-review` first
+- If no report exists → suggest running `/prompt:feature-review .todo/<feature>` first
 - Parse issues: each issue has screen name, check type,
   description, file:line reference
 
@@ -60,7 +63,7 @@ For each unresolved issue:
 - After all issues processed (or user stopped):
   - Report: "Fixed M of N issues. K skipped."
   - If fixes were applied → **use Kent prompt command to invoke
-    `/prompt:feature-review`** to check for regressions
+    `/prompt:feature-review .todo/<feature>`** to check for regressions
   - Save updated report to
     `.todo/<feature>/review-report.md`
 
@@ -114,4 +117,4 @@ The report in `.todo/<feature>/review-report.md`:
 - Preserve the user's skip decisions across iterations
 - Each iteration reviews ALL code, not just fixed parts
 - After 3 iterations, stop regardless of remaining issues
-- Use Kent prompt command for `/prompt:feature-review` — don't inline review
+- Use Kent prompt command for `/prompt:feature-review .todo/<feature>` — don't inline review

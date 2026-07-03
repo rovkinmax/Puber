@@ -12,24 +12,28 @@ Processes a specification document or enters interview mode to collect feature r
 /prompt:feature-spec /path/to/spec.md        # From local file
 /prompt:feature-spec https://notion.so/...   # From Notion page (via MCP)
 /prompt:feature-spec https://example.com/... # From any URL
+/prompt:feature-spec .todo/<feature> /path/to/spec.md
 ```
 
 ## Parameters
 - source: path to spec file or URL (optional — if omitted, enters interview mode)
+- feature target: feature name, `.todo/<feature>` path, or workflow-provided workspace path
 
 ## What it does
 
 ### Determine feature
-- Read `.todo/.current` (plain text) → get feature name, then read `.todo/<name>/meta.json`
-- If no current feature — ask user or suggest running `/prompt:feature-init <name>` first
+- Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
+- Resolve the feature target from arguments or Kent workflow task context, then read `.todo/<name>/meta.json`.
+- If no target is available, ask user for a feature name or suggest running `/prompt:feature-init <name>` first.
 - After saving spec, update `meta.json`: set `specSource` to "file", "url", or "interview"
 
 ### Load design context
-- Read `.todo/<feature>/design.md` (screen map) + `.todo/<feature>/layouts.md` (detailed ASCII layouts, design tokens, components)
-- Read `.todo/<feature>/navigation-flow.md` if it exists — contains the navigation graph extracted from Figma transition maps (screen transitions, presentation types, triggers). Use it to pre-fill navigation-related spec questions.
-- **Do NOT re-read screenshot PNGs** — layouts.md already contains all visual information as ASCII art and component lists. Reading PNGs wastes context without adding value beyond what layouts.md provides.
-- This gives context about what screens exist, their layout, states, and design tokens
-- Reference these when asking questions or analyzing spec
+- If `.todo/<feature>/design.md` and `.todo/<feature>/layouts.md` exist, read them as optional visual context.
+- If `.todo/<feature>/navigation-flow.md` exists, read it to pre-fill navigation-related spec questions.
+- **Do NOT re-read screenshot PNGs** when `layouts.md` exists — layouts.md already contains visual information as ASCII
+  art and component lists.
+- If design artifacts are missing, treat this as a non-visual or code-only feature and continue the spec flow from the
+  task description, source document, API/code analysis, and interview questions.
 
 ### Check existing API
 - Search `KinoPubApiClient.kt` for relevant endpoints
@@ -56,20 +60,20 @@ Processes a specification document or enters interview mode to collect feature r
 
 Act as a senior mobile engineer and conduct a structured interview.
 
-**Fast path — skip interview if design + API cover everything:**
-Before starting the interview, check if ALL questions are already answered by:
-1. Design (layouts.md) — UI structure, fields, states, components
+**Fast path — skip interview if available design and API cover everything:**
+Before starting the interview, check if ALL questions are already answered by available sources:
+1. Design (layouts.md), when present — UI structure, fields, states, components
 2. API (KinoPubApiClient + data models) — data models, endpoints
 
-If both sources together answer all non-obvious questions (no ambiguity remaining), **skip the interview entirely**:
-- Compile spec.md directly from design + API findings
-- Set `specSource` to "design+api" in meta.json
-- Report: "Spec compiled without interview — design and API covered all questions"
+If available sources together answer all non-obvious questions (no ambiguity remaining), **skip the interview entirely**:
+- Compile spec.md directly from available design + API findings, or from API/code analysis for non-visual features.
+- Set `specSource` to "design+api" or "api+code" in meta.json.
+- Report which sources covered the spec.
 
 When fast path is used (spec generated without interview), add a section to spec.md:
 
 ```markdown
-## Auto-resolved (from design + API)
+## Auto-resolved (from available sources)
 
 | Question | Answer | Source |
 |----------|--------|--------|
@@ -84,16 +88,18 @@ This allows reviewers to verify that auto-resolved answers are correct.
 - **Screen presentation type** — if a screen was only visible in a composite/overview Figma frame and its presentation type (modal, bottom sheet, push) wasn't explicitly confirmed during design phase, ask the user.
 - **Ambiguous UI interaction patterns** — if the design shows a search field, filter, or picker but it's unclear which component/pattern to use, always ask the user.
 
-**Phase 1: Review designs and filter questions**
-- Read design.md + layouts.md (already loaded in "Load design context" step above — do NOT re-read)
-- Summarize what you see: "I see N screens: <list>."
-- **Before asking anything**, check what the design already answers:
-  - Layout structure → answered by layouts.md
-  - Component types (buttons, toggles, fields) → answered by screenshots
-  - Form fields and their types → answered by screenshots
-  - Empty states and their content → answered by screenshots
+**Phase 1: Review available context and filter questions**
+- If design artifacts exist, use the already-loaded design.md + layouts.md context and summarize:
+  "I see N screens: <list>."
+- If design artifacts are missing, summarize the non-visual scope from task text, source document, API/code findings,
+  and existing project patterns.
+- **Before asking anything**, check what the available context already answers:
+  - Layout structure → answered by layouts.md, when present
+  - Component types (buttons, toggles, fields) → answered by screenshots/layouts, when present
+  - Form fields and their types → answered by screenshots/layouts, when present
+  - Empty states and their content → answered by screenshots/layouts, when present
   - Visual states (loading, content, empty, error) → partially answered if multiple states in design
-- Mark these as "answered by design" — do NOT ask about them
+- Mark these as "answered by source" — do NOT ask about them
 
 **Phase 2: Ask ONLY non-obvious questions (3-4 at a time)**
 Only ask about things NOT visible in the design:
@@ -128,7 +134,7 @@ Only ask about things NOT visible in the design:
 
 > Source: <file path / URL / interview>
 > Date: <YYYY-MM-DD>
-> Feature: <feature name from .current>
+> Feature: <resolved feature name>
 
 ## Overview
 
@@ -148,7 +154,7 @@ Only ask about things NOT visible in the design:
 ## Screen Behavior
 
 ### <Screen Name>
-- **Design ref:** `layouts.md` → <Screen Name> section
+- **Design ref:** `layouts.md` → <Screen Name> section, or `—` for non-visual behavior
 - **States:** loading, content, empty, error
 - **Data source:** KinoPubApiClient method
 - **Actions:**
@@ -187,8 +193,8 @@ Only ask about things NOT visible in the design:
 ```
 
 ## Important
-- Always read design files BEFORE asking questions — gives you context
+- When design artifacts exist, read them before asking questions — they provide visual context.
 - Batch questions 3-4 at a time (ask_question supports up to 4)
-- Cross-reference spec with design screens — note mismatches
-- If spec mentions screens not in design/, add to "Open Questions"
+- When design artifacts exist, cross-reference spec with design screens and note mismatches.
+- If spec mentions screens not covered by available design artifacts, add this to "Open Questions".
 - Do NOT start implementing — only collect and document requirements

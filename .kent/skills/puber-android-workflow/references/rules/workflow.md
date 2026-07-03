@@ -14,6 +14,7 @@ change it.
 - `/prompt:dependency-update`: update dependencies with verification.
 - `/prompt:smoke-test`: run device/emulator smoke checks.
 - `/prompt:test-coverage`: add or improve focused tests.
+- `/prompt:cleanup-task`: produce conservative Kent task cleanup report.
 
 ## Gradle
 
