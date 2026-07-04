@@ -1,0 +1,1196 @@
+{
+    "workflow": {
+        "id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+        "name": "Puber Feature Delivery",
+        "description": "Plan, implement, audit, fix, optionally smoke-test, and conservatively clean up a Puber Android feature.",
+        "version": 40
+    },
+    "nodes": [
+        {
+            "id": "node-466af141-62eb-4e0c-992c-df973979d454",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "key": "backlog",
+            "kind": "start",
+            "display_name": "Backlog"
+        },
+        {
+            "id": "node-d2f1beb1-9ec0-46dd-af07-5791247f7cd2",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "key": "plan",
+            "kind": "agent",
+            "display_name": "Plan",
+            "subagent_role": "default",
+            "completion_mode": "shell_command"
+        },
+        {
+            "id": "node-2f67f636-18bc-4279-8d5e-bd7875befdf5",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "key": "implement",
+            "kind": "agent",
+            "display_name": "Implement",
+            "subagent_role": "default",
+            "completion_mode": "shell_command"
+        },
+        {
+            "id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "key": "audit",
+            "kind": "agent",
+            "display_name": "Audit",
+            "subagent_role": "default",
+            "completion_mode": "shell_command"
+        },
+        {
+            "id": "node-9062f417-dae0-4134-8ce6-941b08acd8c9",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "key": "fix",
+            "kind": "agent",
+            "display_name": "Fix",
+            "subagent_role": "default",
+            "completion_mode": "shell_command"
+        },
+        {
+            "id": "node-3f862fff-37e7-47e3-810c-46efe5cdafce",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "key": "smoke",
+            "kind": "agent",
+            "display_name": "Smoke Test",
+            "subagent_role": "default",
+            "completion_mode": "shell_command"
+        },
+        {
+            "id": "node-2b50a102-85d1-4fcb-813f-2d8f21f3ca86",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "key": "cleanup",
+            "kind": "agent",
+            "display_name": "Cleanup",
+            "subagent_role": "default",
+            "completion_mode": "shell_command"
+        },
+        {
+            "id": "node-6f47e8ba-91b3-410e-9712-33a8460d051c",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "key": "blocked",
+            "kind": "terminal",
+            "display_name": "Blocked"
+        },
+        {
+            "id": "node-99d6b5c3-9c55-4b48-a767-ee53465e349f",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "key": "done",
+            "kind": "terminal",
+            "display_name": "Done"
+        }
+    ],
+    "transition_groups": [
+        {
+            "id": "group-f0cc8e7b-b05c-47e9-9656-3b8e0394eafd",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-466af141-62eb-4e0c-992c-df973979d454",
+            "transition_id": "start",
+            "display_name": "Start",
+            "description": "Start Puber feature planning from the task body."
+        },
+        {
+            "id": "group-bbb7070d-ea25-4bc0-aa79-1af3cc59ec2e",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-d2f1beb1-9ec0-46dd-af07-5791247f7cd2",
+            "transition_id": "implement",
+            "display_name": "Implement",
+            "description": "Plan is ready; user approval required before implementation."
+        },
+        {
+            "id": "group-ab10fc78-3382-442c-89af-7ec5048c6469",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-d2f1beb1-9ec0-46dd-af07-5791247f7cd2",
+            "transition_id": "blocked",
+            "display_name": "Blocked",
+            "description": "Planning is blocked by missing context, access, or product input."
+        },
+        {
+            "id": "group-eeb153bb-cd73-4f6a-97ca-8047af9b5a2c",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-2f67f636-18bc-4279-8d5e-bd7875befdf5",
+            "transition_id": "continue_implementation",
+            "display_name": "Continue Implementation",
+            "description": "More implementation steps remain; continue in the same session."
+        },
+        {
+            "id": "group-02dd3b57-df1a-4e23-a8df-01c840db1f7b",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-2f67f636-18bc-4279-8d5e-bd7875befdf5",
+            "transition_id": "audit",
+            "display_name": "Audit",
+            "description": "All implementation steps are complete; run read-only audit."
+        },
+        {
+            "id": "group-362b1402-9eb9-4ca9-bbbc-6a3d3e9bacd9",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-2f67f636-18bc-4279-8d5e-bd7875befdf5",
+            "transition_id": "blocked",
+            "display_name": "Blocked",
+            "description": "Implementation is blocked by missing input, access, or unsafe state."
+        },
+        {
+            "id": "group-10df1811-99b9-40ea-b7f0-012c9ae9ee80",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+            "transition_id": "needs_changes",
+            "display_name": "Needs Changes",
+            "description": "Audit found issues; user approval required before fixes."
+        },
+        {
+            "id": "group-056da8c9-a711-48ee-9ce9-7e7ae75d0360",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+            "transition_id": "smoke",
+            "display_name": "Smoke",
+            "description": "Audit is acceptable and a focused device smoke test is useful."
+        },
+        {
+            "id": "group-dd5fdae9-7977-4fa6-aa8a-84fc70ad552f",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+            "transition_id": "done",
+            "display_name": "Done",
+            "description": "Audit is acceptable and no smoke test is needed; run conservative cleanup."
+        },
+        {
+            "id": "group-2387bd03-a0a3-4513-95db-660db539c42a",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+            "transition_id": "blocked",
+            "display_name": "Blocked",
+            "description": "Audit cannot continue due to missing access, context, or verification."
+        },
+        {
+            "id": "group-7dafb6af-924d-42c0-b204-cbbdb9f49328",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-9062f417-dae0-4134-8ce6-941b08acd8c9",
+            "transition_id": "audit",
+            "display_name": "Audit",
+            "description": "Fixes were applied; re-run audit."
+        },
+        {
+            "id": "group-03c0801f-bfda-47bf-9c33-34e5b8f0969b",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-9062f417-dae0-4134-8ce6-941b08acd8c9",
+            "transition_id": "blocked",
+            "display_name": "Blocked",
+            "description": "Fixing is blocked by missing input, unsafe state, or verification failure."
+        },
+        {
+            "id": "group-657b1d9e-7326-4595-824d-cc958572d539",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-3f862fff-37e7-47e3-810c-46efe5cdafce",
+            "transition_id": "done",
+            "display_name": "Done",
+            "description": "Smoke test passed or is accepted; run conservative cleanup."
+        },
+        {
+            "id": "group-08a76455-9bc0-4108-9b65-3d1db914688c",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-3f862fff-37e7-47e3-810c-46efe5cdafce",
+            "transition_id": "needs_changes",
+            "display_name": "Needs Changes",
+            "description": "Smoke test found implementation issues; user approval required before fixes."
+        },
+        {
+            "id": "group-1ff098ab-f943-49a7-818b-f956b0b13be9",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-3f862fff-37e7-47e3-810c-46efe5cdafce",
+            "transition_id": "blocked",
+            "display_name": "Blocked",
+            "description": "Smoke test is blocked by missing device, MCP, build, or credentials."
+        },
+        {
+            "id": "group-08623de3-fc3a-46d0-a8dd-196b12611db1",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "source_node_id": "node-2b50a102-85d1-4fcb-813f-2d8f21f3ca86",
+            "transition_id": "done",
+            "display_name": "Done",
+            "description": "Cleanup report is ready; finish the task."
+        }
+    ],
+    "edges": [
+        {
+            "id": "edge-6aecf386-b865-4bcd-b42d-ce99203922e0",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-f0cc8e7b-b05c-47e9-9656-3b8e0394eafd",
+            "key": "start_plan",
+            "target_node_id": "node-d2f1beb1-9ec0-46dd-af07-5791247f7cd2",
+            "requires_approval": false,
+            "context_mode": "new_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "prompt_template": "Run the Puber feature planning flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/feature-start.md as the project feature planning command. Treat the task title/body as the feature arguments and source context. Resolve or create an explicit .todo/<feature> workspace; do not infer or create .todo/.current.\n\nGather available Figma/spec/source context through project-local adapters only when present. Produce .todo/<feature>/spec.md as needed and .todo/<feature>/plan.md. Do not implement production code.\n\nComplete with transition implement when the plan is ready for user approval and provide workspace_path plus plan_path. Complete with blocked if required source context or product input is unavailable, and provide blocker_reason in the task language when practical."
+        },
+        {
+            "id": "edge-3ae5e6b8-37e9-4adf-aa70-62032cf14fae",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-bbb7070d-ea25-4bc0-aa79-1af3cc59ec2e",
+            "key": "approve_implement",
+            "target_node_id": "node-2f67f636-18bc-4279-8d5e-bd7875befdf5",
+            "requires_approval": true,
+            "context_mode": "compact_and_continue_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "prompt_template": "Implement the approved Puber feature plan.\n\nRead .kent/project-contract.md first. Use .kent/commands/feature-implement.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nImplement one next unchecked ready step or one ready parallel group. For parallel groups, delegate to project-local orchestration with: kent run --agent=feature-orchestrator --workspace \"$PWD\" \"<bounded prompt containing workspace_path, plan_path, selected steps, file boundaries, and compile command>\". Use kent run --agent=implementation-worker for bounded slices and kent run --agent=build-doctor for noisy compile failures.\n\nVerify with the narrowest relevant Gradle/test command, using ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout. Update plan.md and meta.json progress.\n\nIf more unchecked implementation steps remain, complete with transition continue_implementation and provide workspace_path plus plan_path again. If all implementation steps are complete, complete with transition audit and provide workspace_path, plan_path, and verification_report. Complete with blocked on unresolved blockers and provide blocker_reason.",
+            "parameters": [
+                {
+                    "key": "workspace_path",
+                    "description": "Path to the explicit .todo/<feature> workspace created by planning."
+                },
+                {
+                    "key": "plan_path",
+                    "description": "Path to the generated plan.md inside the feature workspace."
+                }
+            ]
+        },
+        {
+            "id": "edge-ec37d01a-f355-4f9e-9bff-eadd92442241",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-ab10fc78-3382-442c-89af-7ec5048c6469",
+            "key": "plan_blocked",
+            "target_node_id": "node-6f47e8ba-91b3-410e-9712-33a8460d051c",
+            "requires_approval": false,
+            "context_mode": "new_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "parameters": [
+                {
+                    "key": "blocker_reason",
+                    "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                }
+            ]
+        },
+        {
+            "id": "edge-9598e6e9-9ab5-4fc7-aac7-defb2d03d05c",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-eeb153bb-cd73-4f6a-97ca-8047af9b5a2c",
+            "key": "next_step",
+            "target_node_id": "node-2f67f636-18bc-4279-8d5e-bd7875befdf5",
+            "requires_approval": false,
+            "context_mode": "continue_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "prompt_template": "Continue the same Puber feature implementation.\n\nRead .kent/project-contract.md, then use .kent/commands/feature-implement.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nSelect the next unchecked ready step or ready parallel group, implement it, verify it, and update plan.md/meta.json. Use project-local delegated agents only for bounded work: feature-orchestrator, implementation-worker, and build-doctor.\n\nComplete with continue_implementation and provide workspace_path plus plan_path if more steps remain. Complete with audit and provide workspace_path, plan_path, and verification_report when all implementation steps are complete. Complete with blocked and blocker_reason if blocked.",
+            "parameters": [
+                {
+                    "key": "workspace_path",
+                    "description": "Path to the explicit .todo/<feature> workspace."
+                },
+                {
+                    "key": "plan_path",
+                    "description": "Path to plan.md inside the feature workspace."
+                }
+            ]
+        },
+        {
+            "id": "edge-384f7e35-f284-4f5c-a308-2c9bb917ec45",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-02dd3b57-df1a-4e23-a8df-01c840db1f7b",
+            "key": "implementation_done",
+            "target_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+            "requires_approval": false,
+            "context_mode": "compact_and_continue_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "prompt_template": "Run a read-only Puber feature audit.\n\nRead .kent/project-contract.md first. Use .kent/commands/feature-audit.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nReview implementation against spec, optional design artifacts, plan, Puber architecture in AGENTS.md, Compose quality, API/domain contracts, and verification coverage. Delegate broad read-only review when useful with kent run --agent=quality-reviewer --workspace \"$PWD\" \"<bounded review prompt>\". Use compose-reviewer and domain-model-reviewer for focused read-only review when applicable.\n\nWrite/update an audit report under the feature workspace. Complete with needs_changes if fixes are required and provide workspace_path plus audit_report. Complete with smoke if implementation is acceptable and device smoke is useful, providing workspace_path plus audit_report. Complete with done if no smoke is needed, providing workspace_path plus audit_report. Complete with blocked and blocker_reason if verification cannot continue.",
+            "parameters": [
+                {
+                    "key": "workspace_path",
+                    "description": "Path to the explicit .todo/<feature> workspace."
+                },
+                {
+                    "key": "plan_path",
+                    "description": "Path to plan.md inside the feature workspace."
+                },
+                {
+                    "key": "verification_report",
+                    "description": "Commands/tests run and their results, or path to a verification report."
+                }
+            ]
+        },
+        {
+            "id": "edge-84dba5e3-443c-48a4-8d76-78356d82fcc7",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-362b1402-9eb9-4ca9-bbbc-6a3d3e9bacd9",
+            "key": "implementation_blocked",
+            "target_node_id": "node-6f47e8ba-91b3-410e-9712-33a8460d051c",
+            "requires_approval": false,
+            "context_mode": "new_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "parameters": [
+                {
+                    "key": "blocker_reason",
+                    "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                }
+            ]
+        },
+        {
+            "id": "edge-a990b934-5812-48c3-bdc5-3718d23717b7",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-10df1811-99b9-40ea-b7f0-012c9ae9ee80",
+            "key": "audit_fix",
+            "target_node_id": "node-9062f417-dae0-4134-8ce6-941b08acd8c9",
+            "requires_approval": true,
+            "context_mode": "compact_and_continue_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "prompt_template": "Apply approved fixes for the Puber feature audit.\n\nRead .kent/project-contract.md first. Use .kent/commands/feature-fix.md with explicit workspace {{.Params.workspace_path}} and audit report {{.Params.audit_report}}, or apply the smallest safe manual fixes described in the audit report. Do not infer .todo/.current.\n\nUse kent run --agent=implementation-worker for bounded fix slices and kent run --agent=build-doctor for compile diagnostics when useful. Keep the fix scope narrow, verify locally, update the audit report, then complete with transition audit and provide workspace_path plus audit_report. Complete with blocked and blocker_reason if blocked.",
+            "parameters": [
+                {
+                    "key": "workspace_path",
+                    "description": "Path to the explicit .todo/<feature> workspace."
+                },
+                {
+                    "key": "audit_report",
+                    "description": "Path to the audit report for the feature workspace."
+                }
+            ]
+        },
+        {
+            "id": "edge-3db7d3f7-e718-4162-b9d1-5ccca065d519",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-056da8c9-a711-48ee-9ce9-7e7ae75d0360",
+            "key": "audit_smoke",
+            "target_node_id": "node-3f862fff-37e7-47e3-810c-46efe5cdafce",
+            "requires_approval": true,
+            "context_mode": "compact_and_continue_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "prompt_template": "Run a focused Puber device smoke test.\n\nRead .kent/project-contract.md first. Use .kent/commands/smoke-test.md for workspace {{.Params.workspace_path}} and audit report {{.Params.audit_report}}. Install the freshly built devDebug APK before device testing unless the task explicitly says the intended build is already running. Use Mobile MCP through .kent/adapters/mcp wrappers, save useful artifacts under build/test-artifacts or the feature workspace, and report issues.\n\nComplete with done if smoke passes. Complete with needs_changes if smoke finds implementation issues and provide workspace_path, audit_report, and smoke_report. Complete with blocked and blocker_reason if device/MCP/build access is unavailable.",
+            "parameters": [
+                {
+                    "key": "workspace_path",
+                    "description": "Path to the explicit .todo/<feature> workspace."
+                },
+                {
+                    "key": "audit_report",
+                    "description": "Path to the audit report for the feature workspace."
+                }
+            ]
+        },
+        {
+            "id": "edge-ce425045-47bb-4395-8280-7c4e93637685",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-dd5fdae9-7977-4fa6-aa8a-84fc70ad552f",
+            "key": "audit_done",
+            "target_node_id": "node-2b50a102-85d1-4fcb-813f-2d8f21f3ca86",
+            "requires_approval": false,
+            "context_mode": "new_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "prompt_template": "Perform final conservative cleanup before Done.\n\nRead .kent/project-contract.md first. Use .kent/commands/cleanup-task.md in conservative/report-first mode for this task. Do not infer .todo/.current. Do not edit production files. Do not remove external/global worktree roots. Destructive cleanup, if explicitly approved, is limited to clean, recoverable worktrees under the project-local .kent/worktrees/ root.\n\nComplete with transition done and provide cleanup_report containing removed/skipped/safe-to-remove worktree and branch notes.",
+            "parameters": [
+                {
+                    "key": "workspace_path",
+                    "description": "Path to the explicit .todo/<feature> workspace."
+                },
+                {
+                    "key": "audit_report",
+                    "description": "Path to the audit report for the feature workspace."
+                }
+            ]
+        },
+        {
+            "id": "edge-5aa17012-ad22-47d8-8f99-8d900d1bf98f",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-2387bd03-a0a3-4513-95db-660db539c42a",
+            "key": "audit_blocked",
+            "target_node_id": "node-6f47e8ba-91b3-410e-9712-33a8460d051c",
+            "requires_approval": false,
+            "context_mode": "new_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "parameters": [
+                {
+                    "key": "blocker_reason",
+                    "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                }
+            ]
+        },
+        {
+            "id": "edge-53ef0019-074c-46fe-89f0-ce4471bb0ec4",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-7dafb6af-924d-42c0-b204-cbbdb9f49328",
+            "key": "fix_reaudit",
+            "target_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+            "requires_approval": false,
+            "context_mode": "compact_and_continue_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "prompt_template": "Re-run the Puber feature audit after fixes.\n\nRead .kent/project-contract.md first. Re-check workspace {{.Params.workspace_path}} with audit report {{.Params.audit_report}}. Focus on previous findings plus regressions from the fix pass. Do not infer .todo/.current.\n\nComplete with needs_changes, smoke, done, or blocked. Provide workspace_path plus audit_report when continuing, or blocker_reason when blocked.",
+            "parameters": [
+                {
+                    "key": "workspace_path",
+                    "description": "Path to the explicit .todo/<feature> workspace."
+                },
+                {
+                    "key": "audit_report",
+                    "description": "Path to the audit report after fixes or concise fix summary."
+                }
+            ]
+        },
+        {
+            "id": "edge-b3b67a5a-5f24-40b7-a0a7-e4906914211c",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-03c0801f-bfda-47bf-9c33-34e5b8f0969b",
+            "key": "fix_blocked",
+            "target_node_id": "node-6f47e8ba-91b3-410e-9712-33a8460d051c",
+            "requires_approval": false,
+            "context_mode": "new_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "parameters": [
+                {
+                    "key": "blocker_reason",
+                    "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                }
+            ]
+        },
+        {
+            "id": "edge-1d8ca363-814f-49fc-8b0e-bd28b78f65de",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-657b1d9e-7326-4595-824d-cc958572d539",
+            "key": "smoke_done",
+            "target_node_id": "node-2b50a102-85d1-4fcb-813f-2d8f21f3ca86",
+            "requires_approval": false,
+            "context_mode": "new_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "prompt_template": "Perform final conservative cleanup before Done.\n\nRead .kent/project-contract.md first. Use .kent/commands/cleanup-task.md in conservative/report-first mode for this task. Do not infer .todo/.current. Do not edit production files. Do not remove external/global worktree roots. Destructive cleanup, if explicitly approved, is limited to clean, recoverable worktrees under the project-local .kent/worktrees/ root.\n\nComplete with transition done and provide cleanup_report containing removed/skipped/safe-to-remove worktree and branch notes.",
+            "parameters": [
+                {
+                    "key": "workspace_path",
+                    "description": "Path to the explicit .todo/<feature> workspace."
+                },
+                {
+                    "key": "audit_report",
+                    "description": "Path to the audit report for the feature workspace."
+                }
+            ]
+        },
+        {
+            "id": "edge-5165666d-f6a2-4b0c-8ecd-03ae67bceefe",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-08a76455-9bc0-4108-9b65-3d1db914688c",
+            "key": "smoke_fix",
+            "target_node_id": "node-9062f417-dae0-4134-8ce6-941b08acd8c9",
+            "requires_approval": true,
+            "context_mode": "compact_and_continue_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "prompt_template": "Fix approved issues found during Puber smoke testing.\n\nRead .kent/project-contract.md first. Use workspace {{.Params.workspace_path}}, audit report {{.Params.audit_report}}, and smoke report {{.Params.smoke_report}}. Keep fixes narrow, verify locally, update the audit report, then complete with audit and provide workspace_path plus audit_report. Complete with blocked and blocker_reason if blocked.",
+            "parameters": [
+                {
+                    "key": "workspace_path",
+                    "description": "Path to the explicit .todo/<feature> workspace."
+                },
+                {
+                    "key": "audit_report",
+                    "description": "Path to the audit report for the feature workspace."
+                },
+                {
+                    "key": "smoke_report",
+                    "description": "Smoke test issue report with artifacts or concise summary."
+                }
+            ]
+        },
+        {
+            "id": "edge-5e989163-28ae-4c04-96e7-b46a73d16747",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-1ff098ab-f943-49a7-818b-f956b0b13be9",
+            "key": "smoke_blocked",
+            "target_node_id": "node-6f47e8ba-91b3-410e-9712-33a8460d051c",
+            "requires_approval": false,
+            "context_mode": "new_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "parameters": [
+                {
+                    "key": "blocker_reason",
+                    "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                }
+            ]
+        },
+        {
+            "id": "edge-b4d8ac51-929a-4141-8225-dd7afbb13c92",
+            "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+            "transition_group_id": "group-08623de3-fc3a-46d0-a8dd-196b12611db1",
+            "key": "cleanup_done",
+            "target_node_id": "node-99d6b5c3-9c55-4b48-a767-ee53465e349f",
+            "requires_approval": false,
+            "context_mode": "new_session",
+            "context_source": {
+                "kind": "immediate_source"
+            },
+            "parameters": [
+                {
+                    "key": "cleanup_report",
+                    "description": "Short human-readable cleanup result. Include removed/skipped/safe-to-remove worktree and branch names, or the reason cleanup could not run."
+                }
+            ]
+        }
+    ],
+    "derived_wiring": {
+        "nodes": [
+            {
+                "node_id": "node-466af141-62eb-4e0c-992c-df973979d454"
+            },
+            {
+                "node_id": "node-d2f1beb1-9ec0-46dd-af07-5791247f7cd2",
+                "possible_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace created by planning."
+                    },
+                    {
+                        "name": "plan_path",
+                        "description": "Path to the generated plan.md inside the feature workspace."
+                    },
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "node_id": "node-2f67f636-18bc-4279-8d5e-bd7875befdf5",
+                "possible_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "plan_path",
+                        "description": "Path to plan.md inside the feature workspace."
+                    },
+                    {
+                        "name": "verification_report",
+                        "description": "Commands/tests run and their results, or path to a verification report."
+                    },
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+                "possible_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    },
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "node_id": "node-9062f417-dae0-4134-8ce6-941b08acd8c9",
+                "possible_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report after fixes or concise fix summary."
+                    },
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "node_id": "node-3f862fff-37e7-47e3-810c-46efe5cdafce",
+                "possible_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    },
+                    {
+                        "name": "smoke_report",
+                        "description": "Smoke test issue report with artifacts or concise summary."
+                    },
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "node_id": "node-2b50a102-85d1-4fcb-813f-2d8f21f3ca86",
+                "possible_provision_fields": [
+                    {
+                        "name": "cleanup_report",
+                        "description": "Short human-readable cleanup result. Include removed/skipped/safe-to-remove worktree and branch names, or the reason cleanup could not run."
+                    }
+                ]
+            },
+            {
+                "node_id": "node-6f47e8ba-91b3-410e-9712-33a8460d051c"
+            },
+            {
+                "node_id": "node-99d6b5c3-9c55-4b48-a767-ee53465e349f"
+            }
+        ],
+        "transition_groups": [
+            {
+                "transition_group_id": "group-f0cc8e7b-b05c-47e9-9656-3b8e0394eafd"
+            },
+            {
+                "transition_group_id": "group-bbb7070d-ea25-4bc0-aa79-1af3cc59ec2e",
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace created by planning."
+                    },
+                    {
+                        "name": "plan_path",
+                        "description": "Path to the generated plan.md inside the feature workspace."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-ab10fc78-3382-442c-89af-7ec5048c6469",
+                "required_provision_fields": [
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-eeb153bb-cd73-4f6a-97ca-8047af9b5a2c",
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "plan_path",
+                        "description": "Path to plan.md inside the feature workspace."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-02dd3b57-df1a-4e23-a8df-01c840db1f7b",
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "plan_path",
+                        "description": "Path to plan.md inside the feature workspace."
+                    },
+                    {
+                        "name": "verification_report",
+                        "description": "Commands/tests run and their results, or path to a verification report."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-362b1402-9eb9-4ca9-bbbc-6a3d3e9bacd9",
+                "required_provision_fields": [
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-10df1811-99b9-40ea-b7f0-012c9ae9ee80",
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-056da8c9-a711-48ee-9ce9-7e7ae75d0360",
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-dd5fdae9-7977-4fa6-aa8a-84fc70ad552f",
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-2387bd03-a0a3-4513-95db-660db539c42a",
+                "required_provision_fields": [
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-7dafb6af-924d-42c0-b204-cbbdb9f49328",
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report after fixes or concise fix summary."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-03c0801f-bfda-47bf-9c33-34e5b8f0969b",
+                "required_provision_fields": [
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-657b1d9e-7326-4595-824d-cc958572d539",
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-08a76455-9bc0-4108-9b65-3d1db914688c",
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    },
+                    {
+                        "name": "smoke_report",
+                        "description": "Smoke test issue report with artifacts or concise summary."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-1ff098ab-f943-49a7-818b-f956b0b13be9",
+                "required_provision_fields": [
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "transition_group_id": "group-08623de3-fc3a-46d0-a8dd-196b12611db1",
+                "required_provision_fields": [
+                    {
+                        "name": "cleanup_report",
+                        "description": "Short human-readable cleanup result. Include removed/skipped/safe-to-remove worktree and branch names, or the reason cleanup could not run."
+                    }
+                ]
+            }
+        ],
+        "edges": [
+            {
+                "edge_id": "edge-6aecf386-b865-4bcd-b42d-ce99203922e0"
+            },
+            {
+                "edge_id": "edge-3ae5e6b8-37e9-4adf-aa70-62032cf14fae",
+                "input_bindings": [
+                    {
+                        "name": "workspace_path",
+                        "source": "transition_output",
+                        "field": "workspace_path"
+                    },
+                    {
+                        "name": "plan_path",
+                        "source": "transition_output",
+                        "field": "plan_path"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace created by planning."
+                    },
+                    {
+                        "name": "plan_path",
+                        "description": "Path to the generated plan.md inside the feature workspace."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-ec37d01a-f355-4f9e-9bff-eadd92442241",
+                "input_bindings": [
+                    {
+                        "name": "blocker_reason",
+                        "source": "transition_output",
+                        "field": "blocker_reason"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-9598e6e9-9ab5-4fc7-aac7-defb2d03d05c",
+                "input_bindings": [
+                    {
+                        "name": "workspace_path",
+                        "source": "transition_output",
+                        "field": "workspace_path"
+                    },
+                    {
+                        "name": "plan_path",
+                        "source": "transition_output",
+                        "field": "plan_path"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "plan_path",
+                        "description": "Path to plan.md inside the feature workspace."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-384f7e35-f284-4f5c-a308-2c9bb917ec45",
+                "input_bindings": [
+                    {
+                        "name": "workspace_path",
+                        "source": "transition_output",
+                        "field": "workspace_path"
+                    },
+                    {
+                        "name": "plan_path",
+                        "source": "transition_output",
+                        "field": "plan_path"
+                    },
+                    {
+                        "name": "verification_report",
+                        "source": "transition_output",
+                        "field": "verification_report"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "plan_path",
+                        "description": "Path to plan.md inside the feature workspace."
+                    },
+                    {
+                        "name": "verification_report",
+                        "description": "Commands/tests run and their results, or path to a verification report."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-84dba5e3-443c-48a4-8d76-78356d82fcc7",
+                "input_bindings": [
+                    {
+                        "name": "blocker_reason",
+                        "source": "transition_output",
+                        "field": "blocker_reason"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-a990b934-5812-48c3-bdc5-3718d23717b7",
+                "input_bindings": [
+                    {
+                        "name": "workspace_path",
+                        "source": "transition_output",
+                        "field": "workspace_path"
+                    },
+                    {
+                        "name": "audit_report",
+                        "source": "transition_output",
+                        "field": "audit_report"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-3db7d3f7-e718-4162-b9d1-5ccca065d519",
+                "input_bindings": [
+                    {
+                        "name": "workspace_path",
+                        "source": "transition_output",
+                        "field": "workspace_path"
+                    },
+                    {
+                        "name": "audit_report",
+                        "source": "transition_output",
+                        "field": "audit_report"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-ce425045-47bb-4395-8280-7c4e93637685",
+                "input_bindings": [
+                    {
+                        "name": "workspace_path",
+                        "source": "transition_output",
+                        "field": "workspace_path"
+                    },
+                    {
+                        "name": "audit_report",
+                        "source": "transition_output",
+                        "field": "audit_report"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-5aa17012-ad22-47d8-8f99-8d900d1bf98f",
+                "input_bindings": [
+                    {
+                        "name": "blocker_reason",
+                        "source": "transition_output",
+                        "field": "blocker_reason"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-53ef0019-074c-46fe-89f0-ce4471bb0ec4",
+                "input_bindings": [
+                    {
+                        "name": "workspace_path",
+                        "source": "transition_output",
+                        "field": "workspace_path"
+                    },
+                    {
+                        "name": "audit_report",
+                        "source": "transition_output",
+                        "field": "audit_report"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report after fixes or concise fix summary."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-b3b67a5a-5f24-40b7-a0a7-e4906914211c",
+                "input_bindings": [
+                    {
+                        "name": "blocker_reason",
+                        "source": "transition_output",
+                        "field": "blocker_reason"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-1d8ca363-814f-49fc-8b0e-bd28b78f65de",
+                "input_bindings": [
+                    {
+                        "name": "workspace_path",
+                        "source": "transition_output",
+                        "field": "workspace_path"
+                    },
+                    {
+                        "name": "audit_report",
+                        "source": "transition_output",
+                        "field": "audit_report"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-5165666d-f6a2-4b0c-8ecd-03ae67bceefe",
+                "input_bindings": [
+                    {
+                        "name": "workspace_path",
+                        "source": "transition_output",
+                        "field": "workspace_path"
+                    },
+                    {
+                        "name": "audit_report",
+                        "source": "transition_output",
+                        "field": "audit_report"
+                    },
+                    {
+                        "name": "smoke_report",
+                        "source": "transition_output",
+                        "field": "smoke_report"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "workspace_path",
+                        "description": "Path to the explicit .todo/<feature> workspace."
+                    },
+                    {
+                        "name": "audit_report",
+                        "description": "Path to the audit report for the feature workspace."
+                    },
+                    {
+                        "name": "smoke_report",
+                        "description": "Smoke test issue report with artifacts or concise summary."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-5e989163-28ae-4c04-96e7-b46a73d16747",
+                "input_bindings": [
+                    {
+                        "name": "blocker_reason",
+                        "source": "transition_output",
+                        "field": "blocker_reason"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "blocker_reason",
+                        "description": "Short human-readable blocker explanation. Use the same language as the task/user request when practical; include the missing access/input/check and next action needed."
+                    }
+                ]
+            },
+            {
+                "edge_id": "edge-b4d8ac51-929a-4141-8225-dd7afbb13c92",
+                "input_bindings": [
+                    {
+                        "name": "cleanup_report",
+                        "source": "transition_output",
+                        "field": "cleanup_report"
+                    }
+                ],
+                "required_provision_fields": [
+                    {
+                        "name": "cleanup_report",
+                        "description": "Short human-readable cleanup result. Include removed/skipped/safe-to-remove worktree and branch names, or the reason cleanup could not run."
+                    }
+                ]
+            }
+        ]
+    }
+}
