@@ -59,6 +59,7 @@ internal fun PlayerSettingsPanels(
         onEpisodeSelected = { item -> onAction(PlayerAction.SelectEpisodeById(item.id)) },
         onEpisodeContextMenu = { episodeContextMenuItem = it },
         onBackPressed = rememberAction(onAction, PlayerAction.ClosePanel),
+        allowFocusExit = episodeContextMenuItem != null,
     )
 
     EpisodeContextMenuDialog(
