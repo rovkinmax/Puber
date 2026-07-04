@@ -23,7 +23,7 @@ Runs smoke test for a feature via MCP mobile.
      device. Never rely on adb's default target selection.
    - Prefer already-running healthy emulators. Discover them with:
      ```bash
-     mapfile -t EMULATORS < <(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators)
+     EMULATORS=($(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators))
      ```
    - If one or more emulators are already running, acquire any free emulator-specific lock:
      ```bash

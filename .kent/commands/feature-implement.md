@@ -189,9 +189,10 @@ After previews are ready, compare implementation with the Figma design screensho
 
 ### Step 6b: Smoke-test prompt (for `screen` + `navigation` steps only)
 - If the implemented screen is now reachable (navigation wired):
-  1. First check if a device/emulator is connected: call `.kent/adapters/mcp/mcp-call.sh mobile.device action=list --raw-dir ".todo/<feature>/mcp"`
-  2. If no devices found → skip smoke-test silently (don't ask the user)
-  3. If device available → ask user: "Screen is reachable. Run smoke-test on device? (y/n)"
+  1. First check if an emulator is connected: call `.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators`.
+  2. If no emulator is found → skip smoke-test silently (don't ask the user). Physical devices are not eligible unless the
+     user explicitly named or allowed a physical serial.
+  3. If an emulator is available → ask user: "Screen is reachable. Run smoke-test on emulator? (y/n)"
   4. If yes → **use Kent prompt command to invoke `/prompt:smoke-test`** with the screen name
   5. Save results to `.todo/<feature>/smoke-results/step-<N>.md`
 - If navigation is not wired yet → skip (mention it will be testable after nav step)
