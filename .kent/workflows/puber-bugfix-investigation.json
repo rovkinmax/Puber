@@ -1,0 +1,766 @@
+{
+  "workflow": {
+    "id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+    "name": "Puber Bugfix Investigation",
+    "description": "Reproduce, diagnose, fix, verify, and conservatively clean up a Puber Android bugfix.",
+    "version": 28
+  },
+  "nodes": [
+    {
+      "id": "node-cd4b957b-a0cc-4427-94e1-b2400c0aadf0",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "key": "backlog",
+      "kind": "start",
+      "display_name": "Backlog"
+    },
+    {
+      "id": "node-213caff1-4a63-4b66-9d2e-b06ac051749b",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "key": "diagnose",
+      "kind": "agent",
+      "display_name": "Diagnose",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-c41f562e-465b-4296-99db-63fb61376288",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "key": "fix",
+      "kind": "agent",
+      "display_name": "Fix",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-98304bcc-e638-4461-80b6-3e33a2ea0daa",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "key": "verify",
+      "kind": "agent",
+      "display_name": "Verify",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-fdcc2cd0-9737-4db4-829b-3d2851c1ac81",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "key": "cleanup",
+      "kind": "agent",
+      "display_name": "Cleanup",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-03d0e60b-3cd1-4ffe-a9ba-a4f0054a4c9d",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "key": "blocked",
+      "kind": "terminal",
+      "display_name": "Blocked"
+    },
+    {
+      "id": "node-21fe5cd3-7f81-418c-be8d-ce1b2180fdf9",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "key": "done",
+      "kind": "terminal",
+      "display_name": "Done"
+    }
+  ],
+  "transition_groups": [
+    {
+      "id": "group-cb881321-290a-4c4d-8359-63d1885aaa88",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-cd4b957b-a0cc-4427-94e1-b2400c0aadf0",
+      "transition_id": "start",
+      "display_name": "Start",
+      "description": "Start bug reproduction and diagnosis from the task body."
+    },
+    {
+      "id": "group-d7bf883d-dfc1-41e3-aa3e-4eb5e2b1809d",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-213caff1-4a63-4b66-9d2e-b06ac051749b",
+      "transition_id": "fix",
+      "display_name": "Fix",
+      "description": "Diagnosis is ready; user approval required before code changes."
+    },
+    {
+      "id": "group-1a1d547c-c457-4aa4-b2e2-1d82111ec2bc",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-213caff1-4a63-4b66-9d2e-b06ac051749b",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Diagnosis is intentionally report-only; run conservative cleanup."
+    },
+    {
+      "id": "group-49fc52b6-a690-4d50-8329-dd2026c4e833",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-213caff1-4a63-4b66-9d2e-b06ac051749b",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Diagnosis is blocked by missing reproduction details, credentials, device access, or source context."
+    },
+    {
+      "id": "group-e95dc252-4151-44b9-85a4-873b5fe949d8",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-c41f562e-465b-4296-99db-63fb61376288",
+      "transition_id": "verify",
+      "display_name": "Verify",
+      "description": "Fix was implemented and needs independent verification."
+    },
+    {
+      "id": "group-b7631a36-07d7-4ee1-87e6-ca2462df8a38",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-c41f562e-465b-4296-99db-63fb61376288",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Fixing is blocked by missing input, unsafe state, or verification failure."
+    },
+    {
+      "id": "group-c56eca1d-12ea-4385-9aed-0a8bbbbfc9e1",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-98304bcc-e638-4461-80b6-3e33a2ea0daa",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Verification found remaining issues; user approval required before another fix pass."
+    },
+    {
+      "id": "group-c6853f46-5291-4256-84c1-f8b5b1ba60c5",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-98304bcc-e638-4461-80b6-3e33a2ea0daa",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Bugfix verification passed; run conservative cleanup."
+    },
+    {
+      "id": "group-0b08b713-d3b8-464b-9e43-55037dabf3ba",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-98304bcc-e638-4461-80b6-3e33a2ea0daa",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Verification is blocked by missing device, credentials, or failing external dependencies."
+    },
+    {
+      "id": "group-71b97af2-f25d-4759-a5de-6fd87a3c0d25",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-fdcc2cd0-9737-4db4-829b-3d2851c1ac81",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Cleanup report is ready; finish the task."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-2fe19350-a07d-46f5-b9b6-6a54375db6c0",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-cb881321-290a-4c4d-8359-63d1885aaa88",
+      "key": "start_diagnosis",
+      "target_node_id": "node-213caff1-4a63-4b66-9d2e-b06ac051749b",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run Puber bug reproduction and diagnosis for this Kent task.\n\nRead .kent/project-contract.md first. Treat the task title/body as the bug report. Create an explicit .todo/bugfix-<name> workspace; do not infer or create .todo/.current. Reproduce when possible, inspect relevant code, identify likely root cause, and write a concise diagnosis artifact in the workspace. Do not edit production code in this node.\n\nComplete with fix when the root cause and fix plan are clear and provide workspace_path, diagnosis_report, reproduction_steps, and candidate_files. Complete with done if this is intentionally report-only and no code change should be made. Complete with blocked if reproduction or diagnosis is blocked and provide blocker_reason."
+    },
+    {
+      "id": "edge-5cb1c9b3-845e-4481-a888-bae0600002df",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-d7bf883d-dfc1-41e3-aa3e-4eb5e2b1809d",
+      "key": "approve_fix",
+      "target_node_id": "node-c41f562e-465b-4296-99db-63fb61376288",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Implement the approved Puber bugfix.\n\nRead .kent/project-contract.md first. Use workspace {{.Params.workspace_path}} and diagnosis {{.Params.diagnosis_report}}. Apply the smallest robust fix, preserve project architecture, and verify with the narrowest relevant Gradle/test command. Use ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout.\n\nComplete with verify and provide workspace_path, diagnosis_report, reproduction_steps, changed_files, and verification_summary. Complete with blocked if unsafe or missing input and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/bugfix-* workspace created during diagnosis."
+        },
+        {
+          "key": "diagnosis_report",
+          "description": "Root cause analysis, suspected files, and fix plan."
+        },
+        {
+          "key": "reproduction_steps",
+          "description": "Steps used to reproduce or prove the bug."
+        },
+        {
+          "key": "candidate_files",
+          "description": "Files likely involved in the bug and proposed fix."
+        }
+      ]
+    },
+    {
+      "id": "edge-a75d8af1-fe75-40a6-be4b-94c91ca12008",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-1a1d547c-c457-4aa4-b2e2-1d82111ec2bc",
+      "key": "report_done",
+      "target_node_id": "node-fdcc2cd0-9737-4db4-829b-3d2851c1ac81",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup after report-only diagnosis. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+    },
+    {
+      "id": "edge-48440fa4-ceb3-4331-bf1b-950ce02703c7",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-49fc52b6-a690-4d50-8329-dd2026c4e833",
+      "key": "diagnose_blocked",
+      "target_node_id": "node-03d0e60b-3cd1-4ffe-a9ba-a4f0054a4c9d",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why diagnosis cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-67586b3a-973e-4049-86b3-5f0d5c627b74",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-e95dc252-4151-44b9-85a4-873b5fe949d8",
+      "key": "verify_fix",
+      "target_node_id": "node-98304bcc-e638-4461-80b6-3e33a2ea0daa",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Verify the Puber bugfix read-only.\n\nRead .kent/project-contract.md first. Compare the implementation against {{.Params.diagnosis_report}}, reproduce or reason through {{.Params.reproduction_steps}} when available from prior context, and run focused verification if practical. Do not edit files in this node.\n\nComplete with done if accepted. Complete with needs_changes if the fix is incomplete and provide workspace_path, verification_report, and changed_files. Complete with blocked if verification cannot complete and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/bugfix-* workspace."
+        },
+        {
+          "key": "diagnosis_report",
+          "description": "Root cause analysis and fix plan used for implementation."
+        },
+        {
+          "key": "reproduction_steps",
+          "description": "Steps used to reproduce or prove the bug, or not available if the bug could not be reproduced."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the bugfix."
+        },
+        {
+          "key": "verification_summary",
+          "description": "Commands run by the fixer and their pass/fail results."
+        }
+      ]
+    },
+    {
+      "id": "edge-5c331080-da92-4071-9456-2fc425b2502b",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-b7631a36-07d7-4ee1-87e6-ca2462df8a38",
+      "key": "fix_blocked",
+      "target_node_id": "node-03d0e60b-3cd1-4ffe-a9ba-a4f0054a4c9d",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why fixing cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-72d6cb9c-2207-4545-9aa5-d123dd7e7e67",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-c56eca1d-12ea-4385-9aed-0a8bbbbfc9e1",
+      "key": "verification_fix",
+      "target_node_id": "node-c41f562e-465b-4296-99db-63fb61376288",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix the remaining Puber bugfix verification findings. Apply only the changes requested in {{.Params.verification_report}}, verify narrowly, and complete with verify or blocked.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/bugfix-* workspace."
+        },
+        {
+          "key": "verification_report",
+          "description": "Verification findings and remaining issues to fix."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the bugfix so far."
+        }
+      ]
+    },
+    {
+      "id": "edge-b912a0ba-99de-4e09-8c06-48887ade72ba",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-c6853f46-5291-4256-84c1-f8b5b1ba60c5",
+      "key": "verify_done",
+      "target_node_id": "node-fdcc2cd0-9737-4db4-829b-3d2851c1ac81",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+    },
+    {
+      "id": "edge-57108fec-8335-4c59-bc46-fca2b7a2bc56",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-0b08b713-d3b8-464b-9e43-55037dabf3ba",
+      "key": "verify_blocked",
+      "target_node_id": "node-03d0e60b-3cd1-4ffe-a9ba-a4f0054a4c9d",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why verification cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-64bdeef2-8d4c-4261-9484-c65f42aed055",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-71b97af2-f25d-4759-a5de-6fd87a3c0d25",
+      "key": "cleanup_done",
+      "target_node_id": "node-21fe5cd3-7f81-418c-be8d-ce1b2180fdf9",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "cleanup_report",
+          "description": "Summary of cleanup performed or deliberately skipped."
+        }
+      ]
+    }
+  ],
+  "derived_wiring": {
+    "nodes": [
+      {
+        "node_id": "node-cd4b957b-a0cc-4427-94e1-b2400c0aadf0"
+      },
+      {
+        "node_id": "node-213caff1-4a63-4b66-9d2e-b06ac051749b",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace created during diagnosis."
+          },
+          {
+            "name": "diagnosis_report",
+            "description": "Root cause analysis, suspected files, and fix plan."
+          },
+          {
+            "name": "reproduction_steps",
+            "description": "Steps used to reproduce or prove the bug."
+          },
+          {
+            "name": "candidate_files",
+            "description": "Files likely involved in the bug and proposed fix."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why diagnosis cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-c41f562e-465b-4296-99db-63fb61376288",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "diagnosis_report",
+            "description": "Root cause analysis and fix plan used for implementation."
+          },
+          {
+            "name": "reproduction_steps",
+            "description": "Steps used to reproduce or prove the bug, or not available if the bug could not be reproduced."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the bugfix."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run by the fixer and their pass/fail results."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-98304bcc-e638-4461-80b6-3e33a2ea0daa",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "verification_report",
+            "description": "Verification findings and remaining issues to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the bugfix so far."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why verification cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-fdcc2cd0-9737-4db4-829b-3d2851c1ac81",
+        "possible_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "node_id": "node-03d0e60b-3cd1-4ffe-a9ba-a4f0054a4c9d"
+      },
+      {
+        "node_id": "node-21fe5cd3-7f81-418c-be8d-ce1b2180fdf9"
+      }
+    ],
+    "transition_groups": [
+      {
+        "transition_group_id": "group-cb881321-290a-4c4d-8359-63d1885aaa88"
+      },
+      {
+        "transition_group_id": "group-d7bf883d-dfc1-41e3-aa3e-4eb5e2b1809d",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace created during diagnosis."
+          },
+          {
+            "name": "diagnosis_report",
+            "description": "Root cause analysis, suspected files, and fix plan."
+          },
+          {
+            "name": "reproduction_steps",
+            "description": "Steps used to reproduce or prove the bug."
+          },
+          {
+            "name": "candidate_files",
+            "description": "Files likely involved in the bug and proposed fix."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-1a1d547c-c457-4aa4-b2e2-1d82111ec2bc"
+      },
+      {
+        "transition_group_id": "group-49fc52b6-a690-4d50-8329-dd2026c4e833",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why diagnosis cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-e95dc252-4151-44b9-85a4-873b5fe949d8",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "diagnosis_report",
+            "description": "Root cause analysis and fix plan used for implementation."
+          },
+          {
+            "name": "reproduction_steps",
+            "description": "Steps used to reproduce or prove the bug, or not available if the bug could not be reproduced."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the bugfix."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run by the fixer and their pass/fail results."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-b7631a36-07d7-4ee1-87e6-ca2462df8a38",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-c56eca1d-12ea-4385-9aed-0a8bbbbfc9e1",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "verification_report",
+            "description": "Verification findings and remaining issues to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the bugfix so far."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-c6853f46-5291-4256-84c1-f8b5b1ba60c5"
+      },
+      {
+        "transition_group_id": "group-0b08b713-d3b8-464b-9e43-55037dabf3ba",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why verification cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-71b97af2-f25d-4759-a5de-6fd87a3c0d25",
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-2fe19350-a07d-46f5-b9b6-6a54375db6c0"
+      },
+      {
+        "edge_id": "edge-5cb1c9b3-845e-4481-a888-bae0600002df",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "diagnosis_report",
+            "source": "transition_output",
+            "field": "diagnosis_report"
+          },
+          {
+            "name": "reproduction_steps",
+            "source": "transition_output",
+            "field": "reproduction_steps"
+          },
+          {
+            "name": "candidate_files",
+            "source": "transition_output",
+            "field": "candidate_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace created during diagnosis."
+          },
+          {
+            "name": "diagnosis_report",
+            "description": "Root cause analysis, suspected files, and fix plan."
+          },
+          {
+            "name": "reproduction_steps",
+            "description": "Steps used to reproduce or prove the bug."
+          },
+          {
+            "name": "candidate_files",
+            "description": "Files likely involved in the bug and proposed fix."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-a75d8af1-fe75-40a6-be4b-94c91ca12008"
+      },
+      {
+        "edge_id": "edge-48440fa4-ceb3-4331-bf1b-950ce02703c7",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why diagnosis cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-67586b3a-973e-4049-86b3-5f0d5c627b74",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "diagnosis_report",
+            "source": "transition_output",
+            "field": "diagnosis_report"
+          },
+          {
+            "name": "reproduction_steps",
+            "source": "transition_output",
+            "field": "reproduction_steps"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          },
+          {
+            "name": "verification_summary",
+            "source": "transition_output",
+            "field": "verification_summary"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "diagnosis_report",
+            "description": "Root cause analysis and fix plan used for implementation."
+          },
+          {
+            "name": "reproduction_steps",
+            "description": "Steps used to reproduce or prove the bug, or not available if the bug could not be reproduced."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the bugfix."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run by the fixer and their pass/fail results."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-5c331080-da92-4071-9456-2fc425b2502b",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-72d6cb9c-2207-4545-9aa5-d123dd7e7e67",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "verification_report",
+            "source": "transition_output",
+            "field": "verification_report"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "verification_report",
+            "description": "Verification findings and remaining issues to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the bugfix so far."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-b912a0ba-99de-4e09-8c06-48887ade72ba"
+      },
+      {
+        "edge_id": "edge-57108fec-8335-4c59-bc46-fca2b7a2bc56",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why verification cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-64bdeef2-8d4c-4261-9484-c65f42aed055",
+        "input_bindings": [
+          {
+            "name": "cleanup_report",
+            "source": "transition_output",
+            "field": "cleanup_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ]
+  }
+}

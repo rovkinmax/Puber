@@ -1,0 +1,474 @@
+{
+  "workflow": {
+    "id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+    "name": "Puber Release Preparation",
+    "description": "Prepare a Puber release branch and version bump, push only after approval, and clean up safely.",
+    "version": 17
+  },
+  "nodes": [
+    {
+      "id": "node-6d45f610-3a9b-489d-b758-1d54889c74a3",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "key": "backlog",
+      "kind": "start",
+      "display_name": "Backlog"
+    },
+    {
+      "id": "node-5dae0fea-29f2-451c-a819-679a065d7630",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "key": "prepare",
+      "kind": "agent",
+      "display_name": "Prepare Release Branch",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "key": "verify",
+      "kind": "agent",
+      "display_name": "Verify And Push",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-63c461dc-1648-4215-a62b-fc08cfd214d6",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "key": "cleanup",
+      "kind": "agent",
+      "display_name": "Cleanup",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-c49ac91b-b6c0-4a46-9f9f-809653db03db",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "key": "blocked",
+      "kind": "terminal",
+      "display_name": "Blocked"
+    },
+    {
+      "id": "node-fcf3381c-e671-4b2b-959a-ad3b34c937e4",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "key": "done",
+      "kind": "terminal",
+      "display_name": "Done"
+    }
+  ],
+  "transition_groups": [
+    {
+      "id": "group-d8abbb21-6a5a-426b-9816-8437d3e681c0",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "source_node_id": "node-6d45f610-3a9b-489d-b758-1d54889c74a3",
+      "transition_id": "start",
+      "display_name": "Start",
+      "description": "Start release branch preparation from the task body."
+    },
+    {
+      "id": "group-e035c846-78a1-4e2a-bb43-6acd0ed88efc",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "source_node_id": "node-5dae0fea-29f2-451c-a819-679a065d7630",
+      "transition_id": "verify",
+      "display_name": "Verify",
+      "description": "Local release branch is prepared; approval required before optional push/finalization."
+    },
+    {
+      "id": "group-bbd72be8-6346-48fc-bfff-eafd46c364c7",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "source_node_id": "node-5dae0fea-29f2-451c-a819-679a065d7630",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Release preparation is blocked by missing version/base branch, dirty unsafe state, or git access."
+    },
+    {
+      "id": "group-3b9d06ec-fb03-46d3-920d-34c5d4a5732e",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "source_node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Release branch is finalized or push was intentionally skipped; run conservative cleanup."
+    },
+    {
+      "id": "group-edc2a10c-bd8b-4208-a2f2-22483ebebd67",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "source_node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Release verification or push is blocked."
+    },
+    {
+      "id": "group-c13f3b18-1488-494c-a1b8-d0bceb9fe7a2",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "source_node_id": "node-63c461dc-1648-4215-a62b-fc08cfd214d6",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Cleanup report is ready; finish the task."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-bde2c8cf-6472-4f4b-a77e-6cb299ce3ff6",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "transition_group_id": "group-d8abbb21-6a5a-426b-9816-8437d3e681c0",
+      "key": "start_prepare",
+      "target_node_id": "node-5dae0fea-29f2-451c-a819-679a065d7630",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run Puber release branch preparation for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/release-branch.md. Treat the task body as the desired base branch/version policy. If base branch or version policy is ambiguous and cannot be safely derived, complete blocked with blocker_reason instead of guessing.\n\nPrepare the local release branch and version bump. Do not push to remote unless explicitly authorized by a later approval. Prefer .kent/worktrees/release-<version> if the main worktree is dirty. Complete with verify when local release preparation is complete and provide release_version, release_branch, base_branch, worktree_path, commit_hash, and push_plan. Complete with blocked if preparation is blocked and provide blocker_reason."
+    },
+    {
+      "id": "edge-c9abd2f9-ddd0-4a54-a092-fbcb2d464153",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "transition_group_id": "group-e035c846-78a1-4e2a-bb43-6acd0ed88efc",
+      "key": "approve_verify_push",
+      "target_node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Verify and finalize the prepared Puber release branch.\n\nRead .kent/project-contract.md first. Check release {{.Params.release_version}} on branch {{.Params.release_branch}} at {{.Params.commit_hash}}. Verify the local branch status and version bump. Push only if the task/approval clearly authorizes the push described in {{.Params.push_plan}}; otherwise report that push was skipped.\n\nComplete with done if release preparation is finalized. Complete with blocked if verification or push is blocked and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "release_version",
+          "description": "Release version prepared by this task."
+        },
+        {
+          "key": "release_branch",
+          "description": "Local release branch prepared by this task."
+        },
+        {
+          "key": "base_branch",
+          "description": "Base branch used for release preparation."
+        },
+        {
+          "key": "worktree_path",
+          "description": "Path to the release worktree or main checkout used for preparation."
+        },
+        {
+          "key": "commit_hash",
+          "description": "Commit hash containing the release version bump."
+        },
+        {
+          "key": "push_plan",
+          "description": "What will be pushed or deliberately skipped after approval."
+        }
+      ]
+    },
+    {
+      "id": "edge-89dbd721-ef6a-44fb-a4b8-4dd468d8ce3e",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "transition_group_id": "group-bbd72be8-6346-48fc-bfff-eafd46c364c7",
+      "key": "prepare_blocked",
+      "target_node_id": "node-c49ac91b-b6c0-4a46-9f9f-809653db03db",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why release preparation cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-58db533b-47b1-47fe-9438-3ec1a5c025b0",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "transition_group_id": "group-3b9d06ec-fb03-46d3-920d-34c5d4a5732e",
+      "key": "verify_done",
+      "target_node_id": "node-63c461dc-1648-4215-a62b-fc08cfd214d6",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Do not remove a release worktree if it contains unpushed release work; report it instead. Complete with done and provide cleanup_report."
+    },
+    {
+      "id": "edge-8a4193bf-4b8d-4001-903b-725f47915dc6",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "transition_group_id": "group-edc2a10c-bd8b-4208-a2f2-22483ebebd67",
+      "key": "verify_blocked",
+      "target_node_id": "node-c49ac91b-b6c0-4a46-9f9f-809653db03db",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why verification/finalization cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-383b3669-8902-44a1-9a91-dbf59f6f717e",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "transition_group_id": "group-c13f3b18-1488-494c-a1b8-d0bceb9fe7a2",
+      "key": "cleanup_done",
+      "target_node_id": "node-fcf3381c-e671-4b2b-959a-ad3b34c937e4",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "cleanup_report",
+          "description": "Summary of cleanup performed or deliberately skipped."
+        }
+      ]
+    }
+  ],
+  "derived_wiring": {
+    "nodes": [
+      {
+        "node_id": "node-6d45f610-3a9b-489d-b758-1d54889c74a3"
+      },
+      {
+        "node_id": "node-5dae0fea-29f2-451c-a819-679a065d7630",
+        "possible_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this task."
+          },
+          {
+            "name": "release_branch",
+            "description": "Local release branch prepared by this task."
+          },
+          {
+            "name": "base_branch",
+            "description": "Base branch used for release preparation."
+          },
+          {
+            "name": "worktree_path",
+            "description": "Path to the release worktree or main checkout used for preparation."
+          },
+          {
+            "name": "commit_hash",
+            "description": "Commit hash containing the release version bump."
+          },
+          {
+            "name": "push_plan",
+            "description": "What will be pushed or deliberately skipped after approval."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why release preparation cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
+        "possible_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why verification/finalization cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-63c461dc-1648-4215-a62b-fc08cfd214d6",
+        "possible_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "node_id": "node-c49ac91b-b6c0-4a46-9f9f-809653db03db"
+      },
+      {
+        "node_id": "node-fcf3381c-e671-4b2b-959a-ad3b34c937e4"
+      }
+    ],
+    "transition_groups": [
+      {
+        "transition_group_id": "group-d8abbb21-6a5a-426b-9816-8437d3e681c0"
+      },
+      {
+        "transition_group_id": "group-e035c846-78a1-4e2a-bb43-6acd0ed88efc",
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this task."
+          },
+          {
+            "name": "release_branch",
+            "description": "Local release branch prepared by this task."
+          },
+          {
+            "name": "base_branch",
+            "description": "Base branch used for release preparation."
+          },
+          {
+            "name": "worktree_path",
+            "description": "Path to the release worktree or main checkout used for preparation."
+          },
+          {
+            "name": "commit_hash",
+            "description": "Commit hash containing the release version bump."
+          },
+          {
+            "name": "push_plan",
+            "description": "What will be pushed or deliberately skipped after approval."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-bbd72be8-6346-48fc-bfff-eafd46c364c7",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why release preparation cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-3b9d06ec-fb03-46d3-920d-34c5d4a5732e"
+      },
+      {
+        "transition_group_id": "group-edc2a10c-bd8b-4208-a2f2-22483ebebd67",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why verification/finalization cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-c13f3b18-1488-494c-a1b8-d0bceb9fe7a2",
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-bde2c8cf-6472-4f4b-a77e-6cb299ce3ff6"
+      },
+      {
+        "edge_id": "edge-c9abd2f9-ddd0-4a54-a092-fbcb2d464153",
+        "input_bindings": [
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_branch",
+            "source": "transition_output",
+            "field": "release_branch"
+          },
+          {
+            "name": "base_branch",
+            "source": "transition_output",
+            "field": "base_branch"
+          },
+          {
+            "name": "worktree_path",
+            "source": "transition_output",
+            "field": "worktree_path"
+          },
+          {
+            "name": "commit_hash",
+            "source": "transition_output",
+            "field": "commit_hash"
+          },
+          {
+            "name": "push_plan",
+            "source": "transition_output",
+            "field": "push_plan"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this task."
+          },
+          {
+            "name": "release_branch",
+            "description": "Local release branch prepared by this task."
+          },
+          {
+            "name": "base_branch",
+            "description": "Base branch used for release preparation."
+          },
+          {
+            "name": "worktree_path",
+            "description": "Path to the release worktree or main checkout used for preparation."
+          },
+          {
+            "name": "commit_hash",
+            "description": "Commit hash containing the release version bump."
+          },
+          {
+            "name": "push_plan",
+            "description": "What will be pushed or deliberately skipped after approval."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-89dbd721-ef6a-44fb-a4b8-4dd468d8ce3e",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why release preparation cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-58db533b-47b1-47fe-9438-3ec1a5c025b0"
+      },
+      {
+        "edge_id": "edge-8a4193bf-4b8d-4001-903b-725f47915dc6",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why verification/finalization cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-383b3669-8902-44a1-9a91-dbf59f6f717e",
+        "input_bindings": [
+          {
+            "name": "cleanup_report",
+            "source": "transition_output",
+            "field": "cleanup_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,912 @@
+{
+  "workflow": {
+    "id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+    "name": "Puber Test Coverage",
+    "description": "Plan, add, review, fix, and clean up focused Puber Android test coverage improvements.",
+    "version": 31
+  },
+  "nodes": [
+    {
+      "id": "node-ef6e38a6-fc1c-48ca-879a-255267c01b96",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "key": "backlog",
+      "kind": "start",
+      "display_name": "Backlog"
+    },
+    {
+      "id": "node-5769cf7c-2c95-4c1e-b98e-bd4dec7be4f5",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "key": "plan",
+      "kind": "agent",
+      "display_name": "Plan Coverage",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-eb273699-01a9-4407-823b-5772eb14389b",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "key": "implement",
+      "kind": "agent",
+      "display_name": "Add Tests",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-65fd665a-57a9-462d-b336-b7e039071db9",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "key": "review",
+      "kind": "agent",
+      "display_name": "Review Tests",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-d9f0e401-7a7b-4993-99a1-a18d3d075fee",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "key": "fix",
+      "kind": "agent",
+      "display_name": "Fix Tests",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-8fb65548-deaf-4e1c-8953-41879bac1fa3",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "key": "cleanup",
+      "kind": "agent",
+      "display_name": "Cleanup",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-b62d081c-5f62-4dd8-8b41-fb7d0fde82c9",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "key": "blocked",
+      "kind": "terminal",
+      "display_name": "Blocked"
+    },
+    {
+      "id": "node-ee8aaf85-4ad3-45ce-aa8f-fa53184747b0",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "key": "done",
+      "kind": "terminal",
+      "display_name": "Done"
+    }
+  ],
+  "transition_groups": [
+    {
+      "id": "group-cf1371f7-ba5d-45fb-ba04-c291257e439f",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-ef6e38a6-fc1c-48ca-879a-255267c01b96",
+      "transition_id": "start",
+      "display_name": "Start",
+      "description": "Start focused test coverage analysis and planning."
+    },
+    {
+      "id": "group-fca23692-1705-4e7b-b9e0-66cf7edab7e4",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-5769cf7c-2c95-4c1e-b98e-bd4dec7be4f5",
+      "transition_id": "implement",
+      "display_name": "Implement",
+      "description": "Coverage plan is ready; user approval required before adding tests."
+    },
+    {
+      "id": "group-415d0bcb-14f9-41db-99b7-5ad2049ea352",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-eb273699-01a9-4407-823b-5772eb14389b",
+      "transition_id": "continue_implementation",
+      "display_name": "Continue Implementation",
+      "description": "More test coverage steps remain; continue in the same session."
+    },
+    {
+      "id": "group-3165a096-cf8f-4f44-a612-4fc3edd8b19a",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-eb273699-01a9-4407-823b-5772eb14389b",
+      "transition_id": "review",
+      "display_name": "Review",
+      "description": "Test coverage implementation is complete and needs read-only review."
+    },
+    {
+      "id": "group-eec90e67-d819-4183-a043-c9ea33d27da1",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-65fd665a-57a9-462d-b336-b7e039071db9",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Review found test issues; user approval required before fixes."
+    },
+    {
+      "id": "group-668d608b-1ed0-4317-8611-748ab8e22bbe",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-d9f0e401-7a7b-4993-99a1-a18d3d075fee",
+      "transition_id": "review",
+      "display_name": "Review",
+      "description": "Test fix pass completed; review again."
+    },
+    {
+      "id": "group-39e19d14-f096-439b-a5d9-9744a3679407",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-5769cf7c-2c95-4c1e-b98e-bd4dec7be4f5",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Coverage planning is blocked."
+    },
+    {
+      "id": "group-dfd99cbf-98ce-438a-8017-667180578a53",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-eb273699-01a9-4407-823b-5772eb14389b",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Test implementation is blocked."
+    },
+    {
+      "id": "group-78094524-99fe-4931-8ea4-7cc2fcc34bae",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-65fd665a-57a9-462d-b336-b7e039071db9",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Test review is blocked."
+    },
+    {
+      "id": "group-6d3aff4d-bf81-4214-9baf-1107228c2232",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-d9f0e401-7a7b-4993-99a1-a18d3d075fee",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Test fix pass is blocked."
+    },
+    {
+      "id": "group-b6c17969-a249-4fc0-87fe-1e89b990f5eb",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-65fd665a-57a9-462d-b336-b7e039071db9",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Test review passed; run conservative cleanup."
+    },
+    {
+      "id": "group-a0533a4f-543e-45ab-8109-8d559aec6f45",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-8fb65548-deaf-4e1c-8953-41879bac1fa3",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Cleanup report is ready; finish the task."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-6b950aef-cc91-44d9-86ce-c5579c7d959a",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-cf1371f7-ba5d-45fb-ba04-c291257e439f",
+      "key": "start_plan",
+      "target_node_id": "node-5769cf7c-2c95-4c1e-b98e-bd4dec7be4f5",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run Puber test coverage planning for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/test-coverage.md phases 1-3. Treat the task body as the target package/path. Create an explicit .todo/test-coverage-<name> workspace; do not infer or create .todo/.current. Analyze source/test gaps and produce plan.md. Do not add tests yet.\n\nComplete with implement when the plan is ready for user approval and provide workspace_path plus plan_path. Complete with blocked if the target path is ambiguous or unavailable and provide blocker_reason."
+    },
+    {
+      "id": "edge-635e236b-8fb7-455b-997f-e92776e39bd1",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-fca23692-1705-4e7b-b9e0-66cf7edab7e4",
+      "key": "approve_implement",
+      "target_node_id": "node-eb273699-01a9-4407-823b-5772eb14389b",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Implement the approved Puber test coverage plan.\n\nRead .kent/project-contract.md first. Use .kent/commands/test-coverage.md phases 4-5 with workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Add one next unchecked test step at a time, verify narrowly, and update plan.md.\n\nIf more unchecked steps remain, complete with continue_implementation and provide workspace_path plus plan_path again. If all steps are complete, complete with review and provide workspace_path, plan_path, changed_files, and verification_summary. Complete with blocked on unresolved blockers and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/test-coverage-* workspace."
+        },
+        {
+          "key": "plan_path",
+          "description": "Path to the test coverage plan.md being executed."
+        }
+      ]
+    },
+    {
+      "id": "edge-d05148f6-2c11-4c77-9d43-96c388e2e87f",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-415d0bcb-14f9-41db-99b7-5ad2049ea352",
+      "key": "next_step",
+      "target_node_id": "node-eb273699-01a9-4407-823b-5772eb14389b",
+      "requires_approval": false,
+      "context_mode": "continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Continue the approved Puber test coverage plan from {{.Params.plan_path}} in workspace {{.Params.workspace_path}}. Execute the next unchecked step, verify narrowly, update plan.md, and complete with continue_implementation, review, or blocked as appropriate.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/test-coverage-* workspace."
+        },
+        {
+          "key": "plan_path",
+          "description": "Path to the test coverage plan.md being executed."
+        }
+      ]
+    },
+    {
+      "id": "edge-829c860b-9c9f-4a6e-81e5-b0443ef6e164",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-3165a096-cf8f-4f44-a612-4fc3edd8b19a",
+      "key": "review",
+      "target_node_id": "node-65fd665a-57a9-462d-b336-b7e039071db9",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Review the Puber test coverage changes read-only.\n\nRead .kent/project-contract.md first. Check regression-test quality, locale-independent assertions, explicit expected values, AGENTS.md rules, and {{.Params.verification_summary}}. Do not edit files in this node.\n\nComplete with done if accepted, needs_changes if fixes are required and provide workspace_path, review_report, and changed_files, or blocked if review cannot complete and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/test-coverage-* workspace."
+        },
+        {
+          "key": "plan_path",
+          "description": "Path to the test coverage plan.md being executed."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the test coverage work."
+        },
+        {
+          "key": "verification_summary",
+          "description": "Commands run and their pass/fail results."
+        }
+      ]
+    },
+    {
+      "id": "edge-882d7370-e61c-4a51-8933-93ab1aab7d2a",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-eec90e67-d819-4183-a043-c9ea33d27da1",
+      "key": "fix",
+      "target_node_id": "node-d9f0e401-7a7b-4993-99a1-a18d3d075fee",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix the Puber test coverage review findings. Apply only changes requested in {{.Params.review_report}}, verify narrowly, and complete with review or blocked.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Workspace containing the test coverage implementation."
+        },
+        {
+          "key": "review_report",
+          "description": "Concrete test review findings to fix."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the test coverage work."
+        }
+      ]
+    },
+    {
+      "id": "edge-e59a89ad-9a19-4704-b309-aacc360c65be",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-668d608b-1ed0-4317-8611-748ab8e22bbe",
+      "key": "review_again",
+      "target_node_id": "node-65fd665a-57a9-462d-b336-b7e039071db9",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Re-review the fixed Puber test coverage changes. Complete with done, needs_changes, or blocked.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Workspace containing the test coverage implementation."
+        },
+        {
+          "key": "review_report",
+          "description": "Original review findings and fix summary."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the test coverage work and fixes."
+        }
+      ]
+    },
+    {
+      "id": "edge-5da16ad1-ae52-4ffd-bac3-5e71e5c82e98",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-39e19d14-f096-439b-a5d9-9744a3679407",
+      "key": "plan_blocked",
+      "target_node_id": "node-b62d081c-5f62-4dd8-8b41-fb7d0fde82c9",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why planning cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-dcfea51d-83b5-4485-9dc4-9f564ed809cb",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-dfd99cbf-98ce-438a-8017-667180578a53",
+      "key": "implementation_blocked",
+      "target_node_id": "node-b62d081c-5f62-4dd8-8b41-fb7d0fde82c9",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why implementation cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-8e0274ef-e94f-4bf8-865e-b1c6db8fdac4",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-78094524-99fe-4931-8ea4-7cc2fcc34bae",
+      "key": "review_blocked",
+      "target_node_id": "node-b62d081c-5f62-4dd8-8b41-fb7d0fde82c9",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why review cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-cdb45ce3-cc17-463d-84a4-a42440a6c782",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-6d3aff4d-bf81-4214-9baf-1107228c2232",
+      "key": "fix_blocked",
+      "target_node_id": "node-b62d081c-5f62-4dd8-8b41-fb7d0fde82c9",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why fixing cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-00e65d30-b271-4dc4-98e4-993a536bdfdd",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-b6c17969-a249-4fc0-87fe-1e89b990f5eb",
+      "key": "review_done",
+      "target_node_id": "node-8fb65548-deaf-4e1c-8953-41879bac1fa3",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+    },
+    {
+      "id": "edge-f715924d-d980-4790-b18a-449bf35a6c4b",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-a0533a4f-543e-45ab-8109-8d559aec6f45",
+      "key": "cleanup_done",
+      "target_node_id": "node-ee8aaf85-4ad3-45ce-aa8f-fa53184747b0",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "cleanup_report",
+          "description": "Summary of cleanup performed or deliberately skipped."
+        }
+      ]
+    }
+  ],
+  "derived_wiring": {
+    "nodes": [
+      {
+        "node_id": "node-ef6e38a6-fc1c-48ca-879a-255267c01b96"
+      },
+      {
+        "node_id": "node-5769cf7c-2c95-4c1e-b98e-bd4dec7be4f5",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/test-coverage-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the test coverage plan.md being executed."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why planning cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-eb273699-01a9-4407-823b-5772eb14389b",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/test-coverage-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the test coverage plan.md being executed."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run and their pass/fail results."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why implementation cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-65fd665a-57a9-462d-b336-b7e039071db9",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "review_report",
+            "description": "Concrete test review findings to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-d9f0e401-7a7b-4993-99a1-a18d3d075fee",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "review_report",
+            "description": "Original review findings and fix summary."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work and fixes."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-8fb65548-deaf-4e1c-8953-41879bac1fa3",
+        "possible_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "node_id": "node-b62d081c-5f62-4dd8-8b41-fb7d0fde82c9"
+      },
+      {
+        "node_id": "node-ee8aaf85-4ad3-45ce-aa8f-fa53184747b0"
+      }
+    ],
+    "transition_groups": [
+      {
+        "transition_group_id": "group-cf1371f7-ba5d-45fb-ba04-c291257e439f"
+      },
+      {
+        "transition_group_id": "group-fca23692-1705-4e7b-b9e0-66cf7edab7e4",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/test-coverage-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the test coverage plan.md being executed."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-415d0bcb-14f9-41db-99b7-5ad2049ea352",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/test-coverage-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the test coverage plan.md being executed."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-3165a096-cf8f-4f44-a612-4fc3edd8b19a",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/test-coverage-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the test coverage plan.md being executed."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run and their pass/fail results."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-eec90e67-d819-4183-a043-c9ea33d27da1",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "review_report",
+            "description": "Concrete test review findings to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-668d608b-1ed0-4317-8611-748ab8e22bbe",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "review_report",
+            "description": "Original review findings and fix summary."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work and fixes."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-39e19d14-f096-439b-a5d9-9744a3679407",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why planning cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-dfd99cbf-98ce-438a-8017-667180578a53",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why implementation cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-78094524-99fe-4931-8ea4-7cc2fcc34bae",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-6d3aff4d-bf81-4214-9baf-1107228c2232",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-b6c17969-a249-4fc0-87fe-1e89b990f5eb"
+      },
+      {
+        "transition_group_id": "group-a0533a4f-543e-45ab-8109-8d559aec6f45",
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-6b950aef-cc91-44d9-86ce-c5579c7d959a"
+      },
+      {
+        "edge_id": "edge-635e236b-8fb7-455b-997f-e92776e39bd1",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/test-coverage-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the test coverage plan.md being executed."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-d05148f6-2c11-4c77-9d43-96c388e2e87f",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/test-coverage-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the test coverage plan.md being executed."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-829c860b-9c9f-4a6e-81e5-b0443ef6e164",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          },
+          {
+            "name": "verification_summary",
+            "source": "transition_output",
+            "field": "verification_summary"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/test-coverage-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the test coverage plan.md being executed."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run and their pass/fail results."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-882d7370-e61c-4a51-8933-93ab1aab7d2a",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_report",
+            "source": "transition_output",
+            "field": "review_report"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "review_report",
+            "description": "Concrete test review findings to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-e59a89ad-9a19-4704-b309-aacc360c65be",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_report",
+            "source": "transition_output",
+            "field": "review_report"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "review_report",
+            "description": "Original review findings and fix summary."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work and fixes."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-5da16ad1-ae52-4ffd-bac3-5e71e5c82e98",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why planning cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-dcfea51d-83b5-4485-9dc4-9f564ed809cb",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why implementation cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-8e0274ef-e94f-4bf8-865e-b1c6db8fdac4",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-cdb45ce3-cc17-463d-84a4-a42440a6c782",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-00e65d30-b271-4dc4-98e4-993a536bdfdd"
+      },
+      {
+        "edge_id": "edge-f715924d-d980-4790-b18a-449bf35a6c4b",
+        "input_bindings": [
+          {
+            "name": "cleanup_report",
+            "source": "transition_output",
+            "field": "cleanup_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ]
+  }
+}

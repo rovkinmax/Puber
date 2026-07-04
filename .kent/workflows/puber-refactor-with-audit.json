@@ -1,0 +1,954 @@
+{
+  "workflow": {
+    "id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+    "name": "Puber Refactor With Audit",
+    "description": "Plan, audit, implement, review, fix, and conservatively clean up a Puber Android refactor or migration.",
+    "version": 33
+  },
+  "nodes": [
+    {
+      "id": "node-7e1a3558-b974-4a80-9bef-8f06ca6ea02c",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "key": "backlog",
+      "kind": "start",
+      "display_name": "Backlog"
+    },
+    {
+      "id": "node-30f4fcb2-8a07-41bb-ab1f-7164872244e3",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "key": "plan",
+      "kind": "agent",
+      "display_name": "Plan + Audit",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-993b1947-3f73-4109-bad1-c8d890df7a58",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "key": "implement",
+      "kind": "agent",
+      "display_name": "Implement",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-227ae295-a572-41a4-b257-67642857758d",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "key": "review",
+      "kind": "agent",
+      "display_name": "Review",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-813ddb92-db58-4688-b8c7-77b8134f31be",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "key": "fix",
+      "kind": "agent",
+      "display_name": "Fix",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-bac5102f-8ccd-40b3-9151-e29db141bb5c",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "key": "cleanup",
+      "kind": "agent",
+      "display_name": "Cleanup",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-57fd70be-e6ef-449e-bbc5-2e2316abf0f4",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "key": "blocked",
+      "kind": "terminal",
+      "display_name": "Blocked"
+    },
+    {
+      "id": "node-0817963c-19fd-4eef-8f3c-c71b835e91e7",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "key": "done",
+      "kind": "terminal",
+      "display_name": "Done"
+    }
+  ],
+  "transition_groups": [
+    {
+      "id": "group-c6158abf-323e-40f9-be93-a864d809e22d",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-7e1a3558-b974-4a80-9bef-8f06ca6ea02c",
+      "transition_id": "start",
+      "display_name": "Start",
+      "description": "Start Puber refactor or migration planning from the task body."
+    },
+    {
+      "id": "group-55a6eba1-c9c0-499c-96b8-f0df139816b0",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-30f4fcb2-8a07-41bb-ab1f-7164872244e3",
+      "transition_id": "implement",
+      "display_name": "Implement",
+      "description": "Audited plan is ready; user approval required before implementation."
+    },
+    {
+      "id": "group-f8733e9e-380a-475f-88af-df0095f56f92",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-993b1947-3f73-4109-bad1-c8d890df7a58",
+      "transition_id": "continue_implementation",
+      "display_name": "Continue Implementation",
+      "description": "More implementation steps remain; continue in the same session."
+    },
+    {
+      "id": "group-2462bb97-54d3-4c4b-b7ad-9449540afe24",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-993b1947-3f73-4109-bad1-c8d890df7a58",
+      "transition_id": "review",
+      "display_name": "Review",
+      "description": "Implementation is complete and needs read-only review."
+    },
+    {
+      "id": "group-ee2360ec-4e0a-49c8-bd89-433637459e42",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-227ae295-a572-41a4-b257-67642857758d",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Review found issues; user approval required before fixes."
+    },
+    {
+      "id": "group-6facbddf-52d2-456e-ba29-62ce7b7740f4",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-813ddb92-db58-4688-b8c7-77b8134f31be",
+      "transition_id": "review",
+      "display_name": "Review",
+      "description": "Fix pass completed; review again."
+    },
+    {
+      "id": "group-dd24b644-7d09-4d95-b319-d7d8ab63c339",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-30f4fcb2-8a07-41bb-ab1f-7164872244e3",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Planning or audit is blocked by missing context, access, or user input."
+    },
+    {
+      "id": "group-ea1b058f-1636-40a3-9e3c-5099322948ec",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-993b1947-3f73-4109-bad1-c8d890df7a58",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Implementation is blocked by missing input, unsafe state, or verification failure."
+    },
+    {
+      "id": "group-9a4efa3a-d2ef-4474-acfa-a110be4e3d08",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-227ae295-a572-41a4-b257-67642857758d",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Review is blocked by missing context or verification."
+    },
+    {
+      "id": "group-124b993a-2a32-4f65-9fec-f3ddab23803f",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-813ddb92-db58-4688-b8c7-77b8134f31be",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Fixing is blocked by missing input, unsafe state, or verification failure."
+    },
+    {
+      "id": "group-b25bf5b0-4ceb-40e6-bbac-e46b32220eb5",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-227ae295-a572-41a4-b257-67642857758d",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Review passed; run conservative cleanup."
+    },
+    {
+      "id": "group-0efdf4fa-e622-492c-8109-368c4e5ebaee",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-bac5102f-8ccd-40b3-9151-e29db141bb5c",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Cleanup report is ready; finish the task."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-df037e9b-2bc9-4ce4-95b5-8201a64d38f5",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-c6158abf-323e-40f9-be93-a864d809e22d",
+      "key": "start_plan",
+      "target_node_id": "node-30f4fcb2-8a07-41bb-ab1f-7164872244e3",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run the Puber refactor/migration planning flow for this Kent task.\n\nRead .kent/project-contract.md first. Use .kent/commands/refactor-start.md for refactors and .kent/commands/migration-start.md for migrations, based on the task body. Create an explicit .todo/refactor-<name> or .todo/migration-<name> workspace; do not infer or create .todo/.current.\n\nAnalyze scope with project-local agents only, produce plan.md, and do not implement production code yet. If the command text asks for user confirmation, satisfy this workflow by stopping at the implement transition with a clear plan summary.\n\nComplete with implement when an auditable plan is ready and provide workspace_path, plan_path, and audit_report. Complete with blocked if required context or product input is unavailable, and provide blocker_reason."
+    },
+    {
+      "id": "edge-73734fd2-246f-46a6-ad43-c489d219194b",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-55a6eba1-c9c0-499c-96b8-f0df139816b0",
+      "key": "approve_implement",
+      "target_node_id": "node-993b1947-3f73-4109-bad1-c8d890df7a58",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Implement the approved Puber refactor or migration plan.\n\nRead .kent/project-contract.md first. Use the explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}; do not infer .todo/.current. Execute one next unchecked step at a time, preserving compilation after each step. Use ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout.\n\nIf more unchecked steps remain, complete with continue_implementation and provide workspace_path plus plan_path again. If all implementation steps are complete, complete with review and provide workspace_path, plan_path, audit_report, changed_files, and verification_summary. Complete with blocked on unresolved blockers and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace created by planning."
+        },
+        {
+          "key": "plan_path",
+          "description": "Path to the generated plan.md inside the workspace."
+        },
+        {
+          "key": "audit_report",
+          "description": "Planning audit summary, risk notes, and user-facing implementation constraints."
+        }
+      ]
+    },
+    {
+      "id": "edge-816076be-1396-4856-97be-2664123e3f2b",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-f8733e9e-380a-475f-88af-df0095f56f92",
+      "key": "next_step",
+      "target_node_id": "node-993b1947-3f73-4109-bad1-c8d890df7a58",
+      "requires_approval": false,
+      "context_mode": "continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Continue the approved Puber refactor or migration plan from {{.Params.plan_path}} in workspace {{.Params.workspace_path}}. Execute the next unchecked step, verify narrowly, update plan.md, and complete with continue_implementation, review, or blocked as appropriate.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace."
+        },
+        {
+          "key": "plan_path",
+          "description": "Path to the plan.md being executed."
+        }
+      ]
+    },
+    {
+      "id": "edge-bc41f8e4-bc97-4912-a207-75e730f78745",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-2462bb97-54d3-4c4b-b7ad-9449540afe24",
+      "key": "review",
+      "target_node_id": "node-227ae295-a572-41a4-b257-67642857758d",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Review the Puber refactor or migration implementation read-only.\n\nRead .kent/project-contract.md first. Compare changes against {{.Params.plan_path}}, audit risks, AGENTS.md architecture rules, and {{.Params.verification_summary}}. Do not edit files in this node.\n\nComplete with done if accepted, needs_changes if fixes are required and provide workspace_path, review_report, and changed_files, or blocked if review cannot complete and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace."
+        },
+        {
+          "key": "plan_path",
+          "description": "Path to the plan.md being executed."
+        },
+        {
+          "key": "audit_report",
+          "description": "Planning audit summary and known risks."
+        },
+        {
+          "key": "changed_files",
+          "description": "Newline-separated or comma-separated list of files changed by implementation."
+        },
+        {
+          "key": "verification_summary",
+          "description": "Commands run and their pass/fail results."
+        }
+      ]
+    },
+    {
+      "id": "edge-dc33b684-0573-4866-b03b-23dc17e62074",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-ee2360ec-4e0a-49c8-bd89-433637459e42",
+      "key": "fix",
+      "target_node_id": "node-813ddb92-db58-4688-b8c7-77b8134f31be",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix the Puber refactor or migration review findings.\n\nRead .kent/project-contract.md first. Apply only the fixes requested in {{.Params.review_report}} inside {{.Params.workspace_path}}. Verify narrowly, then complete with review and provide workspace_path, review_report, and changed_files. Complete with blocked if unsafe or missing input and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Workspace containing the implementation to fix."
+        },
+        {
+          "key": "review_report",
+          "description": "Concrete review findings to fix."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed so far and relevant to the fix pass."
+        }
+      ]
+    },
+    {
+      "id": "edge-83065bf1-406c-4078-9d19-f9c1b5a4f22d",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-6facbddf-52d2-456e-ba29-62ce7b7740f4",
+      "key": "review_again",
+      "target_node_id": "node-227ae295-a572-41a4-b257-67642857758d",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Re-review the fixed Puber refactor or migration. Use {{.Params.review_report}} and {{.Params.changed_files}} as context. Complete with done, needs_changes, or blocked.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Workspace containing the fixed implementation."
+        },
+        {
+          "key": "review_report",
+          "description": "Original review findings and fix summary."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the implementation and fix pass."
+        }
+      ]
+    },
+    {
+      "id": "edge-8575711d-c9ab-4e6e-b0c1-336845bb4687",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-dd24b644-7d09-4d95-b319-d7d8ab63c339",
+      "key": "plan_blocked",
+      "target_node_id": "node-57fd70be-e6ef-449e-bbc5-2e2316abf0f4",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why planning or audit cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-9c33162d-d739-43b7-a832-670c3bc1d9d4",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-ea1b058f-1636-40a3-9e3c-5099322948ec",
+      "key": "implementation_blocked",
+      "target_node_id": "node-57fd70be-e6ef-449e-bbc5-2e2316abf0f4",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why implementation cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-0629cc0d-de9e-412f-94b0-9766a55ce247",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-9a4efa3a-d2ef-4474-acfa-a110be4e3d08",
+      "key": "review_blocked",
+      "target_node_id": "node-57fd70be-e6ef-449e-bbc5-2e2316abf0f4",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why review cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-fffaff4d-5492-47eb-a42f-47af2565979f",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-124b993a-2a32-4f65-9fec-f3ddab23803f",
+      "key": "fix_blocked",
+      "target_node_id": "node-57fd70be-e6ef-449e-bbc5-2e2316abf0f4",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why fixing cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-c7ad3417-54cc-4145-834d-072113afcc63",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-b25bf5b0-4ceb-40e6-bbac-e46b32220eb5",
+      "key": "review_done",
+      "target_node_id": "node-bac5102f-8ccd-40b3-9151-e29db141bb5c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup.\n\nRead .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Only clean project-local Kent worktrees under .kent/worktrees/ when safe. Do not delete external/global worktrees or unmerged user changes. Complete with done and provide cleanup_report."
+    },
+    {
+      "id": "edge-f4be2f00-cec3-4f00-9fd9-12429386d213",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-0efdf4fa-e622-492c-8109-368c4e5ebaee",
+      "key": "cleanup_done",
+      "target_node_id": "node-0817963c-19fd-4eef-8f3c-c71b835e91e7",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "cleanup_report",
+          "description": "Summary of cleanup performed or deliberately skipped."
+        }
+      ]
+    }
+  ],
+  "derived_wiring": {
+    "nodes": [
+      {
+        "node_id": "node-7e1a3558-b974-4a80-9bef-8f06ca6ea02c"
+      },
+      {
+        "node_id": "node-30f4fcb2-8a07-41bb-ab1f-7164872244e3",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace created by planning."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the generated plan.md inside the workspace."
+          },
+          {
+            "name": "audit_report",
+            "description": "Planning audit summary, risk notes, and user-facing implementation constraints."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why planning or audit cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-993b1947-3f73-4109-bad1-c8d890df7a58",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the plan.md being executed."
+          },
+          {
+            "name": "audit_report",
+            "description": "Planning audit summary and known risks."
+          },
+          {
+            "name": "changed_files",
+            "description": "Newline-separated or comma-separated list of files changed by implementation."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run and their pass/fail results."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why implementation cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-227ae295-a572-41a4-b257-67642857758d",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the implementation to fix."
+          },
+          {
+            "name": "review_report",
+            "description": "Concrete review findings to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed so far and relevant to the fix pass."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-813ddb92-db58-4688-b8c7-77b8134f31be",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the fixed implementation."
+          },
+          {
+            "name": "review_report",
+            "description": "Original review findings and fix summary."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the implementation and fix pass."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-bac5102f-8ccd-40b3-9151-e29db141bb5c",
+        "possible_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "node_id": "node-57fd70be-e6ef-449e-bbc5-2e2316abf0f4"
+      },
+      {
+        "node_id": "node-0817963c-19fd-4eef-8f3c-c71b835e91e7"
+      }
+    ],
+    "transition_groups": [
+      {
+        "transition_group_id": "group-c6158abf-323e-40f9-be93-a864d809e22d"
+      },
+      {
+        "transition_group_id": "group-55a6eba1-c9c0-499c-96b8-f0df139816b0",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace created by planning."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the generated plan.md inside the workspace."
+          },
+          {
+            "name": "audit_report",
+            "description": "Planning audit summary, risk notes, and user-facing implementation constraints."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-f8733e9e-380a-475f-88af-df0095f56f92",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the plan.md being executed."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-2462bb97-54d3-4c4b-b7ad-9449540afe24",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the plan.md being executed."
+          },
+          {
+            "name": "audit_report",
+            "description": "Planning audit summary and known risks."
+          },
+          {
+            "name": "changed_files",
+            "description": "Newline-separated or comma-separated list of files changed by implementation."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run and their pass/fail results."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-ee2360ec-4e0a-49c8-bd89-433637459e42",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the implementation to fix."
+          },
+          {
+            "name": "review_report",
+            "description": "Concrete review findings to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed so far and relevant to the fix pass."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-6facbddf-52d2-456e-ba29-62ce7b7740f4",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the fixed implementation."
+          },
+          {
+            "name": "review_report",
+            "description": "Original review findings and fix summary."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the implementation and fix pass."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-dd24b644-7d09-4d95-b319-d7d8ab63c339",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why planning or audit cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-ea1b058f-1636-40a3-9e3c-5099322948ec",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why implementation cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-9a4efa3a-d2ef-4474-acfa-a110be4e3d08",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-124b993a-2a32-4f65-9fec-f3ddab23803f",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-b25bf5b0-4ceb-40e6-bbac-e46b32220eb5"
+      },
+      {
+        "transition_group_id": "group-0efdf4fa-e622-492c-8109-368c4e5ebaee",
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-df037e9b-2bc9-4ce4-95b5-8201a64d38f5"
+      },
+      {
+        "edge_id": "edge-73734fd2-246f-46a6-ad43-c489d219194b",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          },
+          {
+            "name": "audit_report",
+            "source": "transition_output",
+            "field": "audit_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace created by planning."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the generated plan.md inside the workspace."
+          },
+          {
+            "name": "audit_report",
+            "description": "Planning audit summary, risk notes, and user-facing implementation constraints."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-816076be-1396-4856-97be-2664123e3f2b",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the plan.md being executed."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-bc41f8e4-bc97-4912-a207-75e730f78745",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          },
+          {
+            "name": "audit_report",
+            "source": "transition_output",
+            "field": "audit_report"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          },
+          {
+            "name": "verification_summary",
+            "source": "transition_output",
+            "field": "verification_summary"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/refactor-* or .todo/migration-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the plan.md being executed."
+          },
+          {
+            "name": "audit_report",
+            "description": "Planning audit summary and known risks."
+          },
+          {
+            "name": "changed_files",
+            "description": "Newline-separated or comma-separated list of files changed by implementation."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run and their pass/fail results."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-dc33b684-0573-4866-b03b-23dc17e62074",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_report",
+            "source": "transition_output",
+            "field": "review_report"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the implementation to fix."
+          },
+          {
+            "name": "review_report",
+            "description": "Concrete review findings to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed so far and relevant to the fix pass."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-83065bf1-406c-4078-9d19-f9c1b5a4f22d",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_report",
+            "source": "transition_output",
+            "field": "review_report"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the fixed implementation."
+          },
+          {
+            "name": "review_report",
+            "description": "Original review findings and fix summary."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the implementation and fix pass."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-8575711d-c9ab-4e6e-b0c1-336845bb4687",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why planning or audit cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-9c33162d-d739-43b7-a832-670c3bc1d9d4",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why implementation cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-0629cc0d-de9e-412f-94b0-9766a55ce247",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-fffaff4d-5492-47eb-a42f-47af2565979f",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-c7ad3417-54cc-4145-834d-072113afcc63"
+      },
+      {
+        "edge_id": "edge-f4be2f00-cec3-4f00-9fd9-12429386d213",
+        "input_bindings": [
+          {
+            "name": "cleanup_report",
+            "source": "transition_output",
+            "field": "cleanup_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ]
+  }
+}

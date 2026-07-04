@@ -1,0 +1,509 @@
+{
+  "workflow": {
+    "id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+    "name": "Puber Smoke Test",
+    "description": "Run focused Puber Android TV smoke tests, optionally fix approved findings, and clean up safely.",
+    "version": 19
+  },
+  "nodes": [
+    {
+      "id": "node-32a7f9c6-5b1a-4fdb-9d1f-1913810f588e",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "key": "backlog",
+      "kind": "start",
+      "display_name": "Backlog"
+    },
+    {
+      "id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "key": "smoke",
+      "kind": "agent",
+      "display_name": "Smoke Test",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-a8823a49-9b62-44f8-8ac2-3cc3d7a2eb08",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "key": "fix",
+      "kind": "agent",
+      "display_name": "Fix Finding",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-28ccfbc5-149f-42d5-b4a8-1fda911cdbb2",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "key": "cleanup",
+      "kind": "agent",
+      "display_name": "Cleanup",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-89a1477a-eadb-4b3f-9d16-a7f2dea1498b",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "key": "blocked",
+      "kind": "terminal",
+      "display_name": "Blocked"
+    },
+    {
+      "id": "node-ef9a8079-1fe1-4241-9006-f84e023c3e2c",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "key": "done",
+      "kind": "terminal",
+      "display_name": "Done"
+    }
+  ],
+  "transition_groups": [
+    {
+      "id": "group-5daffed4-a74e-4d67-a8ee-fc7f82f14f8b",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-32a7f9c6-5b1a-4fdb-9d1f-1913810f588e",
+      "transition_id": "start",
+      "display_name": "Start",
+      "description": "Start focused device smoke test from the task body."
+    },
+    {
+      "id": "group-149ada3e-5137-4fe4-a2f4-f9d978eb8c81",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Smoke test found an actionable issue; user approval required before fixing."
+    },
+    {
+      "id": "group-994f8b45-b450-4a58-a211-bc13f9faac3e",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Smoke test passed or remaining risks are accepted; run conservative cleanup."
+    },
+    {
+      "id": "group-ff5aa281-cdb0-46a3-bd91-0a287a66bfd2",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Smoke test is blocked by missing device, MCP, build, credentials, or navigation context."
+    },
+    {
+      "id": "group-4fe2662b-c00a-4ae3-b180-355ced99e974",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-a8823a49-9b62-44f8-8ac2-3cc3d7a2eb08",
+      "transition_id": "smoke",
+      "display_name": "Smoke",
+      "description": "Fix was applied; re-run the focused smoke test."
+    },
+    {
+      "id": "group-e1a6dce2-a696-4a00-9513-e82bb0add0b4",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-a8823a49-9b62-44f8-8ac2-3cc3d7a2eb08",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Smoke finding fix is blocked."
+    },
+    {
+      "id": "group-fea7464d-6509-4e83-80a4-5098d8a7fca2",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-28ccfbc5-149f-42d5-b4a8-1fda911cdbb2",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Cleanup report is ready; finish the task."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-5f0166b0-c256-432f-8cb4-42f0f260e742",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-5daffed4-a74e-4d67-a8ee-fc7f82f14f8b",
+      "key": "start_smoke",
+      "target_node_id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run the Puber smoke-test flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/smoke-test.md. Treat the task body as the target feature/screen and device notes. Follow AGENTS.md MCP Mobile Testing rules: install fresh devDebug unless the user explicitly says the app is already running, prefer UI tree/assertions over screenshots, and save artifacts only for issues.\n\nDo not edit production code in this smoke node. Complete with done if the smoke test passes or is accepted. Complete with needs_changes if you found an actionable app issue and provide smoke_report, reproduction_steps, and artifacts_path. Complete with blocked if device/MCP/build/access is unavailable and provide blocker_reason."
+    },
+    {
+      "id": "edge-16af50c0-868d-4b74-94c5-cebf92c4a1bb",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-149ada3e-5137-4fe4-a2f4-f9d978eb8c81",
+      "key": "fix_finding",
+      "target_node_id": "node-a8823a49-9b62-44f8-8ac2-3cc3d7a2eb08",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix the approved Puber smoke-test finding.\n\nRead .kent/project-contract.md first. Apply the smallest robust fix for {{.Params.smoke_report}}. Verify with focused Gradle/test commands and, if practical, the reproduction steps {{.Params.reproduction_steps}}. Use ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout.\n\nComplete with smoke and provide fix_report, changed_files, and verification_summary. Complete with blocked if unsafe or missing input and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "smoke_report",
+          "description": "Smoke test findings and expected versus actual behavior."
+        },
+        {
+          "key": "reproduction_steps",
+          "description": "Steps to reproduce the smoke-test finding."
+        },
+        {
+          "key": "artifacts_path",
+          "description": "Path to saved smoke-test artifacts, or none if no artifacts were captured."
+        }
+      ]
+    },
+    {
+      "id": "edge-ae6c796c-a9e5-405e-aaf2-ea11f6f0ae31",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-994f8b45-b450-4a58-a211-bc13f9faac3e",
+      "key": "smoke_done",
+      "target_node_id": "node-28ccfbc5-149f-42d5-b4a8-1fda911cdbb2",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+    },
+    {
+      "id": "edge-4a84d29b-cb6a-4381-9197-1182ada3dd82",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-ff5aa281-cdb0-46a3-bd91-0a287a66bfd2",
+      "key": "smoke_blocked",
+      "target_node_id": "node-89a1477a-eadb-4b3f-9d16-a7f2dea1498b",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why smoke testing cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-b4cdd438-9ce8-480e-af25-eca4924cb3b4",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-4fe2662b-c00a-4ae3-b180-355ced99e974",
+      "key": "rerun_smoke",
+      "target_node_id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Re-run the focused Puber smoke test after the fix.\n\nRead .kent/project-contract.md first. Use {{.Params.fix_report}} and {{.Params.verification_summary}} as context. Follow .kent/commands/smoke-test.md and AGENTS.md MCP rules. Do not edit files in this node. Complete with done, needs_changes, or blocked.",
+      "parameters": [
+        {
+          "key": "fix_report",
+          "description": "Summary of the smoke finding fix."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the smoke finding fix."
+        },
+        {
+          "key": "verification_summary",
+          "description": "Commands run by the fixer and their pass/fail results."
+        }
+      ]
+    },
+    {
+      "id": "edge-4fb860fe-b23f-42c0-b2cc-cf8e3b862151",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-e1a6dce2-a696-4a00-9513-e82bb0add0b4",
+      "key": "fix_blocked",
+      "target_node_id": "node-89a1477a-eadb-4b3f-9d16-a7f2dea1498b",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why fixing cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-1d34b8ed-80df-4861-bed1-d077a3e9b8a5",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-fea7464d-6509-4e83-80a4-5098d8a7fca2",
+      "key": "cleanup_done",
+      "target_node_id": "node-ef9a8079-1fe1-4241-9006-f84e023c3e2c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "cleanup_report",
+          "description": "Summary of cleanup performed or deliberately skipped."
+        }
+      ]
+    }
+  ],
+  "derived_wiring": {
+    "nodes": [
+      {
+        "node_id": "node-32a7f9c6-5b1a-4fdb-9d1f-1913810f588e"
+      },
+      {
+        "node_id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
+        "possible_provision_fields": [
+          {
+            "name": "smoke_report",
+            "description": "Smoke test findings and expected versus actual behavior."
+          },
+          {
+            "name": "reproduction_steps",
+            "description": "Steps to reproduce the smoke-test finding."
+          },
+          {
+            "name": "artifacts_path",
+            "description": "Path to saved smoke-test artifacts, or none if no artifacts were captured."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why smoke testing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-a8823a49-9b62-44f8-8ac2-3cc3d7a2eb08",
+        "possible_provision_fields": [
+          {
+            "name": "fix_report",
+            "description": "Summary of the smoke finding fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the smoke finding fix."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run by the fixer and their pass/fail results."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-28ccfbc5-149f-42d5-b4a8-1fda911cdbb2",
+        "possible_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "node_id": "node-89a1477a-eadb-4b3f-9d16-a7f2dea1498b"
+      },
+      {
+        "node_id": "node-ef9a8079-1fe1-4241-9006-f84e023c3e2c"
+      }
+    ],
+    "transition_groups": [
+      {
+        "transition_group_id": "group-5daffed4-a74e-4d67-a8ee-fc7f82f14f8b"
+      },
+      {
+        "transition_group_id": "group-149ada3e-5137-4fe4-a2f4-f9d978eb8c81",
+        "required_provision_fields": [
+          {
+            "name": "smoke_report",
+            "description": "Smoke test findings and expected versus actual behavior."
+          },
+          {
+            "name": "reproduction_steps",
+            "description": "Steps to reproduce the smoke-test finding."
+          },
+          {
+            "name": "artifacts_path",
+            "description": "Path to saved smoke-test artifacts, or none if no artifacts were captured."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-994f8b45-b450-4a58-a211-bc13f9faac3e"
+      },
+      {
+        "transition_group_id": "group-ff5aa281-cdb0-46a3-bd91-0a287a66bfd2",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why smoke testing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-4fe2662b-c00a-4ae3-b180-355ced99e974",
+        "required_provision_fields": [
+          {
+            "name": "fix_report",
+            "description": "Summary of the smoke finding fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the smoke finding fix."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run by the fixer and their pass/fail results."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-e1a6dce2-a696-4a00-9513-e82bb0add0b4",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-fea7464d-6509-4e83-80a4-5098d8a7fca2",
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-5f0166b0-c256-432f-8cb4-42f0f260e742"
+      },
+      {
+        "edge_id": "edge-16af50c0-868d-4b74-94c5-cebf92c4a1bb",
+        "input_bindings": [
+          {
+            "name": "smoke_report",
+            "source": "transition_output",
+            "field": "smoke_report"
+          },
+          {
+            "name": "reproduction_steps",
+            "source": "transition_output",
+            "field": "reproduction_steps"
+          },
+          {
+            "name": "artifacts_path",
+            "source": "transition_output",
+            "field": "artifacts_path"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "smoke_report",
+            "description": "Smoke test findings and expected versus actual behavior."
+          },
+          {
+            "name": "reproduction_steps",
+            "description": "Steps to reproduce the smoke-test finding."
+          },
+          {
+            "name": "artifacts_path",
+            "description": "Path to saved smoke-test artifacts, or none if no artifacts were captured."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-ae6c796c-a9e5-405e-aaf2-ea11f6f0ae31"
+      },
+      {
+        "edge_id": "edge-4a84d29b-cb6a-4381-9197-1182ada3dd82",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why smoke testing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-b4cdd438-9ce8-480e-af25-eca4924cb3b4",
+        "input_bindings": [
+          {
+            "name": "fix_report",
+            "source": "transition_output",
+            "field": "fix_report"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          },
+          {
+            "name": "verification_summary",
+            "source": "transition_output",
+            "field": "verification_summary"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "fix_report",
+            "description": "Summary of the smoke finding fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the smoke finding fix."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run by the fixer and their pass/fail results."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-4fb860fe-b23f-42c0-b2cc-cf8e3b862151",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-1d34b8ed-80df-4861-bed1-d077a3e9b8a5",
+        "input_bindings": [
+          {
+            "name": "cleanup_report",
+            "source": "transition_output",
+            "field": "cleanup_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,647 @@
+{
+  "workflow": {
+    "id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+    "name": "Puber Release Publication",
+    "description": "Qualify and publish a Puber release tag after approval, monitor automation if present, and clean up safely.",
+    "version": 24
+  },
+  "nodes": [
+    {
+      "id": "node-9e60c51d-5f01-42d3-845f-83b7e6e3ca84",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "key": "backlog",
+      "kind": "start",
+      "display_name": "Backlog"
+    },
+    {
+      "id": "node-3c841aaf-089c-4df8-b04a-dce1cb807063",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "key": "qualify",
+      "kind": "agent",
+      "display_name": "Qualify Release",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-34e4131d-97ab-4b9b-b099-2c2cecea8085",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "key": "tag",
+      "kind": "agent",
+      "display_name": "Create Tag",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-65c09083-e828-4029-a1c9-a4f0f907e106",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "key": "monitor",
+      "kind": "agent",
+      "display_name": "Monitor Release",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-5b384301-9ead-4397-8b64-478b972587c0",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "key": "cleanup",
+      "kind": "agent",
+      "display_name": "Cleanup",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-1fa274d6-4f47-48f9-8a23-9ff39348b1cc",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "key": "blocked",
+      "kind": "terminal",
+      "display_name": "Blocked"
+    },
+    {
+      "id": "node-4e4b81bb-0180-40a5-845c-3bcfd349f7d1",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "key": "done",
+      "kind": "terminal",
+      "display_name": "Done"
+    }
+  ],
+  "transition_groups": [
+    {
+      "id": "group-57c9d097-179e-42f5-af5c-de2f181b1b05",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "source_node_id": "node-9e60c51d-5f01-42d3-845f-83b7e6e3ca84",
+      "transition_id": "start",
+      "display_name": "Start",
+      "description": "Start release publication readiness checks from the task body."
+    },
+    {
+      "id": "group-a445cb30-fb7d-42a5-88f1-d7fb60730850",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "source_node_id": "node-3c841aaf-089c-4df8-b04a-dce1cb807063",
+      "transition_id": "tag",
+      "display_name": "Tag",
+      "description": "Release candidate is ready; approval required before creating or pushing a tag."
+    },
+    {
+      "id": "group-78e65634-7646-4251-8f94-3c6fb4e80e74",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "source_node_id": "node-3c841aaf-089c-4df8-b04a-dce1cb807063",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Release readiness cannot be proven."
+    },
+    {
+      "id": "group-7f336a19-d972-4cbd-9d3c-e0c0a98191fd",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "source_node_id": "node-34e4131d-97ab-4b9b-b099-2c2cecea8085",
+      "transition_id": "monitor",
+      "display_name": "Monitor",
+      "description": "Tag was pushed; monitor release automation if present."
+    },
+    {
+      "id": "group-4493b1e9-aa93-428f-a5a1-df9eca908189",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "source_node_id": "node-34e4131d-97ab-4b9b-b099-2c2cecea8085",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Tag publication is complete and monitoring is intentionally skipped; run conservative cleanup."
+    },
+    {
+      "id": "group-eeceacea-a2d9-4349-a866-93b29d3a63a7",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "source_node_id": "node-34e4131d-97ab-4b9b-b099-2c2cecea8085",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Release tag creation or push is blocked or unsafe."
+    },
+    {
+      "id": "group-e195bee8-ea10-4a6c-b2a1-b94484c0c6a3",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "source_node_id": "node-65c09083-e828-4029-a1c9-a4f0f907e106",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Release automation passed or monitoring is intentionally skipped; run conservative cleanup."
+    },
+    {
+      "id": "group-26956053-2530-465c-ad7a-83f8b86b4fee",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "source_node_id": "node-65c09083-e828-4029-a1c9-a4f0f907e106",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Release automation failed or needs manual intervention."
+    },
+    {
+      "id": "group-d4d06574-c27e-4cd5-8246-7e725c888b6d",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "source_node_id": "node-5b384301-9ead-4397-8b64-478b972587c0",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Cleanup report is ready; finish the task."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-88c3772d-c1c5-4f7c-bc7c-a79d8e0c72a3",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "transition_group_id": "group-57c9d097-179e-42f5-af5c-de2f181b1b05",
+      "key": "start_qualify",
+      "target_node_id": "node-3c841aaf-089c-4df8-b04a-dce1cb807063",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Qualify a Puber release for publication.\n\nRead .kent/project-contract.md first, then use .kent/commands/release-tag.md as the project release-tag reference. Treat the task body as the requested version/tag policy. Fetch/check master/main and existing tags, compute the intended release tag, and verify readiness. Do not create or push tags in this node.\n\nComplete with tag when the release candidate is ready for user approval and provide release_version, release_tag, target_commit, and readiness_report. Complete with blocked if readiness cannot be proven and provide blocker_reason."
+    },
+    {
+      "id": "edge-07f694ab-bbe6-4cce-a9f9-4e22138bedff",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "transition_group_id": "group-a445cb30-fb7d-42a5-88f1-d7fb60730850",
+      "key": "approve_tag",
+      "target_node_id": "node-34e4131d-97ab-4b9b-b099-2c2cecea8085",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Create and push the approved Puber release tag.\n\nRead .kent/project-contract.md first. Use .kent/commands/release-tag.md, but only for release {{.Params.release_version}}, tag {{.Params.release_tag}}, target commit {{.Params.target_commit}}. Verify the tag does not already exist locally/remotely unless the task explicitly says to handle that case. This node may create and push the tag because the workflow transition requires user approval.\n\nComplete with monitor if publication automation should be monitored and provide release_version, release_tag, target_commit, and tag_push_status. Complete with done if tag publication is complete and monitoring is intentionally skipped. Complete with blocked if tag creation/push is unsafe or blocked and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "release_version",
+          "description": "Release version to publish."
+        },
+        {
+          "key": "release_tag",
+          "description": "Git tag to create and push."
+        },
+        {
+          "key": "target_commit",
+          "description": "Commit on master/main that should receive the release tag."
+        },
+        {
+          "key": "readiness_report",
+          "description": "Readiness checks and risks from qualification."
+        }
+      ]
+    },
+    {
+      "id": "edge-40682703-37a0-499e-a5b9-8467a8b57b6b",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "transition_group_id": "group-78e65634-7646-4251-8f94-3c6fb4e80e74",
+      "key": "qualify_blocked",
+      "target_node_id": "node-1fa274d6-4f47-48f9-8a23-9ff39348b1cc",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why release qualification cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-da37a79f-c96a-48df-9f8e-69794d5390cb",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "transition_group_id": "group-7f336a19-d972-4cbd-9d3c-e0c0a98191fd",
+      "key": "monitor_release",
+      "target_node_id": "node-65c09083-e828-4029-a1c9-a4f0f907e106",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Monitor Puber release publication after tag push.\n\nRead .kent/project-contract.md first. Check available GitHub/CI/release automation signals for release {{.Params.release_tag}} when configured. If no automation is configured, report that monitoring is skipped. Complete with done if green or intentionally skipped; complete with blocked if automation fails or cannot be inspected and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "release_version",
+          "description": "Release version published."
+        },
+        {
+          "key": "release_tag",
+          "description": "Git tag that was created and pushed."
+        },
+        {
+          "key": "target_commit",
+          "description": "Commit targeted by the release tag."
+        },
+        {
+          "key": "tag_push_status",
+          "description": "Result of local/remote tag creation and push."
+        }
+      ]
+    },
+    {
+      "id": "edge-f9f15045-4f17-4e2d-90ac-f71d6c9dcd8d",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "transition_group_id": "group-4493b1e9-aa93-428f-a5a1-df9eca908189",
+      "key": "tag_done",
+      "target_node_id": "node-5b384301-9ead-4397-8b64-478b972587c0",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Do not remove release-related worktrees with unpushed work. Complete with done and provide cleanup_report."
+    },
+    {
+      "id": "edge-02e26583-ff31-463d-b20e-78855de34f36",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "transition_group_id": "group-eeceacea-a2d9-4349-a866-93b29d3a63a7",
+      "key": "tag_blocked",
+      "target_node_id": "node-1fa274d6-4f47-48f9-8a23-9ff39348b1cc",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why tag publication cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-101b7816-ae11-4e89-82e2-cf794c1736fc",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "transition_group_id": "group-e195bee8-ea10-4a6c-b2a1-b94484c0c6a3",
+      "key": "monitor_done",
+      "target_node_id": "node-5b384301-9ead-4397-8b64-478b972587c0",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+    },
+    {
+      "id": "edge-b0571df0-3f45-486a-bb93-a12d1590bb39",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "transition_group_id": "group-26956053-2530-465c-ad7a-83f8b86b4fee",
+      "key": "monitor_blocked",
+      "target_node_id": "node-1fa274d6-4f47-48f9-8a23-9ff39348b1cc",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why release monitoring cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-d696dc0b-c89f-4850-b57a-5bd5c86d3c16",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "transition_group_id": "group-d4d06574-c27e-4cd5-8246-7e725c888b6d",
+      "key": "cleanup_done",
+      "target_node_id": "node-4e4b81bb-0180-40a5-845c-3bcfd349f7d1",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "cleanup_report",
+          "description": "Summary of cleanup performed or deliberately skipped."
+        }
+      ]
+    }
+  ],
+  "derived_wiring": {
+    "nodes": [
+      {
+        "node_id": "node-9e60c51d-5f01-42d3-845f-83b7e6e3ca84"
+      },
+      {
+        "node_id": "node-3c841aaf-089c-4df8-b04a-dce1cb807063",
+        "possible_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version to publish."
+          },
+          {
+            "name": "release_tag",
+            "description": "Git tag to create and push."
+          },
+          {
+            "name": "target_commit",
+            "description": "Commit on master/main that should receive the release tag."
+          },
+          {
+            "name": "readiness_report",
+            "description": "Readiness checks and risks from qualification."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why release qualification cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-34e4131d-97ab-4b9b-b099-2c2cecea8085",
+        "possible_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version published."
+          },
+          {
+            "name": "release_tag",
+            "description": "Git tag that was created and pushed."
+          },
+          {
+            "name": "target_commit",
+            "description": "Commit targeted by the release tag."
+          },
+          {
+            "name": "tag_push_status",
+            "description": "Result of local/remote tag creation and push."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why tag publication cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-65c09083-e828-4029-a1c9-a4f0f907e106",
+        "possible_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why release monitoring cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-5b384301-9ead-4397-8b64-478b972587c0",
+        "possible_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "node_id": "node-1fa274d6-4f47-48f9-8a23-9ff39348b1cc"
+      },
+      {
+        "node_id": "node-4e4b81bb-0180-40a5-845c-3bcfd349f7d1"
+      }
+    ],
+    "transition_groups": [
+      {
+        "transition_group_id": "group-57c9d097-179e-42f5-af5c-de2f181b1b05"
+      },
+      {
+        "transition_group_id": "group-a445cb30-fb7d-42a5-88f1-d7fb60730850",
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version to publish."
+          },
+          {
+            "name": "release_tag",
+            "description": "Git tag to create and push."
+          },
+          {
+            "name": "target_commit",
+            "description": "Commit on master/main that should receive the release tag."
+          },
+          {
+            "name": "readiness_report",
+            "description": "Readiness checks and risks from qualification."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-78e65634-7646-4251-8f94-3c6fb4e80e74",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why release qualification cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-7f336a19-d972-4cbd-9d3c-e0c0a98191fd",
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version published."
+          },
+          {
+            "name": "release_tag",
+            "description": "Git tag that was created and pushed."
+          },
+          {
+            "name": "target_commit",
+            "description": "Commit targeted by the release tag."
+          },
+          {
+            "name": "tag_push_status",
+            "description": "Result of local/remote tag creation and push."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-4493b1e9-aa93-428f-a5a1-df9eca908189"
+      },
+      {
+        "transition_group_id": "group-eeceacea-a2d9-4349-a866-93b29d3a63a7",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why tag publication cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-e195bee8-ea10-4a6c-b2a1-b94484c0c6a3"
+      },
+      {
+        "transition_group_id": "group-26956053-2530-465c-ad7a-83f8b86b4fee",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why release monitoring cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-d4d06574-c27e-4cd5-8246-7e725c888b6d",
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-88c3772d-c1c5-4f7c-bc7c-a79d8e0c72a3"
+      },
+      {
+        "edge_id": "edge-07f694ab-bbe6-4cce-a9f9-4e22138bedff",
+        "input_bindings": [
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_tag",
+            "source": "transition_output",
+            "field": "release_tag"
+          },
+          {
+            "name": "target_commit",
+            "source": "transition_output",
+            "field": "target_commit"
+          },
+          {
+            "name": "readiness_report",
+            "source": "transition_output",
+            "field": "readiness_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version to publish."
+          },
+          {
+            "name": "release_tag",
+            "description": "Git tag to create and push."
+          },
+          {
+            "name": "target_commit",
+            "description": "Commit on master/main that should receive the release tag."
+          },
+          {
+            "name": "readiness_report",
+            "description": "Readiness checks and risks from qualification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-40682703-37a0-499e-a5b9-8467a8b57b6b",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why release qualification cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-da37a79f-c96a-48df-9f8e-69794d5390cb",
+        "input_bindings": [
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_tag",
+            "source": "transition_output",
+            "field": "release_tag"
+          },
+          {
+            "name": "target_commit",
+            "source": "transition_output",
+            "field": "target_commit"
+          },
+          {
+            "name": "tag_push_status",
+            "source": "transition_output",
+            "field": "tag_push_status"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version published."
+          },
+          {
+            "name": "release_tag",
+            "description": "Git tag that was created and pushed."
+          },
+          {
+            "name": "target_commit",
+            "description": "Commit targeted by the release tag."
+          },
+          {
+            "name": "tag_push_status",
+            "description": "Result of local/remote tag creation and push."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-f9f15045-4f17-4e2d-90ac-f71d6c9dcd8d"
+      },
+      {
+        "edge_id": "edge-02e26583-ff31-463d-b20e-78855de34f36",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why tag publication cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-101b7816-ae11-4e89-82e2-cf794c1736fc"
+      },
+      {
+        "edge_id": "edge-b0571df0-3f45-486a-bb93-a12d1590bb39",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why release monitoring cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-d696dc0b-c89f-4850-b57a-5bd5c86d3c16",
+        "input_bindings": [
+          {
+            "name": "cleanup_report",
+            "source": "transition_output",
+            "field": "cleanup_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ]
+  }
+}

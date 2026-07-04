@@ -1,0 +1,718 @@
+{
+  "workflow": {
+    "id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+    "name": "Puber Dependency Update",
+    "description": "Update Puber Gradle dependencies or tooling, verify fallout, fix issues, and clean up safely.",
+    "version": 24
+  },
+  "nodes": [
+    {
+      "id": "node-04dc1a38-7b4c-47e2-89dd-19e48115d25c",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "key": "backlog",
+      "kind": "start",
+      "display_name": "Backlog"
+    },
+    {
+      "id": "node-27dab828-f09b-4bd9-973b-2dc45ebcec8e",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "key": "update",
+      "kind": "agent",
+      "display_name": "Update Dependencies",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "key": "verify",
+      "kind": "agent",
+      "display_name": "Verify Fallout",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "key": "fix",
+      "kind": "agent",
+      "display_name": "Fix Fallout",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-60340771-783d-44fb-8854-1aca22a87dcf",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "key": "cleanup",
+      "kind": "agent",
+      "display_name": "Cleanup",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "key": "blocked",
+      "kind": "terminal",
+      "display_name": "Blocked"
+    },
+    {
+      "id": "node-3aec4ca5-85e5-4307-bf44-d6289061537c",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "key": "done",
+      "kind": "terminal",
+      "display_name": "Done"
+    }
+  ],
+  "transition_groups": [
+    {
+      "id": "group-f7b18a67-9412-48dc-a5f1-6a3262356e34",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-04dc1a38-7b4c-47e2-89dd-19e48115d25c",
+      "transition_id": "start",
+      "display_name": "Start",
+      "description": "Start dependency update from the task body."
+    },
+    {
+      "id": "group-2f1c4853-f8d5-4050-8ee0-3684feb409f6",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-27dab828-f09b-4bd9-973b-2dc45ebcec8e",
+      "transition_id": "verify",
+      "display_name": "Verify",
+      "description": "Dependency versions changed and fallout verification is needed."
+    },
+    {
+      "id": "group-dffb599b-7fca-43c2-a5ac-f314df007db9",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-27dab828-f09b-4bd9-973b-2dc45ebcec8e",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Dependency update is blocked by package lookup, credentials, build setup, or unsafe version choices."
+    },
+    {
+      "id": "group-14351958-a9d9-4a65-9629-2d8c9056364a",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Verification found fallout; user approval required before fixes."
+    },
+    {
+      "id": "group-668062f2-60d6-47f5-ad18-c80520aa0b2b",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Dependency update verification passed; run conservative cleanup."
+    },
+    {
+      "id": "group-e52d04af-dfbd-4a58-9841-0254a894b7ff",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Dependency fallout verification is blocked."
+    },
+    {
+      "id": "group-5bdb9306-de5a-47f8-832f-b163dec4655c",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
+      "transition_id": "verify",
+      "display_name": "Verify",
+      "description": "Fallout fix completed; verify again."
+    },
+    {
+      "id": "group-78717f8d-cb76-4a49-b8fd-d5665581a8e6",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Fallout fixing is blocked."
+    },
+    {
+      "id": "group-9f9d67f9-c1cd-4f8f-8f1f-15c7c94e5feb",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-60340771-783d-44fb-8854-1aca22a87dcf",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Cleanup report is ready; finish the task."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-01cc6a74-4b26-422d-b186-cbf6673d92f8",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-f7b18a67-9412-48dc-a5f1-6a3262356e34",
+      "key": "start_update",
+      "target_node_id": "node-27dab828-f09b-4bd9-973b-2dc45ebcec8e",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run the Puber dependency update flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/dependency-update.md. Treat the task body as the filter/security/risk instruction. Create an explicit .todo/dependency-update-<date-or-scope> workspace; do not infer or create .todo/.current.\n\nUpdate gradle/libs.versions.toml and related build files only as needed. Prefer patch/minor safe batches; keep major updates isolated or report them as skipped if too risky for this task. Verify with focused Gradle commands using ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout.\n\nComplete with verify and provide workspace_path, plan_path, updated_dependencies, changed_files, and verification_summary. Complete with blocked if package lookup, credentials, or build setup is blocked and provide blocker_reason."
+    },
+    {
+      "id": "edge-e145c648-1e44-41d3-9a8b-924a337d3dd0",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-2f1c4853-f8d5-4050-8ee0-3684feb409f6",
+      "key": "verify_update",
+      "target_node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Verify Puber dependency update fallout read-only.\n\nRead .kent/project-contract.md first. Inspect {{.Params.changed_files}}, updated dependencies {{.Params.updated_dependencies}}, and {{.Params.verification_summary}}. Run focused verification if practical. Do not edit files in this node.\n\nComplete with done if accepted. Complete with needs_changes if fallout fixes are needed and provide workspace_path, verification_report, and changed_files. Complete with blocked if verification cannot complete and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/dependency-update-* workspace."
+        },
+        {
+          "key": "plan_path",
+          "description": "Path to the dependency update plan.md or report artifact."
+        },
+        {
+          "key": "updated_dependencies",
+          "description": "Dependencies or tooling versions changed by this task."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the dependency update."
+        },
+        {
+          "key": "verification_summary",
+          "description": "Commands run by the updater and their pass/fail results."
+        }
+      ]
+    },
+    {
+      "id": "edge-c135ffad-0f49-4c92-afc3-a10457abc9ab",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-dffb599b-7fca-43c2-a5ac-f314df007db9",
+      "key": "update_blocked",
+      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why dependency update cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-20d0290f-ee55-4c2b-98e0-680636b1ca33",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-14351958-a9d9-4a65-9629-2d8c9056364a",
+      "key": "fix_fallout",
+      "target_node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix Puber dependency update fallout. Apply only fixes requested in {{.Params.verification_report}}, verify narrowly, and complete with verify or blocked.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/dependency-update-* workspace."
+        },
+        {
+          "key": "verification_report",
+          "description": "Verification findings and fallout to fix."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the dependency update so far."
+        }
+      ]
+    },
+    {
+      "id": "edge-955a1d32-2382-405c-ad0a-2e2a65878118",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-668062f2-60d6-47f5-ad18-c80520aa0b2b",
+      "key": "verify_done",
+      "target_node_id": "node-60340771-783d-44fb-8854-1aca22a87dcf",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+    },
+    {
+      "id": "edge-4f117691-e1e9-450e-84aa-536fbc3faa3d",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-e52d04af-dfbd-4a58-9841-0254a894b7ff",
+      "key": "verify_blocked",
+      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why verification cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-d321a409-d0b8-4406-917e-546403f6dd43",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-5bdb9306-de5a-47f8-832f-b163dec4655c",
+      "key": "verify_again",
+      "target_node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Re-verify the Puber dependency update after fallout fixes. Complete with done, needs_changes, or blocked.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/dependency-update-* workspace."
+        },
+        {
+          "key": "verification_report",
+          "description": "Original verification findings and fix summary."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by update and fallout fixes."
+        }
+      ]
+    },
+    {
+      "id": "edge-28c17c9e-d64c-45ef-93ef-d99e41043200",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-78717f8d-cb76-4a49-b8fd-d5665581a8e6",
+      "key": "fix_blocked",
+      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why fallout fixing cannot continue, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-dc353253-902b-4f38-a816-5401f4e8249c",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-9f9d67f9-c1cd-4f8f-8f1f-15c7c94e5feb",
+      "key": "cleanup_done",
+      "target_node_id": "node-3aec4ca5-85e5-4307-bf44-d6289061537c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "cleanup_report",
+          "description": "Summary of cleanup performed or deliberately skipped."
+        }
+      ]
+    }
+  ],
+  "derived_wiring": {
+    "nodes": [
+      {
+        "node_id": "node-04dc1a38-7b4c-47e2-89dd-19e48115d25c"
+      },
+      {
+        "node_id": "node-27dab828-f09b-4bd9-973b-2dc45ebcec8e",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the dependency update plan.md or report artifact."
+          },
+          {
+            "name": "updated_dependencies",
+            "description": "Dependencies or tooling versions changed by this task."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the dependency update."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run by the updater and their pass/fail results."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why dependency update cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "verification_report",
+            "description": "Verification findings and fallout to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the dependency update so far."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why verification cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "verification_report",
+            "description": "Original verification findings and fix summary."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by update and fallout fixes."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why fallout fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-60340771-783d-44fb-8854-1aca22a87dcf",
+        "possible_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c"
+      },
+      {
+        "node_id": "node-3aec4ca5-85e5-4307-bf44-d6289061537c"
+      }
+    ],
+    "transition_groups": [
+      {
+        "transition_group_id": "group-f7b18a67-9412-48dc-a5f1-6a3262356e34"
+      },
+      {
+        "transition_group_id": "group-2f1c4853-f8d5-4050-8ee0-3684feb409f6",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the dependency update plan.md or report artifact."
+          },
+          {
+            "name": "updated_dependencies",
+            "description": "Dependencies or tooling versions changed by this task."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the dependency update."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run by the updater and their pass/fail results."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-dffb599b-7fca-43c2-a5ac-f314df007db9",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why dependency update cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-14351958-a9d9-4a65-9629-2d8c9056364a",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "verification_report",
+            "description": "Verification findings and fallout to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the dependency update so far."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-668062f2-60d6-47f5-ad18-c80520aa0b2b"
+      },
+      {
+        "transition_group_id": "group-e52d04af-dfbd-4a58-9841-0254a894b7ff",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why verification cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-5bdb9306-de5a-47f8-832f-b163dec4655c",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "verification_report",
+            "description": "Original verification findings and fix summary."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by update and fallout fixes."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-78717f8d-cb76-4a49-b8fd-d5665581a8e6",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why fallout fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-9f9d67f9-c1cd-4f8f-8f1f-15c7c94e5feb",
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-01cc6a74-4b26-422d-b186-cbf6673d92f8"
+      },
+      {
+        "edge_id": "edge-e145c648-1e44-41d3-9a8b-924a337d3dd0",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          },
+          {
+            "name": "updated_dependencies",
+            "source": "transition_output",
+            "field": "updated_dependencies"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          },
+          {
+            "name": "verification_summary",
+            "source": "transition_output",
+            "field": "verification_summary"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the dependency update plan.md or report artifact."
+          },
+          {
+            "name": "updated_dependencies",
+            "description": "Dependencies or tooling versions changed by this task."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the dependency update."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run by the updater and their pass/fail results."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-c135ffad-0f49-4c92-afc3-a10457abc9ab",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why dependency update cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-20d0290f-ee55-4c2b-98e0-680636b1ca33",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "verification_report",
+            "source": "transition_output",
+            "field": "verification_report"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "verification_report",
+            "description": "Verification findings and fallout to fix."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the dependency update so far."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-955a1d32-2382-405c-ad0a-2e2a65878118"
+      },
+      {
+        "edge_id": "edge-4f117691-e1e9-450e-84aa-536fbc3faa3d",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why verification cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-d321a409-d0b8-4406-917e-546403f6dd43",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "verification_report",
+            "source": "transition_output",
+            "field": "verification_report"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "verification_report",
+            "description": "Original verification findings and fix summary."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by update and fallout fixes."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-28c17c9e-d64c-45ef-93ef-d99e41043200",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why fallout fixing cannot continue, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-dc353253-902b-4f38-a816-5401f4e8249c",
+        "input_bindings": [
+          {
+            "name": "cleanup_report",
+            "source": "transition_output",
+            "field": "cleanup_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      }
+    ]
+  }
+}

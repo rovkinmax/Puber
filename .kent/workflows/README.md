@@ -17,14 +17,19 @@ Kent Desktop workflow graph
           -> puber-android-workflow recipes, rules, adapters, and agents
 ```
 
-## Recommended Workflow Families
+## Puber Workflow Set
 
-- `Puber Feature Delivery`: plan -> implement -> audit -> fix loop -> optional smoke -> optional PR/CI -> cleanup.
-- `Puber Refactor With Audit`: plan and audit -> implement -> review/fix loop -> optional PR/CI -> cleanup.
-- `Puber Bugfix Investigation`: reproduce/diagnose -> fix or report-only -> verify -> optional PR/CI -> cleanup.
-- `Puber Release Preparation`: prepare version branch and local verification; pushes require approval.
-- `Puber Release Publication`: publish an already prepared release; tags/releases require approval.
-- `Puber Dependency Update`: update dependency or tooling version -> focused compile/tests -> fallout review.
+- `Puber Feature Delivery` (default): plan -> implement loop -> audit -> fix loop -> optional smoke -> cleanup.
+- `Puber Refactor With Audit`: plan/audit -> implement loop -> read-only review -> fix loop -> cleanup.
+- `Puber Bugfix Investigation`: reproduce/diagnose -> approved fix or report-only -> verify/fix loop -> cleanup.
+- `Puber Dependency Update`: update Gradle versions/tooling -> fallout verification -> approved fixes -> cleanup.
+- `Puber Test Coverage`: coverage gap plan -> approved test implementation loop -> review/fix loop -> cleanup.
+- `Puber Smoke Test`: focused device smoke test -> optional approved fix -> rerun smoke -> cleanup.
+- `Puber Release Preparation`: prepare release branch/version bump -> approved verify/push step -> cleanup.
+- `Puber Release Publication`: qualify release tag -> approved tag push -> optional automation monitor -> cleanup.
+
+Only `Puber Feature Delivery` should be the project default. The other workflows are linked to the project for explicit
+task creation when the work type is known.
 
 ## Authoring Rules
 
