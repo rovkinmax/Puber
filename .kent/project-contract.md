@@ -12,7 +12,9 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - Implementation preserves and re-emits `workspace_path` and `plan_path` until all steps are complete.
 - Audit/review produces `audit_report` or `review_report`.
 - Verification produces `verification_report` or a concise verification summary.
-- PR creation, when used, produces `pr_url`, `branch_name`, and `workspace_path`.
+- Compliance Review produces `compliance_report`.
+- PR creation produces `pr_url`, `branch_name`, and `workspace_path`; no-diff/report-only PR skips produce `pr_report`.
+- PR/CI monitoring produces `ci_report`.
 - Every blocked transition must provide `blocker_reason`.
 - Cleanup produces `cleanup_report`.
 
@@ -25,6 +27,7 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - `refactor_start_command`: `.kent/commands/refactor-start.md`
 - `migration_start_command`: `.kent/commands/migration-start.md`
 - `smoke_command`: `.kent/commands/smoke-test.md`
+- `ship_pr_command`: `.kent/commands/ship-pr.md`
 - `release_prepare_command`: `.kent/commands/release-branch.md`
 - `release_tag_command`: `.kent/commands/release-tag.md`
 - `cleanup_command`: `.kent/commands/cleanup-task.md`
@@ -50,8 +53,13 @@ to project-local capability roles:
 - Main compile check: `./gradlew :app:compileDevDebugKotlin`.
 - Kent worktree compile check: `./tools/agentw :app:compileDevDebugKotlin`.
 - Main checkout may use direct Gradle; Kent worktrees must use `./tools/agentw` to isolate Gradle state.
-- Device smoke tests must install the freshly built dev APK before launch unless the user explicitly says the running app
-  is the intended build.
+- Device smoke tests must acquire a shared mobile resource lock before touching an emulator/device.
+- If multiple `adb` emulators are already running, smoke agents should acquire any free emulator-specific lock and use
+  that serial with `adb -s`.
+- Starting another emulator is allowed only when the task/user explicitly permits parallel device usage and the agent
+  acquires a distinct lock for it.
+- Device smoke tests must always install the freshly built dev APK before launch, even if the user says the app is already
+  running.
 
 ## Source Adapters
 
@@ -65,6 +73,8 @@ Default cleanup is conservative because deleting Kent-managed task worktrees can
 worktree metadata until Kent rebind behavior is fixed.
 
 - `cleanup_managed_task_worktrees`: `false` by default.
+- Code-producing workflow cleanup must happen after PR creation/update and CI monitoring, or after an explicit
+  no-diff/report-only `pr_report`.
 - Cleanup nodes should report safe-to-remove worktrees and branches unless explicit project/user policy enables removal.
 - Destructive cleanup requires proof that worktrees are clean and branch commits are recoverable from remote refs or a
   merged PR.
@@ -74,9 +84,11 @@ worktree metadata until Kent rebind behavior is fixed.
 
 Use generic workflow graph keys and project-prefixed live workflow names:
 
-- Live workflow names: `Puber Feature Delivery`, `Puber Refactor With Audit`, `Puber Release Preparation`.
+- Live workflow names: `Puber Feature Delivery`, `Puber Refactor With Audit`, `Puber Bugfix Investigation`,
+  `Puber Dependency Update`, `Puber Test Coverage`, `Puber Smoke Test`, `Puber Release Preparation`,
+  `Puber Release Publication`.
 - Node keys: `plan`, `implement`, `audit`, `fix`, `smoke`, `ship_pr`, `ci_monitor`, `cleanup`, `done`, `blocked`.
 - Transition IDs: `implement`, `continue_implementation`, `audit`, `needs_changes`, `smoke`, `ship_pr`, `monitor_ci`,
   `done`, `blocked`.
 - Portable params: `workspace_path`, `plan_path`, `audit_report`, `review_report`, `verification_report`, `pr_url`,
-  `branch_name`, `ci_report`, `blocker_reason`, `cleanup_report`.
+  `branch_name`, `pr_report`, `ci_report`, `compliance_report`, `blocker_reason`, `cleanup_report`.

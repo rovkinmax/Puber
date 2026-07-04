@@ -54,6 +54,11 @@ task creation when the work type is known.
   no-diff/report-only/smoke-only cases and must explain that through `pr_report`.
 - `ci_monitor` never merges PRs and never pushes new commits. CI failures go back to fix/review/compliance before another
   PR/CI pass.
+- Smoke workflows must acquire a shared mobile resource lock through
+  `.kent/adapters/mobile/emulator-resource-lock.sh` before installing, launching, or controlling an emulator/device. When
+  multiple `adb` emulators are already running, agents should acquire any free emulator-specific lock and pass that serial
+  to `adb -s`. Starting another emulator is allowed only when the task/user explicitly permits parallel device usage and
+  the agent acquires a distinct lock for that emulator.
 - Every successful terminal path should pass through `cleanup`, but cleanup is conservative by default.
 - Pass explicit `workspace_path` and `plan_path`; never rely on `.todo/.current`.
 - Keep prompts project-neutral where possible: "run the project feature planning command" rather than naming another

@@ -3,7 +3,7 @@
     "id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
     "name": "Puber Feature Delivery",
     "description": "Plan, implement, audit, fix, optionally smoke-test, and conservatively clean up a Puber Android feature.",
-    "version": 71
+    "version": 73
   },
   "nodes": [
     {
@@ -468,7 +468,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run a focused Puber device smoke test.\n\nRead .kent/project-contract.md first. Use .kent/commands/smoke-test.md for workspace {{.Params.workspace_path}} and audit report {{.Params.audit_report}}. Install the freshly built devDebug APK before device testing unless the task explicitly says the intended build is already running. Use Mobile MCP through .kent/adapters/mcp wrappers, save useful artifacts under build/test-artifacts or the feature workspace, and report issues.\n\nComplete with done if smoke passes. Complete with needs_changes if smoke finds implementation issues and provide workspace_path, audit_report, and smoke_report. Complete with blocked and blocker_reason if device/MCP/build access is unavailable.",
+      "prompt_template": "Run a focused Puber device smoke test.\n\nRead .kent/project-contract.md first. Use .kent/commands/smoke-test.md for workspace {{.Params.workspace_path}} and audit report {{.Params.audit_report}}. Before touching any emulator/device, use .kent/adapters/mobile/emulator-resource-lock.sh to discover running adb emulators and acquire any free emulator-specific lock. Pass the selected serial to adb -s. If all running emulators are busy, inspect lock owners and start a second emulator only when the task/user explicitly allows parallel device usage and you can acquire a distinct lock for it. Install a trap immediately after acquiring a lock so it is released on failure.\n\nAlways install the freshly built devDebug APK before device testing, force-stop the app, and launch com.kino.puber.stage/com.kino.puber.MainActivity. Use Mobile MCP through .kent/adapters/mcp wrappers, save useful artifacts under build/test-artifacts or the feature workspace, and release the mobile resource lock after reporting.\n\nComplete with done if smoke passes. Complete with needs_changes if smoke finds implementation issues and provide workspace_path, audit_report, and smoke_report. Complete with blocked and blocker_reason if device/MCP/build/resource locking access is unavailable.",
       "parameters": [
         {
           "key": "workspace_path",

@@ -3,7 +3,7 @@
     "id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
     "name": "Puber Smoke Test",
     "description": "Run focused Puber Android TV smoke tests, optionally fix approved findings, and clean up safely.",
-    "version": 47
+    "version": 53
   },
   "nodes": [
     {
@@ -224,7 +224,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run the Puber smoke-test flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/smoke-test.md. Treat the task body as the target feature/screen and device notes. Follow AGENTS.md MCP Mobile Testing rules: always install a fresh devDebug APK immediately before device testing, force-stop the app, and launch com.kino.puber.stage/com.kino.puber.MainActivity. Do this even if the task/user says the app is already running. Prefer UI tree/assertions over screenshots, and save artifacts only for issues.\n\nDo not edit production code in this smoke node. Complete with done if the smoke test passes or is accepted. Complete with needs_changes if you found an actionable app issue and provide smoke_report, reproduction_steps, and artifacts_path. Complete with blocked if device/MCP/build/access is unavailable and provide blocker_reason."
+      "prompt_template": "Run the Puber smoke-test flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/smoke-test.md. Treat the task body as the target feature/screen and device notes. Before touching any emulator/device, use .kent/adapters/mobile/emulator-resource-lock.sh to discover running adb emulators and acquire any free emulator-specific lock. Pass the selected serial to adb -s. If all running emulators are busy, inspect lock owners and start a second emulator only when the task/user explicitly allows parallel device usage and you can acquire a distinct lock for it. Install a trap immediately after acquiring a lock so it is released on failure.\n\nFollow AGENTS.md MCP Mobile Testing rules: always install a fresh devDebug APK immediately before device testing, force-stop the app, and launch com.kino.puber.stage/com.kino.puber.MainActivity. Do this even if the task/user says the app is already running. Prefer UI tree/assertions over screenshots, and save artifacts only for issues. Release the mobile resource lock after reporting.\n\nDo not edit production code in this smoke node. Complete with done if the smoke test passes or is accepted. Complete with needs_changes if you found an actionable app issue and provide smoke_report, reproduction_steps, and artifacts_path. Complete with blocked if device/MCP/build/access/resource locking is unavailable and provide blocker_reason."
     },
     {
       "id": "edge-16af50c0-868d-4b74-94c5-cebf92c4a1bb",
@@ -295,7 +295,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Re-run the focused Puber smoke test after the fix.\n\nRead .kent/project-contract.md first. Use {{.Params.fix_report}} and {{.Params.verification_summary}} as context. Follow .kent/commands/smoke-test.md and AGENTS.md MCP rules. Do not edit files in this node. Complete with done, needs_changes, or blocked.",
+      "prompt_template": "Re-run the focused Puber smoke test after the fix.\n\nRead .kent/project-contract.md first. Use {{.Params.fix_report}} and {{.Params.verification_summary}} as context. Follow .kent/commands/smoke-test.md and AGENTS.md MCP rules, including running-emulator pool locking, adb -s for the selected serial, trap-based lock release, and fresh devDebug install before testing. Do not edit files in this node. Release the mobile resource lock after reporting. Complete with done, needs_changes, or blocked.",
       "parameters": [
         {
           "key": "fix_report",
@@ -377,7 +377,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Rework the Puber smoke test to resolve compliance findings only.\n\nRead .kent/commands/compliance-review.md and .kent/commands/smoke-test.md first. Re-run or supplement smoke testing only as required by {{.Params.compliance_report}}. Always install a fresh devDebug APK before device testing. Do not edit production code in this node. Complete with done, needs_changes, or blocked according to the smoke workflow contract.",
+      "prompt_template": "Rework the Puber smoke test to resolve compliance findings only.\n\nRead .kent/commands/compliance-review.md and .kent/commands/smoke-test.md first. Re-run or supplement smoke testing only as required by {{.Params.compliance_report}}. Acquire a shared mobile resource lock from the running emulator pool before touching any emulator/device, use adb -s for the selected serial, install a trap to release the lock, always install a fresh devDebug APK before device testing, and release the lock after reporting. Do not edit production code in this node. Complete with done, needs_changes, or blocked according to the smoke workflow contract.",
       "parameters": [
         {
           "key": "compliance_report",

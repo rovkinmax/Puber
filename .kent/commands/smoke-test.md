@@ -18,23 +18,58 @@ Runs smoke test for a feature via MCP mobile.
 ## What it does
 
 1. Reads the MCP Mobile Testing section in `AGENTS.md` to understand the process
-2. **Always builds and installs a fresh `devDebug` APK immediately before device testing**
+2. **Acquire a mobile resource lock before touching any emulator/device**
+   - Prefer already-running healthy emulators. Discover them with:
+     ```bash
+     mapfile -t EMULATORS < <(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators)
+     ```
+   - If one or more emulators are already running, acquire any free emulator-specific lock:
+     ```bash
+     LOCK_OUTPUT="$(.kent/adapters/mobile/emulator-resource-lock.sh acquire-any "${EMULATORS[@]}" -- 900 7200)"
+     LOCK_RESOURCE="$(printf '%s\n' "$LOCK_OUTPUT" | sed -n 's/^resource=//p')"
+     LOCK_TOKEN="$(printf '%s\n' "$LOCK_OUTPUT" | sed -n 's/^token=//p')"
+     DEVICE_SERIAL="$LOCK_RESOURCE"
+     trap '.kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"' EXIT
+     ```
+   - If no emulator is running, acquire the default machine-level lock before starting or using the default emulator:
+     ```bash
+     LOCK_RESOURCE="default-emulator"
+     LOCK_TOKEN="$(.kent/adapters/mobile/emulator-resource-lock.sh acquire "$LOCK_RESOURCE" 900 7200)"
+     DEVICE_SERIAL=""
+     trap '.kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"' EXIT
+     ```
+   - Keep the token until smoke testing is fully reported. The `trap` releases it on normal exit or failure; explicit
+     release is also fine after the report:
+     ```bash
+     .kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"
+     ```
+   - When running `adb`, pass `-s "$DEVICE_SERIAL"` if `DEVICE_SERIAL` is set.
+   - If all running emulators are busy, inspect lock owners with:
+     ```bash
+     .kent/adapters/mobile/emulator-resource-lock.sh status <emulator-serial>
+     ```
+   - Start a second emulator only when the task/user explicitly allows parallel device usage and a suitable AVD/host
+     capacity is available. If a second emulator is used, acquire a distinct lock name such as
+     `emulator-5556` or `avd-<name>-<port>` before starting or using it.
+   - If no device can be safely acquired, complete the workflow with `blocked` and explain who/what holds the resource.
+3. **Always builds and installs a fresh `devDebug` APK immediately before device testing**
    - Do this even if the user says the app is already running; stale APKs can hide or misattribute regressions.
    - In a Kent worktree, use `./tools/agentw installDevDebug`; in the main checkout, use `./gradlew installDevDebug`.
    - Then restart the app with:
      ```bash
-     adb shell am force-stop com.kino.puber.stage
-     adb shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
+     adb ${DEVICE_SERIAL:+-s "$DEVICE_SERIAL"} shell am force-stop com.kino.puber.stage
+     adb ${DEVICE_SERIAL:+-s "$DEVICE_SERIAL"} shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
      ```
-3. Connects to device via MCP mobile
-4. **Launches app via adb**:
+4. Connects to device via MCP mobile
+5. **Launches app via adb**:
    ```bash
-   adb shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
+   adb ${DEVICE_SERIAL:+-s "$DEVICE_SERIAL"} shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
    ```
    Note: `com.kino.puber.stage` is the dev flavor package. For prod builds use `com.kino.puber`.
-5. Navigates to feature
-6. Goes through main screens
-7. Outputs report
+6. Navigates to feature
+7. Goes through main screens
+8. Outputs report
+9. Releases the mobile resource lock
 
 ## Testing Strategy
 

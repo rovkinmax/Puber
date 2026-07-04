@@ -261,6 +261,40 @@ The agent recognizes intent from natural language, but feature target selection 
 
 ## MCP Mobile Testing
 
+### Shared Device Coordination
+
+Before touching an emulator/device, acquire a shared lock so parallel Kent sessions do not install over each other or
+fight for focus:
+
+```bash
+mapfile -t EMULATORS < <(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators)
+
+if ((${#EMULATORS[@]} > 0)); then
+  LOCK_OUTPUT="$(.kent/adapters/mobile/emulator-resource-lock.sh acquire-any "${EMULATORS[@]}" -- 900 7200)"
+  LOCK_RESOURCE="$(printf '%s\n' "$LOCK_OUTPUT" | sed -n 's/^resource=//p')"
+  LOCK_TOKEN="$(printf '%s\n' "$LOCK_OUTPUT" | sed -n 's/^token=//p')"
+  DEVICE_SERIAL="$LOCK_RESOURCE"
+else
+  LOCK_RESOURCE="default-emulator"
+  LOCK_TOKEN="$(.kent/adapters/mobile/emulator-resource-lock.sh acquire "$LOCK_RESOURCE" 900 7200)"
+  DEVICE_SERIAL=""
+fi
+
+trap '.kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"' EXIT
+```
+
+Release it after the smoke report is complete. The `trap` releases it on normal exit or failure; explicit release is also
+fine after the report:
+
+```bash
+.kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"
+```
+
+When running `adb`, pass `-s "$DEVICE_SERIAL"` if `DEVICE_SERIAL` is set. If all running emulators are busy, check owners
+with `.kent/adapters/mobile/emulator-resource-lock.sh status <emulator-serial>`. Start a second emulator only when the
+task/user explicitly allows parallel device usage and a suitable AVD/host capacity is available; use a distinct lock name
+for that emulator. If no device can be safely acquired, block with `blocker_reason`.
+
 **Tool priority (cheap → expensive):**
 1. `assert_visible` / `assert_not_exists` — check element presence
 2. `analyze_screen` — screen structure without screenshot
