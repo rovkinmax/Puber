@@ -3,7 +3,7 @@
     "id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
     "name": "Puber Release Preparation",
     "description": "Prepare a Puber release branch and version bump, push only after approval, and clean up safely.",
-    "version": 17
+    "version": 26
   },
   "nodes": [
     {
@@ -48,6 +48,15 @@
       "display_name": "Blocked"
     },
     {
+      "id": "node-5174454b-79c1-43c3-827e-48d80812d065",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "key": "compliance",
+      "kind": "agent",
+      "display_name": "Compliance Review",
+      "subagent_role": "compliance_reviewer",
+      "completion_mode": "shell_command"
+    },
+    {
       "id": "node-fcf3381c-e671-4b2b-959a-ad3b34c937e4",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "key": "done",
@@ -86,7 +95,7 @@
       "source_node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
       "transition_id": "done",
       "display_name": "Done",
-      "description": "Release branch is finalized or push was intentionally skipped; run conservative cleanup."
+      "description": "Release branch is finalized or push was intentionally skipped; run mandatory compliance review before cleanup."
     },
     {
       "id": "group-edc2a10c-bd8b-4208-a2f2-22483ebebd67",
@@ -103,6 +112,30 @@
       "transition_id": "done",
       "display_name": "Done",
       "description": "Cleanup report is ready; finish the task."
+    },
+    {
+      "id": "group-7b5b54ad-670b-4b8d-9b37-30cd21bc10c1",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "source_node_id": "node-5174454b-79c1-43c3-827e-48d80812d065",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Compliance review found no violations; run conservative cleanup."
+    },
+    {
+      "id": "group-da7cde94-4634-487f-b274-ba386d4285c8",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "source_node_id": "node-5174454b-79c1-43c3-827e-48d80812d065",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Compliance review found release-preparation violations; user approval required before rework."
+    },
+    {
+      "id": "group-0a45a2c8-359a-4a38-9e80-703ac30b9cf9",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "source_node_id": "node-5174454b-79c1-43c3-827e-48d80812d065",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Compliance review is blocked by missing or contradictory required sources."
     }
   ],
   "edges": [
@@ -181,13 +214,27 @@
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "transition_group_id": "group-3b9d06ec-fb03-46d3-920d-34c5d4a5732e",
       "key": "verify_done",
-      "target_node_id": "node-63c461dc-1648-4215-a62b-fc08cfd214d6",
+      "target_node_id": "node-5174454b-79c1-43c3-827e-48d80812d065",
       "requires_approval": false,
-      "context_mode": "new_session",
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Do not remove a release worktree if it contains unpushed release work; report it instead. Complete with done and provide cleanup_report."
+      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/commands/release-branch.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: release preparation for {{.Params.release_version}} on {{.Params.release_branch}} in {{.Params.worktree_path}}. Verify compliance with release workflow approval gates, git/worktree policy, task requirements, and AGENTS.md. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide release_version, release_branch, worktree_path, and compliance_report when rework is required. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "parameters": [
+        {
+          "key": "release_version",
+          "description": "Release version prepared by this task."
+        },
+        {
+          "key": "release_branch",
+          "description": "Local release branch prepared by this task."
+        },
+        {
+          "key": "worktree_path",
+          "description": "Path to the release worktree or main checkout used for preparation."
+        }
+      ]
     },
     {
       "id": "edge-8a4193bf-4b8d-4001-903b-725f47915dc6",
@@ -222,6 +269,74 @@
         {
           "key": "cleanup_report",
           "description": "Summary of cleanup performed or deliberately skipped."
+        }
+      ]
+    },
+    {
+      "id": "edge-1507f20a-c1f5-4264-8d81-92a99cb2d753",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "transition_group_id": "group-7b5b54ad-670b-4b8d-9b37-30cd21bc10c1",
+      "key": "compliance_done",
+      "target_node_id": "node-63c461dc-1648-4215-a62b-fc08cfd214d6",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup after compliance passed. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Do not remove a release worktree if it contains unpushed release work; report it instead. Compliance result: {{.Params.compliance_report}}. Complete with done and provide cleanup_report.",
+      "parameters": [
+        {
+          "key": "compliance_report",
+          "description": "Compliance review report, including rule sources checked and any findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-b33dbbc5-713d-4fc7-b49b-8af31144fe3a",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "transition_group_id": "group-da7cde94-4634-487f-b274-ba386d4285c8",
+      "key": "compliance_verify",
+      "target_node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Rework Puber release preparation compliance findings only.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, and .kent/commands/compliance-review.md first. Apply only the minimum approved changes required by {{.Params.compliance_report}} for release {{.Params.release_version}} on {{.Params.release_branch}} in {{.Params.worktree_path}}. Push only if the approval and task explicitly authorize it. Complete with done or blocked according to the release-preparation workflow contract.",
+      "parameters": [
+        {
+          "key": "release_version",
+          "description": "Release version prepared by this task."
+        },
+        {
+          "key": "release_branch",
+          "description": "Local release branch prepared by this task."
+        },
+        {
+          "key": "worktree_path",
+          "description": "Path to the release worktree or main checkout used for preparation."
+        },
+        {
+          "key": "compliance_report",
+          "description": "Compliance review report, including rule sources checked and any findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-fea9cf9f-8960-4933-bad6-5a8735f9e044",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "transition_group_id": "group-0a45a2c8-359a-4a38-9e80-703ac30b9cf9",
+      "key": "compliance_blocked",
+      "target_node_id": "node-c49ac91b-b6c0-4a46-9f9f-809653db03db",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why compliance review cannot complete, in the task language when practical."
         }
       ]
     }
@@ -268,6 +383,18 @@
         "node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
         "possible_provision_fields": [
           {
+            "name": "release_version",
+            "description": "Release version prepared by this task."
+          },
+          {
+            "name": "release_branch",
+            "description": "Local release branch prepared by this task."
+          },
+          {
+            "name": "worktree_path",
+            "description": "Path to the release worktree or main checkout used for preparation."
+          },
+          {
             "name": "blocker_reason",
             "description": "Why verification/finalization cannot continue, in the task language when practical."
           }
@@ -284,6 +411,31 @@
       },
       {
         "node_id": "node-c49ac91b-b6c0-4a46-9f9f-809653db03db"
+      },
+      {
+        "node_id": "node-5174454b-79c1-43c3-827e-48d80812d065",
+        "possible_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          },
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this task."
+          },
+          {
+            "name": "release_branch",
+            "description": "Local release branch prepared by this task."
+          },
+          {
+            "name": "worktree_path",
+            "description": "Path to the release worktree or main checkout used for preparation."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
+          }
+        ]
       },
       {
         "node_id": "node-fcf3381c-e671-4b2b-959a-ad3b34c937e4"
@@ -332,7 +484,21 @@
         ]
       },
       {
-        "transition_group_id": "group-3b9d06ec-fb03-46d3-920d-34c5d4a5732e"
+        "transition_group_id": "group-3b9d06ec-fb03-46d3-920d-34c5d4a5732e",
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this task."
+          },
+          {
+            "name": "release_branch",
+            "description": "Local release branch prepared by this task."
+          },
+          {
+            "name": "worktree_path",
+            "description": "Path to the release worktree or main checkout used for preparation."
+          }
+        ]
       },
       {
         "transition_group_id": "group-edc2a10c-bd8b-4208-a2f2-22483ebebd67",
@@ -349,6 +515,45 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-7b5b54ad-670b-4b8d-9b37-30cd21bc10c1",
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-da7cde94-4634-487f-b274-ba386d4285c8",
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this task."
+          },
+          {
+            "name": "release_branch",
+            "description": "Local release branch prepared by this task."
+          },
+          {
+            "name": "worktree_path",
+            "description": "Path to the release worktree or main checkout used for preparation."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-0a45a2c8-359a-4a38-9e80-703ac30b9cf9",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
           }
         ]
       }
@@ -435,7 +640,38 @@
         ]
       },
       {
-        "edge_id": "edge-58db533b-47b1-47fe-9438-3ec1a5c025b0"
+        "edge_id": "edge-58db533b-47b1-47fe-9438-3ec1a5c025b0",
+        "input_bindings": [
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_branch",
+            "source": "transition_output",
+            "field": "release_branch"
+          },
+          {
+            "name": "worktree_path",
+            "source": "transition_output",
+            "field": "worktree_path"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this task."
+          },
+          {
+            "name": "release_branch",
+            "description": "Local release branch prepared by this task."
+          },
+          {
+            "name": "worktree_path",
+            "description": "Path to the release worktree or main checkout used for preparation."
+          }
+        ]
       },
       {
         "edge_id": "edge-8a4193bf-4b8d-4001-903b-725f47915dc6",
@@ -466,6 +702,81 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-1507f20a-c1f5-4264-8d81-92a99cb2d753",
+        "input_bindings": [
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-b33dbbc5-713d-4fc7-b49b-8af31144fe3a",
+        "input_bindings": [
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_branch",
+            "source": "transition_output",
+            "field": "release_branch"
+          },
+          {
+            "name": "worktree_path",
+            "source": "transition_output",
+            "field": "worktree_path"
+          },
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this task."
+          },
+          {
+            "name": "release_branch",
+            "description": "Local release branch prepared by this task."
+          },
+          {
+            "name": "worktree_path",
+            "description": "Path to the release worktree or main checkout used for preparation."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-fea9cf9f-8960-4933-bad6-5a8735f9e044",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
           }
         ]
       }

@@ -3,7 +3,7 @@
     "id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
     "name": "Puber Dependency Update",
     "description": "Update Puber Gradle dependencies or tooling, verify fallout, fix issues, and clean up safely.",
-    "version": 24
+    "version": 33
   },
   "nodes": [
     {
@@ -57,6 +57,15 @@
       "display_name": "Blocked"
     },
     {
+      "id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "key": "compliance",
+      "kind": "agent",
+      "display_name": "Compliance Review",
+      "subagent_role": "compliance_reviewer",
+      "completion_mode": "shell_command"
+    },
+    {
       "id": "node-3aec4ca5-85e5-4307-bf44-d6289061537c",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "key": "done",
@@ -103,7 +112,7 @@
       "source_node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
       "transition_id": "done",
       "display_name": "Done",
-      "description": "Dependency update verification passed; run conservative cleanup."
+      "description": "Dependency update verification passed; run mandatory compliance review before cleanup."
     },
     {
       "id": "group-e52d04af-dfbd-4a58-9841-0254a894b7ff",
@@ -136,6 +145,30 @@
       "transition_id": "done",
       "display_name": "Done",
       "description": "Cleanup report is ready; finish the task."
+    },
+    {
+      "id": "group-5f92cf54-e07b-41db-a84d-c7787268e20d",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Compliance review found no violations; run conservative cleanup."
+    },
+    {
+      "id": "group-aeb735e7-b761-4f66-8a9e-12fd47cfeea5",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Compliance review found violations; user approval required before fallout fixes."
+    },
+    {
+      "id": "group-bf582f19-d767-44aa-bedb-03f7f9de85c7",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Compliance review is blocked by missing or contradictory required sources."
     }
   ],
   "edges": [
@@ -237,13 +270,23 @@
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "transition_group_id": "group-668062f2-60d6-47f5-ad18-c80520aa0b2b",
       "key": "verify_done",
-      "target_node_id": "node-60340771-783d-44fb-8854-1aca22a87dcf",
+      "target_node_id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
       "requires_approval": false,
-      "context_mode": "new_session",
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: completed dependency update in workspace {{.Params.workspace_path}}. Changed files: {{.Params.changed_files}}. Review only compliance with task requirements, specs, AGENTS.md, dependency update rules, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when fixes are required. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/dependency-update-* workspace."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the dependency update so far."
+        }
+      ]
     },
     {
       "id": "edge-4f117691-e1e9-450e-84aa-536fbc3faa3d",
@@ -323,6 +366,66 @@
         {
           "key": "cleanup_report",
           "description": "Summary of cleanup performed or deliberately skipped."
+        }
+      ]
+    },
+    {
+      "id": "edge-2391a51c-82b4-490e-b6a2-5f544f733cac",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-5f92cf54-e07b-41db-a84d-c7787268e20d",
+      "key": "compliance_done",
+      "target_node_id": "node-60340771-783d-44fb-8854-1aca22a87dcf",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup after compliance passed. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Compliance result: {{.Params.compliance_report}}. Complete with done and provide cleanup_report.",
+      "parameters": [
+        {
+          "key": "compliance_report",
+          "description": "Compliance review report, including rule sources checked and any findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-e01b05b9-863c-4f93-864e-8ffe446d8442",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-aeb735e7-b761-4f66-8a9e-12fd47cfeea5",
+      "key": "compliance_fix",
+      "target_node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix Puber dependency update compliance violations only.\n\nRead .kent/project-contract.md and .kent/commands/compliance-review.md first. Apply only the minimum changes required by compliance findings in {{.Params.compliance_report}} for workspace {{.Params.workspace_path}}. Verify narrowly, then complete with verify and provide workspace_path, verification_report, and changed_files. Complete with blocked and provide blocker_reason if unsafe or missing input.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/dependency-update-* workspace."
+        },
+        {
+          "key": "compliance_report",
+          "description": "Compliance review report, including rule sources checked and any findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-0b83081e-20cd-4b5c-b75e-e710c1750d1f",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-bf582f19-d767-44aa-bedb-03f7f9de85c7",
+      "key": "compliance_blocked",
+      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why compliance review cannot complete, in the task language when practical."
         }
       ]
     }
@@ -416,6 +519,23 @@
         "node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c"
       },
       {
+        "node_id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
+        "possible_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
         "node_id": "node-3aec4ca5-85e5-4307-bf44-d6289061537c"
       }
     ],
@@ -475,7 +595,17 @@
         ]
       },
       {
-        "transition_group_id": "group-668062f2-60d6-47f5-ad18-c80520aa0b2b"
+        "transition_group_id": "group-668062f2-60d6-47f5-ad18-c80520aa0b2b",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the dependency update so far."
+          }
+        ]
       },
       {
         "transition_group_id": "group-e52d04af-dfbd-4a58-9841-0254a894b7ff",
@@ -518,6 +648,37 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-5f92cf54-e07b-41db-a84d-c7787268e20d",
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-aeb735e7-b761-4f66-8a9e-12fd47cfeea5",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-bf582f19-d767-44aa-bedb-03f7f9de85c7",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
           }
         ]
       }
@@ -629,7 +790,29 @@
         ]
       },
       {
-        "edge_id": "edge-955a1d32-2382-405c-ad0a-2e2a65878118"
+        "edge_id": "edge-955a1d32-2382-405c-ad0a-2e2a65878118",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the dependency update so far."
+          }
+        ]
       },
       {
         "edge_id": "edge-4f117691-e1e9-450e-84aa-536fbc3faa3d",
@@ -710,6 +893,63 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-2391a51c-82b4-490e-b6a2-5f544f733cac",
+        "input_bindings": [
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-e01b05b9-863c-4f93-864e-8ffe446d8442",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/dependency-update-* workspace."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-0b83081e-20cd-4b5c-b75e-e710c1750d1f",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
           }
         ]
       }

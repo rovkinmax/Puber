@@ -3,7 +3,7 @@
     "id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
     "name": "Puber Smoke Test",
     "description": "Run focused Puber Android TV smoke tests, optionally fix approved findings, and clean up safely.",
-    "version": 20
+    "version": 29
   },
   "nodes": [
     {
@@ -48,6 +48,15 @@
       "display_name": "Blocked"
     },
     {
+      "id": "node-99d57195-577d-4ee3-9086-d8339dff7c69",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "key": "compliance",
+      "kind": "agent",
+      "display_name": "Compliance Review",
+      "subagent_role": "compliance_reviewer",
+      "completion_mode": "shell_command"
+    },
+    {
       "id": "node-ef9a8079-1fe1-4241-9006-f84e023c3e2c",
       "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
       "key": "done",
@@ -78,7 +87,7 @@
       "source_node_id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
       "transition_id": "done",
       "display_name": "Done",
-      "description": "Smoke test passed or remaining risks are accepted; run conservative cleanup."
+      "description": "Smoke test passed or is accepted; run mandatory compliance review before cleanup."
     },
     {
       "id": "group-ff5aa281-cdb0-46a3-bd91-0a287a66bfd2",
@@ -111,6 +120,30 @@
       "transition_id": "done",
       "display_name": "Done",
       "description": "Cleanup report is ready; finish the task."
+    },
+    {
+      "id": "group-f9ba75f9-24a2-4372-9728-e067af4ab0a8",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-99d57195-577d-4ee3-9086-d8339dff7c69",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Compliance review found no violations; run conservative cleanup."
+    },
+    {
+      "id": "group-3a5afe26-6e0a-4a04-b1b5-3a7dd845b8e1",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-99d57195-577d-4ee3-9086-d8339dff7c69",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Compliance review found smoke-process violations; user approval required before rework."
+    },
+    {
+      "id": "group-d529ee06-3111-44e0-9aae-f911d7176c89",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-99d57195-577d-4ee3-9086-d8339dff7c69",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Compliance review is blocked by missing or contradictory required sources."
     }
   ],
   "edges": [
@@ -159,13 +192,13 @@
       "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
       "transition_group_id": "group-994f8b45-b450-4a58-a211-bc13f9faac3e",
       "key": "smoke_done",
-      "target_node_id": "node-28ccfbc5-149f-42d5-b4a8-1fda911cdbb2",
+      "target_node_id": "node-99d57195-577d-4ee3-9086-d8339dff7c69",
       "requires_approval": false,
-      "context_mode": "new_session",
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/commands/smoke-test.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: completed smoke-test work product and process. Verify compliance with mandatory fresh devDebug install/restart, MCP testing rules, task requirements, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide compliance_report when smoke rework is required. Complete with blocked and provide blocker_reason if required sources are missing or contradictory."
     },
     {
       "id": "edge-4a84d29b-cb6a-4381-9197-1182ada3dd82",
@@ -247,6 +280,62 @@
           "description": "Summary of cleanup performed or deliberately skipped."
         }
       ]
+    },
+    {
+      "id": "edge-eb028b96-a67e-4a63-aed0-3f48e9cc82b3",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-f9ba75f9-24a2-4372-9728-e067af4ab0a8",
+      "key": "compliance_done",
+      "target_node_id": "node-28ccfbc5-149f-42d5-b4a8-1fda911cdbb2",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup after compliance passed. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Compliance result: {{.Params.compliance_report}}. Complete with done and provide cleanup_report.",
+      "parameters": [
+        {
+          "key": "compliance_report",
+          "description": "Compliance review report, including rule sources checked and any findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-44837466-6a35-44f3-9dca-ea8c5b7bc3ce",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-3a5afe26-6e0a-4a04-b1b5-3a7dd845b8e1",
+      "key": "compliance_smoke",
+      "target_node_id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Rework the Puber smoke test to resolve compliance findings only.\n\nRead .kent/commands/compliance-review.md and .kent/commands/smoke-test.md first. Re-run or supplement smoke testing only as required by {{.Params.compliance_report}}. Always install a fresh devDebug APK before device testing. Do not edit production code in this node. Complete with done, needs_changes, or blocked according to the smoke workflow contract.",
+      "parameters": [
+        {
+          "key": "compliance_report",
+          "description": "Compliance review report, including rule sources checked and any findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-10e635a3-6525-4e74-a184-d6896c3fd86f",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-d529ee06-3111-44e0-9aae-f911d7176c89",
+      "key": "compliance_blocked",
+      "target_node_id": "node-89a1477a-eadb-4b3f-9d16-a7f2dea1498b",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why compliance review cannot complete, in the task language when practical."
+        }
+      ]
     }
   ],
   "derived_wiring": {
@@ -307,6 +396,19 @@
       },
       {
         "node_id": "node-89a1477a-eadb-4b3f-9d16-a7f2dea1498b"
+      },
+      {
+        "node_id": "node-99d57195-577d-4ee3-9086-d8339dff7c69",
+        "possible_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
+          }
+        ]
       },
       {
         "node_id": "node-ef9a8079-1fe1-4241-9006-f84e023c3e2c"
@@ -377,6 +479,33 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-f9ba75f9-24a2-4372-9728-e067af4ab0a8",
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-3a5afe26-6e0a-4a04-b1b5-3a7dd845b8e1",
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-d529ee06-3111-44e0-9aae-f911d7176c89",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
           }
         ]
       }
@@ -501,6 +630,54 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-eb028b96-a67e-4a63-aed0-3f48e9cc82b3",
+        "input_bindings": [
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-44837466-6a35-44f3-9dca-ea8c5b7bc3ce",
+        "input_bindings": [
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-10e635a3-6525-4e74-a184-d6896c3fd86f",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
           }
         ]
       }

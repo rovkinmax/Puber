@@ -3,7 +3,7 @@
     "id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
     "name": "Puber Bugfix Investigation",
     "description": "Reproduce, diagnose, fix, verify, and conservatively clean up a Puber Android bugfix.",
-    "version": 28
+    "version": 40
   },
   "nodes": [
     {
@@ -57,6 +57,15 @@
       "display_name": "Blocked"
     },
     {
+      "id": "node-fd20f168-a890-44c0-9a6b-a4f7d6627e3d",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "key": "compliance",
+      "kind": "agent",
+      "display_name": "Compliance Review",
+      "subagent_role": "compliance_reviewer",
+      "completion_mode": "shell_command"
+    },
+    {
       "id": "node-21fe5cd3-7f81-418c-be8d-ce1b2180fdf9",
       "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
       "key": "done",
@@ -87,7 +96,7 @@
       "source_node_id": "node-213caff1-4a63-4b66-9d2e-b06ac051749b",
       "transition_id": "done",
       "display_name": "Done",
-      "description": "Diagnosis is intentionally report-only; run conservative cleanup."
+      "description": "Report-only diagnosis is complete; run mandatory compliance review before cleanup."
     },
     {
       "id": "group-49fc52b6-a690-4d50-8329-dd2026c4e833",
@@ -127,7 +136,7 @@
       "source_node_id": "node-98304bcc-e638-4461-80b6-3e33a2ea0daa",
       "transition_id": "done",
       "display_name": "Done",
-      "description": "Bugfix verification passed; run conservative cleanup."
+      "description": "Bugfix verification passed; run mandatory compliance review before cleanup."
     },
     {
       "id": "group-0b08b713-d3b8-464b-9e43-55037dabf3ba",
@@ -144,6 +153,30 @@
       "transition_id": "done",
       "display_name": "Done",
       "description": "Cleanup report is ready; finish the task."
+    },
+    {
+      "id": "group-cb752cef-94ea-41b2-ba03-8236e2cdc35f",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-fd20f168-a890-44c0-9a6b-a4f7d6627e3d",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Compliance review found no violations; run conservative cleanup."
+    },
+    {
+      "id": "group-5a1c639e-e746-4010-8f36-8e4899387488",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-fd20f168-a890-44c0-9a6b-a4f7d6627e3d",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Compliance review found violations; user approval required before fixes or report rework."
+    },
+    {
+      "id": "group-b2d8f6b9-d051-4e9a-b837-f6c9d070918e",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "source_node_id": "node-fd20f168-a890-44c0-9a6b-a4f7d6627e3d",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Compliance review is blocked by missing or contradictory required sources."
     }
   ],
   "edges": [
@@ -175,7 +208,7 @@
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the explicit .todo/bugfix-* workspace created during diagnosis."
+          "description": "Path to the explicit .todo/bugfix-* workspace."
         },
         {
           "key": "diagnosis_report",
@@ -196,13 +229,23 @@
       "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
       "transition_group_id": "group-1a1d547c-c457-4aa4-b2e2-1d82111ec2bc",
       "key": "report_done",
-      "target_node_id": "node-fdcc2cd0-9737-4db4-829b-3d2851c1ac81",
+      "target_node_id": "node-fd20f168-a890-44c0-9a6b-a4f7d6627e3d",
       "requires_approval": false,
-      "context_mode": "new_session",
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run conservative Puber task cleanup after report-only diagnosis. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: report-only bug diagnosis in workspace {{.Params.workspace_path}} with diagnosis {{.Params.diagnosis_report}}. Review only compliance with task requirements, specs, AGENTS.md, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when fixes/rework are required. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/bugfix-* workspace."
+        },
+        {
+          "key": "diagnosis_report",
+          "description": "Root cause analysis, suspected files, and fix plan."
+        }
+      ]
     },
     {
       "id": "edge-48440fa4-ceb3-4331-bf1b-950ce02703c7",
@@ -307,13 +350,23 @@
       "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
       "transition_group_id": "group-c6853f46-5291-4256-84c1-f8b5b1ba60c5",
       "key": "verify_done",
-      "target_node_id": "node-fdcc2cd0-9737-4db4-829b-3d2851c1ac81",
+      "target_node_id": "node-fd20f168-a890-44c0-9a6b-a4f7d6627e3d",
       "requires_approval": false,
-      "context_mode": "new_session",
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: completed bugfix in workspace {{.Params.workspace_path}}. Changed files: {{.Params.changed_files}}. Review only compliance with task requirements, specs, AGENTS.md, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when fixes are required. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/bugfix-* workspace."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the bugfix so far."
+        }
+      ]
     },
     {
       "id": "edge-57108fec-8335-4c59-bc46-fca2b7a2bc56",
@@ -350,6 +403,66 @@
           "description": "Summary of cleanup performed or deliberately skipped."
         }
       ]
+    },
+    {
+      "id": "edge-5d38342d-c311-4c28-9400-b06db72ef3f8",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-cb752cef-94ea-41b2-ba03-8236e2cdc35f",
+      "key": "compliance_done",
+      "target_node_id": "node-fdcc2cd0-9737-4db4-829b-3d2851c1ac81",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup after compliance passed. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Compliance result: {{.Params.compliance_report}}. Complete with done and provide cleanup_report.",
+      "parameters": [
+        {
+          "key": "compliance_report",
+          "description": "Compliance review report, including rule sources checked and any findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-25f0351f-fdea-496b-9023-9f0581e01d53",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-5a1c639e-e746-4010-8f36-8e4899387488",
+      "key": "compliance_fix",
+      "target_node_id": "node-c41f562e-465b-4296-99db-63fb61376288",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix or rework Puber bugfix compliance violations only.\n\nRead .kent/project-contract.md and .kent/commands/compliance-review.md first. Apply only the minimum changes required by compliance findings in {{.Params.compliance_report}} for workspace {{.Params.workspace_path}}. If this was report-only, update only report/workspace artifacts unless the user-approved compliance finding requires code. Verify narrowly, then complete with verify and provide workspace_path, diagnosis_report, reproduction_steps, changed_files, and verification_summary. Complete with blocked and provide blocker_reason if unsafe or missing input.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the explicit .todo/bugfix-* workspace."
+        },
+        {
+          "key": "compliance_report",
+          "description": "Compliance review report, including rule sources checked and any findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-639cb9cd-058a-4e07-8049-988d5a9baee1",
+      "workflow_id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
+      "transition_group_id": "group-b2d8f6b9-d051-4e9a-b837-f6c9d070918e",
+      "key": "compliance_blocked",
+      "target_node_id": "node-03d0e60b-3cd1-4ffe-a9ba-a4f0054a4c9d",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why compliance review cannot complete, in the task language when practical."
+        }
+      ]
     }
   ],
   "derived_wiring": {
@@ -362,7 +475,7 @@
         "possible_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/bugfix-* workspace created during diagnosis."
+            "description": "Path to the explicit .todo/bugfix-* workspace."
           },
           {
             "name": "diagnosis_report",
@@ -445,6 +558,23 @@
         "node_id": "node-03d0e60b-3cd1-4ffe-a9ba-a4f0054a4c9d"
       },
       {
+        "node_id": "node-fd20f168-a890-44c0-9a6b-a4f7d6627e3d",
+        "possible_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
         "node_id": "node-21fe5cd3-7f81-418c-be8d-ce1b2180fdf9"
       }
     ],
@@ -457,7 +587,7 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/bugfix-* workspace created during diagnosis."
+            "description": "Path to the explicit .todo/bugfix-* workspace."
           },
           {
             "name": "diagnosis_report",
@@ -474,7 +604,17 @@
         ]
       },
       {
-        "transition_group_id": "group-1a1d547c-c457-4aa4-b2e2-1d82111ec2bc"
+        "transition_group_id": "group-1a1d547c-c457-4aa4-b2e2-1d82111ec2bc",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "diagnosis_report",
+            "description": "Root cause analysis, suspected files, and fix plan."
+          }
+        ]
       },
       {
         "transition_group_id": "group-49fc52b6-a690-4d50-8329-dd2026c4e833",
@@ -537,7 +677,17 @@
         ]
       },
       {
-        "transition_group_id": "group-c6853f46-5291-4256-84c1-f8b5b1ba60c5"
+        "transition_group_id": "group-c6853f46-5291-4256-84c1-f8b5b1ba60c5",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the bugfix so far."
+          }
+        ]
       },
       {
         "transition_group_id": "group-0b08b713-d3b8-464b-9e43-55037dabf3ba",
@@ -554,6 +704,37 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-cb752cef-94ea-41b2-ba03-8236e2cdc35f",
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-5a1c639e-e746-4010-8f36-8e4899387488",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-b2d8f6b9-d051-4e9a-b837-f6c9d070918e",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
           }
         ]
       }
@@ -589,7 +770,7 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/bugfix-* workspace created during diagnosis."
+            "description": "Path to the explicit .todo/bugfix-* workspace."
           },
           {
             "name": "diagnosis_report",
@@ -606,7 +787,29 @@
         ]
       },
       {
-        "edge_id": "edge-a75d8af1-fe75-40a6-be4b-94c91ca12008"
+        "edge_id": "edge-a75d8af1-fe75-40a6-be4b-94c91ca12008",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "diagnosis_report",
+            "source": "transition_output",
+            "field": "diagnosis_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "diagnosis_report",
+            "description": "Root cause analysis, suspected files, and fix plan."
+          }
+        ]
       },
       {
         "edge_id": "edge-48440fa4-ceb3-4331-bf1b-950ce02703c7",
@@ -727,7 +930,29 @@
         ]
       },
       {
-        "edge_id": "edge-b912a0ba-99de-4e09-8c06-48887ade72ba"
+        "edge_id": "edge-b912a0ba-99de-4e09-8c06-48887ade72ba",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the bugfix so far."
+          }
+        ]
       },
       {
         "edge_id": "edge-57108fec-8335-4c59-bc46-fca2b7a2bc56",
@@ -758,6 +983,63 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-5d38342d-c311-4c28-9400-b06db72ef3f8",
+        "input_bindings": [
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-25f0351f-fdea-496b-9023-9f0581e01d53",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the explicit .todo/bugfix-* workspace."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-639cb9cd-058a-4e07-8049-988d5a9baee1",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
           }
         ]
       }

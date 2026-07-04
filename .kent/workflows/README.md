@@ -19,14 +19,17 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Feature Delivery` (default): plan -> implement loop -> audit -> fix loop -> optional smoke -> cleanup.
-- `Puber Refactor With Audit`: plan/audit -> implement loop -> read-only review -> fix loop -> cleanup.
-- `Puber Bugfix Investigation`: reproduce/diagnose -> approved fix or report-only -> verify/fix loop -> cleanup.
-- `Puber Dependency Update`: update Gradle versions/tooling -> fallout verification -> approved fixes -> cleanup.
-- `Puber Test Coverage`: coverage gap plan -> approved test implementation loop -> review/fix loop -> cleanup.
-- `Puber Smoke Test`: focused device smoke test -> optional approved fix -> rerun smoke -> cleanup.
-- `Puber Release Preparation`: prepare release branch/version bump -> approved verify/push step -> cleanup.
-- `Puber Release Publication`: qualify release tag -> approved tag push -> optional automation monitor -> cleanup.
+- `Puber Feature Delivery` (default): plan -> implement loop -> audit -> fix loop -> optional smoke -> compliance -> cleanup.
+- `Puber Refactor With Audit`: plan/audit -> implement loop -> read-only review -> fix loop -> compliance -> cleanup.
+- `Puber Bugfix Investigation`: reproduce/diagnose -> approved fix or report-only -> verify/fix loop -> compliance ->
+  cleanup.
+- `Puber Dependency Update`: update Gradle versions/tooling -> fallout verification -> approved fixes -> compliance ->
+  cleanup.
+- `Puber Test Coverage`: coverage gap plan -> approved test implementation loop -> review/fix loop -> compliance -> cleanup.
+- `Puber Smoke Test`: focused device smoke test -> optional approved fix -> rerun smoke -> compliance -> cleanup.
+- `Puber Release Preparation`: prepare release branch/version bump -> approved verify/push step -> compliance -> cleanup.
+- `Puber Release Publication`: qualify release tag -> approved tag push -> optional automation monitor -> compliance ->
+  cleanup.
 
 Only `Puber Feature Delivery` should be the project default. The other workflows are linked to the project for explicit
 task creation when the work type is known.
@@ -37,7 +40,12 @@ task creation when the work type is known.
 - Delegate to project roles inside prompts, for example `kent run --agent implementation-worker ...`.
 - Project role aliases are configured in `.kent/config.toml`; for example `project-researcher` maps to
   `subagents/android-codebase-analyst.md`, even though there is no `subagents/project-researcher.md` file.
+- After adding or changing subagent roles in `.kent/config.toml`, restart Kent service/GUI before expecting execution
+  validation or new workflow tasks to see the role.
 - Every edge to `blocked` must require `blocker_reason`.
+- Every successful work-product path must pass through `compliance` before `cleanup`. Compliance Review is not a
+  replacement for audit/review/verify/smoke; it only checks adherence to AGENTS.md, project contracts, specs, plans,
+  human-approved design decisions, and workflow transition contracts.
 - Every successful terminal path should pass through `cleanup`, but cleanup is conservative by default.
 - Pass explicit `workspace_path` and `plan_path`; never rely on `.todo/.current`.
 - Keep prompts project-neutral where possible: "run the project feature planning command" rather than naming another

@@ -3,7 +3,7 @@
     "id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
     "name": "Puber Test Coverage",
     "description": "Plan, add, review, fix, and clean up focused Puber Android test coverage improvements.",
-    "version": 31
+    "version": 40
   },
   "nodes": [
     {
@@ -64,6 +64,15 @@
       "key": "blocked",
       "kind": "terminal",
       "display_name": "Blocked"
+    },
+    {
+      "id": "node-45ab8ea5-535c-423f-838f-e7be753779d7",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "key": "compliance",
+      "kind": "agent",
+      "display_name": "Compliance Review",
+      "subagent_role": "compliance_reviewer",
+      "completion_mode": "shell_command"
     },
     {
       "id": "node-ee8aaf85-4ad3-45ce-aa8f-fa53184747b0",
@@ -160,7 +169,7 @@
       "source_node_id": "node-65fd665a-57a9-462d-b336-b7e039071db9",
       "transition_id": "done",
       "display_name": "Done",
-      "description": "Test review passed; run conservative cleanup."
+      "description": "Test review passed; run mandatory compliance review before cleanup."
     },
     {
       "id": "group-a0533a4f-543e-45ab-8109-8d559aec6f45",
@@ -169,6 +178,30 @@
       "transition_id": "done",
       "display_name": "Done",
       "description": "Cleanup report is ready; finish the task."
+    },
+    {
+      "id": "group-e767d574-2b68-40bd-a3d0-9a0d97914407",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-45ab8ea5-535c-423f-838f-e7be753779d7",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Compliance review found no violations; run conservative cleanup."
+    },
+    {
+      "id": "group-ef0a8461-7237-41ac-9909-8041c59cd59c",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-45ab8ea5-535c-423f-838f-e7be753779d7",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Compliance review found violations; user approval required before test fixes."
+    },
+    {
+      "id": "group-d920c2d3-5daf-4026-b6b1-594ff38b227e",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-45ab8ea5-535c-423f-838f-e7be753779d7",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "Compliance review is blocked by missing or contradictory required sources."
     }
   ],
   "edges": [
@@ -393,13 +426,23 @@
       "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
       "transition_group_id": "group-b6c17969-a249-4fc0-87fe-1e89b990f5eb",
       "key": "review_done",
-      "target_node_id": "node-8fb65548-deaf-4e1c-8953-41879bac1fa3",
+      "target_node_id": "node-45ab8ea5-535c-423f-838f-e7be753779d7",
       "requires_approval": false,
-      "context_mode": "new_session",
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run conservative Puber task cleanup. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Complete with done and provide cleanup_report."
+      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: completed test coverage work in workspace {{.Params.workspace_path}}. Changed files: {{.Params.changed_files}}. Review only compliance with task requirements, test rules, specs, AGENTS.md, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when fixes are required. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Workspace containing the test coverage implementation."
+        },
+        {
+          "key": "changed_files",
+          "description": "Files changed by the test coverage work."
+        }
+      ]
     },
     {
       "id": "edge-f715924d-d980-4790-b18a-449bf35a6c4b",
@@ -416,6 +459,66 @@
         {
           "key": "cleanup_report",
           "description": "Summary of cleanup performed or deliberately skipped."
+        }
+      ]
+    },
+    {
+      "id": "edge-a952f52d-ea2d-45e9-b8e0-6318c204a733",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-e767d574-2b68-40bd-a3d0-9a0d97914407",
+      "key": "compliance_done",
+      "target_node_id": "node-8fb65548-deaf-4e1c-8953-41879bac1fa3",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup after compliance passed. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Compliance result: {{.Params.compliance_report}}. Complete with done and provide cleanup_report.",
+      "parameters": [
+        {
+          "key": "compliance_report",
+          "description": "Compliance review report, including rule sources checked and any findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-18f0fa0c-4293-4f66-80a1-19bdeec0de99",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-ef0a8461-7237-41ac-9909-8041c59cd59c",
+      "key": "compliance_fix",
+      "target_node_id": "node-d9f0e401-7a7b-4993-99a1-a18d3d075fee",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix Puber test coverage compliance violations only.\n\nRead .kent/project-contract.md and .kent/commands/compliance-review.md first. Apply only the minimum changes required by compliance findings in {{.Params.compliance_report}} for workspace {{.Params.workspace_path}}. Verify narrowly, then complete with review and provide workspace_path, review_report, and changed_files. Complete with blocked and provide blocker_reason if unsafe or missing input.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Workspace containing the test coverage implementation."
+        },
+        {
+          "key": "compliance_report",
+          "description": "Compliance review report, including rule sources checked and any findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-5d69ab09-e926-4cd7-9596-feb6dc146604",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-d920c2d3-5daf-4026-b6b1-594ff38b227e",
+      "key": "compliance_blocked",
+      "target_node_id": "node-b62d081c-5f62-4dd8-8b41-fb7d0fde82c9",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why compliance review cannot complete, in the task language when practical."
         }
       ]
     }
@@ -520,6 +623,23 @@
       },
       {
         "node_id": "node-b62d081c-5f62-4dd8-8b41-fb7d0fde82c9"
+      },
+      {
+        "node_id": "node-45ab8ea5-535c-423f-838f-e7be753779d7",
+        "possible_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
+          }
+        ]
       },
       {
         "node_id": "node-ee8aaf85-4ad3-45ce-aa8f-fa53184747b0"
@@ -647,7 +767,17 @@
         ]
       },
       {
-        "transition_group_id": "group-b6c17969-a249-4fc0-87fe-1e89b990f5eb"
+        "transition_group_id": "group-b6c17969-a249-4fc0-87fe-1e89b990f5eb",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work."
+          }
+        ]
       },
       {
         "transition_group_id": "group-a0533a4f-543e-45ab-8109-8d559aec6f45",
@@ -655,6 +785,37 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-e767d574-2b68-40bd-a3d0-9a0d97914407",
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-ef0a8461-7237-41ac-9909-8041c59cd59c",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-d920c2d3-5daf-4026-b6b1-594ff38b227e",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
           }
         ]
       }
@@ -889,7 +1050,29 @@
         ]
       },
       {
-        "edge_id": "edge-00e65d30-b271-4dc4-98e4-993a536bdfdd"
+        "edge_id": "edge-00e65d30-b271-4dc4-98e4-993a536bdfdd",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "changed_files",
+            "source": "transition_output",
+            "field": "changed_files"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "changed_files",
+            "description": "Files changed by the test coverage work."
+          }
+        ]
       },
       {
         "edge_id": "edge-f715924d-d980-4790-b18a-449bf35a6c4b",
@@ -904,6 +1087,63 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-a952f52d-ea2d-45e9-b8e0-6318c204a733",
+        "input_bindings": [
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-18f0fa0c-4293-4f66-80a1-19bdeec0de99",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Compliance review report, including rule sources checked and any findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-5d69ab09-e926-4cd7-9596-feb6dc146604",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
           }
         ]
       }
