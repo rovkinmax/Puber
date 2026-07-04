@@ -24,7 +24,7 @@ internal class BookmarksScreen : PuberScreen {
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
         scope(named(scopeId)) {
             scopedOf(::BookmarkInteractor)
-            scoped { VideoItemUIMapper(get(), get(), get()) }
+            scoped { VideoItemUIMapper(get(), get()) }
             viewModelOf(::BookmarksVM)
         }
     }

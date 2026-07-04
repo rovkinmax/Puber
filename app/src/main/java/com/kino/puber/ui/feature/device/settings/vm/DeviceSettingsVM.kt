@@ -74,7 +74,6 @@ internal class DeviceSettingsVM(
                                 debugOverlayEnabled = playerPreferencesRepository.debugOverlayEnabled,
                                 preferSurroundAudio = playerPreferencesRepository.preferSurroundAudio,
                                 watchedIndicatorsEnabled = playerPreferencesRepository.watchedIndicatorsEnabled,
-                                posterProxyEnabled = playerPreferencesRepository.posterProxyEnabled,
                                 navigationMode = navigationPreferencesRepository.getNavigationMode(),
                             )
                         )
@@ -100,7 +99,6 @@ internal class DeviceSettingsVM(
             DeviceSettingsActions.ToggleDebugOverlay -> toggleDebugOverlay()
             DeviceSettingsActions.ToggleSurroundAudio -> toggleSurroundAudio()
             DeviceSettingsActions.ToggleWatchedIndicators -> toggleWatchedIndicators()
-            DeviceSettingsActions.TogglePosterProxy -> togglePosterProxy()
             is DeviceSettingsActions.ChangeNavigationMode -> onChangeNavigationMode(action.mode)
             DeviceSettingsActions.OpenApiDomainDialog -> openApiDomainDialog()
             DeviceSettingsActions.CloseApiDomainDialog -> closeApiDomainDialog()
@@ -266,15 +264,6 @@ internal class DeviceSettingsVM(
         val newValue = !currentState.watchedIndicatorsEnabled
         playerPreferencesRepository.watchedIndicatorsEnabled = newValue
         updateViewState(stateValue.copy(state = currentState.copy(watchedIndicatorsEnabled = newValue)))
-    }
-
-    private fun togglePosterProxy() {
-        val currentState = stateValue.state
-        if (currentState !is DeviceSettingsState.Success) return
-        val newValue = !currentState.posterProxyEnabled
-        playerPreferencesRepository.posterProxyEnabled = newValue
-        updateViewState(stateValue.copy(state = currentState.copy(posterProxyEnabled = newValue)))
-        router.newRootScreen(router.screens.main())
     }
 
     private fun onChangeNavigationMode(mode: NavigationMode) {

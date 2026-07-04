@@ -2,7 +2,6 @@ package com.kino.puber.ui.feature.player.model
 
 import android.content.Context
 import com.kino.puber.R
-import com.kino.puber.core.ui.model.PosterUrlMapper
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
@@ -21,7 +20,6 @@ private const val SECONDS_PER_MINUTE = 60L
 internal class PlayerUIMapper(
     private val context: Context,
     private val playerPreferencesRepository: PlayerPreferencesRepository? = null,
-    private val posterUrlMapper: PosterUrlMapper? = null,
 ) {
 
     fun mapAudioTracks(audios: List<Audio>?): List<AudioTrackUIState> {
@@ -149,7 +147,7 @@ internal class PlayerUIMapper(
     }
 
     private fun mapPosterUrls(url: String?): List<String> {
-        return posterUrlMapper?.mapWithFallback(url) ?: url.orEmpty().ensureHttps().takeIf { it.isNotBlank() }
+        return url.orEmpty().ensureHttps().takeIf { it.isNotBlank() }
             ?.let(::listOf)
             .orEmpty()
     }

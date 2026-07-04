@@ -34,7 +34,7 @@ internal class CollectionDetailScreen(
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
         scope(named(scopeId)) {
             scopedOf(::CollectionInteractor)
-            scoped { VideoItemUIMapper(get(), get(), get()) }
+            scoped { VideoItemUIMapper(get(), get()) }
             viewModel {
                 CollectionDetailVM(
                     router = get(),
