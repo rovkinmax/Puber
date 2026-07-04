@@ -18,8 +18,14 @@ Runs smoke test for a feature via MCP mobile.
 ## What it does
 
 1. Reads the MCP Mobile Testing section in `AGENTS.md` to understand the process
-2. **Builds and installs the app** (see AGENTS.md for build commands)
-   - **If user says "app is running"** — skip build/install, start from current screen
+2. **Always builds and installs a fresh `devDebug` APK immediately before device testing**
+   - Do this even if the user says the app is already running; stale APKs can hide or misattribute regressions.
+   - In a Kent worktree, use `./tools/agentw installDevDebug`; in the main checkout, use `./gradlew installDevDebug`.
+   - Then restart the app with:
+     ```bash
+     adb shell am force-stop com.kino.puber.stage
+     adb shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
+     ```
 3. Connects to device via MCP mobile
 4. **Launches app via adb**:
    ```bash

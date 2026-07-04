@@ -87,8 +87,11 @@ For each step:
 2. Sync Gradle
 3. Compile:
    ```bash
-   ./gradlew :app:compileDevDebugKotlin 2>&1 |
-     grep -E "e: |error:|FAILURE|What went wrong" -A3
+   if pwd | grep -q '/.kent/worktrees/'; then
+     ./tools/agentw :app:compileDevDebugKotlin
+   else
+     ./gradlew :app:compileDevDebugKotlin
+   fi 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
    ```
 4. If compilation fails → check deprecation replacements,
    API changes, fix

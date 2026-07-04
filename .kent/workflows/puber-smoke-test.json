@@ -3,7 +3,7 @@
     "id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
     "name": "Puber Smoke Test",
     "description": "Run focused Puber Android TV smoke tests, optionally fix approved findings, and clean up safely.",
-    "version": 19
+    "version": 20
   },
   "nodes": [
     {
@@ -125,7 +125,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run the Puber smoke-test flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/smoke-test.md. Treat the task body as the target feature/screen and device notes. Follow AGENTS.md MCP Mobile Testing rules: install fresh devDebug unless the user explicitly says the app is already running, prefer UI tree/assertions over screenshots, and save artifacts only for issues.\n\nDo not edit production code in this smoke node. Complete with done if the smoke test passes or is accepted. Complete with needs_changes if you found an actionable app issue and provide smoke_report, reproduction_steps, and artifacts_path. Complete with blocked if device/MCP/build/access is unavailable and provide blocker_reason."
+      "prompt_template": "Run the Puber smoke-test flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/smoke-test.md. Treat the task body as the target feature/screen and device notes. Follow AGENTS.md MCP Mobile Testing rules: always install a fresh devDebug APK immediately before device testing, force-stop the app, and launch com.kino.puber.stage/com.kino.puber.MainActivity. Do this even if the task/user says the app is already running. Prefer UI tree/assertions over screenshots, and save artifacts only for issues.\n\nDo not edit production code in this smoke node. Complete with done if the smoke test passes or is accepted. Complete with needs_changes if you found an actionable app issue and provide smoke_report, reproduction_steps, and artifacts_path. Complete with blocked if device/MCP/build/access is unavailable and provide blocker_reason."
     },
     {
       "id": "edge-16af50c0-868d-4b74-94c5-cebf92c4a1bb",

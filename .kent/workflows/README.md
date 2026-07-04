@@ -35,11 +35,25 @@ task creation when the work type is known.
 
 - Use `default` as node assignee unless Kent workflow validation can see project-local roles.
 - Delegate to project roles inside prompts, for example `kent run --agent implementation-worker ...`.
+- Project role aliases are configured in `.kent/config.toml`; for example `project-researcher` maps to
+  `subagents/android-codebase-analyst.md`, even though there is no `subagents/project-researcher.md` file.
 - Every edge to `blocked` must require `blocker_reason`.
 - Every successful terminal path should pass through `cleanup`, but cleanup is conservative by default.
 - Pass explicit `workspace_path` and `plan_path`; never rely on `.todo/.current`.
 - Keep prompts project-neutral where possible: "run the project feature planning command" rather than naming another
   repository's skill path, Jira project, module graph, or release process.
+
+## Portability Next Step
+
+Snapshots are not enough for reuse across repositories because Kent workflow graphs live in the Kent DB. The next
+practical extraction should be a global Kent workflow template/generator that creates project-local graph instances from a
+stable contract:
+
+- Global: graph families, transition parameter contract, naming rules, and safe cleanup/release gates.
+- Project-local: `.kent/project-contract.md`, command files, adapters, worktree setup, and subagent alias mapping.
+
+That keeps reusable orchestration global while preserving project-specific build commands, release policy, MCP adapters,
+and architecture rules.
 
 ## Workflow Smoke Test Checklist
 
