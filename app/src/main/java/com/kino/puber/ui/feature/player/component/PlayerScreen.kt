@@ -46,7 +46,7 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Fulls
             scoped { params }
             scopedOf(::PlayerInteractor)
             scopedOf(::SkipSegmentInteractor)
-            scoped { PlayerUIMapper(get(), get(), get()) }
+            scoped { PlayerUIMapper(get(), get()) }
             scopedOf(::ContentStateFactory)
             scoped<PlaybackControl> { PlaybackController(get(), get(), get()) }
             viewModelOf(::PlayerVM)

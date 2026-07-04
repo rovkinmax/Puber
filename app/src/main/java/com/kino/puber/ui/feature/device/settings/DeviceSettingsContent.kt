@@ -115,7 +115,7 @@ private fun DeviceSettingsList(
 ) {
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
-    val headerItemsCount = 6
+    val headerItemsCount = 5
 
     LaunchedEffect(Unit) {
         delay(100)
@@ -168,15 +168,6 @@ private fun DeviceSettingsList(
                 onClick = { onAction(DeviceSettingsActions.OpenApiDomainDialog) },
             )
         }
-        item {
-            LocalToggleItem(
-                label = stringResource(R.string.settings_poster_proxy),
-                description = stringResource(R.string.settings_poster_proxy_hint),
-                checked = state.posterProxyEnabled,
-                onToggle = { onAction(DeviceSettingsActions.TogglePosterProxy) },
-            )
-        }
-
         item {
             Text(
                 text = stringResource(R.string.device_settings_title),

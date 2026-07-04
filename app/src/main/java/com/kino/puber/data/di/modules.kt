@@ -4,7 +4,6 @@ package com.kino.puber.data.di
 
 import android.net.ConnectivityManager
 import com.kino.puber.core.session.SessionEventBus
-import com.kino.puber.core.ui.model.PosterUrlMapper
 import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.data.repository.CryptoPreferenceRepository
 import com.kino.puber.data.repository.DeviceInfoRepository
@@ -69,7 +68,6 @@ val repositoryModule = module {
     singleOf(::SkipSegmentRepository)
     singleOf(::SkipSegmentService)
     singleOf(::NavigationPreferencesRepository)
-    singleOf(::PosterUrlMapper)
     single<androidx.media3.datasource.cache.Cache> {
         val cacheDir = java.io.File(androidContext().externalCacheDir ?: androidContext().cacheDir, "media_cache")
         SimpleCache(

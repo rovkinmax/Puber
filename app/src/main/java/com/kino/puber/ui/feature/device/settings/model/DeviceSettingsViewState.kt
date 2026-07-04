@@ -25,7 +25,6 @@ internal sealed interface DeviceSettingsState {
         val debugOverlayEnabled: Boolean = false,
         val preferSurroundAudio: Boolean = false,
         val watchedIndicatorsEnabled: Boolean = true,
-        val posterProxyEnabled: Boolean = false,
         val navigationMode: NavigationMode = NavigationMode.TopTabs,
     ) : DeviceSettingsState
 }

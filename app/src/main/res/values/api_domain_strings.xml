@@ -22,8 +22,6 @@
     <string name="api_domain_open_action">Сменить зеркало KinoPub</string>
     <string name="api_domain_settings_title">Доступ к KinoPub</string>
     <string name="api_domain_settings_subtitle">Если сервис не открывается, обнови зеркало.</string>
-    <string name="settings_poster_proxy">Проксировать постеры</string>
-    <string name="settings_poster_proxy_hint">Пробует грузить постеры через текущее зеркало. Если постеры стали грузиться дольше или пропали, выключи эту опцию.</string>
     <string name="api_domain_qr_caption">Где получить зеркало</string>
     <string name="api_domain_mirror_site">https://mos-gorsud.site/</string>
     <string name="api_domain_qr_content_description">QR-код сайта https://mos-gorsud.site/</string>

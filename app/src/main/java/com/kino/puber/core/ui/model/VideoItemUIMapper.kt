@@ -13,7 +13,6 @@ import com.kino.puber.data.repository.PlayerPreferencesRepository
 class VideoItemUIMapper(
     private val resources: ResourceProvider,
     private val playerPreferencesRepository: PlayerPreferencesRepository? = null,
-    private val posterUrlMapper: PosterUrlMapper? = null,
 ) {
 
     fun mapShortItemList(items: List<Item>): List<VideoItemUIState> {
@@ -143,7 +142,7 @@ class VideoItemUIMapper(
     fun mapPosterUrl(url: String?): String = mapPosterUrls(url).firstOrEmpty()
 
     fun mapPosterUrls(url: String?): List<String> {
-        return posterUrlMapper?.mapWithFallback(url) ?: url.orEmpty().ensureHttps().takeIf { it.isNotBlank() }
+        return url.orEmpty().ensureHttps().takeIf { it.isNotBlank() }
             ?.let(::listOf)
             .orEmpty()
     }
