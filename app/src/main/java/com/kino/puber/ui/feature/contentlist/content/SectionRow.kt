@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.kino.puber.core.ui.uikit.component.DpadScrollAxis
 import com.kino.puber.core.ui.uikit.component.FadeGradient
 import com.kino.puber.core.ui.uikit.component.LoadMoreHandler
 import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
@@ -116,7 +117,7 @@ private fun ContentSectionCards(
                     .fillMaxWidth()
                     .graphicsLayer { clip = false }
                     .focusRequester(contentFocusRequester)
-                    .dpadScrollOptimization()
+                    .dpadScrollOptimization(axis = DpadScrollAxis.Horizontal)
                     .focusRestorer(savedItemFocusRequester),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(16.dp),

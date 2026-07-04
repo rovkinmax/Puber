@@ -1,5 +1,6 @@
 package com.kino.puber.core.ui.uikit.component
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.runtime.Composable
@@ -14,6 +15,11 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 
 internal val LocalRapidScrollActive = staticCompositionLocalOf<MutableState<Boolean>?> { null }
+
+enum class DpadScrollAxis {
+    Horizontal,
+    Vertical,
+}
 
 @Composable
 fun PositionFocusedItemInLazyLayout(
@@ -53,26 +59,29 @@ fun PositionFocusedItemInLazyLayout(
 }
 
 @Composable
-fun Modifier.dpadScrollOptimization(): Modifier {
+fun Modifier.dpadScrollOptimization(axis: DpadScrollAxis): Modifier {
     val rapidScrollActive = LocalRapidScrollActive.current ?: return this
     return this.onPreviewKeyEvent { event ->
-        when {
-            event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount > 0 -> {
-                when (event.nativeKeyEvent.keyCode) {
-                    android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
-                    android.view.KeyEvent.KEYCODE_DPAD_LEFT,
-                    android.view.KeyEvent.KEYCODE_DPAD_UP,
-                    android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
-                        rapidScrollActive.value = true
-                    }
-                }
+        val keyCode = event.nativeKeyEvent.keyCode
+        when (event.type) {
+            KeyEventType.KeyDown -> {
+                rapidScrollActive.value = event.nativeKeyEvent.repeatCount > 0 && axis.matches(keyCode)
                 false
             }
-            event.type == KeyEventType.KeyUp -> {
+            KeyEventType.KeyUp -> {
                 rapidScrollActive.value = false
                 false
             }
             else -> false
         }
+    }
+}
+
+private fun DpadScrollAxis.matches(keyCode: Int): Boolean {
+    return when (this) {
+        DpadScrollAxis.Horizontal -> keyCode == AndroidKeyEvent.KEYCODE_DPAD_LEFT ||
+            keyCode == AndroidKeyEvent.KEYCODE_DPAD_RIGHT
+        DpadScrollAxis.Vertical -> keyCode == AndroidKeyEvent.KEYCODE_DPAD_UP ||
+            keyCode == AndroidKeyEvent.KEYCODE_DPAD_DOWN
     }
 }
