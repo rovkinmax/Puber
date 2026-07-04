@@ -264,7 +264,8 @@ The agent recognizes intent from natural language, but feature target selection 
 ### Shared Device Coordination
 
 Before touching an emulator/device, acquire a shared lock so parallel Kent sessions do not install over each other or
-fight for focus:
+fight for focus. Physical devices, including a real TV, are forbidden unless the task/user explicitly names or allows that
+physical device. Never rely on adb's default target selection.
 
 ```bash
 mapfile -t EMULATORS < <(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators)
@@ -275,9 +276,8 @@ if ((${#EMULATORS[@]} > 0)); then
   LOCK_TOKEN="$(printf '%s\n' "$LOCK_OUTPUT" | sed -n 's/^token=//p')"
   DEVICE_SERIAL="$LOCK_RESOURCE"
 else
-  LOCK_RESOURCE="default-emulator"
-  LOCK_TOKEN="$(.kent/adapters/mobile/emulator-resource-lock.sh acquire "$LOCK_RESOURCE" 900 7200)"
-  DEVICE_SERIAL=""
+  echo "No running adb emulator is available; block unless the task/user explicitly allows starting an emulator." >&2
+  exit 75
 fi
 
 trap '.kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"' EXIT
@@ -290,10 +290,12 @@ fine after the report:
 .kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"
 ```
 
-When running `adb`, pass `-s "$DEVICE_SERIAL"` if `DEVICE_SERIAL` is set. If all running emulators are busy, check owners
-with `.kent/adapters/mobile/emulator-resource-lock.sh status <emulator-serial>`. Start a second emulator only when the
-task/user explicitly allows parallel device usage and a suitable AVD/host capacity is available; use a distinct lock name
-for that emulator. If no device can be safely acquired, block with `blocker_reason`.
+Before any `adb install`, `adb shell`, logs, or launch command, verify `DEVICE_SERIAL` is non-empty and pass
+`adb -s "$DEVICE_SERIAL"`. If `DEVICE_SERIAL` is empty, block with `blocker_reason` instead of running adb. If all running
+emulators are busy, check owners with `.kent/adapters/mobile/emulator-resource-lock.sh status <emulator-serial>`. Start a
+second emulator only when the task/user explicitly allows parallel device usage and a suitable AVD/host capacity is
+available; use a distinct lock name for that emulator. Use a physical device only with explicit user permission and an
+explicit serial.
 
 **Tool priority (cheap → expensive):**
 1. `assert_visible` / `assert_not_exists` — check element presence
@@ -306,13 +308,20 @@ for that emulator. If no device can be safely acquired, block with `blocker_reas
 ### Before ANY Device Testing (MANDATORY)
 
 ```bash
-./gradlew installDevDebug
-adb shell am force-stop com.kino.puber.stage
-adb shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
+test -n "$DEVICE_SERIAL"
+if pwd | grep -q '/.kent/worktrees/'; then
+  ./tools/agentw :app:assembleDevDebug
+else
+  ./gradlew :app:assembleDevDebug
+fi
+adb -s "$DEVICE_SERIAL" install -r app/build/outputs/apk/dev/debug/app-dev-debug.apk
+adb -s "$DEVICE_SERIAL" shell am force-stop com.kino.puber.stage
+adb -s "$DEVICE_SERIAL" shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
 ```
 
 Always install the freshly built `devDebug` APK immediately before emulator smoke tests. Another local session can
 overwrite the app on the same emulator, and testing a stale APK can hide or misattribute navigation/focus regressions.
+Do not use Gradle `install*` tasks for smoke tests because they may invoke adb without the selected serial.
 
 ## Testing
 No tests exist yet. JUnit dependency present but unused.

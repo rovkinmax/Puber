@@ -9,8 +9,10 @@ Usage:
   emulator-resource-lock.sh release <resource> <token>
   emulator-resource-lock.sh status [resource]
   emulator-resource-lock.sh adb-emulators
+  emulator-resource-lock.sh adb-physical-devices
 
-Coordinates Android emulator/device usage across Kent sessions on this machine.
+Coordinates Android emulator usage across Kent sessions on this machine.
+Physical devices are listed separately and must be used only with explicit user permission and an explicit serial.
 Locks live under ~/.kent/runtime/resource-locks so main checkouts and Kent worktrees share them.
 USAGE
 }
@@ -154,6 +156,15 @@ adb_emulators() {
   adb devices | awk 'NR > 1 && $2 == "device" && $1 ~ /^emulator-/ { print $1 }'
 }
 
+adb_physical_devices() {
+  if ! command -v adb >/dev/null 2>&1; then
+    printf 'adb_unavailable\n' >&2
+    return 69
+  fi
+
+  adb devices | awk 'NR > 1 && $2 == "device" && $1 !~ /^emulator-/ { print $1 }'
+}
+
 release() {
   local resource="$1"
   local token="$2"
@@ -197,6 +208,9 @@ case "$cmd" in
     ;;
   adb-emulators)
     adb_emulators
+    ;;
+  adb-physical-devices)
+    adb_physical_devices
     ;;
   *)
     usage

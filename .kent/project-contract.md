@@ -58,8 +58,13 @@ to project-local capability roles:
   that serial with `adb -s`.
 - Starting another emulator is allowed only when the task/user explicitly permits parallel device usage and the agent
   acquires a distinct lock for it.
+- Physical devices, including a real TV, are forbidden unless the task/user explicitly names or allows that physical
+  device. Smoke agents must never rely on adb's default target selection.
 - Device smoke tests must always install the freshly built dev APK before launch, even if the user says the app is already
   running.
+- Smoke agents must build with `:app:assembleDevDebug` and install with explicit
+  `adb -s "$DEVICE_SERIAL" install -r app/build/outputs/apk/dev/debug/app-dev-debug.apk`; Gradle `install*` tasks are
+  forbidden for smoke tests because they may target a physical device.
 
 ## Source Adapters
 
