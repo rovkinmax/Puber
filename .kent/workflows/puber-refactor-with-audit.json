@@ -3,7 +3,7 @@
     "id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
     "name": "Puber Refactor With Audit",
     "description": "Plan, audit, implement, review, fix, and conservatively clean up a Puber Android refactor or migration.",
-    "version": 42
+    "version": 60
   },
   "nodes": [
     {
@@ -72,6 +72,24 @@
       "kind": "agent",
       "display_name": "Compliance Review",
       "subagent_role": "compliance_reviewer",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-c3d52a51-d482-47ab-993a-45ad30ce22c9",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "key": "ship_pr",
+      "kind": "agent",
+      "display_name": "Create PR",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-92b2e510-465a-4f75-bb6d-4b2d0413d59c",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "key": "ci_monitor",
+      "kind": "agent",
+      "display_name": "Monitor CI",
+      "subagent_role": "default",
       "completion_mode": "shell_command"
     },
     {
@@ -185,7 +203,7 @@
       "source_node_id": "node-eef2d0ef-ca80-49f5-a5b0-2cbb28e0d4b5",
       "transition_id": "done",
       "display_name": "Done",
-      "description": "Compliance review found no violations; run conservative cleanup."
+      "description": "Compliance review passed; create or update the task pull request before cleanup."
     },
     {
       "id": "group-f4cd0ac2-1c8f-48eb-9301-5799ed88a5a0",
@@ -202,6 +220,54 @@
       "transition_id": "blocked",
       "display_name": "Blocked",
       "description": "Compliance review is blocked by missing or contradictory required sources."
+    },
+    {
+      "id": "group-bd26b6db-cab5-465f-9be0-59ca3f0f911e",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-c3d52a51-d482-47ab-993a-45ad30ce22c9",
+      "transition_id": "monitor_ci",
+      "display_name": "Monitor Ci",
+      "description": "PR exists; monitor GitHub checks when available."
+    },
+    {
+      "id": "group-8a94de24-3d25-40be-a6be-5b4ba59683ba",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-c3d52a51-d482-47ab-993a-45ad30ce22c9",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "PR is intentionally not applicable because there are no repository changes; run cleanup."
+    },
+    {
+      "id": "group-d495dbc7-af89-4ec5-a99a-d9a91b031e19",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-c3d52a51-d482-47ab-993a-45ad30ce22c9",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "PR creation or update is blocked by git state, auth, remote, branch, or unsafe repository state."
+    },
+    {
+      "id": "group-30b7d6db-f7c1-4027-b6be-6dc7a82938c8",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-92b2e510-465a-4f75-bb6d-4b2d0413d59c",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "PR checks passed or are intentionally skipped; run conservative cleanup."
+    },
+    {
+      "id": "group-8c707a90-8c60-4e14-8d14-bbaae7307236",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-92b2e510-465a-4f75-bb6d-4b2d0413d59c",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "PR checks failed due to task changes; user approval required before fixes."
+    },
+    {
+      "id": "group-f658f4d5-33a8-455a-bf4b-b3a6c67f2385",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "source_node_id": "node-92b2e510-465a-4f75-bb6d-4b2d0413d59c",
+      "transition_id": "blocked",
+      "display_name": "Blocked",
+      "description": "CI monitoring is blocked by GitHub access, missing check data, or unsafe repository state."
     }
   ],
   "edges": [
@@ -475,13 +541,13 @@
       "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
       "transition_group_id": "group-0c6266bf-dd1f-4775-9899-d8f4ee1cdbe9",
       "key": "compliance_done",
-      "target_node_id": "node-bac5102f-8ccd-40b3-9151-e29db141bb5c",
+      "target_node_id": "node-c3d52a51-d482-47ab-993a-45ad30ce22c9",
       "requires_approval": false,
-      "context_mode": "new_session",
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run conservative Puber task cleanup after compliance passed. Read .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. Compliance result: {{.Params.compliance_report}}. Complete with done and provide cleanup_report.",
+      "prompt_template": "Create or update the Puber pull request for this completed task.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Compliance result: {{.Params.compliance_report}}.\n\nIf this task produced repository changes, commit only task-related files, push the current task branch to origin, and create or update a GitHub PR. Do not merge the PR. Do not push directly to master/main. If there are no repository changes and the task is report-only or smoke-only, complete with done and provide pr_report explaining why PR is not applicable.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, and workspace_path. Complete with done only for PR-not-applicable/no-diff cases and provide pr_report. Complete with blocked if PR creation/update cannot be completed safely and provide blocker_reason.",
       "parameters": [
         {
           "key": "compliance_report",
@@ -527,6 +593,134 @@
         {
           "key": "blocker_reason",
           "description": "Why compliance review cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-3ec87b59-7a3b-4c8f-8bf6-a0697425106c",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-bd26b6db-cab5-465f-9be0-59ca3f0f911e",
+      "key": "monitor_ci",
+      "target_node_id": "node-92b2e510-465a-4f75-bb6d-4b2d0413d59c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Monitor Puber PR checks.\n\nRead .kent/project-contract.md and AGENTS.md first. Inspect PR {{.Params.pr_url}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with done if CI/checks pass, are absent, or are intentionally skipped with a clear reason; provide ci_report and pr_url. Complete with needs_changes if CI failed due to task changes and provide workspace_path plus ci_report. Complete with blocked if checks cannot be inspected and the risk cannot be accepted; provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "pr_url",
+          "description": "URL of the created or updated pull request."
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the pushed task branch."
+        },
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or worktree used for PR creation."
+        }
+      ]
+    },
+    {
+      "id": "edge-7972c50d-3bb1-4ad7-9d8a-fd0374420d7f",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-8a94de24-3d25-40be-a6be-5b4ba59683ba",
+      "key": "pr_not_applicable",
+      "target_node_id": "node-bac5102f-8ccd-40b3-9151-e29db141bb5c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup after PR was determined not applicable.\n\nRead .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. PR report: {{.Params.pr_report}}. Do not delete any worktree containing unpushed or uncommitted user changes. Complete with done and provide cleanup_report.",
+      "parameters": [
+        {
+          "key": "pr_report",
+          "description": "Why no pull request was created or updated."
+        }
+      ]
+    },
+    {
+      "id": "edge-ace12afc-ac67-4f52-ade4-907be9fee682",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-d495dbc7-af89-4ec5-a99a-d9a91b031e19",
+      "key": "pr_blocked",
+      "target_node_id": "node-57fd70be-e6ef-449e-bbc5-2e2316abf0f4",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why PR creation/update cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-2d9e02f3-088d-4fdf-99a7-9296735b0d21",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-30b7d6db-f7c1-4027-b6be-6dc7a82938c8",
+      "key": "ci_done",
+      "target_node_id": "node-bac5102f-8ccd-40b3-9151-e29db141bb5c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup after PR/CI.\n\nRead .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. PR: {{.Params.pr_url}}. CI report: {{.Params.ci_report}}. Do not delete any worktree containing unpushed or uncommitted user changes. Complete with done and provide cleanup_report.",
+      "parameters": [
+        {
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+        },
+        {
+          "key": "pr_url",
+          "description": "URL of the created or updated pull request."
+        }
+      ]
+    },
+    {
+      "id": "edge-19cd0a78-9c95-47d6-8412-26c83b08ddb8",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-8c707a90-8c60-4e14-8d14-bbaae7307236",
+      "key": "ci_fix",
+      "target_node_id": "node-813ddb92-db58-4688-b8c7-77b8134f31be",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix Puber refactor/migration CI failures only.\n\nRead .kent/project-contract.md first. Apply only the minimum changes required by CI report {{.Params.ci_report}} in workspace {{.Params.workspace_path}}. Verify narrowly, then complete with review and provide workspace_path, review_report, and changed_files. Complete with blocked and provide blocker_reason if unsafe or missing input.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Workspace containing the implementation to fix."
+        },
+        {
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+        }
+      ]
+    },
+    {
+      "id": "edge-e63dad2b-c6a4-4c3d-ab3c-9129eb0b36d4",
+      "workflow_id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
+      "transition_group_id": "group-f658f4d5-33a8-455a-bf4b-b3a6c67f2385",
+      "key": "ci_blocked",
+      "target_node_id": "node-57fd70be-e6ef-449e-bbc5-2e2316abf0f4",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why CI monitoring cannot complete, in the task language when practical."
         }
       ]
     }
@@ -654,6 +848,52 @@
           {
             "name": "blocker_reason",
             "description": "Why compliance review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-c3d52a51-d482-47ab-993a-45ad30ce22c9",
+        "possible_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created or updated pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed task branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree used for PR creation."
+          },
+          {
+            "name": "pr_report",
+            "description": "Why no pull request was created or updated."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why PR creation/update cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "node_id": "node-92b2e510-465a-4f75-bb6d-4b2d0413d59c",
+        "possible_provision_fields": [
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_url",
+            "description": "URL of the created or updated pull request."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the implementation to fix."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why CI monitoring cannot complete, in the task language when practical."
           }
         ]
       },
@@ -840,6 +1080,76 @@
           {
             "name": "blocker_reason",
             "description": "Why compliance review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-bd26b6db-cab5-465f-9be0-59ca3f0f911e",
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created or updated pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed task branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree used for PR creation."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-8a94de24-3d25-40be-a6be-5b4ba59683ba",
+        "required_provision_fields": [
+          {
+            "name": "pr_report",
+            "description": "Why no pull request was created or updated."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-d495dbc7-af89-4ec5-a99a-d9a91b031e19",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why PR creation/update cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-30b7d6db-f7c1-4027-b6be-6dc7a82938c8",
+        "required_provision_fields": [
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_url",
+            "description": "URL of the created or updated pull request."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-8c707a90-8c60-4e14-8d14-bbaae7307236",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the implementation to fix."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-f658f4d5-33a8-455a-bf4b-b3a6c67f2385",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why CI monitoring cannot complete, in the task language when practical."
           }
         ]
       }
@@ -1186,6 +1496,138 @@
           {
             "name": "blocker_reason",
             "description": "Why compliance review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-3ec87b59-7a3b-4c8f-8bf6-a0697425106c",
+        "input_bindings": [
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created or updated pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed task branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree used for PR creation."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-7972c50d-3bb1-4ad7-9d8a-fd0374420d7f",
+        "input_bindings": [
+          {
+            "name": "pr_report",
+            "source": "transition_output",
+            "field": "pr_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "pr_report",
+            "description": "Why no pull request was created or updated."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-ace12afc-ac67-4f52-ade4-907be9fee682",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why PR creation/update cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-2d9e02f3-088d-4fdf-99a7-9296735b0d21",
+        "input_bindings": [
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          },
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_url",
+            "description": "URL of the created or updated pull request."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-19cd0a78-9c95-47d6-8412-26c83b08ddb8",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the implementation to fix."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-e63dad2b-c6a4-4c3d-ab3c-9129eb0b36d4",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why CI monitoring cannot complete, in the task language when practical."
           }
         ]
       }

@@ -19,14 +19,18 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Feature Delivery` (default): plan -> implement loop -> audit -> fix loop -> optional smoke -> compliance -> cleanup.
-- `Puber Refactor With Audit`: plan/audit -> implement loop -> read-only review -> fix loop -> compliance -> cleanup.
+- `Puber Feature Delivery` (default): plan -> implement loop -> audit -> fix loop -> optional smoke -> compliance ->
+  create/update PR -> monitor CI -> cleanup.
+- `Puber Refactor With Audit`: plan/audit -> implement loop -> read-only review -> fix loop -> compliance ->
+  create/update PR -> monitor CI -> cleanup.
 - `Puber Bugfix Investigation`: reproduce/diagnose -> approved fix or report-only -> verify/fix loop -> compliance ->
-  cleanup.
+  create/update PR when changes exist -> monitor CI -> cleanup.
 - `Puber Dependency Update`: update Gradle versions/tooling -> fallout verification -> approved fixes -> compliance ->
-  cleanup.
-- `Puber Test Coverage`: coverage gap plan -> approved test implementation loop -> review/fix loop -> compliance -> cleanup.
-- `Puber Smoke Test`: focused device smoke test -> optional approved fix -> rerun smoke -> compliance -> cleanup.
+  create/update PR -> monitor CI -> cleanup.
+- `Puber Test Coverage`: coverage gap plan -> approved test implementation loop -> review/fix loop -> compliance ->
+  create/update PR -> monitor CI -> cleanup.
+- `Puber Smoke Test`: focused device smoke test -> optional approved fix -> rerun smoke -> compliance ->
+  create/update PR when changes exist -> monitor CI -> cleanup.
 - `Puber Release Preparation`: prepare release branch/version bump -> approved verify/push step -> compliance -> cleanup.
 - `Puber Release Publication`: qualify release tag -> approved tag push -> optional automation monitor -> compliance ->
   cleanup.
@@ -46,6 +50,10 @@ task creation when the work type is known.
 - Every successful work-product path must pass through `compliance` before `cleanup`. Compliance Review is not a
   replacement for audit/review/verify/smoke; it only checks adherence to AGENTS.md, project contracts, specs, plans,
   human-approved design decisions, and workflow transition contracts.
+- Code-producing workflows must create or update a PR after compliance passes. `ship_pr` may skip PR only for explicit
+  no-diff/report-only/smoke-only cases and must explain that through `pr_report`.
+- `ci_monitor` never merges PRs and never pushes new commits. CI failures go back to fix/review/compliance before another
+  PR/CI pass.
 - Every successful terminal path should pass through `cleanup`, but cleanup is conservative by default.
 - Pass explicit `workspace_path` and `plan_path`; never rely on `.todo/.current`.
 - Keep prompts project-neutral where possible: "run the project feature planning command" rather than naming another
