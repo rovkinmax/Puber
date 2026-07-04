@@ -28,6 +28,7 @@ internal fun EpisodesPanel(
     onEpisodeSelected: (VideoItemUIState) -> Unit,
     onEpisodeContextMenu: ((VideoItemUIState) -> Unit)? = null,
     onBackPressed: (() -> Unit)? = null,
+    allowFocusExit: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     AnimatedVisibility(
@@ -41,7 +42,13 @@ internal fun EpisodesPanel(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
                 .padding(top = 32.dp)
-                .focusProperties { onExit = { cancelFocusChange() } }
+                .focusProperties {
+                    onExit = {
+                        if (!allowFocusExit) {
+                            cancelFocusChange()
+                        }
+                    }
+                }
                 .focusGroup(),
         ) {
             if (episodes != null) {
