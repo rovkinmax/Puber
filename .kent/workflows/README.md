@@ -38,9 +38,8 @@ Kent Desktop workflow graph
 Only `Puber Feature Delivery` should be the project default. The other workflows are linked to the project for explicit
 task creation when the work type is known.
 
-Legacy split release workflows (`Puber Release Preparation` and `Puber Release Publication`) should not be used for new
-tasks. `Puber Release Preparation` is unlinked from the project. `Puber Release Publication` remains linked only while
-existing task `PUB-5` references it; unlink it after that task is removed or migrated.
+Legacy split release workflows (`Puber Release Preparation` and `Puber Release Publication`) are superseded by
+`Puber Release` and must not be linked to the project for new tasks.
 
 ## Authoring Rules
 
