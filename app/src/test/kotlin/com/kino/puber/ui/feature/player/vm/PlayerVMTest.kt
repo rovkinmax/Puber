@@ -1,9 +1,15 @@
 package com.kino.puber.ui.feature.player.vm
 
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
+import com.kino.puber.data.api.models.Season
+import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.domain.interactor.player.PlayerInteractor
 import com.kino.puber.domain.interactor.player.ResolvedMedia
 import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
@@ -20,18 +26,18 @@ import com.kino.puber.ui.feature.player.model.PlayerViewState
 import com.kino.puber.ui.feature.player.model.ResumeDialogState
 import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
-import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.util.FakeResourceProvider
 import com.kino.puber.util.MainDispatcherExtension
-import org.junit.jupiter.api.Assertions.assertFalse
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -103,6 +109,7 @@ class PlayerVMTest {
         every { mapper.formatSeekOffset(any(), any()) } returns "+10s"
         every { mapper.buildTitle(any(), any(), any()) } returns "Title"
         every { mapper.buildSubtitle(any(), any(), any(), any()) } returns "Sub"
+        every { mapper.mapEpisodes(any()) } returns null
         every { mapper.mapSkipSegmentLabel(any()) } returns "Skip"
         every { mapper.defaultSoundModeLabel() } returns "Stereo"
         every { playbackController.setCallback(capture(callbackSlot)) } returns Unit
@@ -668,6 +675,125 @@ class PlayerVMTest {
 
     // endregion
 
+    // region Manual mark watched
+
+    @Test
+    fun markCurrentWatched_movieCallsInteractorWithoutEpisodeAndUpdatesState() {
+        val updated = testItem.copy(type = ItemType.MOVIE, watched = 1)
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
+            isMovie = true,
+            hasNextEpisode = false,
+            hasPreviousEpisode = false,
+        )
+        coEvery {
+            interactor.markCurrentAsWatched(id = 42, season = null, episode = null)
+        } returns updated
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.MarkCurrentWatched)
+
+        assertTrue(contentState(vm).isCurrentMediaWatched)
+        coVerify(exactly = 1) {
+            interactor.markCurrentAsWatched(id = 42, season = null, episode = null)
+        }
+    }
+
+    @Test
+    fun markCurrentWatched_episodePassesSeasonAndEpisodeAndUpdatesEpisodes() {
+        val updated = testItem.copy(watched = 1)
+        val updatedEpisodes = VideoGridUIState(emptyList())
+        coEvery { interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1) } returns updated
+        every { mapper.mapEpisodes(updated) } returns updatedEpisodes
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.MarkCurrentWatched)
+
+        assertTrue(contentState(vm).isCurrentMediaWatched)
+        assertEquals(updatedEpisodes, contentState(vm).episodes)
+        coVerify(exactly = 1) { interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1) }
+    }
+
+    @Test
+    fun markCurrentWatched_alreadyWatchedDoesNotCallInteractor() {
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
+            isCurrentMediaWatched = true,
+        )
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.MarkCurrentWatched)
+
+        coVerify(exactly = 0) { interactor.markCurrentAsWatched(any(), any(), any()) }
+    }
+
+    @Test
+    fun markCurrentWatched_failurePreservesStateAndMapsError() {
+        val failure = IllegalStateException("Failed")
+        coEvery { interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1) } throws failure
+        every { errorHandler.map(failure) } returns ErrorEntity(message = "Mapped", code = "test")
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.MarkCurrentWatched)
+
+        assertFalse(contentState(vm).isCurrentMediaWatched)
+        verify(exactly = 1) { errorHandler.map(failure) }
+    }
+
+    @Test
+    fun markCurrentWatched_afterAutoMarkDoesNotDuplicateManualApiCall() {
+        val vm = startedVM()
+
+        callbackSlot.captured.onPlaybackEnded()
+        vm.onAction(PlayerAction.MarkCurrentWatched)
+
+        assertTrue(contentState(vm).isCurrentMediaWatched)
+        coVerify(exactly = 1) { interactor.markAsWatched(id = 42, season = 1, videoNumber = 1) }
+        coVerify(exactly = 0) { interactor.markCurrentAsWatched(any(), any(), any()) }
+    }
+
+    @Test
+    fun episodeWatchedChanged_currentEpisodeUpdatesWatchedButtonState() {
+        val updated = testItem.withCurrentEpisodeWatched(true)
+        val updatedEpisodes = VideoGridUIState(emptyList())
+        coEvery { interactor.setEpisodeWatched(42, season = 1, episode = 1, watched = true) } returns updated
+        every { mapper.mapEpisodes(updated) } returns updatedEpisodes
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.EpisodeWatchedChanged(currentEpisodeItem, watched = true))
+
+        assertTrue(contentState(vm).isCurrentMediaWatched)
+        assertEquals(updatedEpisodes, contentState(vm).episodes)
+    }
+
+    @Test
+    fun episodeWatchedChanged_currentEpisodeUnwatchedUpdatesWatchedButtonState() {
+        val updated = testItem.withCurrentEpisodeWatched(false)
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
+            isCurrentMediaWatched = true,
+        )
+        coEvery { interactor.setEpisodeWatched(42, season = 1, episode = 1, watched = false) } returns updated
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.EpisodeWatchedChanged(currentEpisodeItem, watched = false))
+
+        assertFalse(contentState(vm).isCurrentMediaWatched)
+    }
+
+    @Test
+    fun seasonWatchedChanged_currentSeasonUnwatchedUpdatesWatchedButtonState() {
+        val updated = testItem.withCurrentEpisodeWatched(false)
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
+            isCurrentMediaWatched = true,
+        )
+        coEvery { interactor.setSeasonWatched(42, season = 1, watched = false) } returns updated
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.SeasonWatchedChanged(currentEpisodeItem, watched = false))
+
+        assertFalse(contentState(vm).isCurrentMediaWatched)
+    }
+
+    // endregion
+
     // region Back navigation (additional branches)
 
     @Test
@@ -703,11 +829,33 @@ class PlayerVMTest {
 
     private val testItem = Item(id = 42, title = "Breaking Bad", type = ItemType.SERIAL, watched = 5, new = 3)
 
+    private val currentEpisodeItem = VideoItemUIState(
+        id = 101,
+        title = "1. Pilot",
+        imageUrl = "",
+        bigImageUrl = "",
+        seasonNumber = 1,
+        episodeNumber = 1,
+    )
+
+    private fun Item.withCurrentEpisodeWatched(watched: Boolean): Item {
+        val status = if (watched) 1 else 0
+        return copy(
+            seasons = listOf(
+                Season(
+                    id = 1,
+                    number = 1,
+                    episodes = listOf(Episode(id = 101, number = 1, title = "Pilot", watched = status)),
+                )
+            )
+        )
+    }
+
     private val testResolvedMedia = ResolvedMedia(
         files = emptyList(), audios = emptyList(), subtitles = emptyList(),
         watchingTime = null, duration = 2400, videoNumber = 1, episodeId = 101,
         episodeTitle = "Pilot", isSeries = true, hasNext = true,
-        hasPrevious = true, seasonNumber = 1, episodeNumber = 1,
+        isCurrentMediaWatched = false, hasPrevious = true, seasonNumber = 1, episodeNumber = 1,
     )
 
     private val testSubtitleTracks = listOf(
@@ -735,6 +883,7 @@ class PlayerVMTest {
         bufferPresets = listOf(BufferPresetUIState(0, "Auto", BufferPreset.AUTO)),
         selectedBufferPresetIndex = 0,
         isMovie = false, hasNextEpisode = true, hasPreviousEpisode = true, nextEpisodeCountdown = null,
+        canMarkCurrentWatched = true, isCurrentMediaWatched = false,
         resumeDialog = null, episodes = null, currentEpisodeId = 101,
     )
 }

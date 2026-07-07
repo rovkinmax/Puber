@@ -3,6 +3,8 @@
     <!-- Player Controls -->
     <string name="player_buffering">Буферизация…</string>
     <string name="player_button_episodes">Серии</string>
+    <string name="player_button_mark_watched">Просмотрено</string>
+    <string name="player_button_mark_watched_content_description">Отметить просмотренным</string>
     <string name="player_button_audio_subtitles">Аудио и субтитры</string>
     <string name="player_button_video">Видео</string>
 

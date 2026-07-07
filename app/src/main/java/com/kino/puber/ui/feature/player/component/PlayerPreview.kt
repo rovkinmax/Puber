@@ -92,6 +92,8 @@ private fun previewSeriesContent(
     seekIndicator: SeekIndicatorState? = null,
     nextEpisodeCountdown: Int? = null,
     resumeDialog: ResumeDialogState? = null,
+    canMarkCurrentWatched: Boolean = true,
+    isCurrentMediaWatched: Boolean = false,
 ) = PlayerContentState(
     title = "Кибердеревня",
     subtitle = "2 сезон, 6 серия, Что там, за железным занавесом?",
@@ -122,6 +124,8 @@ private fun previewSeriesContent(
     isMovie = false,
     hasNextEpisode = true,
     hasPreviousEpisode = true,
+    canMarkCurrentWatched = canMarkCurrentWatched,
+    isCurrentMediaWatched = isCurrentMediaWatched,
     nextEpisodeCountdown = nextEpisodeCountdown,
     resumeDialog = resumeDialog,
     episodes = previewEpisodes,
@@ -132,6 +136,8 @@ private fun previewMovieContent(
     controlsVisible: Boolean = true,
     activePanel: ActivePanel = ActivePanel.None,
     resumeDialog: ResumeDialogState? = null,
+    canMarkCurrentWatched: Boolean = true,
+    isCurrentMediaWatched: Boolean = false,
 ) = PlayerContentState(
     title = "Граф Монте-Кристо",
     subtitle = null,
@@ -162,6 +168,8 @@ private fun previewMovieContent(
     isMovie = true,
     hasNextEpisode = false,
     hasPreviousEpisode = false,
+    canMarkCurrentWatched = canMarkCurrentWatched,
+    isCurrentMediaWatched = isCurrentMediaWatched,
     nextEpisodeCountdown = null,
     resumeDialog = resumeDialog,
     episodes = null,
@@ -207,6 +215,16 @@ private fun SeriesControlsPreview() = PuberTheme {
 private fun MovieControlsPreview() = PuberTheme {
     PlayerScreenContent(
         state = PlayerViewState.Content(previewMovieContent()),
+        onAction = {},
+        exoPlayer = { null },
+    )
+}
+
+@Preview(name = "Movie — watched control active", device = TV_1080p)
+@Composable
+private fun MovieWatchedControlsPreview() = PuberTheme {
+    PlayerScreenContent(
+        state = PlayerViewState.Content(previewMovieContent(isCurrentMediaWatched = true)),
         onAction = {},
         exoPlayer = { null },
     )

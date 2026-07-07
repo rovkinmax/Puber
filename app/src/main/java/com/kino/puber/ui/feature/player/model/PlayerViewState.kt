@@ -58,6 +58,8 @@ internal data class PlayerContentState(
     val isMovie: Boolean,
     val hasNextEpisode: Boolean,
     val hasPreviousEpisode: Boolean,
+    val canMarkCurrentWatched: Boolean,
+    val isCurrentMediaWatched: Boolean,
 
     // Next episode countdown
     val nextEpisodeCountdown: Int?,

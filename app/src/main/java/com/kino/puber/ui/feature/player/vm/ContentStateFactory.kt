@@ -51,6 +51,9 @@ internal class ContentStateFactory(private val mapper: PlayerUIMapper) {
         isMovie = !resolved.isSeries,
         hasNextEpisode = resolved.hasNext,
         hasPreviousEpisode = resolved.hasPrevious,
+        canMarkCurrentWatched = !resolved.isSeries ||
+                (resolved.seasonNumber != null && resolved.episodeNumber != null),
+        isCurrentMediaWatched = resolved.isCurrentMediaWatched,
         nextEpisodeCountdown = null,
         resumeDialog = resumeDialog,
         episodes = if (resolved.isSeries) mapper.mapEpisodes(item) else null,

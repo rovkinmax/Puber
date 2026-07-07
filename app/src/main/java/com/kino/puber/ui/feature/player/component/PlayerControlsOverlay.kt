@@ -30,7 +30,10 @@ internal fun PlayerControlsOverlay(
     isPlaying: Boolean,
     hasNextEpisode: Boolean,
     hasPreviousEpisode: Boolean,
+    canMarkCurrentWatched: Boolean,
+    isCurrentMediaWatched: Boolean,
     onEpisodesClick: () -> Unit,
+    onMarkCurrentWatchedClick: () -> Unit,
     onAudioSubtitlesClick: () -> Unit,
     onVideoSettingsClick: () -> Unit,
     onNextEpisodeClick: () -> Unit,
@@ -67,9 +70,12 @@ internal fun PlayerControlsOverlay(
                     isPlaying = isPlaying,
                     hasNextEpisode = hasNextEpisode,
                     hasPreviousEpisode = hasPreviousEpisode,
+                    canMarkCurrentWatched = canMarkCurrentWatched,
+                    isCurrentMediaWatched = isCurrentMediaWatched,
                 ),
                 actions = PlayerControlActions(
                     onEpisodesClick = onEpisodesClick,
+                    onMarkCurrentWatchedClick = onMarkCurrentWatchedClick,
                     onAudioSubtitlesClick = onAudioSubtitlesClick,
                     onVideoSettingsClick = onVideoSettingsClick,
                     onNextEpisodeClick = onNextEpisodeClick,
@@ -99,6 +105,7 @@ private data class ProgressBarState(
 
 internal data class PlayerControlActions(
     val onEpisodesClick: () -> Unit,
+    val onMarkCurrentWatchedClick: () -> Unit,
     val onAudioSubtitlesClick: () -> Unit,
     val onVideoSettingsClick: () -> Unit,
     val onNextEpisodeClick: () -> Unit,

@@ -7,10 +7,14 @@ import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.Season
 import com.kino.puber.data.api.models.VideoFile
 import com.kino.puber.data.api.models.VideoUrl
+import com.kino.puber.data.api.models.WatchingToggleResponse
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -262,12 +266,19 @@ class PlayerInteractorTest {
     fun resolveMedia_movie_returnsCorrectFlags() {
         val result = interactor.resolveMedia(movieItem, seasonNumber = null, episodeNumber = null)
         assertFalse(result.isSeries)
+        assertFalse(result.isCurrentMediaWatched)
         assertFalse(result.hasNext)
         assertFalse(result.hasPrevious)
         assertNull(result.seasonNumber)
         assertNull(result.episodeNumber)
         assertNull(result.episodeId)
         assertNull(result.episodeTitle)
+    }
+
+    @Test
+    fun resolveMedia_movie_setsWatchedStateFromItem() {
+        val result = interactor.resolveMedia(movieItem.copy(watched = 1), seasonNumber = null, episodeNumber = null)
+        assertTrue(result.isCurrentMediaWatched)
     }
 
     @Test
@@ -303,6 +314,52 @@ class PlayerInteractorTest {
         assertEquals(episode1.id, result.episodeId)
         assertEquals(episode1.title, result.episodeTitle)
         assertEquals(episode1.number, result.videoNumber)
+    }
+
+    @Test
+    fun resolveMedia_series_setsWatchedStateFromEpisode() {
+        val watchedEpisode = episode2.copy(watched = 1)
+        val item = serialItem.copy(
+            seasons = listOf(season1.copy(episodes = listOf(episode1, watchedEpisode, episode3)), season2)
+        )
+
+        val result = interactor.resolveMedia(item, seasonNumber = 1, episodeNumber = 2)
+
+        assertTrue(result.isCurrentMediaWatched)
+    }
+
+    @Test
+    fun markCurrentAsWatched_movieMarksAndRefreshesItem() = runTest {
+        val refreshed = movieItem.copy(watched = 1)
+        coEvery {
+            api.toggleWatchingStatus(id = 10, status = 1, season = null, video = null)
+        } returns Result.success(WatchingToggleResponse(status = 1, watched = 1))
+        coEvery { itemDetailsRepository.refresh(10) } returns refreshed
+
+        val result = interactor.markCurrentAsWatched(id = 10)
+
+        assertEquals(refreshed, result)
+        coVerify(exactly = 1) {
+            api.toggleWatchingStatus(id = 10, status = 1, season = null, video = null)
+        }
+        coVerify(exactly = 1) { itemDetailsRepository.refresh(10) }
+    }
+
+    @Test
+    fun markCurrentAsWatched_episodeUsesSeasonAndEpisodeThenRefreshesItem() = runTest {
+        val refreshed = serialItem.copy(seasons = listOf(season1.copy(episodes = listOf(episode1.copy(watched = 1)))))
+        coEvery {
+            api.toggleWatchingStatus(id = 42, status = 1, season = 1, video = 1)
+        } returns Result.success(WatchingToggleResponse(status = 1, watched = 1))
+        coEvery { itemDetailsRepository.refresh(42) } returns refreshed
+
+        val result = interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1)
+
+        assertEquals(refreshed, result)
+        coVerify(exactly = 1) {
+            api.toggleWatchingStatus(id = 42, status = 1, season = 1, video = 1)
+        }
+        coVerify(exactly = 1) { itemDetailsRepository.refresh(42) }
     }
 
     // endregion

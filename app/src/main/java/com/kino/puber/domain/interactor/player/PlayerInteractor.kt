@@ -24,6 +24,7 @@ internal data class ResolvedMedia(
     val videoNumber: Int?,
     val episodeId: Int?,
     val episodeTitle: String?,
+    val isCurrentMediaWatched: Boolean,
     val isSeries: Boolean,
     val hasNext: Boolean,
     val hasPrevious: Boolean,
@@ -70,6 +71,7 @@ internal class PlayerInteractor(
                 videoNumber = episode?.number,
                 episodeId = episode?.id,
                 episodeTitle = episode?.title,
+                isCurrentMediaWatched = isWatched(episode?.watched),
                 isSeries = true,
                 hasNext = resolvedSeason != null && resolvedEpisode != null &&
                         findNextEpisode(item, resolvedSeason, resolvedEpisode) != null,
@@ -89,6 +91,7 @@ internal class PlayerInteractor(
                 videoNumber = video?.number,
                 episodeId = null,
                 episodeTitle = null,
+                isCurrentMediaWatched = isWatched(item.watched),
                 isSeries = false,
                 hasNext = false,
                 hasPrevious = false,
@@ -102,6 +105,8 @@ internal class PlayerInteractor(
         ItemType.SERIAL, ItemType.TV_SHOW, ItemType.DOCU_SERIAL -> true
         else -> false
     }
+
+    private fun isWatched(watched: Int?): Boolean = watched == WATCHED_STATUS
 
     fun findEpisode(item: Item, seasonNumber: Int, episodeNumber: Int) =
         item.seasons
@@ -221,6 +226,16 @@ internal class PlayerInteractor(
 
     suspend fun markAsWatched(id: Int, season: Int? = null, videoNumber: Int? = null) {
         api.toggleWatchingStatus(id, status = WATCHED_STATUS, season = season, video = videoNumber)
+    }
+
+    suspend fun markCurrentAsWatched(id: Int, season: Int? = null, episode: Int? = null): Item {
+        api.toggleWatchingStatus(
+            id = id,
+            status = WATCHED_STATUS,
+            season = season,
+            video = episode,
+        ).getOrThrow()
+        return itemDetailsRepository.refresh(id)
     }
 
     suspend fun setEpisodeWatched(id: Int, season: Int, episode: Int, watched: Boolean): Item {

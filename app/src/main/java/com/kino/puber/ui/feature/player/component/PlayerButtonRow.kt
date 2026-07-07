@@ -30,6 +30,11 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Duotone
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.duotone.Eye
+import com.adamglin.phosphoricons.fill.Eye
 import com.kino.puber.R
 
 @Composable
@@ -58,6 +63,8 @@ internal data class PlayerButtonRowState(
     val isPlaying: Boolean,
     val hasNextEpisode: Boolean,
     val hasPreviousEpisode: Boolean,
+    val canMarkCurrentWatched: Boolean,
+    val isCurrentMediaWatched: Boolean,
 )
 
 @Composable
@@ -72,6 +79,19 @@ private fun PrimaryControls(
             onClick = actions.onTogglePlayPause,
             focusRequester = focusRequesters.firstButton,
         )
+        if (state.canMarkCurrentWatched) {
+            PlayerButton(
+                text = stringResource(R.string.player_button_mark_watched),
+                icon = if (state.isCurrentMediaWatched) {
+                    PhosphorIcons.Fill.Eye
+                } else {
+                    PhosphorIcons.Duotone.Eye
+                },
+                onClick = actions.onMarkCurrentWatchedClick,
+                selected = state.isCurrentMediaWatched,
+                contentDescription = stringResource(R.string.player_button_mark_watched_content_description),
+            )
+        }
         if (!state.isMovie) {
             PlayerButton(
                 text = stringResource(R.string.player_button_episodes),
@@ -154,15 +174,17 @@ private fun PlayerButton(
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    contentDescription: String? = null,
 ) {
     Button(
         onClick = onClick,
         modifier = modifier,
-        colors = transparentButtonColors(),
+        colors = if (selected) selectedButtonColors() else transparentButtonColors(),
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = contentDescription,
             modifier = Modifier.size(20.dp),
         )
         Spacer(modifier = Modifier.width(8.dp))
@@ -177,6 +199,14 @@ private fun PlayerButton(
 private fun transparentButtonColors() = ButtonDefaults.colors(
     containerColor = Color.Transparent,
     contentColor = MaterialTheme.colorScheme.onSurface,
+    focusedContainerColor = MaterialTheme.colorScheme.primary,
+    focusedContentColor = MaterialTheme.colorScheme.onPrimary,
+)
+
+@Composable
+private fun selectedButtonColors() = ButtonDefaults.colors(
+    containerColor = Color.Transparent,
+    contentColor = MaterialTheme.colorScheme.primary,
     focusedContainerColor = MaterialTheme.colorScheme.primary,
     focusedContentColor = MaterialTheme.colorScheme.onPrimary,
 )

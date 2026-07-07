@@ -52,7 +52,10 @@ internal class PlayerVM(
     override val initialViewState: PlayerViewState = PlayerViewState.Loading
 
     override fun dispatchError(error: ErrorEntity) {
-        updateViewState(PlayerViewState.Error(error.message))
+        when (stateValue) {
+            is PlayerViewState.Content -> showMessage(error.message)
+            else -> updateViewState(PlayerViewState.Error(error.message))
+        }
     }
 
     private inline fun updateContent(crossinline update: PlayerContentState.() -> PlayerContentState) {
@@ -278,6 +281,7 @@ internal class PlayerVM(
             is PlayerAction.SelectEpisodeById -> selectEpisodeById(action.episodeId)
             is PlayerAction.EpisodeWatchedChanged -> onEpisodeWatchedChanged(action.item, action.watched)
             is PlayerAction.SeasonWatchedChanged -> onSeasonWatchedChanged(action.item, action.watched)
+            is PlayerAction.MarkCurrentWatched -> markCurrentMediaWatched()
             is PlayerAction.NextEpisode -> playNextEpisode()
             is PlayerAction.PreviousEpisode -> playPreviousEpisode()
             is PlayerAction.CancelNextEpisodeCountdown -> cancelCountdown()
@@ -562,7 +566,7 @@ internal class PlayerVM(
             runCatching {
                 interactor.setEpisodeWatched(params.itemId, season, episode, watched)
             }.onSuccess { updated ->
-                updateEpisodes(updated)
+                syncContentWithItem(updated)
                 showMessage(
                     resources.getString(
                         if (watched) {
@@ -584,7 +588,7 @@ internal class PlayerVM(
             runCatching {
                 interactor.setSeasonWatched(params.itemId, season, watched)
             }.onSuccess { updated ->
-                updateEpisodes(updated)
+                syncContentWithItem(updated)
                 showMessage(
                     resources.getString(
                         if (watched) {
@@ -600,9 +604,125 @@ internal class PlayerVM(
         }
     }
 
-    private fun updateEpisodes(item: Item) {
-        currentMedia = currentMedia?.copy(item = item)
-        updateContent { copy(episodes = mapper.mapEpisodes(item)) }
+    private fun markCurrentMediaWatched() {
+        val media = currentMedia ?: return
+        val content = (stateValue as? PlayerViewState.Content)?.content ?: return
+        if (content.isCurrentMediaWatched || progressTracker.isMarkedWatched || !content.canMarkCurrentWatched) return
+
+        val isMovie = content.isMovie
+        val season = if (isMovie) null else media.seasonNumber ?: return
+        val episode = if (isMovie) null else media.episodeNumber ?: return
+
+        launch {
+            runCatching {
+                interactor.markCurrentAsWatched(
+                    id = params.itemId,
+                    season = season,
+                    episode = episode,
+                )
+            }.onSuccess { updated ->
+                progressTracker.markAsWatched()
+                syncContentWithItem(updated, fallbackCurrentWatched = true)
+                showMessage(
+                    resources.getString(
+                        if (isMovie) {
+                            R.string.video_details_watched_added
+                        } else {
+                            R.string.context_menu_episode_watched
+                        }
+                    )
+                )
+            }.onFailure { throwable ->
+                showMessage(errorHandler.map(throwable).message)
+            }
+        }
+    }
+
+    private fun syncContentWithItem(item: Item, fallbackCurrentWatched: Boolean? = null) {
+        val media = currentMedia ?: return
+        val content = (stateValue as? PlayerViewState.Content)?.content ?: return
+        val watched = item.currentMediaWatched(
+            isMovie = content.isMovie,
+            seasonNumber = media.seasonNumber,
+            episodeNumber = media.episodeNumber,
+        ) ?: fallbackCurrentWatched ?: content.isCurrentMediaWatched
+        val episodes = if (content.isMovie) {
+            content.episodes
+        } else {
+            mapper.mapEpisodes(item) ?: content.episodes
+        }
+
+        currentMedia = media.copy(item = item)
+        syncProgressTracker(watched)
+        updateContent {
+            copy(
+                isCurrentMediaWatched = watched,
+                episodes = episodes,
+            )
+        }
+    }
+
+    private fun syncCurrentMediaWatchedLocally(watched: Boolean) {
+        val media = currentMedia ?: return
+        val content = (stateValue as? PlayerViewState.Content)?.content ?: return
+        val updated = media.item.withCurrentMediaWatched(
+            watched = watched,
+            isMovie = content.isMovie,
+            seasonNumber = media.seasonNumber,
+            episodeNumber = media.episodeNumber,
+        )
+        syncContentWithItem(updated, fallbackCurrentWatched = watched)
+    }
+
+    private fun Item.currentMediaWatched(isMovie: Boolean, seasonNumber: Int?, episodeNumber: Int?): Boolean? {
+        return if (isMovie) {
+            watched?.let(::isWatchedStatus)
+        } else {
+            seasons
+                ?.find { it.number == seasonNumber }
+                ?.episodes
+                ?.find { it.number == episodeNumber }
+                ?.watched
+                ?.let(::isWatchedStatus)
+        }
+    }
+
+    private fun Item.withCurrentMediaWatched(
+        watched: Boolean,
+        isMovie: Boolean,
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+    ): Item {
+        val status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS
+        return if (isMovie) {
+            copy(watched = status)
+        } else {
+            copy(
+                seasons = seasons?.map { season ->
+                    if (season.number != seasonNumber) {
+                        season
+                    } else {
+                        season.copy(
+                            episodes = season.episodes?.map { episode ->
+                                if (episode.number == episodeNumber) episode.copy(watched = status) else episode
+                            }
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    private fun syncProgressTracker(watched: Boolean) {
+        if (watched) {
+            progressTracker.markAsWatched()
+        } else {
+            progressTracker.reset()
+        }
+    }
+
+    private fun isWatchedStatus(status: Int): Boolean {
+        return status == WATCHED_STATUS
     }
 
     private fun currentEpisode(): CurrentEpisode? {
@@ -625,7 +745,7 @@ internal class PlayerVM(
     }
 
     private fun onPlaybackEnded() {
-        markCurrentAsWatched()
+        autoMarkCurrentAsWatched()
         val state = stateValue as? PlayerViewState.Content ?: return
         val content = state.content
         when {
@@ -908,7 +1028,7 @@ internal class PlayerVM(
         val skipState = state.activeSkipSegment ?: return
 
         if (skipState.type == SkipSegmentType.CREDITS && !state.isMovie && state.hasNextEpisode) {
-            markCurrentAsWatched()
+            autoMarkCurrentAsWatched()
             playNextEpisode()
         } else {
             playbackController.seekTo(skipState.targetPositionMs)
@@ -939,13 +1059,13 @@ internal class PlayerVM(
         if (duration <= 0) return
         val remaining = duration - playbackController.currentPosition
         if (remaining < duration * AUTO_MARK_WATCHED_THRESHOLD) {
-            markCurrentAsWatched()
+            autoMarkCurrentAsWatched()
         }
     }
 
-    private fun markCurrentAsWatched() {
+    private fun autoMarkCurrentAsWatched() {
         if (progressTracker.isMarkedWatched) return
-        progressTracker.markAsWatched()
+        syncCurrentMediaWatchedLocally(watched = true)
         launch {
             interactor.markAsWatched(
                 id = params.itemId,
@@ -984,6 +1104,8 @@ internal class PlayerVM(
     }
 
     private companion object {
+        const val WATCHED_STATUS = 1
+        const val UNWATCHED_STATUS = 0
         const val CONTROLS_HIDE_DELAY_MS = 3000L
         const val SEEK_INDICATOR_HIDE_DELAY_MS = 1500L
         const val PROGRESS_SYNC_INTERVAL_MS = 30_000L
