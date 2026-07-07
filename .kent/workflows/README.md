@@ -31,12 +31,16 @@ Kent Desktop workflow graph
   create/update PR -> monitor CI -> cleanup.
 - `Puber Smoke Test`: focused device smoke test -> optional approved fix -> rerun smoke -> compliance ->
   create/update PR when changes exist -> monitor CI -> cleanup.
-- `Puber Release Preparation`: prepare release branch/version bump -> approved verify/push step -> compliance -> cleanup.
-- `Puber Release Publication`: qualify release tag -> approved tag push -> optional automation monitor -> compliance ->
-  cleanup.
+- `Puber Release`: default next minor release from `origin/master` -> version bump branch/PR -> CI -> approved tag
+  publication after the PR is merged -> optional automation monitor -> cleanup. Patch/major releases require explicit
+  task wording.
 
 Only `Puber Feature Delivery` should be the project default. The other workflows are linked to the project for explicit
 task creation when the work type is known.
+
+Legacy split release workflows (`Puber Release Preparation` and `Puber Release Publication`) should not be used for new
+tasks. `Puber Release Preparation` is unlinked from the project. `Puber Release Publication` remains linked only while
+existing task `PUB-5` references it; unlink it after that task is removed or migrated.
 
 ## Authoring Rules
 

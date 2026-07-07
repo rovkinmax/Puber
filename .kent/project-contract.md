@@ -15,6 +15,9 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - Compliance Review produces `compliance_report`.
 - PR creation produces `pr_url`, `branch_name`, and `workspace_path`; no-diff/report-only PR skips produce `pr_report`.
 - PR/CI monitoring produces `ci_report`.
+- Release preparation produces `release_version`, `release_type`, `release_branch`, `release_tag`, `workspace_path`,
+  `version_bump_commit`, and `verification_summary`.
+- Release publication produces `target_commit`, `tag_push_status`, and `release_report`.
 - Every blocked transition must provide `blocker_reason`.
 - Cleanup produces `cleanup_report`.
 
@@ -28,6 +31,7 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - `migration_start_command`: `.kent/commands/migration-start.md`
 - `smoke_command`: `.kent/commands/smoke-test.md`
 - `ship_pr_command`: `.kent/commands/ship-pr.md`
+- `release_command`: `.kent/commands/release.md`
 - `release_prepare_command`: `.kent/commands/release-branch.md`
 - `release_tag_command`: `.kent/commands/release-tag.md`
 - `cleanup_command`: `.kent/commands/cleanup-task.md`
@@ -85,15 +89,28 @@ worktree metadata until Kent rebind behavior is fixed.
   merged PR.
 - Cleanup always emits `cleanup_report`; skipped cleanup is a valid result and must be visible.
 
+## Release Policy
+
+Use `Puber Release` for human-facing release tasks.
+
+- Default release type is next minor from `origin/master`.
+- Patch and major releases require explicit task wording.
+- The workflow prepares the version bump, runs Compliance Review, creates/updates a PR, monitors CI, then publishes the
+  tag only after explicit approval and after verifying the release PR is merged into `origin/master`.
+- Never create or push a release tag before the version bump is present on `origin/master`.
+- Legacy split workflows (`Puber Release Preparation`, `Puber Release Publication`) are not intended for new tasks.
+
 ## Naming Policy
 
 Use generic workflow graph keys and project-prefixed live workflow names:
 
 - Live workflow names: `Puber Feature Delivery`, `Puber Refactor With Audit`, `Puber Bugfix Investigation`,
-  `Puber Dependency Update`, `Puber Test Coverage`, `Puber Smoke Test`, `Puber Release Preparation`,
-  `Puber Release Publication`.
-- Node keys: `plan`, `implement`, `audit`, `fix`, `smoke`, `ship_pr`, `ci_monitor`, `cleanup`, `done`, `blocked`.
+  `Puber Dependency Update`, `Puber Test Coverage`, `Puber Smoke Test`, `Puber Release`.
+- Node keys: `plan`, `implement`, `audit`, `fix`, `smoke`, `prepare`, `compliance`, `ship_pr`, `ci_monitor`, `publish`,
+  `monitor`, `cleanup`, `done`, `blocked`.
 - Transition IDs: `implement`, `continue_implementation`, `audit`, `needs_changes`, `smoke`, `ship_pr`, `monitor_ci`,
   `done`, `blocked`.
 - Portable params: `workspace_path`, `plan_path`, `audit_report`, `review_report`, `verification_report`, `pr_url`,
-  `branch_name`, `pr_report`, `ci_report`, `compliance_report`, `blocker_reason`, `cleanup_report`.
+  `branch_name`, `pr_report`, `ci_report`, `compliance_report`, `release_version`, `release_type`, `release_branch`,
+  `release_tag`, `version_bump_commit`, `target_commit`, `tag_push_status`, `release_report`, `blocker_reason`,
+  `cleanup_report`.

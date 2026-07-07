@@ -16,7 +16,8 @@ Desktop workflows.
 - Compliance Review passed for the work product.
 - The task worktree contains the final reviewed changes.
 - There are no unresolved blockers or unreviewed compliance findings.
-- Release workflows are excluded; release branch/tag publication uses dedicated release workflow gates.
+- Release workflows may use this command for the release version-bump PR. Tag publication still uses dedicated release
+  workflow gates after the PR is merged.
 
 ## Steps
 
