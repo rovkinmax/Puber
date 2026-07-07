@@ -3,7 +3,7 @@
     "id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
     "name": "Puber Smoke Test",
     "description": "Run focused Puber Android TV smoke tests, optionally fix approved findings, and clean up safely.",
-    "version": 56
+    "version": 68
   },
   "nodes": [
     {
@@ -210,6 +210,30 @@
       "transition_id": "blocked",
       "display_name": "Blocked",
       "description": "CI monitoring is blocked by GitHub access, missing check data, or unsafe repository state."
+    },
+    {
+      "id": "group-6e4c4804-a437-4104-ae83-50636b721a45",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-5ada6e8d-1e36-4c6a-9ca2-1f7b6e334b59",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "PR creation/update hit a recoverable branch, rebase, conflict, or metadata issue; user approval required before recovery work."
+    },
+    {
+      "id": "group-577dc04b-4042-42a6-88ce-3b33ac7d929e",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-d4c0080d-88fe-49d3-b5b2-f7d662cc6be9",
+      "transition_id": "retry_later",
+      "display_name": "Retry Later",
+      "description": "CI or GitHub is temporarily unavailable, still starting, or missing an expected run; user approval required before retrying monitoring."
+    },
+    {
+      "id": "group-f0e033a4-349f-46be-bf5b-325feb0526e3",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "source_node_id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
+      "transition_id": "retry_later",
+      "display_name": "Retry Later",
+      "description": "Device, MCP, build, or emulator-lock access is temporarily unavailable; user approval required before retrying smoke."
     }
   ],
   "edges": [
@@ -224,7 +248,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run the Puber smoke-test flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/smoke-test.md. Treat the task body as the target feature/screen and device notes. Before touching any emulator/device, use .kent/adapters/mobile/emulator-resource-lock.sh to discover running adb emulators and acquire any free emulator-specific lock. Pass the selected serial to every adb command with adb -s. Physical devices, including a real TV, are forbidden unless the task/user explicitly names or allows that physical device. Never rely on adb default target selection. If all running emulators are busy, inspect lock owners and start a second emulator only when the task/user explicitly allows parallel device usage and you can acquire a distinct lock for it. Install a trap immediately after acquiring a lock so it is released on failure.\n\nFollow AGENTS.md MCP Mobile Testing rules: always build a fresh devDebug APK before device testing, install it with explicit adb -s \"$DEVICE_SERIAL\" install -r app/build/outputs/apk/dev/debug/app-dev-debug.apk, force-stop the app, and launch com.kino.puber.stage/com.kino.puber.MainActivity. Do not use Gradle install* tasks for smoke tests. Do this even if the task/user says the app is already running. Prefer UI tree/assertions over screenshots, and save artifacts only for issues. Release the mobile resource lock after reporting.\n\nDo not edit production code in this smoke node. Complete with done if the smoke test passes or is accepted. Complete with needs_changes if you found an actionable app issue and provide smoke_report, reproduction_steps, and artifacts_path. Complete with blocked if device/MCP/build/access/resource locking is unavailable and provide blocker_reason."
+      "prompt_template": "Run the Puber smoke-test flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/smoke-test.md. Treat the task body as the target feature/screen and device notes. Before touching any emulator/device, use .kent/adapters/mobile/emulator-resource-lock.sh to discover running adb emulators and acquire any free emulator-specific lock. Pass the selected serial to every adb command with adb -s. Physical devices, including a real TV, are forbidden unless the task/user explicitly names or allows that physical device. Never rely on adb default target selection. If all running emulators are busy, inspect lock owners and start a second emulator only when the task/user explicitly allows parallel device usage and you can acquire a distinct lock for it. Install a trap immediately after acquiring a lock so it is released on failure.\n\nFollow AGENTS.md MCP Mobile Testing rules: always build a fresh devDebug APK before device testing, install it with explicit adb -s \"$DEVICE_SERIAL\" install -r app/build/outputs/apk/dev/debug/app-dev-debug.apk, force-stop the app, and launch com.kino.puber.stage/com.kino.puber.MainActivity. Do not use Gradle install* tasks for smoke tests. Do this even if the task/user says the app is already running. Prefer UI tree/assertions over screenshots, and save artifacts only for issues. Release the mobile resource lock after reporting.\n\nDo not edit production code in this smoke node. Complete with done if the smoke test passes or is accepted. Complete with needs_changes if you found an actionable app issue and provide smoke_report, reproduction_steps, and artifacts_path. Complete with retry_later if device/MCP/build/access/resource locking is temporarily unavailable and provide blocker_reason. Complete with blocked only for unrecoverable smoke blockers that cannot be solved by waiting, freeing an emulator, or user approval; provide blocker_reason."
     },
     {
       "id": "edge-16af50c0-868d-4b74-94c5-cebf92c4a1bb",
@@ -358,7 +382,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Create or update the Puber pull request for this completed task.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Compliance result: {{.Params.compliance_report}}.\n\nIf this task produced repository changes, commit only task-related files, push the current task branch to origin, and create or update a GitHub PR. Do not merge the PR. Do not push directly to master/main. If there are no repository changes and the task is report-only or smoke-only, complete with done and provide pr_report explaining why PR is not applicable.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, and workspace_path. Complete with done only for PR-not-applicable/no-diff cases and provide pr_report. Complete with blocked if PR creation/update cannot be completed safely and provide blocker_reason.",
+      "prompt_template": "Create or update the Puber pull request for this completed task.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Compliance result: {{.Params.compliance_report}}.\n\nIf this task produced repository changes, commit only task-related files, push the current task branch to origin, and create or update a GitHub PR. Do not merge the PR. Do not push directly to master/main. If there are no repository changes and the task is report-only or smoke-only, complete with done and provide pr_report explaining why PR is not applicable.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, and workspace_path. Complete with needs_changes when PR creation/update is blocked by recoverable repository, branch, or PR state such as merge conflicts, non-fast-forward push, branch needing rebase, or missing PR metadata that can be fixed in the task worktree; provide workspace_path and blocker_reason. Complete with done only for PR-not-applicable/no-diff cases and provide pr_report. Complete with blocked only when continuing would be unsafe without changing task scope, credentials, or project policy; provide blocker_reason.",
       "parameters": [
         {
           "key": "compliance_report",
@@ -414,11 +438,11 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor Puber PR checks.\n\nRead .kent/project-contract.md and AGENTS.md first. Inspect PR {{.Params.pr_url}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with done if CI/checks pass, are absent, or are intentionally skipped with a clear reason; provide ci_report and pr_url. Complete with needs_changes if CI failed due to task changes and provide workspace_path plus ci_report. Complete with blocked if checks cannot be inspected and the risk cannot be accepted; provide blocker_reason.",
+      "prompt_template": "Monitor Puber PR checks.\n\nRead .kent/project-contract.md and AGENTS.md first. Inspect PR {{.Params.pr_url}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with done if CI/checks pass, are absent, or are intentionally skipped with a clear reason; provide ci_report and pr_url. Complete with needs_changes if CI failed due to task changes and provide workspace_path plus ci_report. Complete with retry_later when checks cannot be inspected because GitHub/CI is still starting, rate-limited, temporarily unavailable, or an expected run has not appeared yet; provide pr_url, branch_name, workspace_path, and ci_report. Complete with blocked only if checks cannot be inspected and retrying would be unsafe or misleading; provide blocker_reason.",
       "parameters": [
         {
           "key": "pr_url",
-          "description": "URL of the created or updated pull request."
+          "description": "URL of the pull request."
         },
         {
           "key": "branch_name",
@@ -426,7 +450,7 @@
         },
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree used for PR creation."
+          "description": "Path to the worktree or checkout used for PR creation."
         }
       ]
     },
@@ -530,6 +554,79 @@
           "description": "Why CI monitoring cannot complete, in the task language when practical."
         }
       ]
+    },
+    {
+      "id": "edge-4e74cbe0-4b41-4658-84d3-ff92680a2867",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-6e4c4804-a437-4104-ae83-50636b721a45",
+      "key": "pr_fix",
+      "target_node_id": "node-a8823a49-9b62-44f8-8ac2-3cc3d7a2eb08",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix recoverable Puber PR creation/update issues only.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Previous PR blocker: {{.Params.blocker_reason}}. Work in {{.Params.workspace_path}}. Apply only the minimum changes needed to make the task branch/PR shippable, such as rebasing, resolving merge conflicts, fixing branch metadata, or repairing the PR-ready commit set. Do not expand product scope. Verify narrowly, then continue through the workflow's normal review/compliance path. Complete with blocked only if the recovery is unsafe or requires user credentials/policy changes.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the worktree or checkout used for PR creation."
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Why PR creation/update cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-dc8e9bed-e437-494f-9de2-5aacde485b77",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-577dc04b-4042-42a6-88ce-3b33ac7d929e",
+      "key": "ci_retry",
+      "target_node_id": "node-d4c0080d-88fe-49d3-b5b2-f7d662cc6be9",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Retry Puber PR check monitoring after an approved temporary CI/GitHub wait.\n\nRead .kent/project-contract.md and AGENTS.md first. Previous CI status: {{.Params.ci_report}}. Inspect PR {{.Params.pr_url}} on branch {{.Params.branch_name}} again. Do not merge the PR. Do not push new commits from this node.\n\nComplete with done if CI/checks pass, are absent, or are intentionally skipped with a clear reason; provide ci_report and pr_url. Complete with needs_changes if CI failed due to task changes and provide workspace_path plus ci_report. Complete with retry_later if CI/GitHub is still temporarily unavailable and provide pr_url, branch_name, workspace_path, and ci_report. Complete with blocked only if retrying is no longer useful or safe; provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "pr_url",
+          "description": "URL of the created or updated pull request."
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the pushed task branch."
+        },
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or worktree used for PR creation."
+        },
+        {
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+        }
+      ]
+    },
+    {
+      "id": "edge-c8e20165-5c59-45db-a532-d05ae80c167e",
+      "workflow_id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
+      "transition_group_id": "group-f0e033a4-349f-46be-bf5b-325feb0526e3",
+      "key": "smoke_retry",
+      "target_node_id": "node-1ec7322f-4f0b-472d-87b3-129e4f184bb0",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Retry the Puber smoke-test flow after an approved temporary blocker wait.\n\nRead .kent/project-contract.md and .kent/commands/smoke-test.md first. Previous blocker: {{.Params.blocker_reason}}. Treat the task body as the target feature/screen and device notes. Follow the same emulator locking, physical-device prohibition, fresh devDebug build/install, and adb -s rules as the original smoke node.\n\nDo not edit production code in this smoke node. Complete with done if the smoke test passes or is accepted. Complete with needs_changes if you found an actionable app issue and provide smoke_report, reproduction_steps, and artifacts_path. Complete with retry_later if device/MCP/build/access/resource locking is still temporarily unavailable and provide blocker_reason. Complete with blocked only for unrecoverable smoke blockers; provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Why smoke testing cannot continue, in the task language when practical."
+        }
+      ]
     }
   ],
   "derived_wiring": {
@@ -609,7 +706,7 @@
         "possible_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the created or updated pull request."
+            "description": "URL of the pull request."
           },
           {
             "name": "branch_name",
@@ -617,7 +714,7 @@
           },
           {
             "name": "workspace_path",
-            "description": "Path to the task workspace or worktree used for PR creation."
+            "description": "Path to the worktree or checkout used for PR creation."
           },
           {
             "name": "pr_report",
@@ -647,6 +744,10 @@
           {
             "name": "blocker_reason",
             "description": "Why CI monitoring cannot complete, in the task language when practical."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed task branch."
           }
         ]
       },
@@ -754,7 +855,7 @@
         "required_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the created or updated pull request."
+            "description": "URL of the pull request."
           },
           {
             "name": "branch_name",
@@ -762,7 +863,7 @@
           },
           {
             "name": "workspace_path",
-            "description": "Path to the task workspace or worktree used for PR creation."
+            "description": "Path to the worktree or checkout used for PR creation."
           }
         ]
       },
@@ -816,6 +917,49 @@
           {
             "name": "blocker_reason",
             "description": "Why CI monitoring cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-6e4c4804-a437-4104-ae83-50636b721a45",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout used for PR creation."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why PR creation/update cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-577dc04b-4042-42a6-88ce-3b33ac7d929e",
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created or updated pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed task branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree used for PR creation."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-f0e033a4-349f-46be-bf5b-325feb0526e3",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why smoke testing cannot continue, in the task language when practical."
           }
         ]
       }
@@ -1013,7 +1157,7 @@
         "required_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the created or updated pull request."
+            "description": "URL of the pull request."
           },
           {
             "name": "branch_name",
@@ -1021,7 +1165,7 @@
           },
           {
             "name": "workspace_path",
-            "description": "Path to the task workspace or worktree used for PR creation."
+            "description": "Path to the worktree or checkout used for PR creation."
           }
         ]
       },
@@ -1120,6 +1264,90 @@
           {
             "name": "blocker_reason",
             "description": "Why CI monitoring cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-4e74cbe0-4b41-4658-84d3-ff92680a2867",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout used for PR creation."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why PR creation/update cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-dc8e9bed-e437-494f-9de2-5aacde485b77",
+        "input_bindings": [
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created or updated pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed task branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree used for PR creation."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-c8e20165-5c59-45db-a532-d05ae80c167e",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Why smoke testing cannot continue, in the task language when practical."
           }
         ]
       }
