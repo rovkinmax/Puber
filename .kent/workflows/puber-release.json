@@ -3,7 +3,7 @@
     "id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
-    "version": 44
+    "version": 45
   },
   "nodes": [
     {
@@ -307,31 +307,11 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Create or update the Puber release version-bump PR.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, .kent/commands/release.md, and AGENTS.md first. Compliance result: {{.Params.compliance_report}}. Release context: version {{.Params.release_version}}, type {{.Params.release_type}}, branch {{.Params.release_branch}}, tag {{.Params.release_tag}}, workspace {{.Params.workspace_path}}.\n\nCommit only release-task changes if anything remains uncommitted, push {{.Params.release_branch}} to origin, and create or update a GitHub PR for the version bump. Do not merge the PR. Do not push directly to master. Do not create or push a release tag in this node.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, workspace_path, release_version, and release_tag. Complete with blocked if PR creation/update cannot be completed safely and provide blocker_reason.",
+      "prompt_template": "Create or update the Puber release version-bump PR.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, .kent/commands/release.md, and AGENTS.md first. Compliance result: {{.Params.compliance_report}}. Release context from preparation: version {{.Params.compliance.release_version}}, type {{.Params.compliance.release_type}}, branch {{.Params.compliance.release_branch}}, tag {{.Params.compliance.release_tag}}, workspace {{.Params.compliance.workspace_path}}.\n\nCommit only release-task changes if anything remains uncommitted, push {{.Params.compliance.release_branch}} to origin, and create or update a GitHub PR for the version bump. Do not merge the PR. Do not push directly to master. Do not create or push a release tag in this node.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, workspace_path, release_version, and release_tag. Complete with blocked if PR creation/update cannot be completed safely and provide blocker_reason.",
       "parameters": [
         {
           "key": "compliance_report",
           "description": "Compliance review report, including rule sources checked and any findings."
-        },
-        {
-          "key": "release_version",
-          "description": "Release version prepared by this workflow."
-        },
-        {
-          "key": "release_type",
-          "description": "Version bump type: minor by default, patch or major only when explicitly requested."
-        },
-        {
-          "key": "release_branch",
-          "description": "Release branch containing the version bump."
-        },
-        {
-          "key": "release_tag",
-          "description": "Release tag to create after the PR is merged."
-        },
-        {
-          "key": "workspace_path",
-          "description": "Path to the worktree or checkout containing the release bump."
         }
       ]
     },
@@ -668,22 +648,6 @@
             "description": "Compliance review report, including rule sources checked and any findings."
           },
           {
-            "name": "release_version",
-            "description": "Release version prepared by this workflow."
-          },
-          {
-            "name": "release_type",
-            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
-          },
-          {
-            "name": "release_branch",
-            "description": "Release branch containing the version bump."
-          },
-          {
-            "name": "release_tag",
-            "description": "Release tag to create after the PR is merged."
-          },
-          {
             "name": "workspace_path",
             "description": "Path to the worktree or checkout containing the release bump."
           },
@@ -865,26 +829,6 @@
           {
             "name": "compliance_report",
             "description": "Compliance review report, including rule sources checked and any findings."
-          },
-          {
-            "name": "release_version",
-            "description": "Release version prepared by this workflow."
-          },
-          {
-            "name": "release_type",
-            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
-          },
-          {
-            "name": "release_branch",
-            "description": "Release branch containing the version bump."
-          },
-          {
-            "name": "release_tag",
-            "description": "Release tag to create after the PR is merged."
-          },
-          {
-            "name": "workspace_path",
-            "description": "Path to the worktree or checkout containing the release bump."
           }
         ]
       },
@@ -1154,57 +1098,12 @@
             "name": "compliance_report",
             "source": "transition_output",
             "field": "compliance_report"
-          },
-          {
-            "name": "release_version",
-            "source": "transition_output",
-            "field": "release_version"
-          },
-          {
-            "name": "release_type",
-            "source": "transition_output",
-            "field": "release_type"
-          },
-          {
-            "name": "release_branch",
-            "source": "transition_output",
-            "field": "release_branch"
-          },
-          {
-            "name": "release_tag",
-            "source": "transition_output",
-            "field": "release_tag"
-          },
-          {
-            "name": "workspace_path",
-            "source": "transition_output",
-            "field": "workspace_path"
           }
         ],
         "required_provision_fields": [
           {
             "name": "compliance_report",
             "description": "Compliance review report, including rule sources checked and any findings."
-          },
-          {
-            "name": "release_version",
-            "description": "Release version prepared by this workflow."
-          },
-          {
-            "name": "release_type",
-            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
-          },
-          {
-            "name": "release_branch",
-            "description": "Release branch containing the version bump."
-          },
-          {
-            "name": "release_tag",
-            "description": "Release tag to create after the PR is merged."
-          },
-          {
-            "name": "workspace_path",
-            "description": "Path to the worktree or checkout containing the release bump."
           }
         ]
       },
