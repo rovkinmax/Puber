@@ -89,6 +89,22 @@ worktree metadata until Kent rebind behavior is fixed.
   merged PR.
 - Cleanup always emits `cleanup_report`; skipped cleanup is a valid result and must be visible.
 
+## Recoverable Blocking Policy
+
+`blocked` is a terminal sink and should be used only when continuing would be unsafe without changing task scope,
+credentials, or project policy. Temporary external problems must use recoverable transitions instead:
+
+- `retry_later`: CI/GitHub is still starting or unavailable, device/MCP/emulator access is temporarily unavailable, or
+  release automation is still starting. This transition must require user approval before retrying the same node.
+- `needs_changes`: the task branch, PR, CI fallout, or release branch needs recoverable fixes such as rebase, conflict
+  resolution, or branch metadata repair. This transition must require user approval before returning to `fix` or
+  `prepare`.
+- `not_ready`: release tag publication was approved before the PR was merged or visible on `origin/master`; return to
+  `ci_monitor` after user action instead of ending in terminal `blocked`.
+
+Already terminal-blocked tasks cannot be moved back to `backlog` with `kent task move`; create a replacement task with
+the previous task context when recovery is needed after the terminal transition was applied.
+
 ## Release Policy
 
 Use `Puber Release` for human-facing release tasks.
@@ -108,8 +124,8 @@ Use generic workflow graph keys and project-prefixed live workflow names:
   `Puber Dependency Update`, `Puber Test Coverage`, `Puber Smoke Test`, `Puber Release`.
 - Node keys: `plan`, `implement`, `audit`, `fix`, `smoke`, `prepare`, `compliance`, `ship_pr`, `ci_monitor`, `publish`,
   `monitor`, `cleanup`, `done`, `blocked`.
-- Transition IDs: `implement`, `continue_implementation`, `audit`, `needs_changes`, `smoke`, `ship_pr`, `monitor_ci`,
-  `done`, `blocked`.
+- Transition IDs: `implement`, `continue_implementation`, `audit`, `needs_changes`, `retry_later`, `not_ready`, `smoke`,
+  `ship_pr`, `monitor_ci`, `done`, `blocked`.
 - Portable params: `workspace_path`, `plan_path`, `audit_report`, `review_report`, `verification_report`, `pr_url`,
   `branch_name`, `pr_report`, `ci_report`, `compliance_report`, `release_version`, `release_type`, `release_branch`,
   `release_tag`, `version_bump_commit`, `target_commit`, `tag_push_status`, `release_report`, `blocker_reason`,

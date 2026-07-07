@@ -57,6 +57,10 @@ Legacy split release workflows (`Puber Release Preparation` and `Puber Release P
   no-diff/report-only/smoke-only cases and must explain that through `pr_report`.
 - `ci_monitor` never merges PRs and never pushes new commits. CI failures go back to fix/review/compliance before another
   PR/CI pass.
+- `blocked` is terminal and must be reserved for unrecoverable situations. Recoverable external waits should use
+  `retry_later` back to the same node with human approval; recoverable PR/branch/CI fallout should use `needs_changes`
+  back to `fix` or `prepare` with human approval; release publication that is approved before the PR is merged should
+  use `not_ready` back to `ci_monitor`.
 - Smoke workflows must acquire a shared mobile resource lock through
   `.kent/adapters/mobile/emulator-resource-lock.sh` before installing, launching, or controlling an emulator/device. When
   multiple `adb` emulators are already running, agents should acquire any free emulator-specific lock and pass that serial

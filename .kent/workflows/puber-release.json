@@ -3,7 +3,7 @@
     "id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
-    "version": 53
+    "version": 77
   },
   "nodes": [
     {
@@ -219,6 +219,54 @@
       "transition_id": "done",
       "display_name": "Done",
       "description": "Cleanup report is ready; finish the release task."
+    },
+    {
+      "id": "group-a8b20339-ff99-40a1-ae5c-52eee6de1f0c",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "source_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
+      "transition_id": "retry_later",
+      "display_name": "Retry Later",
+      "description": "Required compliance sources or user context are temporarily unavailable; user approval required before retrying review."
+    },
+    {
+      "id": "group-e21a073b-10f2-402b-94e5-8b1239288c6a",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "source_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Release PR creation/update hit a recoverable branch, rebase, conflict, push, or metadata issue; user approval required before recovery work."
+    },
+    {
+      "id": "group-bc018baf-d599-4df5-a3f4-b6e992f46491",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "source_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
+      "transition_id": "retry_later",
+      "display_name": "Retry Later",
+      "description": "Release CI or GitHub is temporarily unavailable, still starting, or missing an expected run; user approval required before retrying monitoring."
+    },
+    {
+      "id": "group-c1e0d59b-b781-4d62-9ffc-ee47fabdfe95",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "source_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
+      "transition_id": "not_ready",
+      "display_name": "Not Ready",
+      "description": "Tag publication was approved before the release PR was merged or visible on origin/master; return to release PR monitoring after user action."
+    },
+    {
+      "id": "group-5871795e-997a-4747-ae57-c74588cabd1d",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "source_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
+      "transition_id": "retry_later",
+      "display_name": "Retry Later",
+      "description": "Release tag publication hit a temporary external availability issue; user approval required before retrying publication."
+    },
+    {
+      "id": "group-94f3424d-ea81-4e04-b33f-d79fcb548a83",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "source_node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
+      "transition_id": "retry_later",
+      "display_name": "Retry Later",
+      "description": "Release automation is still starting or temporarily unavailable; user approval required before retrying monitoring."
     }
   ],
   "edges": [
@@ -246,7 +294,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run mandatory Puber Compliance Review for the prepared release.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Reviewed scope: release {{.Params.release_version}} ({{.Params.release_type}}) on branch {{.Params.release_branch}} in workspace {{.Params.workspace_path}}, commit {{.Params.version_bump_commit}}, intended tag {{.Params.release_tag}}, verification {{.Params.verification_summary}}. Review only compliance with release rules, task requirements, AGENTS.md, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when release preparation must be fixed. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "prompt_template": "Run mandatory Puber Compliance Review for the prepared release.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Reviewed scope: release {{.Params.release_version}} ({{.Params.release_type}}) on branch {{.Params.release_branch}} in workspace {{.Params.workspace_path}}, commit {{.Params.version_bump_commit}}, intended tag {{.Params.release_tag}}, verification {{.Params.verification_summary}}. Review only compliance with release rules, task requirements, AGENTS.md, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when release preparation must be fixed. Complete with retry_later when required sources or user-provided context are temporarily unavailable and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, verification_summary, and blocker_reason. Complete with blocked only if required sources are contradictory or continuing would be unsafe; provide blocker_reason.",
       "parameters": [
         {
           "key": "release_version",
@@ -307,7 +355,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Create or update the Puber release version-bump PR.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Compliance result: {{.Params.compliance_report}}. Release context from preparation: version {{.Params.compliance.release_version}}, type {{.Params.compliance.release_type}}, branch {{.Params.compliance.release_branch}}, tag {{.Params.compliance.release_tag}}, workspace {{.Params.compliance.workspace_path}}.\n\nCommit only release-task changes if anything remains uncommitted, push {{.Params.compliance.release_branch}} to origin, and create or update a GitHub PR for the version bump. Do not merge the PR. Do not push directly to master. Do not create or push a release tag in this node.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, workspace_path, release_version, and release_tag. Complete with blocked if PR creation/update cannot be completed safely and provide blocker_reason.",
+      "prompt_template": "Create or update the Puber release version-bump PR.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Compliance result: {{.Params.compliance_report}}. Release context from preparation: version {{.Params.compliance.release_version}}, type {{.Params.compliance.release_type}}, branch {{.Params.compliance.release_branch}}, tag {{.Params.compliance.release_tag}}, workspace {{.Params.compliance.workspace_path}}.\n\nCommit only release-task changes if anything remains uncommitted, push {{.Params.compliance.release_branch}} to origin, and create or update a GitHub PR for the version bump. Do not merge the PR. Do not push directly to master. Do not create or push a release tag in this node.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, workspace_path, release_version, and release_tag. Complete with needs_changes when PR creation/update is blocked by recoverable branch, rebase, conflict, push, or PR metadata state; provide workspace_path, release_version, release_type, release_branch, release_tag, and blocker_reason. Complete with blocked only if PR creation/update cannot continue safely without changing release scope, credentials, or project policy; provide blocker_reason.",
       "parameters": [
         {
           "key": "compliance_report",
@@ -367,7 +415,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor the Puber release PR checks.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, and .kent/commands/release-tag.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Inspect PR {{.Params.pr_url}} for release {{.Params.release_version}} / tag {{.Params.release_tag}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with publish when checks pass or are intentionally absent; this transition requires user approval before tag publication. Provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with needs_changes if checks failed due to release changes and provide workspace_path plus ci_report. Complete with blocked and provide blocker_reason if checks cannot be inspected and risk cannot be accepted.",
+      "prompt_template": "Monitor the Puber release PR checks.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, and .kent/commands/release-tag.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Inspect PR {{.Params.pr_url}} for release {{.Params.release_version}} / tag {{.Params.release_tag}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with publish when checks pass or are intentionally absent; this transition requires user approval before tag publication. Provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with needs_changes if checks failed due to release changes and provide workspace_path plus ci_report. Complete with retry_later when checks cannot be inspected because GitHub/CI is still starting, rate-limited, temporarily unavailable, or an expected run has not appeared yet; provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with blocked only if checks cannot be inspected and retrying would be unsafe or misleading; provide blocker_reason.",
       "parameters": [
         {
           "key": "pr_url",
@@ -420,7 +468,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Publish the approved Puber release tag.\n\nRead .kent/project-contract.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Before creating any tag, fetch origin/master and verify that PR {{.Params.pr_url}} is merged and origin/master contains currentVersion {{.Params.release_version}}. If the PR is not merged or master does not contain the version bump, complete blocked with blocker_reason. Verify {{.Params.release_tag}} does not exist locally/remotely unless it already points to the intended master commit. Create and push {{.Params.release_tag}} on the verified origin/master commit. Do not merge PRs and do not push directly to master.\n\nComplete with monitor and provide release_version, release_tag, target_commit, pr_url, and tag_push_status. Complete with blocked and provide blocker_reason if publication is unsafe.",
+      "prompt_template": "Publish the approved Puber release tag.\n\nRead .kent/project-contract.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Before creating any tag, fetch origin/master and verify that PR {{.Params.pr_url}} is merged and origin/master contains currentVersion {{.Params.release_version}}. Verify {{.Params.release_tag}} does not exist locally/remotely unless it already points to the intended master commit. Create and push {{.Params.release_tag}} on the verified origin/master commit. Do not merge PRs and do not push directly to master.\n\nComplete with monitor and provide release_version, release_tag, target_commit, pr_url, and tag_push_status when the tag is pushed or already correct. Complete with not_ready if the PR is not merged yet or origin/master does not yet contain the version bump; provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with retry_later for temporary GitHub/network/tag-push availability problems where retrying later is safe; provide pr_url, release_version, release_tag, branch_name, workspace_path, ci_report, and blocker_reason. Complete with blocked only if publication is unsafe, such as the tag already pointing to a different commit; provide blocker_reason.",
       "parameters": [
         {
           "key": "pr_url",
@@ -500,7 +548,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor Puber release automation after tag publication.\n\nRead .kent/project-contract.md and .kent/commands/release-tag.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Check available GitHub/CI/release automation for {{.Params.release_tag}} when configured. If no automation is configured, report that monitoring is skipped. Complete with done if green or intentionally skipped; complete with blocked and provide blocker_reason if automation fails or cannot be inspected.",
+      "prompt_template": "Monitor Puber release automation after tag publication.\n\nRead .kent/project-contract.md and .kent/commands/release-tag.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Check available GitHub/CI/release automation for {{.Params.release_tag}} when configured. If no automation is configured, report that monitoring is skipped. Complete with done if green or intentionally skipped. Complete with retry_later if release automation is still starting or temporarily unavailable and provide release_version, release_tag, target_commit, pr_url, tag_push_status, and release_report. Complete with blocked only if automation fails or cannot be inspected after retry would be misleading; provide blocker_reason.",
       "parameters": [
         {
           "key": "release_version",
@@ -596,6 +644,252 @@
           "description": "Summary of cleanup performed or deliberately skipped."
         }
       ]
+    },
+    {
+      "id": "edge-cf64d3bb-e98a-4d84-ba3f-783f6e64ed78",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "transition_group_id": "group-a8b20339-ff99-40a1-ae5c-52eee6de1f0c",
+      "key": "compliance_retry",
+      "target_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Retry mandatory Puber Compliance Review for the prepared release after an approved temporary blocker wait.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Previous blocker: {{.Params.blocker_reason}}. Reviewed scope: release {{.Params.release_version}} ({{.Params.release_type}}) on branch {{.Params.release_branch}} in workspace {{.Params.workspace_path}}, commit {{.Params.version_bump_commit}}, intended tag {{.Params.release_tag}}, verification {{.Params.verification_summary}}. Review only compliance with release rules, task requirements, AGENTS.md, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when release preparation must be fixed. Complete with retry_later if required sources or user-provided context are still temporarily unavailable and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, verification_summary, and blocker_reason. Complete with blocked only if continuing is unsafe; provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "release_version",
+          "description": "Prepared release version, for example 1.4.0."
+        },
+        {
+          "key": "release_type",
+          "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+        },
+        {
+          "key": "release_branch",
+          "description": "Release branch containing the version bump."
+        },
+        {
+          "key": "release_tag",
+          "description": "Release tag that should be created after the PR is merged, for example v1.4.0."
+        },
+        {
+          "key": "workspace_path",
+          "description": "Path to the worktree or checkout containing the release bump."
+        },
+        {
+          "key": "version_bump_commit",
+          "description": "Commit hash containing the version bump."
+        },
+        {
+          "key": "verification_summary",
+          "description": "Commands run and their pass/fail results."
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Why compliance review cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-6018e22d-2198-45ed-a4b3-bdfe93775e78",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "transition_group_id": "group-e21a073b-10f2-402b-94e5-8b1239288c6a",
+      "key": "pr_fix",
+      "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix recoverable Puber release PR creation/update issues only.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, .kent/commands/ship-pr.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance. Previous PR blocker: {{.Params.blocker_reason}}. Release context: version {{.Params.release_version}}, type {{.Params.release_type}}, branch {{.Params.release_branch}}, tag {{.Params.release_tag}}, workspace {{.Params.workspace_path}}.\n\nApply only the minimum changes needed to make the release branch/PR shippable, such as rebasing, resolving conflicts, fixing branch metadata, or repairing the version-bump commit. Do not create or push a release tag. Verify narrowly, then complete with compliance and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, and verification_summary. Complete with blocked only if recovery is unsafe or requires user credentials/policy changes.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the worktree or checkout used for PR creation."
+        },
+        {
+          "key": "release_version",
+          "description": "Release version prepared by this workflow."
+        },
+        {
+          "key": "release_type",
+          "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+        },
+        {
+          "key": "release_branch",
+          "description": "Release branch containing the version bump."
+        },
+        {
+          "key": "release_tag",
+          "description": "Release tag to create after the PR is merged."
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Why release PR creation/update cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-75fce052-321b-4f1a-855b-ce692f89e46b",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "transition_group_id": "group-bc018baf-d599-4df5-a3f4-b6e992f46491",
+      "key": "ci_retry",
+      "target_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Retry Puber release PR check monitoring after an approved temporary CI/GitHub wait.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, and .kent/commands/release-tag.md first. Previous CI status: {{.Params.ci_report}}. Inspect PR {{.Params.pr_url}} for release {{.Params.release_version}} / tag {{.Params.release_tag}} on branch {{.Params.branch_name}} again. Do not merge the PR. Do not push new commits from this node.\n\nComplete with publish when checks pass or are intentionally absent; this transition requires user approval before tag publication. Provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with needs_changes if checks failed due to release changes and provide workspace_path plus ci_report. Complete with retry_later if CI/GitHub is still temporarily unavailable and provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with blocked only if retrying is no longer useful or safe; provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "pr_url",
+          "description": "URL of the release pull request."
+        },
+        {
+          "key": "release_version",
+          "description": "Release version prepared by this workflow."
+        },
+        {
+          "key": "release_tag",
+          "description": "Release tag to create after the PR is merged."
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the pushed release branch."
+        },
+        {
+          "key": "workspace_path",
+          "description": "Path to the worktree or checkout containing the release bump."
+        },
+        {
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+        }
+      ]
+    },
+    {
+      "id": "edge-3772a318-3329-4c26-82d1-7118a7ba5932",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "transition_group_id": "group-c1e0d59b-b781-4d62-9ffc-ee47fabdfe95",
+      "key": "publish_not_ready",
+      "target_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Resume Puber release PR monitoring after tag publication was approved too early.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, and .kent/commands/release-tag.md first. Previous publication readiness report: {{.Params.ci_report}}. Monitor PR {{.Params.pr_url}} for release {{.Params.release_version}} / tag {{.Params.release_tag}} on branch {{.Params.branch_name}}. Do not merge the PR. Do not push new commits from this node.\n\nComplete with publish when checks pass or are intentionally absent and the PR is ready for user-approved tag publication; provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with needs_changes if checks failed due to release changes and provide workspace_path plus ci_report. Complete with retry_later if CI/GitHub is temporarily unavailable and provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with blocked only if retrying is no longer useful or safe; provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "pr_url",
+          "description": "URL of the merged release pull request."
+        },
+        {
+          "key": "release_version",
+          "description": "Published release version."
+        },
+        {
+          "key": "release_tag",
+          "description": "Pushed release tag."
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the pushed release branch."
+        },
+        {
+          "key": "workspace_path",
+          "description": "Path to the worktree or checkout containing the release bump."
+        },
+        {
+          "key": "ci_report",
+          "description": "Publication readiness or CI/check status report."
+        }
+      ]
+    },
+    {
+      "id": "edge-66a9f114-a244-4321-ace5-ffd759cc3af4",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "transition_group_id": "group-5871795e-997a-4747-ae57-c74588cabd1d",
+      "key": "publish_retry",
+      "target_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Retry approved Puber release tag publication after a temporary external blocker.\n\nRead .kent/project-contract.md, .kent/commands/release-tag.md, and AGENTS.md first. Previous publication blocker: {{.Params.blocker_reason}}. Release context: PR {{.Params.pr_url}}, version {{.Params.release_version}}, tag {{.Params.release_tag}}, branch {{.Params.branch_name}}, workspace {{.Params.workspace_path}}. Before creating any tag, fetch origin/master and verify that the PR is merged and origin/master contains currentVersion {{.Params.release_version}}. Do not merge PRs and do not push directly to master.\n\nComplete with monitor and provide release_version, release_tag, target_commit, pr_url, and tag_push_status when the tag is pushed or already correct. Complete with not_ready if the PR is not merged yet or origin/master does not yet contain the version bump; provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with retry_later if the external publication blocker persists and retrying is safe; provide pr_url, release_version, release_tag, branch_name, workspace_path, ci_report, and blocker_reason. Complete with blocked only if publication is unsafe; provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "pr_url",
+          "description": "URL of the merged release pull request."
+        },
+        {
+          "key": "release_version",
+          "description": "Published release version."
+        },
+        {
+          "key": "release_tag",
+          "description": "Pushed release tag."
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the pushed release branch."
+        },
+        {
+          "key": "workspace_path",
+          "description": "Path to the worktree or checkout containing the release bump."
+        },
+        {
+          "key": "ci_report",
+          "description": "Publication readiness or CI/check status report."
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Why release tag publication cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-1782e3e8-0549-4b08-b6cb-0750d6c35fc2",
+      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "transition_group_id": "group-94f3424d-ea81-4e04-b33f-d79fcb548a83",
+      "key": "monitor_retry",
+      "target_node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Retry Puber release automation monitoring after an approved temporary wait.\n\nRead .kent/project-contract.md and .kent/commands/release-tag.md first. Previous release monitoring report: {{.Params.release_report}}. Check available GitHub/CI/release automation for {{.Params.release_tag}} on commit {{.Params.target_commit}} again. If no automation is configured, report that monitoring is skipped.\n\nComplete with done if green or intentionally skipped. Complete with retry_later if release automation is still starting or temporarily unavailable and provide release_version, release_tag, target_commit, pr_url, tag_push_status, and release_report. Complete with blocked only if automation fails or cannot be inspected after retry would be misleading; provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "release_version",
+          "description": "Published release version."
+        },
+        {
+          "key": "release_tag",
+          "description": "Pushed release tag."
+        },
+        {
+          "key": "target_commit",
+          "description": "Master commit targeted by the release tag."
+        },
+        {
+          "key": "pr_url",
+          "description": "URL of the merged release pull request."
+        },
+        {
+          "key": "tag_push_status",
+          "description": "Result of local/remote tag creation and push."
+        },
+        {
+          "key": "release_report",
+          "description": "Release publication and automation monitoring report."
+        }
+      ]
     }
   ],
   "derived_wiring": {
@@ -654,6 +948,30 @@
           {
             "name": "blocker_reason",
             "description": "Why compliance review cannot complete, in the task language when practical."
+          },
+          {
+            "name": "release_version",
+            "description": "Prepared release version, for example 1.4.0."
+          },
+          {
+            "name": "release_type",
+            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+          },
+          {
+            "name": "release_branch",
+            "description": "Release branch containing the version bump."
+          },
+          {
+            "name": "release_tag",
+            "description": "Release tag that should be created after the PR is merged, for example v1.4.0."
+          },
+          {
+            "name": "version_bump_commit",
+            "description": "Commit hash containing the version bump."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run and their pass/fail results."
           }
         ]
       },
@@ -683,6 +1001,14 @@
           {
             "name": "blocker_reason",
             "description": "Why release PR creation/update cannot complete, in the task language when practical."
+          },
+          {
+            "name": "release_type",
+            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+          },
+          {
+            "name": "release_branch",
+            "description": "Release branch containing the version bump."
           }
         ]
       },
@@ -745,6 +1071,18 @@
           {
             "name": "blocker_reason",
             "description": "Why release tag publication cannot complete, in the task language when practical."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed release branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout containing the release bump."
+          },
+          {
+            "name": "ci_report",
+            "description": "Publication readiness or CI/check status report."
           }
         ]
       },
@@ -758,6 +1096,26 @@
           {
             "name": "blocker_reason",
             "description": "Why release automation monitoring cannot complete, in the task language when practical."
+          },
+          {
+            "name": "release_version",
+            "description": "Published release version."
+          },
+          {
+            "name": "release_tag",
+            "description": "Pushed release tag."
+          },
+          {
+            "name": "target_commit",
+            "description": "Master commit targeted by the release tag."
+          },
+          {
+            "name": "pr_url",
+            "description": "URL of the merged release pull request."
+          },
+          {
+            "name": "tag_push_status",
+            "description": "Result of local/remote tag creation and push."
           }
         ]
       },
@@ -997,6 +1355,192 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-a8b20339-ff99-40a1-ae5c-52eee6de1f0c",
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Prepared release version, for example 1.4.0."
+          },
+          {
+            "name": "release_type",
+            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+          },
+          {
+            "name": "release_branch",
+            "description": "Release branch containing the version bump."
+          },
+          {
+            "name": "release_tag",
+            "description": "Release tag that should be created after the PR is merged, for example v1.4.0."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout containing the release bump."
+          },
+          {
+            "name": "version_bump_commit",
+            "description": "Commit hash containing the version bump."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run and their pass/fail results."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-e21a073b-10f2-402b-94e5-8b1239288c6a",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout used for PR creation."
+          },
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this workflow."
+          },
+          {
+            "name": "release_type",
+            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+          },
+          {
+            "name": "release_branch",
+            "description": "Release branch containing the version bump."
+          },
+          {
+            "name": "release_tag",
+            "description": "Release tag to create after the PR is merged."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why release PR creation/update cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-bc018baf-d599-4df5-a3f4-b6e992f46491",
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the release pull request."
+          },
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this workflow."
+          },
+          {
+            "name": "release_tag",
+            "description": "Release tag to create after the PR is merged."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed release branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout containing the release bump."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-c1e0d59b-b781-4d62-9ffc-ee47fabdfe95",
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the merged release pull request."
+          },
+          {
+            "name": "release_version",
+            "description": "Published release version."
+          },
+          {
+            "name": "release_tag",
+            "description": "Pushed release tag."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed release branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout containing the release bump."
+          },
+          {
+            "name": "ci_report",
+            "description": "Publication readiness or CI/check status report."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-5871795e-997a-4747-ae57-c74588cabd1d",
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the merged release pull request."
+          },
+          {
+            "name": "release_version",
+            "description": "Published release version."
+          },
+          {
+            "name": "release_tag",
+            "description": "Pushed release tag."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed release branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout containing the release bump."
+          },
+          {
+            "name": "ci_report",
+            "description": "Publication readiness or CI/check status report."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why release tag publication cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-94f3424d-ea81-4e04-b33f-d79fcb548a83",
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Published release version."
+          },
+          {
+            "name": "release_tag",
+            "description": "Pushed release tag."
+          },
+          {
+            "name": "target_commit",
+            "description": "Master commit targeted by the release tag."
+          },
+          {
+            "name": "pr_url",
+            "description": "URL of the merged release pull request."
+          },
+          {
+            "name": "tag_push_status",
+            "description": "Result of local/remote tag creation and push."
+          },
+          {
+            "name": "release_report",
+            "description": "Release publication and automation monitoring report."
           }
         ]
       }
@@ -1431,6 +1975,399 @@
           {
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-cf64d3bb-e98a-4d84-ba3f-783f6e64ed78",
+        "input_bindings": [
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_type",
+            "source": "transition_output",
+            "field": "release_type"
+          },
+          {
+            "name": "release_branch",
+            "source": "transition_output",
+            "field": "release_branch"
+          },
+          {
+            "name": "release_tag",
+            "source": "transition_output",
+            "field": "release_tag"
+          },
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "version_bump_commit",
+            "source": "transition_output",
+            "field": "version_bump_commit"
+          },
+          {
+            "name": "verification_summary",
+            "source": "transition_output",
+            "field": "verification_summary"
+          },
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Prepared release version, for example 1.4.0."
+          },
+          {
+            "name": "release_type",
+            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+          },
+          {
+            "name": "release_branch",
+            "description": "Release branch containing the version bump."
+          },
+          {
+            "name": "release_tag",
+            "description": "Release tag that should be created after the PR is merged, for example v1.4.0."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout containing the release bump."
+          },
+          {
+            "name": "version_bump_commit",
+            "description": "Commit hash containing the version bump."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Commands run and their pass/fail results."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why compliance review cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-6018e22d-2198-45ed-a4b3-bdfe93775e78",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_type",
+            "source": "transition_output",
+            "field": "release_type"
+          },
+          {
+            "name": "release_branch",
+            "source": "transition_output",
+            "field": "release_branch"
+          },
+          {
+            "name": "release_tag",
+            "source": "transition_output",
+            "field": "release_tag"
+          },
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout used for PR creation."
+          },
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this workflow."
+          },
+          {
+            "name": "release_type",
+            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+          },
+          {
+            "name": "release_branch",
+            "description": "Release branch containing the version bump."
+          },
+          {
+            "name": "release_tag",
+            "description": "Release tag to create after the PR is merged."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why release PR creation/update cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-75fce052-321b-4f1a-855b-ce692f89e46b",
+        "input_bindings": [
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_tag",
+            "source": "transition_output",
+            "field": "release_tag"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the release pull request."
+          },
+          {
+            "name": "release_version",
+            "description": "Release version prepared by this workflow."
+          },
+          {
+            "name": "release_tag",
+            "description": "Release tag to create after the PR is merged."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed release branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout containing the release bump."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-3772a318-3329-4c26-82d1-7118a7ba5932",
+        "input_bindings": [
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_tag",
+            "source": "transition_output",
+            "field": "release_tag"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the merged release pull request."
+          },
+          {
+            "name": "release_version",
+            "description": "Published release version."
+          },
+          {
+            "name": "release_tag",
+            "description": "Pushed release tag."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed release branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout containing the release bump."
+          },
+          {
+            "name": "ci_report",
+            "description": "Publication readiness or CI/check status report."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-66a9f114-a244-4321-ace5-ffd759cc3af4",
+        "input_bindings": [
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_tag",
+            "source": "transition_output",
+            "field": "release_tag"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          },
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the merged release pull request."
+          },
+          {
+            "name": "release_version",
+            "description": "Published release version."
+          },
+          {
+            "name": "release_tag",
+            "description": "Pushed release tag."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed release branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout containing the release bump."
+          },
+          {
+            "name": "ci_report",
+            "description": "Publication readiness or CI/check status report."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why release tag publication cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-1782e3e8-0549-4b08-b6cb-0750d6c35fc2",
+        "input_bindings": [
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_tag",
+            "source": "transition_output",
+            "field": "release_tag"
+          },
+          {
+            "name": "target_commit",
+            "source": "transition_output",
+            "field": "target_commit"
+          },
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "tag_push_status",
+            "source": "transition_output",
+            "field": "tag_push_status"
+          },
+          {
+            "name": "release_report",
+            "source": "transition_output",
+            "field": "release_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "release_version",
+            "description": "Published release version."
+          },
+          {
+            "name": "release_tag",
+            "description": "Pushed release tag."
+          },
+          {
+            "name": "target_commit",
+            "description": "Master commit targeted by the release tag."
+          },
+          {
+            "name": "pr_url",
+            "description": "URL of the merged release pull request."
+          },
+          {
+            "name": "tag_push_status",
+            "description": "Result of local/remote tag creation and push."
+          },
+          {
+            "name": "release_report",
+            "description": "Release publication and automation monitoring report."
           }
         ]
       }

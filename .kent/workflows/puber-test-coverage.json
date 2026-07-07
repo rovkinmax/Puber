@@ -3,7 +3,7 @@
     "id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
     "name": "Puber Test Coverage",
     "description": "Plan, add, review, fix, and clean up focused Puber Android test coverage improvements.",
-    "version": 58
+    "version": 66
   },
   "nodes": [
     {
@@ -268,6 +268,22 @@
       "transition_id": "blocked",
       "display_name": "Blocked",
       "description": "CI monitoring is blocked by GitHub access, missing check data, or unsafe repository state."
+    },
+    {
+      "id": "group-aabeeadc-dc6d-44be-bac3-85994483ec8a",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-64b0c5de-26d8-478b-9629-f424e68454b6",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "PR creation/update hit a recoverable branch, rebase, conflict, or metadata issue; user approval required before recovery work."
+    },
+    {
+      "id": "group-82060b25-1237-42ba-a1f6-f608cc248c9e",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "source_node_id": "node-796ba26f-05bd-4ebf-99a9-b39cabf09d51",
+      "transition_id": "retry_later",
+      "display_name": "Retry Later",
+      "description": "CI or GitHub is temporarily unavailable, still starting, or missing an expected run; user approval required before retrying monitoring."
     }
   ],
   "edges": [
@@ -539,7 +555,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Create or update the Puber pull request for this completed task.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Compliance result: {{.Params.compliance_report}}.\n\nIf this task produced repository changes, commit only task-related files, push the current task branch to origin, and create or update a GitHub PR. Do not merge the PR. Do not push directly to master/main. If there are no repository changes and the task is report-only or smoke-only, complete with done and provide pr_report explaining why PR is not applicable.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, and workspace_path. Complete with done only for PR-not-applicable/no-diff cases and provide pr_report. Complete with blocked if PR creation/update cannot be completed safely and provide blocker_reason.",
+      "prompt_template": "Create or update the Puber pull request for this completed task.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Compliance result: {{.Params.compliance_report}}.\n\nIf this task produced repository changes, commit only task-related files, push the current task branch to origin, and create or update a GitHub PR. Do not merge the PR. Do not push directly to master/main. If there are no repository changes and the task is report-only or smoke-only, complete with done and provide pr_report explaining why PR is not applicable.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, and workspace_path. Complete with needs_changes when PR creation/update is blocked by recoverable repository, branch, or PR state such as merge conflicts, non-fast-forward push, branch needing rebase, or missing PR metadata that can be fixed in the task worktree; provide workspace_path and blocker_reason. Complete with done only for PR-not-applicable/no-diff cases and provide pr_report. Complete with blocked only when continuing would be unsafe without changing task scope, credentials, or project policy; provide blocker_reason.",
       "parameters": [
         {
           "key": "compliance_report",
@@ -599,11 +615,11 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor Puber PR checks.\n\nRead .kent/project-contract.md and AGENTS.md first. Inspect PR {{.Params.pr_url}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with done if CI/checks pass, are absent, or are intentionally skipped with a clear reason; provide ci_report and pr_url. Complete with needs_changes if CI failed due to task changes and provide workspace_path plus ci_report. Complete with blocked if checks cannot be inspected and the risk cannot be accepted; provide blocker_reason.",
+      "prompt_template": "Monitor Puber PR checks.\n\nRead .kent/project-contract.md and AGENTS.md first. Inspect PR {{.Params.pr_url}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with done if CI/checks pass, are absent, or are intentionally skipped with a clear reason; provide ci_report and pr_url. Complete with needs_changes if CI failed due to task changes and provide workspace_path plus ci_report. Complete with retry_later when checks cannot be inspected because GitHub/CI is still starting, rate-limited, temporarily unavailable, or an expected run has not appeared yet; provide pr_url, branch_name, workspace_path, and ci_report. Complete with blocked only if checks cannot be inspected and retrying would be unsafe or misleading; provide blocker_reason.",
       "parameters": [
         {
           "key": "pr_url",
-          "description": "URL of the created or updated pull request."
+          "description": "URL of the pull request."
         },
         {
           "key": "branch_name",
@@ -611,7 +627,7 @@
         },
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree used for PR creation."
+          "description": "Path to the worktree or checkout used for PR creation."
         }
       ]
     },
@@ -713,6 +729,60 @@
         {
           "key": "blocker_reason",
           "description": "Why CI monitoring cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-a3f77960-2d03-4750-b33d-d2fb6162a6a0",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-aabeeadc-dc6d-44be-bac3-85994483ec8a",
+      "key": "pr_fix",
+      "target_node_id": "node-d9f0e401-7a7b-4993-99a1-a18d3d075fee",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix recoverable Puber PR creation/update issues only.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Previous PR blocker: {{.Params.blocker_reason}}. Work in {{.Params.workspace_path}}. Apply only the minimum changes needed to make the task branch/PR shippable, such as rebasing, resolving merge conflicts, fixing branch metadata, or repairing the PR-ready commit set. Do not expand product scope. Verify narrowly, then continue through the workflow's normal review/compliance path. Complete with blocked only if the recovery is unsafe or requires user credentials/policy changes.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the worktree or checkout used for PR creation."
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Why PR creation/update cannot complete, in the task language when practical."
+        }
+      ]
+    },
+    {
+      "id": "edge-a183ffc5-f22d-46e2-bb71-84e217252667",
+      "workflow_id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
+      "transition_group_id": "group-82060b25-1237-42ba-a1f6-f608cc248c9e",
+      "key": "ci_retry",
+      "target_node_id": "node-796ba26f-05bd-4ebf-99a9-b39cabf09d51",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Retry Puber PR check monitoring after an approved temporary CI/GitHub wait.\n\nRead .kent/project-contract.md and AGENTS.md first. Previous CI status: {{.Params.ci_report}}. Inspect PR {{.Params.pr_url}} on branch {{.Params.branch_name}} again. Do not merge the PR. Do not push new commits from this node.\n\nComplete with done if CI/checks pass, are absent, or are intentionally skipped with a clear reason; provide ci_report and pr_url. Complete with needs_changes if CI failed due to task changes and provide workspace_path plus ci_report. Complete with retry_later if CI/GitHub is still temporarily unavailable and provide pr_url, branch_name, workspace_path, and ci_report. Complete with blocked only if retrying is no longer useful or safe; provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "pr_url",
+          "description": "URL of the created or updated pull request."
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the pushed task branch."
+        },
+        {
+          "key": "workspace_path",
+          "description": "Workspace containing the test coverage implementation."
+        },
+        {
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
         }
       ]
     }
@@ -840,7 +910,7 @@
         "possible_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the created or updated pull request."
+            "description": "URL of the pull request."
           },
           {
             "name": "branch_name",
@@ -848,7 +918,7 @@
           },
           {
             "name": "workspace_path",
-            "description": "Path to the task workspace or worktree used for PR creation."
+            "description": "Path to the worktree or checkout used for PR creation."
           },
           {
             "name": "pr_report",
@@ -878,6 +948,10 @@
           {
             "name": "blocker_reason",
             "description": "Why CI monitoring cannot complete, in the task language when practical."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed task branch."
           }
         ]
       },
@@ -1064,7 +1138,7 @@
         "required_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the created or updated pull request."
+            "description": "URL of the pull request."
           },
           {
             "name": "branch_name",
@@ -1072,7 +1146,7 @@
           },
           {
             "name": "workspace_path",
-            "description": "Path to the task workspace or worktree used for PR creation."
+            "description": "Path to the worktree or checkout used for PR creation."
           }
         ]
       },
@@ -1126,6 +1200,40 @@
           {
             "name": "blocker_reason",
             "description": "Why CI monitoring cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-aabeeadc-dc6d-44be-bac3-85994483ec8a",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout used for PR creation."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why PR creation/update cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-82060b25-1237-42ba-a1f6-f608cc248c9e",
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created or updated pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed task branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           }
         ]
       }
@@ -1479,7 +1587,7 @@
         "required_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the created or updated pull request."
+            "description": "URL of the pull request."
           },
           {
             "name": "branch_name",
@@ -1487,7 +1595,7 @@
           },
           {
             "name": "workspace_path",
-            "description": "Path to the task workspace or worktree used for PR creation."
+            "description": "Path to the worktree or checkout used for PR creation."
           }
         ]
       },
@@ -1586,6 +1694,74 @@
           {
             "name": "blocker_reason",
             "description": "Why CI monitoring cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-a3f77960-2d03-4750-b33d-d2fb6162a6a0",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the worktree or checkout used for PR creation."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Why PR creation/update cannot complete, in the task language when practical."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-a183ffc5-f22d-46e2-bb71-84e217252667",
+        "input_bindings": [
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created or updated pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the pushed task branch."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Workspace containing the test coverage implementation."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           }
         ]
       }
