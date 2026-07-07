@@ -3,7 +3,7 @@
     "id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
-    "version": 45
+    "version": 53
   },
   "nodes": [
     {
@@ -233,7 +233,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run the Puber one-flow release process.\n\nRead .kent/project-contract.md, .kent/commands/release.md, and AGENTS.md first. Treat the task body as release intent. Default to next minor release from origin/master. Use patch only when explicitly requested; use major only when explicitly requested.\n\nFetch origin/master and tags, compute the target version, create or reuse release/<version>, update app/build.gradle.kts currentVersion, commit the bump, and verify with focused compile checks. If local release signing secrets are unavailable, record that production packaging could not be locally proven, but do not block the version-bump PR solely for missing local signing secrets. Do not create or push a release tag in this node.\n\nComplete with compliance when the version bump branch is ready and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, and verification_summary. Complete with blocked and provide blocker_reason if the release cannot be prepared safely."
+      "prompt_template": "Run the Puber one-flow release process.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. Treat the task body as release intent. Default to next minor release from origin/master. Use patch only when explicitly requested; use major only when explicitly requested. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent.\n\nFetch origin/master and tags, compute the target version, create or reuse release/<version>, update app/build.gradle.kts currentVersion, commit the bump, and verify with focused compile checks. If local release signing secrets are unavailable, record that production packaging could not be locally proven, but do not block the version-bump PR solely for missing local signing secrets. Do not create or push a release tag in this node.\n\nComplete with compliance when the version bump branch is ready and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, and verification_summary. Complete with blocked and provide blocker_reason if the release cannot be prepared safely."
     },
     {
       "id": "edge-94356a5f-0d82-4353-a5bd-cf00d8c420fb",
@@ -246,7 +246,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run mandatory Puber Compliance Review for the prepared release.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, .kent/commands/release.md, and AGENTS.md first. Reviewed scope: release {{.Params.release_version}} ({{.Params.release_type}}) on branch {{.Params.release_branch}} in workspace {{.Params.workspace_path}}, commit {{.Params.version_bump_commit}}, intended tag {{.Params.release_tag}}, verification {{.Params.verification_summary}}. Review only compliance with release rules, task requirements, AGENTS.md, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when release preparation must be fixed. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "prompt_template": "Run mandatory Puber Compliance Review for the prepared release.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Reviewed scope: release {{.Params.release_version}} ({{.Params.release_type}}) on branch {{.Params.release_branch}} in workspace {{.Params.workspace_path}}, commit {{.Params.version_bump_commit}}, intended tag {{.Params.release_tag}}, verification {{.Params.verification_summary}}. Review only compliance with release rules, task requirements, AGENTS.md, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when release preparation must be fixed. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
       "parameters": [
         {
           "key": "release_version",
@@ -307,7 +307,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Create or update the Puber release version-bump PR.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, .kent/commands/release.md, and AGENTS.md first. Compliance result: {{.Params.compliance_report}}. Release context from preparation: version {{.Params.compliance.release_version}}, type {{.Params.compliance.release_type}}, branch {{.Params.compliance.release_branch}}, tag {{.Params.compliance.release_tag}}, workspace {{.Params.compliance.workspace_path}}.\n\nCommit only release-task changes if anything remains uncommitted, push {{.Params.compliance.release_branch}} to origin, and create or update a GitHub PR for the version bump. Do not merge the PR. Do not push directly to master. Do not create or push a release tag in this node.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, workspace_path, release_version, and release_tag. Complete with blocked if PR creation/update cannot be completed safely and provide blocker_reason.",
+      "prompt_template": "Create or update the Puber release version-bump PR.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Compliance result: {{.Params.compliance_report}}. Release context from preparation: version {{.Params.compliance.release_version}}, type {{.Params.compliance.release_type}}, branch {{.Params.compliance.release_branch}}, tag {{.Params.compliance.release_tag}}, workspace {{.Params.compliance.workspace_path}}.\n\nCommit only release-task changes if anything remains uncommitted, push {{.Params.compliance.release_branch}} to origin, and create or update a GitHub PR for the version bump. Do not merge the PR. Do not push directly to master. Do not create or push a release tag in this node.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, workspace_path, release_version, and release_tag. Complete with blocked if PR creation/update cannot be completed safely and provide blocker_reason.",
       "parameters": [
         {
           "key": "compliance_report",
@@ -326,7 +326,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix Puber release preparation compliance violations only.\n\nRead .kent/project-contract.md, .kent/commands/release.md, and .kent/commands/compliance-review.md first. Apply only the minimum changes required by {{.Params.compliance_report}} in workspace {{.Params.workspace_path}}. Verify narrowly, then complete with compliance and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, and verification_summary. Complete with blocked and provide blocker_reason if unsafe or missing input.",
+      "prompt_template": "Fix Puber release preparation compliance violations only.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and .kent/commands/compliance-review.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Apply only the minimum changes required by {{.Params.compliance_report}} in workspace {{.Params.workspace_path}}. Verify narrowly, then complete with compliance and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, and verification_summary. Complete with blocked and provide blocker_reason if unsafe or missing input.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -367,7 +367,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor the Puber release PR checks.\n\nRead .kent/project-contract.md and .kent/commands/release.md first. Inspect PR {{.Params.pr_url}} for release {{.Params.release_version}} / tag {{.Params.release_tag}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with publish when checks pass or are intentionally absent; this transition requires user approval before tag publication. Provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with needs_changes if checks failed due to release changes and provide workspace_path plus ci_report. Complete with blocked and provide blocker_reason if checks cannot be inspected and risk cannot be accepted.",
+      "prompt_template": "Monitor the Puber release PR checks.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, and .kent/commands/release-tag.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Inspect PR {{.Params.pr_url}} for release {{.Params.release_version}} / tag {{.Params.release_tag}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with publish when checks pass or are intentionally absent; this transition requires user approval before tag publication. Provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with needs_changes if checks failed due to release changes and provide workspace_path plus ci_report. Complete with blocked and provide blocker_reason if checks cannot be inspected and risk cannot be accepted.",
       "parameters": [
         {
           "key": "pr_url",
@@ -420,7 +420,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Publish the approved Puber release tag.\n\nRead .kent/project-contract.md, .kent/commands/release.md, .kent/commands/release-tag.md, and AGENTS.md first. Before creating any tag, fetch origin/master and verify that PR {{.Params.pr_url}} is merged and origin/master contains currentVersion {{.Params.release_version}}. If the PR is not merged or master does not contain the version bump, complete blocked with blocker_reason. Verify {{.Params.release_tag}} does not exist locally/remotely unless it already points to the intended master commit. Create and push {{.Params.release_tag}} on the verified origin/master commit. Do not merge PRs and do not push directly to master.\n\nComplete with monitor and provide release_version, release_tag, target_commit, pr_url, and tag_push_status. Complete with blocked and provide blocker_reason if publication is unsafe.",
+      "prompt_template": "Publish the approved Puber release tag.\n\nRead .kent/project-contract.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Before creating any tag, fetch origin/master and verify that PR {{.Params.pr_url}} is merged and origin/master contains currentVersion {{.Params.release_version}}. If the PR is not merged or master does not contain the version bump, complete blocked with blocker_reason. Verify {{.Params.release_tag}} does not exist locally/remotely unless it already points to the intended master commit. Create and push {{.Params.release_tag}} on the verified origin/master commit. Do not merge PRs and do not push directly to master.\n\nComplete with monitor and provide release_version, release_tag, target_commit, pr_url, and tag_push_status. Complete with blocked and provide blocker_reason if publication is unsafe.",
       "parameters": [
         {
           "key": "pr_url",
@@ -459,7 +459,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix Puber release PR CI failures only.\n\nRead .kent/project-contract.md and .kent/commands/release.md first. Apply only the minimum changes required by CI report {{.Params.ci_report}} in workspace {{.Params.workspace_path}}. Verify narrowly, then complete with compliance and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, and verification_summary. Complete with blocked and provide blocker_reason if unsafe or missing input.",
+      "prompt_template": "Fix Puber release PR CI failures only.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, and .kent/commands/release-tag.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Apply only the minimum changes required by CI report {{.Params.ci_report}} in workspace {{.Params.workspace_path}}. Verify narrowly, then complete with compliance and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, and verification_summary. Complete with blocked and provide blocker_reason if unsafe or missing input.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -500,7 +500,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor Puber release automation after tag publication.\n\nRead .kent/project-contract.md and .kent/commands/release.md first. Check available GitHub/CI/release automation for {{.Params.release_tag}} when configured. If no automation is configured, report that monitoring is skipped. Complete with done if green or intentionally skipped; complete with blocked and provide blocker_reason if automation fails or cannot be inspected.",
+      "prompt_template": "Monitor Puber release automation after tag publication.\n\nRead .kent/project-contract.md and .kent/commands/release-tag.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Check available GitHub/CI/release automation for {{.Params.release_tag}} when configured. If no automation is configured, report that monitoring is skipped. Complete with done if green or intentionally skipped; complete with blocked and provide blocker_reason if automation fails or cannot be inspected.",
       "parameters": [
         {
           "key": "release_version",
