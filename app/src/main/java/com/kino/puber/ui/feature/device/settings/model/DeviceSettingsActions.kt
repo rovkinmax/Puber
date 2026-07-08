@@ -17,6 +17,7 @@ internal sealed class DeviceSettingsActions : UIAction {
     data object ToggleSurroundAudio : DeviceSettingsActions()
     data object ToggleWatchedIndicators : DeviceSettingsActions()
     data class ChangeNavigationMode(val mode: NavigationMode) : DeviceSettingsActions()
+    data object ToggleAutoUpdateCheck : DeviceSettingsActions()
     data object OpenApiDomainDialog : DeviceSettingsActions()
     data object CloseApiDomainDialog : DeviceSettingsActions()
     data class SaveApiDomain(val domain: String) : DeviceSettingsActions()

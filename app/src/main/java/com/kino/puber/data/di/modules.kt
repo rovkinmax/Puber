@@ -5,9 +5,14 @@ package com.kino.puber.data.di
 import android.net.ConnectivityManager
 import com.kino.puber.core.session.SessionEventBus
 import com.kino.puber.data.api.KinoPubApiClient
+import com.kino.puber.data.repository.AppUpdateDownloader
+import com.kino.puber.data.repository.AppUpdateInstaller
+import com.kino.puber.data.repository.AppUpdatePreferencesRepository
+import com.kino.puber.data.repository.AppUpdateRepository
 import com.kino.puber.data.repository.CryptoPreferenceRepository
 import com.kino.puber.data.repository.DeviceInfoRepository
 import com.kino.puber.data.repository.DeviceSettingsRepository
+import com.kino.puber.data.repository.IAppUpdateRepository
 import com.kino.puber.data.repository.ICryptoPreferenceRepository
 import com.kino.puber.data.repository.IDeviceInfoRepository
 import com.kino.puber.data.repository.IDeviceSettingsRepository
@@ -58,6 +63,10 @@ private const val MIB = 1024L * 1024L
 private const val MEDIA_CACHE_SIZE_BYTES = 512L * MIB
 
 val repositoryModule = module {
+    singleOf(::AppUpdateRepository) { bind<IAppUpdateRepository>() }
+    singleOf(::AppUpdatePreferencesRepository)
+    singleOf(::AppUpdateInstaller)
+    singleOf(::AppUpdateDownloader)
     singleOf(::KinoPubRepository) { bind<IKinoPubRepository>() }
     singleOf(::CryptoPreferenceRepository) { bind<ICryptoPreferenceRepository>() }
     singleOf(::DeviceInfoRepository) { bind<IDeviceInfoRepository>() }

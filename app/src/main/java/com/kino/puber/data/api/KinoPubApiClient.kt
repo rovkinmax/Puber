@@ -23,6 +23,7 @@ import com.kino.puber.data.api.models.DeviceResponse
 import com.kino.puber.data.api.models.DeviceSettings
 import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Genre
+import com.kino.puber.data.api.models.GitHubReleaseResponse
 import com.kino.puber.data.api.models.History
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemFiles
@@ -63,13 +64,20 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.Cache
 import okhttp3.OkHttpClient
@@ -108,7 +116,7 @@ class KinoPubApiClient(
                     BearerTokens(accessToken.orEmpty(), refreshToken.orEmpty())
                 }
 
-                sendWithoutRequest { true }
+                sendWithoutRequest { request -> shouldSendKinoPubToken(request.url.host) }
 
                 refreshTokens {
                     val refreshToken = cryptoPreferenceRepository.getRefreshToken().orEmpty()
@@ -823,6 +831,102 @@ class KinoPubApiClient(
         httpClient.get("${KinoPubConfig.EXTRA_API_BASE_URL}api2/v1.1/items/collections/$itemId")
     }
 
+    // App update API
+
+    suspend fun getLatestGitHubRelease(owner: String, repo: String): Result<GitHubReleaseResponse> = apiCall {
+        httpClient.get("https://api.github.com/repos/$owner/$repo/releases/latest") {
+            headers {
+                append("Accept", "application/vnd.github+json")
+            }
+        }
+    }
+
+    suspend fun downloadUpdateAsset(
+        url: String,
+        targetFile: File,
+        onProgress: (Int) -> Unit,
+    ): Result<File> = withContext(Dispatchers.IO) {
+        val tempFile = File("${targetFile.absolutePath}.download")
+        try {
+            targetFile.parentFile?.mkdirs()
+            if (tempFile.exists() && !tempFile.delete()) {
+                throw IllegalStateException("Unable to delete stale update download")
+            }
+
+            val response = httpClient.get(url)
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException("Update download failed with HTTP ${response.status.value}")
+            }
+
+            val totalBytes = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+            val channel = response.bodyAsChannel()
+            val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
+            var downloadedBytes = 0L
+            var lastProgress = -1
+
+            fun dispatchProgress(percent: Int) {
+                val coercedPercent = percent.coerceIn(0, 100)
+                if (coercedPercent != lastProgress) {
+                    lastProgress = coercedPercent
+                    onProgress(coercedPercent)
+                }
+            }
+
+            if (totalBytes != null && totalBytes > 0L) {
+                dispatchProgress(0)
+            }
+
+            tempFile.outputStream().buffered().use { output ->
+                while (!channel.isClosedForRead) {
+                    val bytesRead = channel.readAvailable(buffer)
+                    if (bytesRead == -1) {
+                        break
+                    }
+
+                    output.write(buffer, 0, bytesRead)
+                    downloadedBytes += bytesRead
+
+                    if (totalBytes != null && totalBytes > 0L) {
+                        dispatchProgress(((downloadedBytes * 100L) / totalBytes).toInt())
+                    }
+                }
+            }
+
+            if (!tempFile.renameTo(targetFile)) {
+                if (targetFile.exists() && !targetFile.delete()) {
+                    throw IllegalStateException("Unable to replace existing update download")
+                }
+                if (!tempFile.renameTo(targetFile)) {
+                    throw IllegalStateException("Unable to finalize update download")
+                }
+            }
+
+            dispatchProgress(100)
+            Result.success(targetFile)
+        } catch (error: CancellationException) {
+            tempFile.delete()
+            throw error
+        } catch (error: Exception) {
+            tempFile.delete()
+            Result.failure(error)
+        }
+    }
+
+    suspend fun getUpdateChecksum(url: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val response = httpClient.get(url)
+            if (!response.status.isSuccess()) {
+                throw IllegalStateException("Update checksum download failed with HTTP ${response.status.value}")
+            }
+
+            Result.success(response.bodyAsText())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     // Helper method for API calls
 
     suspend inline fun <reified T> apiCall(
@@ -830,6 +934,8 @@ class KinoPubApiClient(
     ): Result<T> = try {
         val response = block()
         Result.success(response.body<T>())
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         Result.failure(e)
     }
@@ -967,10 +1073,16 @@ class KinoPubApiClient(
         }
     }
 
+    private fun shouldSendKinoPubToken(host: String): Boolean {
+        return host == Url(KinoPubConfig.MAIN_API_BASE_URL).host ||
+            host == Url(KinoPubConfig.OAUTH_BASE_URL).host
+    }
+
     companion object {
         private const val MAX_RETRIES = 3
         private const val CONNECT_TIMEOUT = 60_000L
         private const val READ_TIMEOUT = 120_000L
         private const val CACHE_SIZE = 50L * 1024 * 1024 // 50 MB
+        private const val DOWNLOAD_BUFFER_SIZE = 8 * 1024
     }
 }

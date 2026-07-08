@@ -26,5 +26,6 @@ internal sealed interface DeviceSettingsState {
         val preferSurroundAudio: Boolean = false,
         val watchedIndicatorsEnabled: Boolean = true,
         val navigationMode: NavigationMode = NavigationMode.TopTabs,
+        val autoUpdateCheckEnabled: Boolean = true,
     ) : DeviceSettingsState
 }

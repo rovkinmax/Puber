@@ -167,6 +167,19 @@ private fun SuccessSavingTogglePreview() = PuberTheme {
     )
 }
 
+@Preview(name = "Success — updates disabled", device = TV_1080p)
+@Composable
+private fun SuccessUpdatesDisabledPreview() = PuberTheme {
+    DeviceSettingsContent(
+        state = DeviceSettingsState.Success(
+            settings = previewAllSettings,
+            device = previewDevice,
+            autoUpdateCheckEnabled = false,
+        ),
+        apiDomain = previewApiDomain,
+    )
+}
+
 @Preview(name = "Success — unsupported items", device = TV_1080p)
 @Composable
 private fun UnsupportedPreview() = PuberTheme {

@@ -3,11 +3,17 @@ package com.kino.puber.ui.feature.root.component
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.lifecycle.Lifecycle
+import com.kino.puber.core.di.LocalPuberKoinScope
+import com.kino.puber.core.di.puberViewModel
 import androidx.tv.material3.Surface
 import com.kino.puber.core.session.SessionEvent
 import com.kino.puber.core.session.SessionEventBus
+import com.kino.puber.core.ui.uikit.component.LifecycleAction
 import com.kino.puber.core.ui.model.VideoItemTypeMapper
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppLauncher
@@ -17,9 +23,12 @@ import com.kino.puber.core.ui.navigation.component.FlowComponent
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.ui.ScreensImpl
-import com.kino.puber.core.di.LocalPuberKoinScope
+import com.kino.puber.ui.feature.update.component.UpdatePromptOverlay
+import com.kino.puber.ui.feature.update.model.UpdatePromptAction
+import com.kino.puber.ui.feature.update.vm.UpdatePromptVM
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.scopedOf
+import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.core.scope.ScopeID
 import org.koin.dsl.module
@@ -34,6 +43,7 @@ private fun buildFlowModule(
         scoped<Screens> { ScreensImpl }
         scoped { VideoItemUIMapper(get(), get()) }
         scopedOf(::VideoItemTypeMapper)
+        viewModelOf(::UpdatePromptVM)
     }
 }
 
@@ -50,6 +60,23 @@ private fun SessionExpiredHandler() {
             }
         }
     }
+}
+
+@Composable
+private fun UpdatePromptHost() {
+    val vm = puberViewModel<UpdatePromptVM>()
+    val state by vm.collectViewState()
+    val onAction = remember(vm) { vm::onAction }
+
+    LifecycleAction(
+        event = Lifecycle.Event.ON_RESUME,
+        onAction = onAction,
+        action = UpdatePromptAction.OnResume,
+    )
+    UpdatePromptOverlay(
+        state = state,
+        onAction = onAction,
+    )
 }
 
 @Composable
@@ -71,6 +98,7 @@ fun App() {
                 },
             ) {
                 SessionExpiredHandler()
+                UpdatePromptHost()
             }
         }
     }
