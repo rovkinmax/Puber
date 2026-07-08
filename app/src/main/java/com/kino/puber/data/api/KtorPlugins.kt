@@ -6,6 +6,7 @@ import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.request
 import io.ktor.content.TextContent
+import io.ktor.http.HttpHeaders
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.availableForRead
 import io.ktor.utils.io.core.build
@@ -81,15 +82,28 @@ val CurlLogger = createClientPlugin("CurlLogger") {
     }
 
     onResponse { response ->
-        val responseBody = response.bodyAsChannel()
-        val content = readTextLimited(responseBody, maxBodySize)
-
         log("<-- ${response.status} ${response.request.url}")
         response.headers.entries().forEach { (key, values) ->
             values.forEach { value ->
                 log("$key: $value")
             }
         }
+
+        if (
+            shouldSkipBodyLogging(
+                host = response.request.url.host,
+                path = response.request.url.encodedPath,
+                contentType = response.headers[HttpHeaders.ContentType],
+            )
+        ) {
+            log("")
+            log("<body logging skipped>")
+            log("<-- END HTTP")
+            return@onResponse
+        }
+
+        val responseBody = response.bodyAsChannel()
+        val content = readTextLimited(responseBody, maxBodySize)
 
         log("")
         log(content)
@@ -116,4 +130,23 @@ private suspend fun readTextLimited(channel: ByteReadChannel, maxSize: Long): St
     } catch (_: Exception) {
         "<binary body or decode error>"
     }
+}
+
+private fun shouldSkipBodyLogging(host: String, path: String, contentType: String?): Boolean {
+    val normalizedHost = host.lowercase()
+    val normalizedPath = path.lowercase()
+    val normalizedContentType = contentType.orEmpty().lowercase()
+
+    return normalizedHost.isGitHubHost() ||
+        normalizedPath.endsWith(".apk") ||
+        normalizedPath.endsWith(".sha256") ||
+        normalizedContentType.contains("application/vnd.android.package-archive") ||
+        normalizedContentType.startsWith("application/octet-stream")
+}
+
+private fun String.isGitHubHost(): Boolean {
+    return this == "github.com" ||
+        endsWith(".github.com") ||
+        this == "githubusercontent.com" ||
+        endsWith(".githubusercontent.com")
 }

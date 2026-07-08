@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_updates_title">Обновления</string>
+    <string name="settings_auto_update_check">Автоматически проверять обновления</string>
+    <string name="settings_auto_update_check_subtitle">Puber будет искать новую версию при запуске приложения.</string>
+    <string name="update_prompt_title">Доступна новая версия</string>
+    <string name="update_prompt_version">Версия: %1$s</string>
+    <string name="update_prompt_notes_label">Что нового</string>
+    <string name="update_prompt_update">Обновить</string>
+    <string name="update_prompt_not_now">Не сейчас</string>
+    <string name="update_prompt_downloading">Загружаю обновление… %1$d%%</string>
+    <string name="update_prompt_permission_required_title">Разреши установку обновления</string>
+    <string name="update_prompt_permission_required">Android требует разрешить установку приложений из Puber. Открой настройки, включи разрешение и вернись в приложение.</string>
+    <string name="update_prompt_open_settings">Открыть настройки</string>
+    <string name="update_prompt_retry_install">Повторить установку</string>
+    <string name="update_prompt_retry">Повторить</string>
+    <string name="update_prompt_error_title">Не удалось обновить</string>
+    <string name="update_prompt_download_failed">Не удалось скачать обновление. Проверь подключение и попробуй еще раз.</string>
+    <string name="update_prompt_checksum_failed">Проверка файла обновления не прошла. Попробуй скачать обновление заново.</string>
+    <string name="update_prompt_install_failed">Не удалось открыть установщик Android. Попробуй еще раз.</string>
+    <string name="update_prompt_storage_unavailable">Нет доступа к папке загрузки обновления. Проверь хранилище устройства и попробуй еще раз.</string>
+</resources>

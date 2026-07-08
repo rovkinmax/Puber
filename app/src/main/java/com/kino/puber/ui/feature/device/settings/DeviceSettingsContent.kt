@@ -283,6 +283,26 @@ private fun DeviceSettingsList(
             )
         }
 
+        // App updates section
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        item {
+            Text(
+                text = stringResource(R.string.settings_updates_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        item {
+            LocalToggleItem(
+                label = stringResource(R.string.settings_auto_update_check),
+                description = stringResource(R.string.settings_auto_update_check_subtitle),
+                checked = state.autoUpdateCheckEnabled,
+                onToggle = { onAction(DeviceSettingsActions.ToggleAutoUpdateCheck) },
+            )
+        }
+
         // Debug section
         item {
             Spacer(modifier = Modifier.height(16.dp))

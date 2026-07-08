@@ -19,6 +19,7 @@ import com.kino.puber.domain.interactor.api.ApiDomainUpdateResult
 import com.kino.puber.domain.interactor.device.DeviceSettingType
 import com.kino.puber.domain.interactor.device.IDeviceInfoInteractor
 import com.kino.puber.domain.interactor.device.IDeviceSettingInteractor
+import com.kino.puber.domain.interactor.update.IAppUpdateInteractor
 import com.kino.puber.ui.feature.device.settings.mappers.DeviceCapabilities
 import com.kino.puber.ui.feature.device.settings.mappers.DeviceUiSettingsMapper
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingUIModel
@@ -34,6 +35,7 @@ internal class DeviceSettingsVM(
     private val playerPreferencesRepository: PlayerPreferencesRepository,
     private val navigationPreferencesRepository: NavigationPreferencesRepository,
     private val apiDomainInteractor: ApiDomainInteractor,
+    private val appUpdateInteractor: IAppUpdateInteractor,
     override val errorHandler: ErrorHandler,
     private val resources: ResourceProvider,
     router: AppRouter,
@@ -75,6 +77,7 @@ internal class DeviceSettingsVM(
                                 preferSurroundAudio = playerPreferencesRepository.preferSurroundAudio,
                                 watchedIndicatorsEnabled = playerPreferencesRepository.watchedIndicatorsEnabled,
                                 navigationMode = navigationPreferencesRepository.getNavigationMode(),
+                                autoUpdateCheckEnabled = appUpdateInteractor.isAutoCheckEnabled(),
                             )
                         )
                     )
@@ -100,6 +103,7 @@ internal class DeviceSettingsVM(
             DeviceSettingsActions.ToggleSurroundAudio -> toggleSurroundAudio()
             DeviceSettingsActions.ToggleWatchedIndicators -> toggleWatchedIndicators()
             is DeviceSettingsActions.ChangeNavigationMode -> onChangeNavigationMode(action.mode)
+            DeviceSettingsActions.ToggleAutoUpdateCheck -> toggleAutoUpdateCheck()
             DeviceSettingsActions.OpenApiDomainDialog -> openApiDomainDialog()
             DeviceSettingsActions.CloseApiDomainDialog -> closeApiDomainDialog()
             is DeviceSettingsActions.SaveApiDomain -> saveApiDomain(action.domain)
@@ -272,6 +276,14 @@ internal class DeviceSettingsVM(
         if (currentState.navigationMode == mode) return
         navigationPreferencesRepository.setNavigationMode(mode)
         showMessage(resources.getString(R.string.device_settings_restart_required))
+    }
+
+    private fun toggleAutoUpdateCheck() {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        val newValue = !currentState.autoUpdateCheckEnabled
+        appUpdateInteractor.setAutoCheckEnabled(newValue)
+        updateViewState(stateValue.copy(state = currentState.copy(autoUpdateCheckEnabled = newValue)))
     }
 
     private fun onUnlinkDevice() {
