@@ -15,10 +15,13 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - Compliance Review produces `compliance_report`.
 - PR creation produces `pr_url`, `branch_name`, and `workspace_path`; no-diff/report-only PR skips produce `pr_report`.
 - PR/CI monitoring produces `ci_report`.
+- Waiting PR produces `waiting_reason` while the PR is open, `merge_report` after GitHub reports `state=MERGED`, or
+  `pr_report` when PR review/conflict/post-CI feedback must be fixed.
 - Release preparation produces `release_version`, `release_type`, `release_branch`, `release_tag`, `workspace_path`,
   `version_bump_commit`, and `verification_summary`.
 - Release publication produces `target_commit`, `tag_push_status`, and `release_report`.
-- Every blocked transition must provide `blocker_reason`.
+- Every recoverable wait transition must provide `blocker_reason` or `waiting_reason`.
+- Explicit task cancellation produces `closure_reason` or `cleanup_reason`.
 - Cleanup produces `cleanup_report`.
 
 ## Command Contract
@@ -62,8 +65,8 @@ to project-local capability roles:
   that serial with `adb -s`.
 - Starting another emulator is allowed only when the task/user explicitly permits parallel device usage and the agent
   acquires a distinct lock for it.
-- Physical devices, including a real TV, are forbidden unless the task/user explicitly names or allows that physical
-  device. Smoke agents must never rely on adb's default target selection.
+- Physical devices, including a real TV, are forbidden unless the task/user explicitly provides permission and an
+  explicit serial for that physical device. Smoke agents must never rely on adb's default target selection.
 - Device smoke tests must always install the freshly built dev APK before launch, even if the user says the app is already
   running.
 - Smoke agents must build with `:app:assembleDevDebug` and install with explicit
@@ -82,8 +85,11 @@ Default cleanup is conservative because deleting Kent-managed task worktrees can
 worktree metadata until Kent rebind behavior is fixed.
 
 - `cleanup_managed_task_worktrees`: `false` by default.
-- Code-producing workflow cleanup must happen after PR creation/update and CI monitoring, or after an explicit
-  no-diff/report-only `pr_report`.
+- Code-producing workflow cleanup must happen after `waiting_pr` confirms the PR is merged through GitHub state, or after
+  an explicit no-diff/report-only `pr_report`.
+- Release cleanup must happen after tag publication is monitored, or after explicit user cancellation.
+- Cleanup after a PR path must verify `gh pr view --json state,mergedAt,mergeCommit,headRefName,baseRefName,url` when
+  GitHub CLI is available. Do not rely only on git ancestry because squash merges are allowed.
 - Cleanup nodes should report safe-to-remove worktrees and branches unless explicit project/user policy enables removal.
 - Destructive cleanup requires proof that worktrees are clean and branch commits are recoverable from remote refs or a
   merged PR.
@@ -91,19 +97,31 @@ worktree metadata until Kent rebind behavior is fixed.
 
 ## Recoverable Blocking Policy
 
-`blocked` is a terminal sink and should be used only when continuing would be unsafe without changing task scope,
-credentials, or project policy. Temporary external problems must use recoverable transitions instead:
+Recoverable blockers must not use a terminal node. The workflow keeps the task in its current stage:
 
-- `retry_later`: CI/GitHub is still starting or unavailable, device/MCP/emulator access is temporarily unavailable, or
-  release automation is still starting. This transition must require user approval before retrying the same node.
-- `needs_changes`: the task branch, PR, CI fallout, or release branch needs recoverable fixes such as rebase, conflict
-  resolution, or branch metadata repair. This transition must require user approval before returning to `fix` or
-  `prepare`.
-- `not_ready`: release tag publication was approved before the PR was merged or visible on `origin/master`; return to
-  `ci_monitor` after user action instead of ending in terminal `blocked`.
+- `needs_user_action`: the current stage cannot safely continue until the user or an external system resolves a blocker.
+  The transition is approval-gated, loops back to the same node, and must provide `blocker_reason`.
+- `needs_changes`: audit/review/compliance/CI/PR feedback needs task-scoped fixes. Internal fix loops should not require
+  approval; `ship_pr -> needs_changes` stays approval-gated because branch recovery can involve rebase or force-push
+  policy.
 
-Already terminal-blocked tasks cannot be moved back to `backlog` with `kent task move`; create a replacement task with
-the previous task context when recovery is needed after the terminal transition was applied.
+Terminal `wont_do` is only for explicit user cancellation or "not planned" decisions and requires approval. It is not a
+recoverable blocker.
+
+## PR Waiting Policy
+
+`done` is reserved for delivered work, not "agent finished." For PR-producing workflows:
+
+- `ci_monitor` routes successful or intentionally skipped checks to `waiting_pr`.
+- `waiting_pr` checks the pull request through GitHub. It must not merge, push, tag, or clean up.
+- If the PR is still open, `waiting_pr` writes a task comment with the current PR status and takes the approval-gated
+  `needs_user_action` self-loop.
+- If the PR has review comments, conflicts, or post-CI regressions that fit the task scope, `waiting_pr` takes
+  `needs_changes` back to `fix` or `prepare`.
+- If GitHub reports `state=MERGED`, `waiting_pr` advances to cleanup for normal workflows.
+- Release workflows route `waiting_pr -> pr_merged -> publish` with human approval before tag publication.
+- `close_without_merge` is approval-gated and valid only when the latest user comment explicitly says to close, cancel, or
+  skip the PR.
 
 ## Release Policy
 
@@ -111,8 +129,9 @@ Use `Puber Release` for human-facing release tasks.
 
 - Default release type is next minor from `origin/master`.
 - Patch and major releases require explicit task wording.
-- The workflow prepares the version bump, runs Compliance Review, creates/updates a PR, monitors CI, then publishes the
-  tag only after explicit approval and after verifying the release PR is merged into `origin/master`.
+- The workflow prepares the version bump, runs Compliance Review, creates/updates a PR, monitors CI, waits in
+  `waiting_pr`, then publishes the tag only after explicit approval and after verifying the release PR is merged into
+  `origin/master`.
 - Never create or push a release tag before the version bump is present on `origin/master`.
 - Legacy split workflows (`Puber Release Preparation`, `Puber Release Publication`) are not intended for new tasks.
 
@@ -122,11 +141,12 @@ Use generic workflow graph keys and project-prefixed live workflow names:
 
 - Live workflow names: `Puber Feature Delivery`, `Puber Refactor With Audit`, `Puber Bugfix Investigation`,
   `Puber Dependency Update`, `Puber Test Coverage`, `Puber Smoke Test`, `Puber Release`.
-- Node keys: `plan`, `implement`, `audit`, `fix`, `smoke`, `prepare`, `compliance`, `ship_pr`, `ci_monitor`, `publish`,
-  `monitor`, `cleanup`, `done`, `blocked`.
-- Transition IDs: `implement`, `continue_implementation`, `audit`, `needs_changes`, `retry_later`, `not_ready`, `smoke`,
-  `ship_pr`, `monitor_ci`, `done`, `blocked`.
+- Node keys: `plan`, `implement`, `audit`, `fix`, `smoke`, `prepare`, `compliance`, `ship_pr`, `ci_monitor`,
+  `waiting_pr`, `publish`, `monitor`, `cleanup`, `done`, `wont_do`.
+- Transition IDs: `implement`, `continue_implementation`, `audit`, `needs_changes`, `needs_user_action`, `smoke`,
+  `compliance`, `ship_pr`, `monitor_ci`, `waiting_pr`, `pr_merged`, `close_without_merge`, `no_pr`,
+  `release_published`, `done`, `wont_do`.
 - Portable params: `workspace_path`, `plan_path`, `audit_report`, `review_report`, `verification_report`, `pr_url`,
-  `branch_name`, `pr_report`, `ci_report`, `compliance_report`, `release_version`, `release_type`, `release_branch`,
-  `release_tag`, `version_bump_commit`, `target_commit`, `tag_push_status`, `release_report`, `blocker_reason`,
-  `cleanup_report`.
+  `branch_name`, `pr_report`, `ci_report`, `compliance_report`, `waiting_reason`, `merge_report`, `cleanup_reason`,
+  `closure_reason`, `release_version`, `release_type`, `release_branch`, `release_tag`, `version_bump_commit`,
+  `target_commit`, `tag_push_status`, `release_report`, `blocker_reason`, `cleanup_report`.

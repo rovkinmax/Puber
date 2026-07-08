@@ -3,7 +3,7 @@
     "id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
     "name": "Puber Release Publication",
     "description": "Qualify and publish a Puber release tag after approval, monitor automation if present, and clean up safely.",
-    "version": 35
+    "version": 71
   },
   "nodes": [
     {
@@ -52,9 +52,9 @@
     {
       "id": "node-1fa274d6-4f47-48f9-8a23-9ff39348b1cc",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
-      "key": "blocked",
+      "key": "wont_do",
       "kind": "terminal",
-      "display_name": "Blocked"
+      "display_name": "Won't Do"
     },
     {
       "id": "node-58da8456-480b-42bf-9fa3-5e5d5d828ab9",
@@ -94,9 +94,9 @@
       "id": "group-78e65634-7646-4251-8f94-3c6fb4e80e74",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "source_node_id": "node-3c841aaf-089c-4df8-b04a-dce1cb807063",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Release readiness cannot be proven."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "qualify cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-7f336a19-d972-4cbd-9d3c-e0c0a98191fd",
@@ -110,33 +110,33 @@
       "id": "group-4493b1e9-aa93-428f-a5a1-df9eca908189",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "source_node_id": "node-34e4131d-97ab-4b9b-b099-2c2cecea8085",
-      "transition_id": "done",
-      "display_name": "Done",
-      "description": "Tag publication is complete and monitoring is intentionally skipped; run mandatory compliance review before cleanup."
+      "transition_id": "compliance",
+      "display_name": "Compliance",
+      "description": "Release stage passed; run mandatory compliance review before cleanup."
     },
     {
       "id": "group-eeceacea-a2d9-4349-a866-93b29d3a63a7",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "source_node_id": "node-34e4131d-97ab-4b9b-b099-2c2cecea8085",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Release tag creation or push is blocked or unsafe."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "tag cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-e195bee8-ea10-4a6c-b2a1-b94484c0c6a3",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "source_node_id": "node-65c09083-e828-4029-a1c9-a4f0f907e106",
-      "transition_id": "done",
-      "display_name": "Done",
-      "description": "Release automation passed or monitoring is intentionally skipped; run mandatory compliance review before cleanup."
+      "transition_id": "compliance",
+      "display_name": "Compliance",
+      "description": "Release stage passed; run mandatory compliance review before cleanup."
     },
     {
       "id": "group-26956053-2530-465c-ad7a-83f8b86b4fee",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "source_node_id": "node-65c09083-e828-4029-a1c9-a4f0f907e106",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Release automation failed or needs manual intervention."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "monitor cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-d4d06574-c27e-4cd5-8246-7e725c888b6d",
@@ -150,9 +150,9 @@
       "id": "group-b04eeac3-7951-4456-a670-cb5452178b2b",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "source_node_id": "node-58da8456-480b-42bf-9fa3-5e5d5d828ab9",
-      "transition_id": "done",
-      "display_name": "Done",
-      "description": "Compliance review found no violations; run conservative cleanup."
+      "transition_id": "cleanup",
+      "display_name": "Cleanup",
+      "description": "Compliance passed; run conservative cleanup before terminal done."
     },
     {
       "id": "group-46a28b03-5911-4005-a8c9-7cad0ce0119e",
@@ -160,15 +160,23 @@
       "source_node_id": "node-58da8456-480b-42bf-9fa3-5e5d5d828ab9",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
-      "description": "Compliance review found release-publication violations; user approval required before rework."
+      "description": "Compliance review found release-publication violations; rework without manual approval."
     },
     {
       "id": "group-e62637be-c734-46f4-b4e1-accb7da7fbfe",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "source_node_id": "node-58da8456-480b-42bf-9fa3-5e5d5d828ab9",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Compliance review is blocked by missing or contradictory required sources."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "compliance cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
+    },
+    {
+      "id": "group-f37b9c6f-0403-4457-ba52-65570383feb1",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "source_node_id": "node-3c841aaf-089c-4df8-b04a-dce1cb807063",
+      "transition_id": "wont_do",
+      "display_name": "Wont Do",
+      "description": "Latest user comment explicitly cancels this legacy release task or declares it not planned; finish without treating it as a recoverable blocker."
     }
   ],
   "edges": [
@@ -183,7 +191,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Qualify a Puber release for publication.\n\nRead .kent/project-contract.md first, then use .kent/commands/release-tag.md as the project release-tag reference. Treat the task body as the requested version/tag policy. Fetch/check master/main and existing tags, compute the intended release tag, and verify readiness. Do not create or push tags in this node.\n\nComplete with tag when the release candidate is ready for user approval and provide release_version, release_tag, target_commit, and readiness_report. Complete with blocked if readiness cannot be proven and provide blocker_reason."
+      "prompt_template": "Qualify a Puber release for publication.\n\nRead .kent/project-contract.md first, then use .kent/commands/release-tag.md as the project release-tag reference. Treat the task body as the requested version/tag policy. Fetch/check master/main and existing tags, compute the intended release tag, and verify readiness. Do not create or push tags in this node.\n\nComplete with tag when the release candidate is ready for user approval and provide release_version, release_tag, target_commit, and readiness_report. Complete with needs_user_action if readiness cannot be proven and provide blocker_reason."
     },
     {
       "id": "edge-07f694ab-bbe6-4cce-a9f9-4e22138bedff",
@@ -196,19 +204,19 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Create and push the approved Puber release tag.\n\nRead .kent/project-contract.md first. Use .kent/commands/release-tag.md, but only for release {{.Params.release_version}}, tag {{.Params.release_tag}}, target commit {{.Params.target_commit}}. Verify the tag does not already exist locally/remotely unless the task explicitly says to handle that case. This node may create and push the tag because the workflow transition requires user approval.\n\nComplete with monitor if publication automation should be monitored and provide release_version, release_tag, target_commit, and tag_push_status. Complete with done if tag publication is complete and monitoring is intentionally skipped. Complete with blocked if tag creation/push is unsafe or blocked and provide blocker_reason.",
+      "prompt_template": "Create and push the approved Puber release tag.\n\nRead .kent/project-contract.md first. Use .kent/commands/release-tag.md, but only for release {{.Params.release_version}}, tag {{.Params.release_tag}}, target commit {{.Params.target_commit}}. Verify the tag does not already exist locally/remotely unless the task explicitly says to handle that case. This node may create and push the tag because the workflow transition requires user approval.\n\nComplete with monitor if publication automation should be monitored and provide release_version, release_tag, target_commit, and tag_push_status. Complete with compliance if tag publication is complete and monitoring is intentionally skipped. Complete with needs_user_action if tag creation/push is unsafe or needs_user_action and provide blocker_reason.",
       "parameters": [
         {
           "key": "release_version",
-          "description": "Release version to publish."
+          "description": "Release version prepared by this workflow."
         },
         {
           "key": "release_tag",
-          "description": "Git tag to create and push."
+          "description": "Release tag to create or publish after PR merge."
         },
         {
           "key": "target_commit",
-          "description": "Commit on master/main that should receive the release tag."
+          "description": "Target commit for release tag publication."
         },
         {
           "key": "readiness_report",
@@ -220,17 +228,18 @@
       "id": "edge-40682703-37a0-499e-a5b9-8467a8b57b6b",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "transition_group_id": "group-78e65634-7646-4251-8f94-3c6fb4e80e74",
-      "key": "qualify_blocked",
-      "target_node_id": "node-1fa274d6-4f47-48f9-8a23-9ff39348b1cc",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "qualify_needs_user_action",
+      "target_node_id": "node-3c841aaf-089c-4df8-b04a-dce1cb807063",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this legacy Puber release workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog and do not broaden release scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why release qualification cannot continue, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -245,23 +254,23 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor Puber release publication after tag push.\n\nRead .kent/project-contract.md first. Check available GitHub/CI/release automation signals for release {{.Params.release_tag}} when configured. If no automation is configured, report that monitoring is skipped. Complete with done if green or intentionally skipped; complete with blocked if automation fails or cannot be inspected and provide blocker_reason.",
+      "prompt_template": "Monitor Puber release publication after tag push.\n\nRead .kent/project-contract.md first. Check available GitHub/CI/release automation signals for release {{.Params.release_tag}} when configured. If no automation is configured, report that monitoring is skipped. Complete with compliance if green or intentionally skipped; complete with needs_user_action if automation fails or cannot be inspected and provide blocker_reason.",
       "parameters": [
         {
           "key": "release_version",
-          "description": "Release version published."
+          "description": "Release version prepared by this workflow."
         },
         {
           "key": "release_tag",
-          "description": "Git tag that was created and pushed."
+          "description": "Release tag to create or publish after PR merge."
         },
         {
           "key": "target_commit",
-          "description": "Commit targeted by the release tag."
+          "description": "Target commit for release tag publication."
         },
         {
           "key": "tag_push_status",
-          "description": "Result of local/remote tag creation and push."
+          "description": "Release tag push status."
         }
       ]
     },
@@ -269,26 +278,26 @@
       "id": "edge-f9f15045-4f17-4e2d-90ac-f71d6c9dcd8d",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "transition_group_id": "group-4493b1e9-aa93-428f-a5a1-df9eca908189",
-      "key": "tag_done",
+      "key": "tag_compliance",
       "target_node_id": "node-58da8456-480b-42bf-9fa3-5e5d5d828ab9",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/commands/release-tag.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: release publication for {{.Params.release_version}} tag {{.Params.release_tag}} target {{.Params.target_commit}}. Verify compliance with release approval gates, tag policy, task requirements, and AGENTS.md. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide release_version, release_tag, target_commit, and compliance_report when rework is required. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/commands/release-tag.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: release publication for {{.Params.release_version}} tag {{.Params.release_tag}} target {{.Params.target_commit}}. Verify compliance with release approval gates, tag policy, task requirements, and AGENTS.md. Do not edit files.\n\nComplete with cleanup and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide release_version, release_tag, target_commit, and compliance_report when rework is required. Complete with needs_user_action and provide blocker_reason if required sources are missing or contradictory.",
       "parameters": [
         {
           "key": "release_version",
-          "description": "Release version published."
+          "description": "Release version prepared by this workflow."
         },
         {
           "key": "release_tag",
-          "description": "Git tag that was created and pushed."
+          "description": "Release tag to create or publish after PR merge."
         },
         {
           "key": "target_commit",
-          "description": "Commit targeted by the release tag."
+          "description": "Target commit for release tag publication."
         }
       ]
     },
@@ -296,17 +305,18 @@
       "id": "edge-02e26583-ff31-463d-b20e-78855de34f36",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "transition_group_id": "group-eeceacea-a2d9-4349-a866-93b29d3a63a7",
-      "key": "tag_blocked",
-      "target_node_id": "node-1fa274d6-4f47-48f9-8a23-9ff39348b1cc",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "tag_needs_user_action",
+      "target_node_id": "node-34e4131d-97ab-4b9b-b099-2c2cecea8085",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this legacy Puber release workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog and do not broaden release scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why tag publication cannot continue, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -314,26 +324,26 @@
       "id": "edge-101b7816-ae11-4e89-82e2-cf794c1736fc",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "transition_group_id": "group-e195bee8-ea10-4a6c-b2a1-b94484c0c6a3",
-      "key": "monitor_done",
+      "key": "monitor_compliance",
       "target_node_id": "node-58da8456-480b-42bf-9fa3-5e5d5d828ab9",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/commands/release-tag.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: release publication and monitoring for {{.Params.release_version}} tag {{.Params.release_tag}} target {{.Params.target_commit}}. Verify compliance with release approval gates, tag/monitoring policy, task requirements, and AGENTS.md. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide release_version, release_tag, target_commit, and compliance_report when rework is required. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/commands/release-tag.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: release publication and monitoring for {{.Params.release_version}} tag {{.Params.release_tag}} target {{.Params.target_commit}}. Verify compliance with release approval gates, tag/monitoring policy, task requirements, and AGENTS.md. Do not edit files.\n\nComplete with cleanup and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide release_version, release_tag, target_commit, and compliance_report when rework is required. Complete with needs_user_action and provide blocker_reason if required sources are missing or contradictory.",
       "parameters": [
         {
           "key": "release_version",
-          "description": "Release version published."
+          "description": "Release version prepared by this workflow."
         },
         {
           "key": "release_tag",
-          "description": "Git tag that was created and pushed."
+          "description": "Release tag to create or publish after PR merge."
         },
         {
           "key": "target_commit",
-          "description": "Commit targeted by the release tag."
+          "description": "Target commit for release tag publication."
         }
       ]
     },
@@ -341,17 +351,18 @@
       "id": "edge-b0571df0-3f45-486a-bb93-a12d1590bb39",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "transition_group_id": "group-26956053-2530-465c-ad7a-83f8b86b4fee",
-      "key": "monitor_blocked",
-      "target_node_id": "node-1fa274d6-4f47-48f9-8a23-9ff39348b1cc",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "monitor_needs_user_action",
+      "target_node_id": "node-65c09083-e828-4029-a1c9-a4f0f907e106",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this legacy Puber release workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog and do not broaden release scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why release monitoring cannot complete, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -369,7 +380,7 @@
       "parameters": [
         {
           "key": "cleanup_report",
-          "description": "Summary of cleanup performed or deliberately skipped."
+          "description": "Cleanup report or summary."
         }
       ]
     },
@@ -377,7 +388,7 @@
       "id": "edge-15ab221d-c71a-4ce4-9b4d-cf5eacca6e4a",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "transition_group_id": "group-b04eeac3-7951-4456-a670-cb5452178b2b",
-      "key": "compliance_done",
+      "key": "compliance_cleanup",
       "target_node_id": "node-5b384301-9ead-4397-8b64-478b972587c0",
       "requires_approval": false,
       "context_mode": "new_session",
@@ -388,7 +399,7 @@
       "parameters": [
         {
           "key": "compliance_report",
-          "description": "Compliance review report, including rule sources checked and any findings."
+          "description": "Compliance review report or summary."
         }
       ]
     },
@@ -398,28 +409,28 @@
       "transition_group_id": "group-46a28b03-5911-4005-a8c9-7cad0ce0119e",
       "key": "compliance_tag",
       "target_node_id": "node-34e4131d-97ab-4b9b-b099-2c2cecea8085",
-      "requires_approval": true,
+      "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Rework Puber release publication compliance findings only.\n\nRead .kent/project-contract.md, .kent/commands/release-tag.md, and .kent/commands/compliance-review.md first. Apply only the minimum approved changes required by {{.Params.compliance_report}} for release {{.Params.release_version}} tag {{.Params.release_tag}} target {{.Params.target_commit}}. Do not create, delete, or push tags unless the approval and task explicitly authorize it. Complete with monitor, done, or blocked according to the release-publication workflow contract.",
+      "prompt_template": "Rework Puber release publication compliance findings only.\n\nRead .kent/project-contract.md, .kent/commands/release-tag.md, and .kent/commands/compliance-review.md first. Apply only the minimum approved changes required by {{.Params.compliance_report}} for release {{.Params.release_version}} tag {{.Params.release_tag}} target {{.Params.target_commit}}. Do not create, delete, or push tags unless the approval and task explicitly authorize it. Complete with monitor, done, or needs_user_action according to the release-publication workflow contract.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
       "parameters": [
         {
           "key": "release_version",
-          "description": "Release version published."
+          "description": "Release version prepared by this workflow."
         },
         {
           "key": "release_tag",
-          "description": "Git tag that was created and pushed."
+          "description": "Release tag to create or publish after PR merge."
         },
         {
           "key": "target_commit",
-          "description": "Commit targeted by the release tag."
+          "description": "Target commit for release tag publication."
         },
         {
           "key": "compliance_report",
-          "description": "Compliance review report, including rule sources checked and any findings."
+          "description": "Compliance review report or summary."
         }
       ]
     },
@@ -427,17 +438,36 @@
       "id": "edge-25120bc8-11b4-4c86-8cf5-aebab6c79b92",
       "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
       "transition_group_id": "group-e62637be-c734-46f4-b4e1-accb7da7fbfe",
-      "key": "compliance_blocked",
+      "key": "compliance_needs_user_action",
+      "target_node_id": "node-58da8456-480b-42bf-9fa3-5e5d5d828ab9",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Resume this legacy Puber release workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog and do not broaden release scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker.",
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+        }
+      ]
+    },
+    {
+      "id": "edge-d8ee127d-2b1f-4b31-86db-0ec8ea06c5fe",
+      "workflow_id": "workflow-04d0de0d-0820-4e56-b50b-45bd2cfe489e",
+      "transition_group_id": "group-f37b9c6f-0403-4457-ba52-65570383feb1",
+      "key": "qualify_wont_do",
       "target_node_id": "node-1fa274d6-4f47-48f9-8a23-9ff39348b1cc",
-      "requires_approval": false,
+      "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
         "kind": "immediate_source"
       },
       "parameters": [
         {
-          "key": "blocker_reason",
-          "description": "Why compliance review cannot complete, in the task language when practical."
+          "key": "closure_reason",
+          "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
         }
       ]
     }
@@ -452,15 +482,15 @@
         "possible_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version to publish."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag to create and push."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit on master/main that should receive the release tag."
+            "description": "Target commit for release tag publication."
           },
           {
             "name": "readiness_report",
@@ -468,7 +498,11 @@
           },
           {
             "name": "blocker_reason",
-            "description": "Why release qualification cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          },
+          {
+            "name": "closure_reason",
+            "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
         ]
       },
@@ -477,23 +511,23 @@
         "possible_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           },
           {
             "name": "tag_push_status",
-            "description": "Result of local/remote tag creation and push."
+            "description": "Release tag push status."
           },
           {
             "name": "blocker_reason",
-            "description": "Why tag publication cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -502,19 +536,19 @@
         "possible_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           },
           {
             "name": "blocker_reason",
-            "description": "Why release monitoring cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -523,7 +557,7 @@
         "possible_provision_fields": [
           {
             "name": "cleanup_report",
-            "description": "Summary of cleanup performed or deliberately skipped."
+            "description": "Cleanup report or summary."
           }
         ]
       },
@@ -535,23 +569,23 @@
         "possible_provision_fields": [
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           },
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           },
           {
             "name": "blocker_reason",
-            "description": "Why compliance review cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -568,15 +602,15 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version to publish."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag to create and push."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit on master/main that should receive the release tag."
+            "description": "Target commit for release tag publication."
           },
           {
             "name": "readiness_report",
@@ -589,7 +623,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why release qualification cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -598,19 +632,19 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           },
           {
             "name": "tag_push_status",
-            "description": "Result of local/remote tag creation and push."
+            "description": "Release tag push status."
           }
         ]
       },
@@ -619,15 +653,15 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           }
         ]
       },
@@ -636,7 +670,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why tag publication cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -645,15 +679,15 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           }
         ]
       },
@@ -662,7 +696,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why release monitoring cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -671,7 +705,7 @@
         "required_provision_fields": [
           {
             "name": "cleanup_report",
-            "description": "Summary of cleanup performed or deliberately skipped."
+            "description": "Cleanup report or summary."
           }
         ]
       },
@@ -680,7 +714,7 @@
         "required_provision_fields": [
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -689,19 +723,19 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           },
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -710,7 +744,16 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why compliance review cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-f37b9c6f-0403-4457-ba52-65570383feb1",
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
         ]
       }
@@ -746,15 +789,15 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version to publish."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag to create and push."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit on master/main that should receive the release tag."
+            "description": "Target commit for release tag publication."
           },
           {
             "name": "readiness_report",
@@ -774,7 +817,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why release qualification cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -805,19 +848,19 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           },
           {
             "name": "tag_push_status",
-            "description": "Result of local/remote tag creation and push."
+            "description": "Release tag push status."
           }
         ]
       },
@@ -843,15 +886,15 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           }
         ]
       },
@@ -867,7 +910,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why tag publication cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -893,15 +936,15 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           }
         ]
       },
@@ -917,7 +960,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why release monitoring cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -933,7 +976,7 @@
         "required_provision_fields": [
           {
             "name": "cleanup_report",
-            "description": "Summary of cleanup performed or deliberately skipped."
+            "description": "Cleanup report or summary."
           }
         ]
       },
@@ -949,7 +992,7 @@
         "required_provision_fields": [
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -980,19 +1023,19 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version published."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Git tag that was created and pushed."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Commit targeted by the release tag."
+            "description": "Target commit for release tag publication."
           },
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -1008,7 +1051,23 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why compliance review cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-d8ee127d-2b1f-4b31-86db-0ec8ea06c5fe",
+        "input_bindings": [
+          {
+            "name": "closure_reason",
+            "source": "transition_output",
+            "field": "closure_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
         ]
       }

@@ -32,7 +32,7 @@ The workflow prompt must provide the available inputs:
 - `commentary`: implementation/review/verification summary from the previous node.
 - `changed_files`: changed files, when known.
 
-If a required source is missing, report the review as blocked or incomplete and name the missing source.
+If a required source is missing, report the review as waiting for user action or incomplete and name the missing source.
 
 ## Work Mode
 
@@ -48,10 +48,13 @@ If a required source is missing, report the review as blocked or incomplete and 
 
 Complete with:
 
-- `done` when no compliance violations are found. Provide `compliance_report`.
+- The success transition named in the current workflow prompt when no compliance violations are found. New PR-producing
+  workflows use `ship_pr`; legacy no-PR release workflows may use `cleanup`. Provide `compliance_report`.
 - `needs_changes` when compliance violations require a fix/rework pass. Provide `compliance_report` and, when available,
   `workspace_path` and `changed_files`.
-- `blocked` when required rule/spec/task sources are missing or contradictory. Provide `blocker_reason`.
+- `needs_user_action` when required rule/spec/task sources are missing or contradictory. Provide `blocker_reason`.
+
+Do not hardcode `done` from this command; `done` is reserved for cleanup completion.
 
 For every finding include:
 
