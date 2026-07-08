@@ -12,6 +12,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalInspectionMode
 
 private const val DialogScrimAlpha = 0.62f
 
@@ -39,7 +40,9 @@ internal fun TvDialogOverlay(
             latestFocusRestorer.value?.onDialogClosed()
         }
     }
-    BackHandler(onBack = dismiss)
+    if (!LocalInspectionMode.current) {
+        BackHandler(onBack = dismiss)
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
