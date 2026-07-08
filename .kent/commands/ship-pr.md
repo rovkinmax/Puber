@@ -43,13 +43,19 @@ Desktop workflows.
    - Known skipped checks or blockers.
 6. Never merge the PR.
 7. Never push directly to `master`/`main`.
-8. If `gh` auth, remote, branch, or repository state prevents PR creation, complete `blocked` with a precise
-   `blocker_reason`.
+8. If recoverable repository, branch, or PR state prevents PR creation/update, complete `needs_changes` with
+   `workspace_path` and `blocker_reason`. Do not force-push unless the latest user comment explicitly permits force-push
+   for this exact PR/branch.
+9. If credentials, project policy, missing user input, or an unsafe repository state prevents progress, complete
+   `needs_user_action` with a precise `blocker_reason`.
 
 ## Completion Contract
 
 Complete with:
 
 - `monitor_ci` when a PR exists and CI should be monitored. Provide `pr_url`, `branch_name`, and `workspace_path`.
-- `done` only when PR is intentionally not applicable because there are no repository changes. Provide `pr_report`.
-- `blocked` when PR creation/update cannot be completed safely. Provide `blocker_reason`.
+- `no_pr` only when PR is intentionally not applicable because there are no repository changes. Provide `pr_report`.
+- `needs_changes` when task-scoped PR/branch issues can be fixed safely. Provide `workspace_path` and
+  `blocker_reason`.
+- `needs_user_action` when PR creation/update cannot be completed safely without user input, credentials, or a policy
+  decision. Provide `blocker_reason`.
