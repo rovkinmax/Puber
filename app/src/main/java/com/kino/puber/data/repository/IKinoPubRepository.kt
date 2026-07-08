@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.Flow
 
 interface IKinoPubRepository {
 
+    fun isAuthenticated(): Boolean
+
     fun getAuthState(): Flow<AuthState>
 
 }

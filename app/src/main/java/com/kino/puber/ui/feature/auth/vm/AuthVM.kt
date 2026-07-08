@@ -40,6 +40,7 @@ internal class AuthVM(
     private var timerJob: Job? = null
     private var loadingHintJob: Job? = null
     private var hasRetriedAlternativeDomainAfterAuthError = false
+    private var startupMode = AuthStartupMode.LoginRequired
 
     override fun onStart() {
         startAuth()
@@ -49,69 +50,86 @@ internal class AuthVM(
         authJob?.cancel()
         timerJob?.cancel()
         loadingHintJob?.cancel()
+        startupMode = if (authInteractor.isAuthenticated()) {
+            AuthStartupMode.ExistingSession
+        } else {
+            AuthStartupMode.LoginRequired
+        }
+        hasRetriedAlternativeDomainAfterAuthError = false
         updateViewState(
             AuthViewState.Loading(
-                statusMessage = resources.getString(R.string.api_domain_auto_searching),
+                statusMessage = startupMode.loadingStatusMessage(),
                 apiDomainDialog = currentDialogState(),
             )
         )
         scheduleLoadingHint()
         authJob = launch {
-            when (val result = apiDomainInteractor.autoResolveWorkingDomain()) {
-                ApiDomainAutoResolveResult.NotFound -> {
-                    updateViewState(
-                        AuthViewState.Loading(
-                            showMirrorHint = true,
-                            statusMessage = resources.getString(R.string.api_domain_auto_failed),
-                            apiDomainDialog = apiDomainInteractor.getState().toDialogState(),
-                        )
-                    )
-                    return@launch
-                }
+            if (startupMode == AuthStartupMode.ExistingSession && !resolveApiDomainForExistingSession()) {
+                return@launch
+            }
 
-                is ApiDomainAutoResolveResult.Success -> {
-                    updateViewState(
-                        AuthViewState.Loading(
-                            apiDomainDialog = currentDialogState(),
-                        )
+            collectAuthState()
+        }
+    }
+
+    private suspend fun resolveApiDomainForExistingSession(): Boolean {
+        return when (val result = apiDomainInteractor.autoResolveWorkingDomain()) {
+            ApiDomainAutoResolveResult.NotFound -> {
+                updateViewState(
+                    AuthViewState.Loading(
+                        showMirrorHint = true,
+                        statusMessage = resources.getString(R.string.api_domain_auto_failed),
+                        apiDomainDialog = apiDomainInteractor.getState().toDialogState(),
                     )
-                    if (result.changed) {
-                        showMessage(resources.getString(R.string.api_domain_auto_switched, result.state.domain))
+                )
+                false
+            }
+
+            is ApiDomainAutoResolveResult.Success -> {
+                updateViewState(
+                    AuthViewState.Loading(
+                        apiDomainDialog = currentDialogState(),
+                    )
+                )
+                if (result.changed) {
+                    showMessage(resources.getString(R.string.api_domain_auto_switched, result.state.domain))
+                }
+                true
+            }
+        }
+    }
+
+    private suspend fun collectAuthState() {
+        authInteractor.getAuthState()
+            .flatMapConcat { state ->
+                when (state) {
+                    is AuthState.Success ->
+                        deviceInfoInteractor.setDeviceInformation()
+                            .map { state }
+
+                    else -> flowOf(state)
+                }
+            }
+            .collect {
+                when (it) {
+                    is AuthState.Code -> {
+                        loadingHintJob?.cancel()
+                        updateViewState(
+                            AuthViewState.Content(
+                                code = it.code,
+                                url = it.url,
+                                apiDomainDialog = currentDialogState(),
+                            )
+                        )
+                        startTimer(it.expireTimeSeconds)
+                    }
+
+                    AuthState.Success -> {
+                        timerJob?.cancel()
+                        router.newRootScreen(router.screens.main())
                     }
                 }
             }
-
-            authInteractor.getAuthState()
-                .flatMapConcat { state ->
-                    when (state) {
-                        is AuthState.Success ->
-                            deviceInfoInteractor.setDeviceInformation()
-                                .map { state }
-
-                        else -> flowOf(state)
-                    }
-                }
-                .collect {
-                    when (it) {
-                        is AuthState.Code -> {
-                            loadingHintJob?.cancel()
-                            updateViewState(
-                                AuthViewState.Content(
-                                    code = it.code,
-                                    url = it.url,
-                                    apiDomainDialog = currentDialogState(),
-                                )
-                            )
-                            startTimer(it.expireTimeSeconds)
-                        }
-
-                        AuthState.Success -> {
-                            timerJob?.cancel()
-                            router.newRootScreen(router.screens.main())
-                        }
-                    }
-                }
-        }
     }
 
     override fun onAction(action: UIAction) {
@@ -127,6 +145,10 @@ internal class AuthVM(
 
     override fun dispatchError(error: ErrorEntity) {
         showMessage(error.message)
+        if (startupMode == AuthStartupMode.LoginRequired) {
+            return
+        }
+
         if (!hasRetriedAlternativeDomainAfterAuthError) {
             hasRetriedAlternativeDomainAfterAuthError = true
             updateViewState(
@@ -254,6 +276,18 @@ internal class AuthVM(
             currentDomain = domain,
             customDomain = customDomain,
         )
+    }
+
+    private fun AuthStartupMode.loadingStatusMessage(): String? {
+        return when (this) {
+            AuthStartupMode.LoginRequired -> null
+            AuthStartupMode.ExistingSession -> resources.getString(R.string.api_domain_auto_searching)
+        }
+    }
+
+    private enum class AuthStartupMode {
+        LoginRequired,
+        ExistingSession,
     }
 
     private companion object {
