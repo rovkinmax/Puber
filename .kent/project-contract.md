@@ -86,7 +86,7 @@ worktree metadata until Kent rebind behavior is fixed.
 
 - `cleanup_managed_task_worktrees`: `false` by default.
 - Code-producing workflow cleanup must happen after `waiting_pr` confirms the PR is merged through GitHub state, or after
-  an explicit no-diff/report-only `pr_report`.
+  the user approves an explicit no-diff/report-only `pr_report` through the `no_pr` transition.
 - Release cleanup must happen after tag publication is monitored, or after explicit user cancellation.
 - Cleanup after a PR path must verify `gh pr view --json state,mergedAt,mergeCommit,headRefName,baseRefName,url` when
   GitHub CLI is available. Do not rely only on git ancestry because squash merges are allowed.
@@ -104,6 +104,8 @@ Recoverable blockers must not use a terminal node. The workflow keeps the task i
 - `needs_changes`: audit/review/compliance/CI/PR feedback needs task-scoped fixes. Internal fix loops should not require
   approval; `ship_pr -> needs_changes` stays approval-gated because branch recovery can involve rebase or force-push
   policy.
+- `no_pr`: the task has no repository changes or is explicitly report-only. This transition is approval-gated because it
+  allows cleanup/done without a merged PR.
 
 Terminal `wont_do` is only for explicit user cancellation or "not planned" decisions and requires approval. It is not a
 recoverable blocker.
@@ -122,6 +124,8 @@ recoverable blocker.
 - Release workflows route `waiting_pr -> pr_merged -> publish` with human approval before tag publication.
 - `close_without_merge` is approval-gated and valid only when the latest user comment explicitly says to close, cancel, or
   skip the PR.
+- `no_pr` is approval-gated and valid only when the PR step produced a clear `pr_report` explaining why no PR is
+  applicable.
 
 ## Release Policy
 

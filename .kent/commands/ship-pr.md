@@ -28,8 +28,9 @@ Desktop workflows.
    git branch --show-current
    git remote -v
    ```
-3. If there are no repository changes and the task was report-only or smoke-only, report PR as not applicable and finish.
-   Do not create empty commits or empty PRs.
+3. If there are no repository changes and the task was report-only or smoke-only, report PR as not applicable and use the
+   workflow's `no_pr` transition. Do not create empty commits or empty PRs. `no_pr` is approval-gated because it allows
+   cleanup without a merged PR.
 4. If there are changes:
    - Verify the current branch is a task/worktree branch, not `master`/`main`.
    - Stage only task-related files.
@@ -54,7 +55,8 @@ Desktop workflows.
 Complete with:
 
 - `monitor_ci` when a PR exists and CI should be monitored. Provide `pr_url`, `branch_name`, and `workspace_path`.
-- `no_pr` only when PR is intentionally not applicable because there are no repository changes. Provide `pr_report`.
+- `no_pr` only when PR is intentionally not applicable because there are no repository changes. Provide `pr_report`; the
+  workflow must stop for user approval before cleanup.
 - `needs_changes` when task-scoped PR/branch issues can be fixed safely. Provide `workspace_path` and
   `blocker_reason`.
 - `needs_user_action` when PR creation/update cannot be completed safely without user input, credentials, or a policy
