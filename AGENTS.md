@@ -264,8 +264,8 @@ The agent recognizes intent from natural language, but feature target selection 
 ### Shared Device Coordination
 
 Before touching an emulator/device, acquire a shared lock so parallel Kent sessions do not install over each other or
-fight for focus. Physical devices, including a real TV, are forbidden unless the task/user explicitly names or allows that
-physical device. Never rely on adb's default target selection.
+fight for focus. Physical devices, including a real TV, are forbidden unless the task/user explicitly provides permission
+and an explicit serial for that physical device. Never rely on adb's default target selection.
 
 ```bash
 EMULATORS=($(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators))

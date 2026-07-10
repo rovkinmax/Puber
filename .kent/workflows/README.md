@@ -20,20 +20,20 @@ Kent Desktop workflow graph
 ## Puber Workflow Set
 
 - `Puber Feature Delivery` (default): plan -> implement loop -> audit -> fix loop -> optional smoke -> compliance ->
-  create/update PR -> monitor CI -> cleanup.
+  create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
 - `Puber Refactor With Audit`: plan/audit -> implement loop -> read-only review -> fix loop -> compliance ->
-  create/update PR -> monitor CI -> cleanup.
-- `Puber Bugfix Investigation`: reproduce/diagnose -> approved fix or report-only -> verify/fix loop -> compliance ->
-  create/update PR when changes exist -> monitor CI -> cleanup.
-- `Puber Dependency Update`: update Gradle versions/tooling -> fallout verification -> approved fixes -> compliance ->
-  create/update PR -> monitor CI -> cleanup.
-- `Puber Test Coverage`: coverage gap plan -> approved test implementation loop -> review/fix loop -> compliance ->
-  create/update PR -> monitor CI -> cleanup.
-- `Puber Smoke Test`: focused device smoke test -> optional approved fix -> rerun smoke -> compliance ->
-  create/update PR when changes exist -> monitor CI -> cleanup.
+  create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
+- `Puber Bugfix Investigation`: reproduce/diagnose -> fix or report-only -> verify/fix loop -> compliance ->
+  create/update PR when changes exist -> monitor CI -> waiting PR -> cleanup -> done.
+- `Puber Dependency Update`: update Gradle versions/tooling -> fallout verification -> fixes -> compliance ->
+  create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
+- `Puber Test Coverage`: coverage gap plan -> test implementation loop -> review/fix loop -> compliance ->
+  create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
+- `Puber Smoke Test`: focused device smoke test -> optional fix -> rerun smoke -> compliance ->
+  create/update PR when changes exist -> monitor CI -> waiting PR -> cleanup -> done.
 - `Puber Release`: default next minor release from `origin/master` -> version bump branch/PR -> CI -> approved tag
-  publication after the PR is merged -> optional automation monitor -> cleanup. Patch/major releases require explicit
-  task wording.
+  publication after the PR is merged -> optional automation monitor -> cleanup -> done. Patch/major releases require
+  explicit task wording.
 
 Only `Puber Feature Delivery` should be the project default. The other workflows are linked to the project for explicit
 task creation when the work type is known.
@@ -49,7 +49,8 @@ Legacy split release workflows (`Puber Release Preparation` and `Puber Release P
   `subagents/android-codebase-analyst.md`, even though there is no `subagents/project-researcher.md` file.
 - After adding or changing subagent roles in `.kent/config.toml`, restart Kent service/GUI before expecting execution
   validation or new workflow tasks to see the role.
-- Every edge to `blocked` must require `blocker_reason`.
+- Do not model recoverable blockers as terminal states. Use `needs_user_action` back to the same node with
+  `blocker_reason` and human approval.
 - Every successful work-product path must pass through `compliance` before `cleanup`. Compliance Review is not a
   replacement for audit/review/verify/smoke; it only checks adherence to AGENTS.md, project contracts, specs, plans,
   human-approved design decisions, and workflow transition contracts.
@@ -57,18 +58,25 @@ Legacy split release workflows (`Puber Release Preparation` and `Puber Release P
   no-diff/report-only/smoke-only cases and must explain that through `pr_report`.
 - `ci_monitor` never merges PRs and never pushes new commits. CI failures go back to fix/review/compliance before another
   PR/CI pass.
-- `blocked` is terminal and must be reserved for unrecoverable situations. Recoverable external waits should use
-  `retry_later` back to the same node with human approval; recoverable PR/branch/CI fallout should use `needs_changes`
-  back to `fix` or `prepare` with human approval; release publication that is approved before the PR is merged should
-  use `not_ready` back to `ci_monitor`.
+- `done` is terminal and must mean delivered: PR merged and cleanup completed, release published and cleanup completed,
+  explicit no-diff/report-only cleanup completed, or explicit `wont_do`.
+- `waiting_pr` is the normal post-CI state for PR workflows. It may only advance to cleanup after GitHub reports
+  `state=MERGED`, or to release publication after the release PR is merged and the publish transition is approved.
+- `wont_do` is terminal and approval-gated. Use it only for explicit user cancellation or "not planned"; do not use it as
+  a recoverable blocker.
+- Recoverable external waits should use `needs_user_action` back to the same node with human approval. Recoverable
+  PR/branch/CI fallout should use `needs_changes` back to `fix` or `prepare` without a manual approval, except
+  `ship_pr -> needs_changes`, which remains approval-gated because it can involve rebase/force-push policy.
 - Smoke workflows must acquire a shared mobile resource lock through
   `.kent/adapters/mobile/emulator-resource-lock.sh` before installing, launching, or controlling an emulator/device. When
   multiple `adb` emulators are already running, agents should acquire any free emulator-specific lock and pass that serial
   to `adb -s`. Starting another emulator is allowed only when the task/user explicitly permits parallel device usage and
   the agent acquires a distinct lock for that emulator. Physical devices must not be used unless the task/user explicitly
-  names or allows that physical device; agents must never rely on adb's default target selection. Smoke workflows must
-  build APKs and install with explicit `adb -s "$DEVICE_SERIAL"`; Gradle `install*` tasks are forbidden for smoke tests.
-- Every successful terminal path should pass through `cleanup`, but cleanup is conservative by default.
+  provides permission and an explicit serial for that physical device; agents must never rely on adb's default target
+  selection. Smoke workflows must build APKs and install with explicit `adb -s "$DEVICE_SERIAL"`; Gradle `install*` tasks
+  are forbidden for smoke tests.
+- Every successful terminal path should pass through `cleanup`, but cleanup is conservative by default. Cleanup after a PR
+  path must verify the PR through GitHub state rather than git ancestry alone because squash merges are allowed.
 - Pass explicit `workspace_path` and `plan_path`; never rely on `.todo/.current`.
 - Keep prompts project-neutral where possible: "run the project feature planning command" rather than naming another
   repository's skill path, Jira project, module graph, or release process.
@@ -90,7 +98,8 @@ and architecture rules.
 Before making a workflow default for the project:
 
 - Create a dummy task that reaches planning and emits `workspace_path`/`plan_path`.
-- Exercise a blocked path and verify `blocker_reason` is visible.
+- Exercise a `needs_user_action` self-loop and verify `blocker_reason` is visible.
+- Exercise a `waiting_pr` path and verify an unmerged PR waits instead of reaching `done`.
 - Exercise an implementation continuation path and verify params are re-emitted.
 - Exercise cleanup in conservative mode and verify `cleanup_report`.
 - Validate with `kent workflow validate "<workflow>" --mode execution`.
