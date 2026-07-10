@@ -3,7 +3,7 @@
     "id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
     "name": "Puber Dependency Update",
     "description": "Update Puber Gradle dependencies or tooling, verify fallout, fix issues, and clean up safely.",
-    "version": 135
+    "version": 139
   },
   "nodes": [
     {
@@ -131,7 +131,7 @@
       "source_node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
-      "description": "Verification found fallout; user approval required before fixes."
+      "description": "Verification found fallout; continue to fixes without manual approval."
     },
     {
       "id": "group-668062f2-60d6-47f5-ad18-c80520aa0b2b",
@@ -187,7 +187,7 @@
       "source_node_id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
-      "description": "Compliance review found violations; user approval required before fallout fixes."
+      "description": "Compliance review found violations; continue to fallout fixes without manual approval."
     },
     {
       "id": "group-bf582f19-d767-44aa-bedb-03f7f9de85c7",
@@ -211,7 +211,7 @@
       "source_node_id": "node-e3459660-22bc-4ad2-bd8e-190745ecc83e",
       "transition_id": "no_pr",
       "display_name": "No PR",
-      "description": "No PR is applicable because there are no repository changes or the task is explicitly report-only; cleanup can finish the task."
+      "description": "No PR is applicable because there are no repository changes or the task is explicitly report-only; user approval is required before cleanup without a merged PR."
     },
     {
       "id": "group-f6124d99-570f-4f64-8db5-f42b479d6e4f",
@@ -235,7 +235,7 @@
       "source_node_id": "node-09339573-c966-460d-aad9-82d0f53ef9fc",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
-      "description": "PR checks failed due to task changes; user approval required before fixes."
+      "description": "PR checks failed due to task changes; continue to fixes without manual approval."
     },
     {
       "id": "group-be8f0286-2f2d-464a-bf83-905baf5e9491",
@@ -354,7 +354,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.\n\nApproval by itself is only permission to re-check this stage; it is not proof that the blocker was resolved. Before taking any non-wait transition, verify a new human task comment, task body update, or external proof that specifically resolves the previous blocker. If that proof is absent or the blocker still exists, add/update a task comment with the exact next action and complete with needs_user_action again, providing blocker_reason.",
       "parameters": [
         {
           "key": "blocker_reason",
@@ -423,7 +423,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.\n\nApproval by itself is only permission to re-check this stage; it is not proof that the blocker was resolved. Before taking any non-wait transition, verify a new human task comment, task body update, or external proof that specifically resolves the previous blocker. If that proof is absent or the blocker still exists, add/update a task comment with the exact next action and complete with needs_user_action again, providing blocker_reason.",
       "parameters": [
         {
           "key": "blocker_reason",
@@ -469,7 +469,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.\n\nApproval by itself is only permission to re-check this stage; it is not proof that the blocker was resolved. Before taking any non-wait transition, verify a new human task comment, task body update, or external proof that specifically resolves the previous blocker. If that proof is absent or the blocker still exists, add/update a task comment with the exact next action and complete with needs_user_action again, providing blocker_reason.",
       "parameters": [
         {
           "key": "blocker_reason",
@@ -548,7 +548,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.\n\nApproval by itself is only permission to re-check this stage; it is not proof that the blocker was resolved. Before taking any non-wait transition, verify a new human task comment, task body update, or external proof that specifically resolves the previous blocker. If that proof is absent or the blocker still exists, add/update a task comment with the exact next action and complete with needs_user_action again, providing blocker_reason.",
       "parameters": [
         {
           "key": "blocker_reason",
@@ -589,12 +589,12 @@
       "transition_group_id": "group-85f0b875-2960-4e84-b415-0d2d2832998a",
       "key": "pr_not_applicable",
       "target_node_id": "node-60340771-783d-44fb-8854-1aca22a87dcf",
-      "requires_approval": false,
+      "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run conservative Puber task cleanup after PR was determined not applicable.\n\nRead .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. PR report: {{.Params.pr_report}}. Do not delete any worktree containing unpushed or uncommitted user changes. Complete with done and provide cleanup_report.",
+      "prompt_template": "Run conservative Puber task cleanup after the user approved the PR-not-applicable path.\n\nRead .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. PR report: {{.Params.pr_report}}. Cleanup without a merged PR is approval-gated; do not treat absence of repository changes as permission to delete anything. Do not delete any worktree containing unpushed commits, uncommitted user changes, or unclear ownership. Complete with done and provide cleanup_report.",
       "parameters": [
         {
           "key": "pr_report",
@@ -613,7 +613,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.\n\nApproval by itself is only permission to re-check this stage; it is not proof that the blocker was resolved. Before taking any non-wait transition, verify a new human task comment, task body update, or external proof that specifically resolves the previous blocker. If that proof is absent or the blocker still exists, add/update a task comment with the exact next action and complete with needs_user_action again, providing blocker_reason.",
       "parameters": [
         {
           "key": "blocker_reason",
@@ -686,7 +686,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.\n\nApproval by itself is only permission to re-check this stage; it is not proof that the blocker was resolved. Before taking any non-wait transition, verify a new human task comment, task body update, or external proof that specifically resolves the previous blocker. If that proof is absent or the blocker still exists, add/update a task comment with the exact next action and complete with needs_user_action again, providing blocker_reason.",
       "parameters": [
         {
           "key": "blocker_reason",
@@ -778,7 +778,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Re-check the Puber pull request after the user resolved the external wait or approved another check.\n\nRead AGENTS.md, .kent/project-contract.md, latest task comments, PR {{.Params.pr_url}}, branch {{.Params.branch_name}}, workspace {{.Params.workspace_path}}, and previous waiting reason {{.Params.waiting_reason}}. Do not merge, push, or clean up unless the PR is confirmed merged.\n\nComplete with pr_merged only when GitHub reports state=MERGED. Complete with needs_changes for task-scoped PR review/conflict/regression fixes. Complete with needs_user_action again if the PR is still waiting externally. Complete with close_without_merge only on explicit latest user instruction.",
+      "prompt_template": "Re-check the Puber pull request after the user resolved the external wait or approved another check.\n\nRead AGENTS.md, .kent/project-contract.md, latest task comments, PR {{.Params.pr_url}}, branch {{.Params.branch_name}}, workspace {{.Params.workspace_path}}, and previous waiting reason {{.Params.waiting_reason}}. Do not merge, push, or clean up unless the PR is confirmed merged.\n\nComplete with pr_merged only when GitHub reports state=MERGED. Complete with needs_changes for task-scoped PR review/conflict/regression fixes. Complete with needs_user_action again if the PR is still waiting externally. Complete with close_without_merge only on explicit latest user instruction.\n\nApproval by itself is only permission to re-check this stage; it is not proof that the blocker was resolved. Before taking any non-wait transition, verify a new human task comment, task body update, or external proof that specifically resolves the previous blocker. If that proof is absent or the PR/release PR is still waiting externally, add/update a task comment with the exact next action and complete with needs_user_action again, providing waiting_reason.",
       "parameters": [
         {
           "key": "pr_url",
