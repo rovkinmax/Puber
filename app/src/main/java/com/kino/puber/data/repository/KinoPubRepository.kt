@@ -12,6 +12,8 @@ class KinoPubRepository(
     private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
 ) : IKinoPubRepository {
 
+    override fun isAuthenticated(): Boolean = client.isAuthenticated()
+
     override fun getAuthState(): Flow<AuthState> = channelFlow {
         if (client.isAuthenticated()) {
             send(AuthState.Success)

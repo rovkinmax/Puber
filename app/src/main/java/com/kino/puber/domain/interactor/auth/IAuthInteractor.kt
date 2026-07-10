@@ -5,5 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface IAuthInteractor {
 
+    fun isAuthenticated(): Boolean
+
     fun getAuthState(): Flow<AuthState>
 }

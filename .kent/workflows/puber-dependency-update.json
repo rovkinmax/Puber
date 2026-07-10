@@ -3,7 +3,7 @@
     "id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
     "name": "Puber Dependency Update",
     "description": "Update Puber Gradle dependencies or tooling, verify fallout, fix issues, and clean up safely.",
-    "version": 59
+    "version": 135
   },
   "nodes": [
     {
@@ -52,9 +52,9 @@
     {
       "id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
-      "key": "blocked",
+      "key": "wont_do",
       "kind": "terminal",
-      "display_name": "Blocked"
+      "display_name": "Won't Do"
     },
     {
       "id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
@@ -80,6 +80,15 @@
       "key": "ci_monitor",
       "kind": "agent",
       "display_name": "Monitor CI",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-5e2b9f5c-eed5-4639-8d38-8c4ee750662a",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "key": "waiting_pr",
+      "kind": "agent",
+      "display_name": "Waiting PR",
       "subagent_role": "default",
       "completion_mode": "shell_command"
     },
@@ -112,9 +121,9 @@
       "id": "group-dffb599b-7fca-43c2-a5ac-f314df007db9",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "source_node_id": "node-27dab828-f09b-4bd9-973b-2dc45ebcec8e",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Dependency update is blocked by package lookup, credentials, build setup, or unsafe version choices."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "update cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-14351958-a9d9-4a65-9629-2d8c9056364a",
@@ -128,17 +137,17 @@
       "id": "group-668062f2-60d6-47f5-ad18-c80520aa0b2b",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "source_node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
-      "transition_id": "done",
-      "display_name": "Done",
-      "description": "Dependency update verification passed; run mandatory compliance review before cleanup."
+      "transition_id": "compliance",
+      "display_name": "Compliance",
+      "description": "Work passed this stage; run mandatory compliance review before any PR/cleanup path."
     },
     {
       "id": "group-e52d04af-dfbd-4a58-9841-0254a894b7ff",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "source_node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Dependency fallout verification is blocked."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "verify cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-5bdb9306-de5a-47f8-832f-b163dec4655c",
@@ -152,9 +161,9 @@
       "id": "group-78717f8d-cb76-4a49-b8fd-d5665581a8e6",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "source_node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Fallout fixing is blocked."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "fix cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-9f9d67f9-c1cd-4f8f-8f1f-15c7c94e5feb",
@@ -168,9 +177,9 @@
       "id": "group-5f92cf54-e07b-41db-a84d-c7787268e20d",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "source_node_id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
-      "transition_id": "done",
-      "display_name": "Done",
-      "description": "Compliance review passed; create or update the task pull request before cleanup."
+      "transition_id": "ship_pr",
+      "display_name": "Ship PR",
+      "description": "Compliance passed; create or update the task PR before any terminal completion."
     },
     {
       "id": "group-aeb735e7-b761-4f66-8a9e-12fd47cfeea5",
@@ -184,9 +193,9 @@
       "id": "group-bf582f19-d767-44aa-bedb-03f7f9de85c7",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "source_node_id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Compliance review is blocked by missing or contradictory required sources."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "compliance cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-6c80e5f7-1b4a-49d5-be2e-bd309286647e",
@@ -200,25 +209,25 @@
       "id": "group-85f0b875-2960-4e84-b415-0d2d2832998a",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "source_node_id": "node-e3459660-22bc-4ad2-bd8e-190745ecc83e",
-      "transition_id": "done",
-      "display_name": "Done",
-      "description": "PR is intentionally not applicable because there are no repository changes; run cleanup."
+      "transition_id": "no_pr",
+      "display_name": "No PR",
+      "description": "No PR is applicable because there are no repository changes or the task is explicitly report-only; cleanup can finish the task."
     },
     {
       "id": "group-f6124d99-570f-4f64-8db5-f42b479d6e4f",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "source_node_id": "node-e3459660-22bc-4ad2-bd8e-190745ecc83e",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "PR creation or update is blocked by git state, auth, remote, branch, or unsafe repository state."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "ship_pr cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-b9a0562a-42d9-4c83-82ae-a8a0001e17a8",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "source_node_id": "node-09339573-c966-460d-aad9-82d0f53ef9fc",
-      "transition_id": "done",
-      "display_name": "Done",
-      "description": "PR checks passed or are intentionally skipped; run conservative cleanup."
+      "transition_id": "waiting_pr",
+      "display_name": "Waiting PR",
+      "description": "PR checks passed or were intentionally skipped; wait until the PR is merged before cleanup/done."
     },
     {
       "id": "group-065b900c-c5fc-446c-8d01-97407158ce3a",
@@ -232,9 +241,9 @@
       "id": "group-be8f0286-2f2d-464a-bf83-905baf5e9491",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "source_node_id": "node-09339573-c966-460d-aad9-82d0f53ef9fc",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "CI monitoring is blocked by GitHub access, missing check data, or unsafe repository state."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "ci_monitor cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-cdf973e7-cab4-4a13-83bd-1a615dc642e2",
@@ -245,12 +254,44 @@
       "description": "PR creation/update hit a recoverable branch, rebase, conflict, or metadata issue; user approval required before recovery work."
     },
     {
-      "id": "group-5a27510e-031f-4255-a500-59d190274e44",
+      "id": "group-e03a83ac-c98a-46c8-81a8-c9d88ff95c7f",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
-      "source_node_id": "node-09339573-c966-460d-aad9-82d0f53ef9fc",
-      "transition_id": "retry_later",
-      "display_name": "Retry Later",
-      "description": "CI or GitHub is temporarily unavailable, still starting, or missing an expected run; user approval required before retrying monitoring."
+      "source_node_id": "node-5e2b9f5c-eed5-4639-8d38-8c4ee750662a",
+      "transition_id": "pr_merged",
+      "display_name": "Pr Merged",
+      "description": "PR is confirmed merged; cleanup can finish the task."
+    },
+    {
+      "id": "group-05ba971b-6bff-49fd-88ec-75d86ddd2199",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-5e2b9f5c-eed5-4639-8d38-8c4ee750662a",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "PR review, conflicts, or post-CI regressions need task-scoped fixes."
+    },
+    {
+      "id": "group-284c689d-3e77-460b-8dc3-125178512bce",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-5e2b9f5c-eed5-4639-8d38-8c4ee750662a",
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "PR is still waiting on a human or external process; remain in Waiting PR."
+    },
+    {
+      "id": "group-06502ce4-5072-4b6c-a3e2-a2d0857e32c9",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-5e2b9f5c-eed5-4639-8d38-8c4ee750662a",
+      "transition_id": "close_without_merge",
+      "display_name": "Close Without Merge",
+      "description": "User explicitly closed/canceled the PR without merge; cleanup can finish."
+    },
+    {
+      "id": "group-e8fdd2bf-b3c0-4c75-893d-3144a8f7bbae",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "source_node_id": "node-27dab828-f09b-4bd9-973b-2dc45ebcec8e",
+      "transition_id": "wont_do",
+      "display_name": "Wont Do",
+      "description": "Latest user comment explicitly cancels this task or declares it not planned; finish without treating it as a recoverable blocker."
     }
   ],
   "edges": [
@@ -265,7 +306,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run the Puber dependency update flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/dependency-update.md. Treat the task body as the filter/security/risk instruction. Create an explicit .todo/dependency-update-<date-or-scope> workspace; do not infer or create .todo/.current.\n\nUpdate gradle/libs.versions.toml and related build files only as needed. Prefer patch/minor safe batches; keep major updates isolated or report them as skipped if too risky for this task. Verify with focused Gradle commands using ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout.\n\nComplete with verify and provide workspace_path, plan_path, updated_dependencies, changed_files, and verification_summary. Complete with blocked if package lookup, credentials, or build setup is blocked and provide blocker_reason."
+      "prompt_template": "Run the Puber dependency update flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/dependency-update.md. Treat the task body as the filter/security/risk instruction. Create an explicit .todo/dependency-update-<date-or-scope> workspace; do not infer or create .todo/.current.\n\nUpdate gradle/libs.versions.toml and related build files only as needed. Prefer patch/minor safe batches; keep major updates isolated or report them as skipped if too risky for this task. Verify with focused Gradle commands using ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout.\n\nComplete with verify and provide workspace_path, plan_path, updated_dependencies, changed_files, and verification_summary. Complete with needs_user_action if package lookup, credentials, or build setup is needs_user_action and provide blocker_reason."
     },
     {
       "id": "edge-e145c648-1e44-41d3-9a8b-924a337d3dd0",
@@ -278,15 +319,15 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Verify Puber dependency update fallout read-only.\n\nRead .kent/project-contract.md first. Inspect {{.Params.changed_files}}, updated dependencies {{.Params.updated_dependencies}}, and {{.Params.verification_summary}}. Run focused verification if practical. Do not edit files in this node.\n\nComplete with done if accepted. Complete with needs_changes if fallout fixes are needed and provide workspace_path, verification_report, and changed_files. Complete with blocked if verification cannot complete and provide blocker_reason.",
+      "prompt_template": "Verify Puber dependency update fallout read-only.\n\nRead .kent/project-contract.md first. Inspect {{.Params.changed_files}}, updated dependencies {{.Params.updated_dependencies}}, and {{.Params.verification_summary}}. Run focused verification if practical. Do not edit files in this node.\n\nComplete with compliance if accepted. Complete with needs_changes if fallout fixes are needed and provide workspace_path, verification_report, and changed_files. Complete with needs_user_action if verification cannot complete and provide blocker_reason.",
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the explicit .todo/dependency-update-* workspace."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
         },
         {
           "key": "plan_path",
-          "description": "Path to the dependency update plan.md or report artifact."
+          "description": "Path to the plan.md used by this workflow transition."
         },
         {
           "key": "updated_dependencies",
@@ -306,17 +347,18 @@
       "id": "edge-c135ffad-0f49-4c92-afc3-a10457abc9ab",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "transition_group_id": "group-dffb599b-7fca-43c2-a5ac-f314df007db9",
-      "key": "update_blocked",
-      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "update_needs_user_action",
+      "target_node_id": "node-27dab828-f09b-4bd9-973b-2dc45ebcec8e",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why dependency update cannot continue, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -326,20 +368,20 @@
       "transition_group_id": "group-14351958-a9d9-4a65-9629-2d8c9056364a",
       "key": "fix_fallout",
       "target_node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
-      "requires_approval": true,
+      "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix Puber dependency update fallout. Apply only fixes requested in {{.Params.verification_report}}, verify narrowly, and complete with verify or blocked.",
+      "prompt_template": "Fix Puber dependency update fallout. Apply only fixes requested in {{.Params.verification_report}}, verify narrowly, and complete with verify or needs_user_action.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the explicit .todo/dependency-update-* workspace."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
         },
         {
           "key": "verification_report",
-          "description": "Verification findings and fallout to fix."
+          "description": "Commands/tests run and their results, or path to a verification report."
         },
         {
           "key": "changed_files",
@@ -351,18 +393,18 @@
       "id": "edge-955a1d32-2382-405c-ad0a-2e2a65878118",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "transition_group_id": "group-668062f2-60d6-47f5-ad18-c80520aa0b2b",
-      "key": "verify_done",
+      "key": "verify_compliance",
       "target_node_id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: completed dependency update in workspace {{.Params.workspace_path}}. Changed files: {{.Params.changed_files}}. Review only compliance with task requirements, specs, AGENTS.md, dependency update rules, and workflow contract. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when fixes are required. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: completed dependency update in workspace {{.Params.workspace_path}}. Changed files: {{.Params.changed_files}}. Review only compliance with task requirements, specs, AGENTS.md, dependency update rules, and workflow contract. Do not edit files.\n\nComplete with ship_pr and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when fixes are required. Complete with needs_user_action and provide blocker_reason if required sources are missing or contradictory.",
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the explicit .todo/dependency-update-* workspace."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
         },
         {
           "key": "changed_files",
@@ -374,17 +416,18 @@
       "id": "edge-4f117691-e1e9-450e-84aa-536fbc3faa3d",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "transition_group_id": "group-e52d04af-dfbd-4a58-9841-0254a894b7ff",
-      "key": "verify_blocked",
-      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "verify_needs_user_action",
+      "target_node_id": "node-299c4802-4ea7-4dd7-8c47-36e269e5fc91",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why verification cannot complete, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -399,15 +442,15 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Re-verify the Puber dependency update after fallout fixes. Complete with done, needs_changes, or blocked.",
+      "prompt_template": "Re-verify the Puber dependency update after fallout fixes. Complete with compliance, needs_changes, or needs_user_action.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the explicit .todo/dependency-update-* workspace."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
         },
         {
           "key": "verification_report",
-          "description": "Original verification findings and fix summary."
+          "description": "Commands/tests run and their results, or path to a verification report."
         },
         {
           "key": "changed_files",
@@ -419,17 +462,18 @@
       "id": "edge-28c17c9e-d64c-45ef-93ef-d99e41043200",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "transition_group_id": "group-78717f8d-cb76-4a49-b8fd-d5665581a8e6",
-      "key": "fix_blocked",
-      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "fix_needs_user_action",
+      "target_node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why fallout fixing cannot continue, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -455,18 +499,18 @@
       "id": "edge-2391a51c-82b4-490e-b6a2-5f544f733cac",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "transition_group_id": "group-5f92cf54-e07b-41db-a84d-c7787268e20d",
-      "key": "compliance_done",
+      "key": "compliance_ship_pr",
       "target_node_id": "node-e3459660-22bc-4ad2-bd8e-190745ecc83e",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Create or update the Puber pull request for this completed task.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Compliance result: {{.Params.compliance_report}}.\n\nIf this task produced repository changes, commit only task-related files, push the current task branch to origin, and create or update a GitHub PR. Do not merge the PR. Do not push directly to master/main. If there are no repository changes and the task is report-only or smoke-only, complete with done and provide pr_report explaining why PR is not applicable.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, and workspace_path. Complete with needs_changes when PR creation/update is blocked by recoverable repository, branch, or PR state such as merge conflicts, non-fast-forward push, branch needing rebase, or missing PR metadata that can be fixed in the task worktree; provide workspace_path and blocker_reason. Complete with done only for PR-not-applicable/no-diff cases and provide pr_report. Complete with blocked only when continuing would be unsafe without changing task scope, credentials, or project policy; provide blocker_reason.",
+      "prompt_template": "Create or update the Puber pull request for this completed task.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Compliance result: {{.Params.compliance_report}}.\n\nIf this task produced repository changes, commit only task-related files, push the current task branch to origin, and create or update a GitHub PR. Do not merge the PR. Do not push directly to master/main. If there are no repository changes and the task is report-only or smoke-only, complete with no_pr and provide pr_report explaining why PR is not applicable.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, and workspace_path. Complete with needs_changes when PR creation/update is needs_user_action by recoverable repository, branch, or PR state such as merge conflicts, non-fast-forward push, branch needing rebase, or missing PR metadata that can be fixed in the task worktree; provide workspace_path and blocker_reason. Complete with no_pr only for PR-not-applicable/no-diff cases and provide pr_report. Complete with needs_user_action only when continuing would be unsafe without changing task scope, credentials, or project policy; provide blocker_reason.",
       "parameters": [
         {
           "key": "compliance_report",
-          "description": "Compliance review report, including rule sources checked and any findings."
+          "description": "Compliance review report or summary."
         }
       ]
     },
@@ -476,20 +520,20 @@
       "transition_group_id": "group-aeb735e7-b761-4f66-8a9e-12fd47cfeea5",
       "key": "compliance_fix",
       "target_node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
-      "requires_approval": true,
+      "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix Puber dependency update compliance violations only.\n\nRead .kent/project-contract.md and .kent/commands/compliance-review.md first. Apply only the minimum changes required by compliance findings in {{.Params.compliance_report}} for workspace {{.Params.workspace_path}}. Verify narrowly, then complete with verify and provide workspace_path, verification_report, and changed_files. Complete with blocked and provide blocker_reason if unsafe or missing input.",
+      "prompt_template": "Fix Puber dependency update compliance violations only.\n\nRead .kent/project-contract.md and .kent/commands/compliance-review.md first. Apply only the minimum changes required by compliance findings in {{.Params.compliance_report}} for workspace {{.Params.workspace_path}}. Verify narrowly, then complete with verify and provide workspace_path, verification_report, and changed_files. Complete with needs_user_action and provide blocker_reason if unsafe or missing input.",
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the explicit .todo/dependency-update-* workspace."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
         },
         {
           "key": "compliance_report",
-          "description": "Compliance review report, including rule sources checked and any findings."
+          "description": "Compliance review report or summary."
         }
       ]
     },
@@ -497,17 +541,18 @@
       "id": "edge-0b83081e-20cd-4b5c-b75e-e710c1750d1f",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "transition_group_id": "group-bf582f19-d767-44aa-bedb-03f7f9de85c7",
-      "key": "compliance_blocked",
-      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "compliance_needs_user_action",
+      "target_node_id": "node-46820ad9-67b1-4eb6-9a7c-8ed568e28e45",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why compliance review cannot complete, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -522,19 +567,19 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor Puber PR checks.\n\nRead .kent/project-contract.md and AGENTS.md first. Inspect PR {{.Params.pr_url}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with done if CI/checks pass, are absent, or are intentionally skipped with a clear reason; provide ci_report and pr_url. Complete with needs_changes if CI failed due to task changes and provide workspace_path plus ci_report. Complete with retry_later when checks cannot be inspected because GitHub/CI is still starting, rate-limited, temporarily unavailable, or an expected run has not appeared yet; provide pr_url, branch_name, workspace_path, and ci_report. Complete with blocked only if checks cannot be inspected and retrying would be unsafe or misleading; provide blocker_reason.",
+      "prompt_template": "Monitor Puber PR checks.\n\nRead .kent/project-contract.md and AGENTS.md first. Inspect PR {{.Params.pr_url}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with waiting_pr if CI/checks pass, are absent, or are intentionally skipped with a clear reason; provide ci_report and pr_url. Complete with needs_changes if CI failed due to task changes and provide workspace_path plus ci_report. Complete with needs_user_action for temporary external waits; provide blocker_reason. Complete with needs_user_action only if checks cannot be inspected and retrying would be unsafe or misleading; provide blocker_reason.",
       "parameters": [
         {
           "key": "pr_url",
-          "description": "URL of the pull request."
+          "description": "URL of the created, updated, or monitored pull request."
         },
         {
           "key": "branch_name",
-          "description": "Name of the pushed task branch."
+          "description": "Name of the task or release branch associated with the pull request."
         },
         {
           "key": "workspace_path",
-          "description": "Path to the worktree or checkout used for PR creation."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
         }
       ]
     },
@@ -553,7 +598,7 @@
       "parameters": [
         {
           "key": "pr_report",
-          "description": "Why no pull request was created or updated."
+          "description": "PR creation, review, conflict, or post-CI regression report."
         }
       ]
     },
@@ -561,17 +606,18 @@
       "id": "edge-3e5e25ae-628d-4317-b14c-5c1edec8bd7a",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "transition_group_id": "group-f6124d99-570f-4f64-8db5-f42b479d6e4f",
-      "key": "pr_blocked",
-      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "ship_pr_needs_user_action",
+      "target_node_id": "node-e3459660-22bc-4ad2-bd8e-190745ecc83e",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why PR creation/update cannot complete, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -579,22 +625,30 @@
       "id": "edge-fc5147e4-4047-4ae5-8d98-7b3eb3c11137",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "transition_group_id": "group-b9a0562a-42d9-4c83-82ae-a8a0001e17a8",
-      "key": "ci_done",
-      "target_node_id": "node-60340771-783d-44fb-8854-1aca22a87dcf",
+      "key": "ci_waiting_pr",
+      "target_node_id": "node-5e2b9f5c-eed5-4639-8d38-8c4ee750662a",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run conservative Puber task cleanup after PR/CI.\n\nRead .kent/project-contract.md first, then use .kent/commands/cleanup-task.md. PR: {{.Params.pr_url}}. CI report: {{.Params.ci_report}}. Do not delete any worktree containing unpushed or uncommitted user changes. Complete with done and provide cleanup_report.",
+      "prompt_template": "Hold this Puber task until its pull request is actually merged.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, PR {{.Params.pr_url}}, branch {{.Params.branch_name}}, workspace {{.Params.workspace_path}}, and CI report {{.Params.ci_report}}.\n\nUse `gh pr view --json state,mergedAt,mergeCommit,headRefName,baseRefName,url` when available. Do not merge the PR. Do not push commits from this node. Do not clean up while the PR is still open.\n\nComplete with pr_merged only when GitHub reports state=MERGED; provide pr_url, branch_name, and merge_report. Complete with needs_changes when PR review comments, merge conflicts, or post-CI regressions can be fixed within the task scope; provide workspace_path and pr_report. Complete with needs_user_action when the PR is still open, waiting for human review/approval/merge, or needs_user_action by an external process; add a task comment with the current PR status and exact human action, then provide pr_url, branch_name, workspace_path, and waiting_reason. Complete with close_without_merge only if the latest user comment explicitly says to close/cancel/skip this PR; provide pr_url, branch_name, and cleanup_reason.",
       "parameters": [
+        {
+          "key": "pr_url",
+          "description": "URL of the created, updated, or monitored pull request."
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the task or release branch associated with the pull request."
+        },
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+        },
         {
           "key": "ci_report",
           "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
-        },
-        {
-          "key": "pr_url",
-          "description": "URL of the created or updated pull request."
         }
       ]
     },
@@ -604,16 +658,16 @@
       "transition_group_id": "group-065b900c-c5fc-446c-8d01-97407158ce3a",
       "key": "ci_fix",
       "target_node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
-      "requires_approval": true,
+      "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix Puber dependency update CI failures only.\n\nRead .kent/project-contract.md first. Apply only the minimum changes required by CI report {{.Params.ci_report}} in workspace {{.Params.workspace_path}}. Verify narrowly, then complete with verify and provide workspace_path, verification_report, and changed_files. Complete with blocked and provide blocker_reason if unsafe or missing input.",
+      "prompt_template": "Fix Puber dependency update CI failures only.\n\nRead .kent/project-contract.md first. Apply only the minimum changes required by CI report {{.Params.ci_report}} in workspace {{.Params.workspace_path}}. Verify narrowly, then complete with verify and provide workspace_path, verification_report, and changed_files. Complete with needs_user_action and provide blocker_reason if unsafe or missing input.",
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the explicit .todo/dependency-update-* workspace."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
         },
         {
           "key": "ci_report",
@@ -625,17 +679,18 @@
       "id": "edge-af52bc8f-ce2f-4108-b9bb-f4efc2175269",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
       "transition_group_id": "group-be8f0286-2f2d-464a-bf83-905baf5e9491",
-      "key": "ci_blocked",
-      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "ci_monitor_needs_user_action",
+      "target_node_id": "node-09339573-c966-460d-aad9-82d0f53ef9fc",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why CI monitoring cannot complete, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -650,46 +705,141 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix recoverable Puber PR creation/update issues only.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Previous PR blocker: {{.Params.blocker_reason}}. Work in {{.Params.workspace_path}}. Apply only the minimum changes needed to make the task branch/PR shippable, such as rebasing, resolving merge conflicts, fixing branch metadata, or repairing the PR-ready commit set. Do not expand product scope. Verify narrowly, then continue through the workflow's normal review/compliance path. Complete with blocked only if the recovery is unsafe or requires user credentials/policy changes.",
+      "prompt_template": "Fix recoverable Puber PR creation/update issues only.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Previous PR blocker: {{.Params.blocker_reason}}. Work in {{.Params.workspace_path}}. Apply only the minimum changes needed to make the task branch/PR shippable, such as rebasing, resolving merge conflicts, fixing branch metadata, or repairing the PR-ready commit set. Do not expand product scope. Verify narrowly, then continue through the workflow's normal review/compliance path. Complete with needs_user_action only if the recovery is unsafe or requires user credentials/policy changes.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the worktree or checkout used for PR creation."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
         },
         {
           "key": "blocker_reason",
-          "description": "Why PR creation/update cannot complete, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
     {
-      "id": "edge-2a67a605-53e4-4bd5-8219-917934b132ef",
+      "id": "edge-4e794d46-2ec5-4703-bd7b-cc07155334ad",
       "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
-      "transition_group_id": "group-5a27510e-031f-4255-a500-59d190274e44",
-      "key": "ci_retry",
-      "target_node_id": "node-09339573-c966-460d-aad9-82d0f53ef9fc",
+      "transition_group_id": "group-e03a83ac-c98a-46c8-81a8-c9d88ff95c7f",
+      "key": "cleanup_after_merge",
+      "target_node_id": "node-60340771-783d-44fb-8854-1aca22a87dcf",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup after the pull request was confirmed merged.\n\nRead AGENTS.md, .kent/project-contract.md, .kent/commands/cleanup-task.md, PR {{.Params.pr_url}}, branch {{.Params.branch_name}}, and merge report {{.Params.merge_report}}. Verify the PR is merged with GitHub state, not only git ancestry, because squash merges are allowed. Do not delete any worktree containing unpushed commits, uncommitted user changes, or unclear ownership. Complete with done and provide cleanup_report.",
+      "parameters": [
+        {
+          "key": "pr_url",
+          "description": "URL of the created, updated, or monitored pull request."
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the task or release branch associated with the pull request."
+        },
+        {
+          "key": "merge_report",
+          "description": "GitHub PR state, mergedAt, mergeCommit, and cleanup or release notes."
+        }
+      ]
+    },
+    {
+      "id": "edge-10d40135-b389-46e5-babd-4019899b8cc1",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-05ba971b-6bff-49fd-88ec-75d86ddd2199",
+      "key": "pr_feedback",
+      "target_node_id": "node-d51d551d-30cb-4948-8cbe-62d4d34fda9e",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Fix Puber PR feedback only.\n\nRead AGENTS.md, .kent/project-contract.md, latest task comments, workspace {{.Params.workspace_path}}, and PR feedback report {{.Params.pr_report}}. Apply only task-scoped changes needed for PR review comments, merge conflicts, or post-CI regressions. Do not force-push unless the latest user comment explicitly permits force-push for this exact PR/branch. Verify narrowly, then return through the workflow's normal review/verify/compliance path with an updated report. If user input is required, complete with needs_user_action and provide blocker_reason.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+        },
+        {
+          "key": "pr_report",
+          "description": "PR creation, review, conflict, or post-CI regression report."
+        }
+      ]
+    },
+    {
+      "id": "edge-e0305d17-0836-4dd0-b575-505062f55628",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-284c689d-3e77-460b-8dc3-125178512bce",
+      "key": "waiting_pr_needs_user_action",
+      "target_node_id": "node-5e2b9f5c-eed5-4639-8d38-8c4ee750662a",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Retry Puber PR check monitoring after an approved temporary CI/GitHub wait.\n\nRead .kent/project-contract.md and AGENTS.md first. Previous CI status: {{.Params.ci_report}}. Inspect PR {{.Params.pr_url}} on branch {{.Params.branch_name}} again. Do not merge the PR. Do not push new commits from this node.\n\nComplete with done if CI/checks pass, are absent, or are intentionally skipped with a clear reason; provide ci_report and pr_url. Complete with needs_changes if CI failed due to task changes and provide workspace_path plus ci_report. Complete with retry_later if CI/GitHub is still temporarily unavailable and provide pr_url, branch_name, workspace_path, and ci_report. Complete with blocked only if retrying is no longer useful or safe; provide blocker_reason.",
+      "prompt_template": "Re-check the Puber pull request after the user resolved the external wait or approved another check.\n\nRead AGENTS.md, .kent/project-contract.md, latest task comments, PR {{.Params.pr_url}}, branch {{.Params.branch_name}}, workspace {{.Params.workspace_path}}, and previous waiting reason {{.Params.waiting_reason}}. Do not merge, push, or clean up unless the PR is confirmed merged.\n\nComplete with pr_merged only when GitHub reports state=MERGED. Complete with needs_changes for task-scoped PR review/conflict/regression fixes. Complete with needs_user_action again if the PR is still waiting externally. Complete with close_without_merge only on explicit latest user instruction.",
       "parameters": [
         {
           "key": "pr_url",
-          "description": "URL of the created or updated pull request."
+          "description": "URL of the created, updated, or monitored pull request."
         },
         {
           "key": "branch_name",
-          "description": "Name of the pushed task branch."
+          "description": "Name of the task or release branch associated with the pull request."
         },
         {
           "key": "workspace_path",
-          "description": "Path to the explicit .todo/dependency-update-* workspace."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
         },
         {
-          "key": "ci_report",
-          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          "key": "waiting_reason",
+          "description": "Why the PR cannot advance yet and the exact user or external action needed."
+        }
+      ]
+    },
+    {
+      "id": "edge-516fd78c-4831-4e2d-a164-912fbad2d2bf",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-06502ce4-5072-4b6c-a3e2-a2d0857e32c9",
+      "key": "cancel_cleanup",
+      "target_node_id": "node-60340771-783d-44fb-8854-1aca22a87dcf",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run conservative Puber task cleanup after the user explicitly closed/canceled the PR without merge.\n\nRead AGENTS.md, .kent/project-contract.md, .kent/commands/cleanup-task.md, PR {{.Params.pr_url}}, branch {{.Params.branch_name}}, and cleanup reason {{.Params.cleanup_reason}}. Do not delete any worktree containing unpushed commits, uncommitted user changes, or unclear ownership. Complete with done and provide cleanup_report.",
+      "parameters": [
+        {
+          "key": "pr_url",
+          "description": "URL of the created, updated, or monitored pull request."
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the task or release branch associated with the pull request."
+        },
+        {
+          "key": "cleanup_reason",
+          "description": "Explicit user instruction or reason for cleanup without merge."
+        }
+      ]
+    },
+    {
+      "id": "edge-3130ff39-1507-4167-a28b-d6f8e7dc39e6",
+      "workflow_id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
+      "transition_group_id": "group-e8fdd2bf-b3c0-4c75-893d-3144a8f7bbae",
+      "key": "update_wont_do",
+      "target_node_id": "node-8e0cfb7b-5034-448b-9921-7b830c6b358c",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "closure_reason",
+          "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
         }
       ]
     }
@@ -704,11 +854,11 @@
         "possible_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "plan_path",
-            "description": "Path to the dependency update plan.md or report artifact."
+            "description": "Path to the plan.md used by this workflow transition."
           },
           {
             "name": "updated_dependencies",
@@ -724,7 +874,11 @@
           },
           {
             "name": "blocker_reason",
-            "description": "Why dependency update cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          },
+          {
+            "name": "closure_reason",
+            "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
         ]
       },
@@ -733,11 +887,11 @@
         "possible_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "verification_report",
-            "description": "Verification findings and fallout to fix."
+            "description": "Commands/tests run and their results, or path to a verification report."
           },
           {
             "name": "changed_files",
@@ -745,7 +899,7 @@
           },
           {
             "name": "blocker_reason",
-            "description": "Why verification cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -754,11 +908,11 @@
         "possible_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "verification_report",
-            "description": "Original verification findings and fix summary."
+            "description": "Commands/tests run and their results, or path to a verification report."
           },
           {
             "name": "changed_files",
@@ -766,7 +920,7 @@
           },
           {
             "name": "blocker_reason",
-            "description": "Why fallout fixing cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -787,15 +941,15 @@
         "possible_provision_fields": [
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           },
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "blocker_reason",
-            "description": "Why compliance review cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -804,23 +958,23 @@
         "possible_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the pull request."
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
             "name": "branch_name",
-            "description": "Name of the pushed task branch."
+            "description": "Name of the task or release branch associated with the pull request."
           },
           {
             "name": "workspace_path",
-            "description": "Path to the worktree or checkout used for PR creation."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "pr_report",
-            "description": "Why no pull request was created or updated."
+            "description": "PR creation, review, conflict, or post-CI regression report."
           },
           {
             "name": "blocker_reason",
-            "description": "Why PR creation/update cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -828,24 +982,57 @@
         "node_id": "node-09339573-c966-460d-aad9-82d0f53ef9fc",
         "possible_provision_fields": [
           {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
-            "name": "pr_url",
-            "description": "URL of the created or updated pull request."
-          },
-          {
-            "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
-          },
-          {
             "name": "blocker_reason",
-            "description": "Why CI monitoring cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          }
+        ]
+      },
+      {
+        "node_id": "node-5e2b9f5c-eed5-4639-8d38-8c4ee750662a",
+        "possible_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
             "name": "branch_name",
-            "description": "Name of the pushed task branch."
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "merge_report",
+            "description": "GitHub PR state, mergedAt, mergeCommit, and cleanup or release notes."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "pr_report",
+            "description": "PR creation, review, conflict, or post-CI regression report."
+          },
+          {
+            "name": "waiting_reason",
+            "description": "Why the PR cannot advance yet and the exact user or external action needed."
+          },
+          {
+            "name": "cleanup_reason",
+            "description": "Explicit user instruction or reason for cleanup without merge."
           }
         ]
       },
@@ -862,11 +1049,11 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "plan_path",
-            "description": "Path to the dependency update plan.md or report artifact."
+            "description": "Path to the plan.md used by this workflow transition."
           },
           {
             "name": "updated_dependencies",
@@ -887,7 +1074,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why dependency update cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -896,11 +1083,11 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "verification_report",
-            "description": "Verification findings and fallout to fix."
+            "description": "Commands/tests run and their results, or path to a verification report."
           },
           {
             "name": "changed_files",
@@ -913,7 +1100,7 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "changed_files",
@@ -926,7 +1113,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why verification cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -935,11 +1122,11 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "verification_report",
-            "description": "Original verification findings and fix summary."
+            "description": "Commands/tests run and their results, or path to a verification report."
           },
           {
             "name": "changed_files",
@@ -952,7 +1139,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why fallout fixing cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -970,7 +1157,7 @@
         "required_provision_fields": [
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -979,11 +1166,11 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -992,7 +1179,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why compliance review cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -1001,15 +1188,15 @@
         "required_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the pull request."
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
             "name": "branch_name",
-            "description": "Name of the pushed task branch."
+            "description": "Name of the task or release branch associated with the pull request."
           },
           {
             "name": "workspace_path",
-            "description": "Path to the worktree or checkout used for PR creation."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           }
         ]
       },
@@ -1018,7 +1205,7 @@
         "required_provision_fields": [
           {
             "name": "pr_report",
-            "description": "Why no pull request was created or updated."
+            "description": "PR creation, review, conflict, or post-CI regression report."
           }
         ]
       },
@@ -1027,7 +1214,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why PR creation/update cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -1035,12 +1222,20 @@
         "transition_group_id": "group-b9a0562a-42d9-4c83-82ae-a8a0001e17a8",
         "required_provision_fields": [
           {
-            "name": "ci_report",
-            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
-            "name": "pr_url",
-            "description": "URL of the created or updated pull request."
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           }
         ]
       },
@@ -1049,7 +1244,7 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "ci_report",
@@ -1062,7 +1257,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why CI monitoring cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -1071,32 +1266,88 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the worktree or checkout used for PR creation."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "blocker_reason",
-            "description": "Why PR creation/update cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
       {
-        "transition_group_id": "group-5a27510e-031f-4255-a500-59d190274e44",
+        "transition_group_id": "group-e03a83ac-c98a-46c8-81a8-c9d88ff95c7f",
         "required_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the created or updated pull request."
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
             "name": "branch_name",
-            "description": "Name of the pushed task branch."
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "merge_report",
+            "description": "GitHub PR state, mergedAt, mergeCommit, and cleanup or release notes."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-05ba971b-6bff-49fd-88ec-75d86ddd2199",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "pr_report",
+            "description": "PR creation, review, conflict, or post-CI regression report."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-284c689d-3e77-460b-8dc3-125178512bce",
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
           },
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
-            "name": "ci_report",
-            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+            "name": "waiting_reason",
+            "description": "Why the PR cannot advance yet and the exact user or external action needed."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-06502ce4-5072-4b6c-a3e2-a2d0857e32c9",
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "cleanup_reason",
+            "description": "Explicit user instruction or reason for cleanup without merge."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-e8fdd2bf-b3c0-4c75-893d-3144a8f7bbae",
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
         ]
       }
@@ -1137,11 +1388,11 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "plan_path",
-            "description": "Path to the dependency update plan.md or report artifact."
+            "description": "Path to the plan.md used by this workflow transition."
           },
           {
             "name": "updated_dependencies",
@@ -1169,7 +1420,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why dependency update cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -1195,11 +1446,11 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "verification_report",
-            "description": "Verification findings and fallout to fix."
+            "description": "Commands/tests run and their results, or path to a verification report."
           },
           {
             "name": "changed_files",
@@ -1224,7 +1475,7 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "changed_files",
@@ -1244,7 +1495,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why verification cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -1270,11 +1521,11 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "verification_report",
-            "description": "Original verification findings and fix summary."
+            "description": "Commands/tests run and their results, or path to a verification report."
           },
           {
             "name": "changed_files",
@@ -1294,7 +1545,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why fallout fixing cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -1326,7 +1577,7 @@
         "required_provision_fields": [
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -1347,11 +1598,11 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -1367,7 +1618,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why compliance review cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -1393,15 +1644,15 @@
         "required_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the pull request."
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
             "name": "branch_name",
-            "description": "Name of the pushed task branch."
+            "description": "Name of the task or release branch associated with the pull request."
           },
           {
             "name": "workspace_path",
-            "description": "Path to the worktree or checkout used for PR creation."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           }
         ]
       },
@@ -1417,7 +1668,7 @@
         "required_provision_fields": [
           {
             "name": "pr_report",
-            "description": "Why no pull request was created or updated."
+            "description": "PR creation, review, conflict, or post-CI regression report."
           }
         ]
       },
@@ -1433,103 +1684,12 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why PR creation/update cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
       {
         "edge_id": "edge-fc5147e4-4047-4ae5-8d98-7b3eb3c11137",
-        "input_bindings": [
-          {
-            "name": "ci_report",
-            "source": "transition_output",
-            "field": "ci_report"
-          },
-          {
-            "name": "pr_url",
-            "source": "transition_output",
-            "field": "pr_url"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "ci_report",
-            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
-          },
-          {
-            "name": "pr_url",
-            "description": "URL of the created or updated pull request."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-e1c7f78e-26be-4d77-a479-2bd1afc681b5",
-        "input_bindings": [
-          {
-            "name": "workspace_path",
-            "source": "transition_output",
-            "field": "workspace_path"
-          },
-          {
-            "name": "ci_report",
-            "source": "transition_output",
-            "field": "ci_report"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
-          },
-          {
-            "name": "ci_report",
-            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-af52bc8f-ce2f-4108-b9bb-f4efc2175269",
-        "input_bindings": [
-          {
-            "name": "blocker_reason",
-            "source": "transition_output",
-            "field": "blocker_reason"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "blocker_reason",
-            "description": "Why CI monitoring cannot complete, in the task language when practical."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-7fa56ec2-0d6b-4529-9e56-0d0fdd69ffe7",
-        "input_bindings": [
-          {
-            "name": "workspace_path",
-            "source": "transition_output",
-            "field": "workspace_path"
-          },
-          {
-            "name": "blocker_reason",
-            "source": "transition_output",
-            "field": "blocker_reason"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Path to the worktree or checkout used for PR creation."
-          },
-          {
-            "name": "blocker_reason",
-            "description": "Why PR creation/update cannot complete, in the task language when practical."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-2a67a605-53e4-4bd5-8219-917934b132ef",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -1555,19 +1715,237 @@
         "required_provision_fields": [
           {
             "name": "pr_url",
-            "description": "URL of the created or updated pull request."
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
             "name": "branch_name",
-            "description": "Name of the pushed task branch."
+            "description": "Name of the task or release branch associated with the pull request."
           },
           {
             "name": "workspace_path",
-            "description": "Path to the explicit .todo/dependency-update-* workspace."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-e1c7f78e-26be-4d77-a479-2bd1afc681b5",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-af52bc8f-ce2f-4108-b9bb-f4efc2175269",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-7fa56ec2-0d6b-4529-9e56-0d0fdd69ffe7",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-4e794d46-2ec5-4703-bd7b-cc07155334ad",
+        "input_bindings": [
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "merge_report",
+            "source": "transition_output",
+            "field": "merge_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "merge_report",
+            "description": "GitHub PR state, mergedAt, mergeCommit, and cleanup or release notes."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-10d40135-b389-46e5-babd-4019899b8cc1",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "pr_report",
+            "source": "transition_output",
+            "field": "pr_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "pr_report",
+            "description": "PR creation, review, conflict, or post-CI regression report."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-e0305d17-0836-4dd0-b575-505062f55628",
+        "input_bindings": [
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "waiting_reason",
+            "source": "transition_output",
+            "field": "waiting_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "waiting_reason",
+            "description": "Why the PR cannot advance yet and the exact user or external action needed."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-516fd78c-4831-4e2d-a164-912fbad2d2bf",
+        "input_bindings": [
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "cleanup_reason",
+            "source": "transition_output",
+            "field": "cleanup_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "cleanup_reason",
+            "description": "Explicit user instruction or reason for cleanup without merge."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-3130ff39-1507-4167-a28b-d6f8e7dc39e6",
+        "input_bindings": [
+          {
+            "name": "closure_reason",
+            "source": "transition_output",
+            "field": "closure_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
         ]
       }

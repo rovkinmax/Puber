@@ -3,7 +3,7 @@
     "id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
     "name": "Puber Release Preparation",
     "description": "Prepare a Puber release branch and version bump, push only after approval, and clean up safely.",
-    "version": 26
+    "version": 53
   },
   "nodes": [
     {
@@ -43,9 +43,9 @@
     {
       "id": "node-c49ac91b-b6c0-4a46-9f9f-809653db03db",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
-      "key": "blocked",
+      "key": "wont_do",
       "kind": "terminal",
-      "display_name": "Blocked"
+      "display_name": "Won't Do"
     },
     {
       "id": "node-5174454b-79c1-43c3-827e-48d80812d065",
@@ -85,25 +85,25 @@
       "id": "group-bbd72be8-6346-48fc-bfff-eafd46c364c7",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "source_node_id": "node-5dae0fea-29f2-451c-a819-679a065d7630",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Release preparation is blocked by missing version/base branch, dirty unsafe state, or git access."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "prepare cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-3b9d06ec-fb03-46d3-920d-34c5d4a5732e",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "source_node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
-      "transition_id": "done",
-      "display_name": "Done",
-      "description": "Release branch is finalized or push was intentionally skipped; run mandatory compliance review before cleanup."
+      "transition_id": "compliance",
+      "display_name": "Compliance",
+      "description": "Release stage passed; run mandatory compliance review before cleanup."
     },
     {
       "id": "group-edc2a10c-bd8b-4208-a2f2-22483ebebd67",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "source_node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Release verification or push is blocked."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "verify cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
       "id": "group-c13f3b18-1488-494c-a1b8-d0bceb9fe7a2",
@@ -117,9 +117,9 @@
       "id": "group-7b5b54ad-670b-4b8d-9b37-30cd21bc10c1",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "source_node_id": "node-5174454b-79c1-43c3-827e-48d80812d065",
-      "transition_id": "done",
-      "display_name": "Done",
-      "description": "Compliance review found no violations; run conservative cleanup."
+      "transition_id": "cleanup",
+      "display_name": "Cleanup",
+      "description": "Compliance passed; run conservative cleanup before terminal done."
     },
     {
       "id": "group-da7cde94-4634-487f-b274-ba386d4285c8",
@@ -127,15 +127,23 @@
       "source_node_id": "node-5174454b-79c1-43c3-827e-48d80812d065",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
-      "description": "Compliance review found release-preparation violations; user approval required before rework."
+      "description": "Compliance review found release-preparation violations; rework without manual approval."
     },
     {
       "id": "group-0a45a2c8-359a-4a38-9e80-703ac30b9cf9",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "source_node_id": "node-5174454b-79c1-43c3-827e-48d80812d065",
-      "transition_id": "blocked",
-      "display_name": "Blocked",
-      "description": "Compliance review is blocked by missing or contradictory required sources."
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "compliance cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
+    },
+    {
+      "id": "group-b0e1df30-ac8e-4e27-b483-6fa2332d523e",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "source_node_id": "node-5dae0fea-29f2-451c-a819-679a065d7630",
+      "transition_id": "wont_do",
+      "display_name": "Wont Do",
+      "description": "Latest user comment explicitly cancels this legacy release task or declares it not planned; finish without treating it as a recoverable blocker."
     }
   ],
   "edges": [
@@ -150,7 +158,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run Puber release branch preparation for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/release-branch.md. Treat the task body as the desired base branch/version policy. If base branch or version policy is ambiguous and cannot be safely derived, complete blocked with blocker_reason instead of guessing.\n\nPrepare the local release branch and version bump. Do not push to remote unless explicitly authorized by a later approval. Prefer .kent/worktrees/release-<version> if the main worktree is dirty. Complete with verify when local release preparation is complete and provide release_version, release_branch, base_branch, worktree_path, commit_hash, and push_plan. Complete with blocked if preparation is blocked and provide blocker_reason."
+      "prompt_template": "Run Puber release branch preparation for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/release-branch.md. Treat the task body as the desired base branch/version policy. If base branch or version policy is ambiguous and cannot be safely derived, complete needs_user_action with blocker_reason instead of guessing.\n\nPrepare the local release branch and version bump. Do not push to remote unless explicitly authorized by a later approval. Prefer .kent/worktrees/release-<version> if the main worktree is dirty. Complete with verify when local release preparation is complete and provide release_version, release_branch, base_branch, worktree_path, commit_hash, and push_plan. Complete with needs_user_action if preparation is needs_user_action and provide blocker_reason."
     },
     {
       "id": "edge-c9abd2f9-ddd0-4a54-a092-fbcb2d464153",
@@ -163,15 +171,15 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Verify and finalize the prepared Puber release branch.\n\nRead .kent/project-contract.md first. Check release {{.Params.release_version}} on branch {{.Params.release_branch}} at {{.Params.commit_hash}}. Verify the local branch status and version bump. Push only if the task/approval clearly authorizes the push described in {{.Params.push_plan}}; otherwise report that push was skipped.\n\nComplete with done if release preparation is finalized. Complete with blocked if verification or push is blocked and provide blocker_reason.",
+      "prompt_template": "Verify and finalize the prepared Puber release branch.\n\nRead .kent/project-contract.md first. Check release {{.Params.release_version}} on branch {{.Params.release_branch}} at {{.Params.commit_hash}}. Verify the local branch status and version bump. Push only if the task/approval clearly authorizes the push described in {{.Params.push_plan}}; otherwise report that push was skipped.\n\nComplete with compliance if release preparation is finalized. Complete with needs_user_action if verification or push is needs_user_action and provide blocker_reason.",
       "parameters": [
         {
           "key": "release_version",
-          "description": "Release version prepared by this task."
+          "description": "Release version prepared by this workflow."
         },
         {
           "key": "release_branch",
-          "description": "Local release branch prepared by this task."
+          "description": "Release branch containing the version bump."
         },
         {
           "key": "base_branch",
@@ -195,17 +203,18 @@
       "id": "edge-89dbd721-ef6a-44fb-a4b8-4dd468d8ce3e",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "transition_group_id": "group-bbd72be8-6346-48fc-bfff-eafd46c364c7",
-      "key": "prepare_blocked",
-      "target_node_id": "node-c49ac91b-b6c0-4a46-9f9f-809653db03db",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "prepare_needs_user_action",
+      "target_node_id": "node-5dae0fea-29f2-451c-a819-679a065d7630",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this legacy Puber release workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog and do not broaden release scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why release preparation cannot continue, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -213,22 +222,22 @@
       "id": "edge-58db533b-47b1-47fe-9438-3ec1a5c025b0",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "transition_group_id": "group-3b9d06ec-fb03-46d3-920d-34c5d4a5732e",
-      "key": "verify_done",
+      "key": "verify_compliance",
       "target_node_id": "node-5174454b-79c1-43c3-827e-48d80812d065",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/commands/release-branch.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: release preparation for {{.Params.release_version}} on {{.Params.release_branch}} in {{.Params.worktree_path}}. Verify compliance with release workflow approval gates, git/worktree policy, task requirements, and AGENTS.md. Do not edit files.\n\nComplete with done and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide release_version, release_branch, worktree_path, and compliance_report when rework is required. Complete with blocked and provide blocker_reason if required sources are missing or contradictory.",
+      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/commands/release-branch.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: release preparation for {{.Params.release_version}} on {{.Params.release_branch}} in {{.Params.worktree_path}}. Verify compliance with release workflow approval gates, git/worktree policy, task requirements, and AGENTS.md. Do not edit files.\n\nComplete with cleanup and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide release_version, release_branch, worktree_path, and compliance_report when rework is required. Complete with needs_user_action and provide blocker_reason if required sources are missing or contradictory.",
       "parameters": [
         {
           "key": "release_version",
-          "description": "Release version prepared by this task."
+          "description": "Release version prepared by this workflow."
         },
         {
           "key": "release_branch",
-          "description": "Local release branch prepared by this task."
+          "description": "Release branch containing the version bump."
         },
         {
           "key": "worktree_path",
@@ -240,17 +249,18 @@
       "id": "edge-8a4193bf-4b8d-4001-903b-725f47915dc6",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "transition_group_id": "group-edc2a10c-bd8b-4208-a2f2-22483ebebd67",
-      "key": "verify_blocked",
-      "target_node_id": "node-c49ac91b-b6c0-4a46-9f9f-809653db03db",
-      "requires_approval": false,
-      "context_mode": "new_session",
+      "key": "verify_needs_user_action",
+      "target_node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
+      "prompt_template": "Resume this legacy Puber release workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog and do not broaden release scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker.",
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Why verification/finalization cannot continue, in the task language when practical."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
         }
       ]
     },
@@ -268,7 +278,7 @@
       "parameters": [
         {
           "key": "cleanup_report",
-          "description": "Summary of cleanup performed or deliberately skipped."
+          "description": "Cleanup report or summary."
         }
       ]
     },
@@ -276,7 +286,7 @@
       "id": "edge-1507f20a-c1f5-4264-8d81-92a99cb2d753",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "transition_group_id": "group-7b5b54ad-670b-4b8d-9b37-30cd21bc10c1",
-      "key": "compliance_done",
+      "key": "compliance_cleanup",
       "target_node_id": "node-63c461dc-1648-4215-a62b-fc08cfd214d6",
       "requires_approval": false,
       "context_mode": "new_session",
@@ -287,7 +297,7 @@
       "parameters": [
         {
           "key": "compliance_report",
-          "description": "Compliance review report, including rule sources checked and any findings."
+          "description": "Compliance review report or summary."
         }
       ]
     },
@@ -297,20 +307,20 @@
       "transition_group_id": "group-da7cde94-4634-487f-b274-ba386d4285c8",
       "key": "compliance_verify",
       "target_node_id": "node-c9126434-1ae1-4429-bb99-7cb17feba6b2",
-      "requires_approval": true,
+      "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Rework Puber release preparation compliance findings only.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, and .kent/commands/compliance-review.md first. Apply only the minimum approved changes required by {{.Params.compliance_report}} for release {{.Params.release_version}} on {{.Params.release_branch}} in {{.Params.worktree_path}}. Push only if the approval and task explicitly authorize it. Complete with done or blocked according to the release-preparation workflow contract.",
+      "prompt_template": "Rework Puber release preparation compliance findings only.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, and .kent/commands/compliance-review.md first. Apply only the minimum approved changes required by {{.Params.compliance_report}} for release {{.Params.release_version}} on {{.Params.release_branch}} in {{.Params.worktree_path}}. Push only if the approval and task explicitly authorize it. Complete with compliance or needs_user_action according to the release-preparation workflow contract.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
       "parameters": [
         {
           "key": "release_version",
-          "description": "Release version prepared by this task."
+          "description": "Release version prepared by this workflow."
         },
         {
           "key": "release_branch",
-          "description": "Local release branch prepared by this task."
+          "description": "Release branch containing the version bump."
         },
         {
           "key": "worktree_path",
@@ -318,7 +328,7 @@
         },
         {
           "key": "compliance_report",
-          "description": "Compliance review report, including rule sources checked and any findings."
+          "description": "Compliance review report or summary."
         }
       ]
     },
@@ -326,17 +336,36 @@
       "id": "edge-fea9cf9f-8960-4933-bad6-5a8735f9e044",
       "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
       "transition_group_id": "group-0a45a2c8-359a-4a38-9e80-703ac30b9cf9",
-      "key": "compliance_blocked",
+      "key": "compliance_needs_user_action",
+      "target_node_id": "node-5174454b-79c1-43c3-827e-48d80812d065",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Resume this legacy Puber release workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog and do not broaden release scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker.",
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+        }
+      ]
+    },
+    {
+      "id": "edge-91a78f73-a027-4d61-bb1c-29eaec99e758",
+      "workflow_id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
+      "transition_group_id": "group-b0e1df30-ac8e-4e27-b483-6fa2332d523e",
+      "key": "prepare_wont_do",
       "target_node_id": "node-c49ac91b-b6c0-4a46-9f9f-809653db03db",
-      "requires_approval": false,
+      "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
         "kind": "immediate_source"
       },
       "parameters": [
         {
-          "key": "blocker_reason",
-          "description": "Why compliance review cannot complete, in the task language when practical."
+          "key": "closure_reason",
+          "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
         }
       ]
     }
@@ -351,11 +380,11 @@
         "possible_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version prepared by this task."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_branch",
-            "description": "Local release branch prepared by this task."
+            "description": "Release branch containing the version bump."
           },
           {
             "name": "base_branch",
@@ -375,7 +404,11 @@
           },
           {
             "name": "blocker_reason",
-            "description": "Why release preparation cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          },
+          {
+            "name": "closure_reason",
+            "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
         ]
       },
@@ -384,11 +417,11 @@
         "possible_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version prepared by this task."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_branch",
-            "description": "Local release branch prepared by this task."
+            "description": "Release branch containing the version bump."
           },
           {
             "name": "worktree_path",
@@ -396,7 +429,7 @@
           },
           {
             "name": "blocker_reason",
-            "description": "Why verification/finalization cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -405,7 +438,7 @@
         "possible_provision_fields": [
           {
             "name": "cleanup_report",
-            "description": "Summary of cleanup performed or deliberately skipped."
+            "description": "Cleanup report or summary."
           }
         ]
       },
@@ -417,15 +450,15 @@
         "possible_provision_fields": [
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           },
           {
             "name": "release_version",
-            "description": "Release version prepared by this task."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_branch",
-            "description": "Local release branch prepared by this task."
+            "description": "Release branch containing the version bump."
           },
           {
             "name": "worktree_path",
@@ -433,7 +466,7 @@
           },
           {
             "name": "blocker_reason",
-            "description": "Why compliance review cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -450,11 +483,11 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version prepared by this task."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_branch",
-            "description": "Local release branch prepared by this task."
+            "description": "Release branch containing the version bump."
           },
           {
             "name": "base_branch",
@@ -479,7 +512,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why release preparation cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -488,11 +521,11 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version prepared by this task."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_branch",
-            "description": "Local release branch prepared by this task."
+            "description": "Release branch containing the version bump."
           },
           {
             "name": "worktree_path",
@@ -505,7 +538,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why verification/finalization cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -514,7 +547,7 @@
         "required_provision_fields": [
           {
             "name": "cleanup_report",
-            "description": "Summary of cleanup performed or deliberately skipped."
+            "description": "Cleanup report or summary."
           }
         ]
       },
@@ -523,7 +556,7 @@
         "required_provision_fields": [
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -532,11 +565,11 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version prepared by this task."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_branch",
-            "description": "Local release branch prepared by this task."
+            "description": "Release branch containing the version bump."
           },
           {
             "name": "worktree_path",
@@ -544,7 +577,7 @@
           },
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -553,7 +586,16 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why compliance review cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-b0e1df30-ac8e-4e27-b483-6fa2332d523e",
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
         ]
       }
@@ -599,11 +641,11 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version prepared by this task."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_branch",
-            "description": "Local release branch prepared by this task."
+            "description": "Release branch containing the version bump."
           },
           {
             "name": "base_branch",
@@ -635,7 +677,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why release preparation cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -661,11 +703,11 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version prepared by this task."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_branch",
-            "description": "Local release branch prepared by this task."
+            "description": "Release branch containing the version bump."
           },
           {
             "name": "worktree_path",
@@ -685,7 +727,7 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why verification/finalization cannot continue, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
         ]
       },
@@ -701,7 +743,7 @@
         "required_provision_fields": [
           {
             "name": "cleanup_report",
-            "description": "Summary of cleanup performed or deliberately skipped."
+            "description": "Cleanup report or summary."
           }
         ]
       },
@@ -717,7 +759,7 @@
         "required_provision_fields": [
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -748,11 +790,11 @@
         "required_provision_fields": [
           {
             "name": "release_version",
-            "description": "Release version prepared by this task."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_branch",
-            "description": "Local release branch prepared by this task."
+            "description": "Release branch containing the version bump."
           },
           {
             "name": "worktree_path",
@@ -760,7 +802,7 @@
           },
           {
             "name": "compliance_report",
-            "description": "Compliance review report, including rule sources checked and any findings."
+            "description": "Compliance review report or summary."
           }
         ]
       },
@@ -776,7 +818,23 @@
         "required_provision_fields": [
           {
             "name": "blocker_reason",
-            "description": "Why compliance review cannot complete, in the task language when practical."
+            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-91a78f73-a027-4d61-bb1c-29eaec99e758",
+        "input_bindings": [
+          {
+            "name": "closure_reason",
+            "source": "transition_output",
+            "field": "closure_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
         ]
       }

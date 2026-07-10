@@ -19,8 +19,8 @@ Runs smoke test for a feature via MCP mobile.
 
 1. Reads the MCP Mobile Testing section in `AGENTS.md` to understand the process
 2. **Acquire an emulator resource lock before touching any emulator/device**
-   - Physical devices, including a real TV, are forbidden unless the task/user explicitly names or allows that physical
-     device. Never rely on adb's default target selection.
+   - Physical devices, including a real TV, are forbidden unless the task/user explicitly provides permission and an
+     explicit serial for that physical device. Never rely on adb's default target selection.
    - Prefer already-running healthy emulators. Discover them with:
      ```bash
      EMULATORS=($(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators))
@@ -49,7 +49,7 @@ Runs smoke test for a feature via MCP mobile.
      .kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"
      ```
    - Before any install, launch, log, or shell command, verify `DEVICE_SERIAL` is non-empty and pass `adb -s
-     "$DEVICE_SERIAL"`. If `DEVICE_SERIAL` is empty, complete with `blocked` instead of running adb.
+     "$DEVICE_SERIAL"`. If `DEVICE_SERIAL` is empty, complete with `needs_user_action` instead of running adb.
    - If all running emulators are busy, inspect lock owners with:
      ```bash
      .kent/adapters/mobile/emulator-resource-lock.sh status <emulator-serial>
@@ -57,7 +57,8 @@ Runs smoke test for a feature via MCP mobile.
    - Start a second emulator only when the task/user explicitly allows parallel device usage and a suitable AVD/host
      capacity is available. If a second emulator is used, acquire a distinct lock name such as
      `emulator-5556` or `avd-<name>-<port>` before starting or using it.
-   - If no device can be safely acquired, complete the workflow with `blocked` and explain who/what holds the resource.
+   - If no device can be safely acquired, complete the workflow with `needs_user_action` and explain who/what holds the
+     resource.
 3. **Always builds and installs a fresh `devDebug` APK immediately before device testing**
    - Do this even if the user says the app is already running; stale APKs can hide or misattribute regressions.
    - Do not use Gradle `install*` tasks for smoke tests; they may invoke adb without the selected serial.
