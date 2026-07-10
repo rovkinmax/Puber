@@ -55,11 +55,12 @@ Legacy split release workflows (`Puber Release Preparation` and `Puber Release P
   replacement for audit/review/verify/smoke; it only checks adherence to AGENTS.md, project contracts, specs, plans,
   human-approved design decisions, and workflow transition contracts.
 - Code-producing workflows must create or update a PR after compliance passes. `ship_pr` may skip PR only for explicit
-  no-diff/report-only/smoke-only cases and must explain that through `pr_report`.
+  no-diff/report-only/smoke-only cases and must explain that through `pr_report`. That `no_pr` path must require user
+  approval before cleanup because it finishes without a merged PR.
 - `ci_monitor` never merges PRs and never pushes new commits. CI failures go back to fix/review/compliance before another
   PR/CI pass.
 - `done` is terminal and must mean delivered: PR merged and cleanup completed, release published and cleanup completed,
-  explicit no-diff/report-only cleanup completed, or explicit `wont_do`.
+  user-approved no-diff/report-only cleanup completed, or explicit `wont_do`.
 - `waiting_pr` is the normal post-CI state for PR workflows. It may only advance to cleanup after GitHub reports
   `state=MERGED`, or to release publication after the release PR is merged and the publish transition is approved.
 - `wont_do` is terminal and approval-gated. Use it only for explicit user cancellation or "not planned"; do not use it as
