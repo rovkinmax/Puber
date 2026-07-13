@@ -37,6 +37,8 @@ change it.
 - Project-local Kent worktree creation runs `.kent/worktrees/setup.sh`.
 - Manual `git worktree add` does not run setup automatically; use `.kent/worktrees/<name>` explicitly and run setup if
   needed.
+- The setup script may copy only the `sdk.dir` property into the ignored worktree `local.properties`. Do not copy API
+  tokens or other secrets from the primary workspace.
 
 ## Local State
 
