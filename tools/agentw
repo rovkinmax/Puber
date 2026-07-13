@@ -35,6 +35,13 @@ if [ -n "$toplevel" ] && [ -n "$git_dir" ] && [ -n "$git_common_dir" ]; then
 fi
 
 if [ "$is_worktree" -eq 1 ]; then
+    sdk_configurator="$project_root/tools/configure-worktree-sdk"
+    if [ -x "$sdk_configurator" ]; then
+        "$sdk_configurator"
+    else
+        echo "agentw: warning: $sdk_configurator not found or not executable" >&2
+    fi
+
     export GRADLE_USER_HOME="${AGENT_GRADLE_HOME:-$HOME/.gradle-agents}"
     mkdir -p "$GRADLE_USER_HOME"
     echo "agentw: worktree detected → GRADLE_USER_HOME=$GRADLE_USER_HOME" >&2

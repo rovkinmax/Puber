@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+target_properties="$project_root/local.properties"
+
+if [[ -e "$target_properties" ]]; then
+  exit 0
+fi
+
+source_workspace="${1:-${KENT_WORKTREE_SOURCE_WORKSPACE_ROOT:-}}"
+if [[ -z "$source_workspace" ]]; then
+  git_common_dir="$(git -C "$project_root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ "$git_common_dir" == */.git ]]; then
+    source_workspace="${git_common_dir%/.git}"
+  fi
+fi
+
+sdk_property=""
+if [[ -n "$source_workspace" && -f "$source_workspace/local.properties" ]]; then
+  sdk_property="$(grep -m1 '^sdk\.dir=' "$source_workspace/local.properties" || true)"
+fi
+
+if [[ -z "$sdk_property" ]]; then
+  sdk_dir="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+  if [[ -n "$sdk_dir" ]]; then
+    sdk_property="sdk.dir=$sdk_dir"
+  fi
+fi
+
+if [[ -z "$sdk_property" ]]; then
+  echo "configure-worktree-sdk: Android sdk.dir is unavailable" >&2
+  exit 0
+fi
+
+umask 077
+printf '%s\n' "$sdk_property" > "$target_properties"
+cat >&2 <<'EOF'
+configure-worktree-sdk: created local.properties with sdk.dir only
+configure-worktree-sdk: project API secrets were not copied
+EOF

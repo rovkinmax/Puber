@@ -77,8 +77,9 @@ to project-local capability roles:
 - Main checkout may use direct Gradle.
 - Project-local worktrees under `.kent/worktrees/` and Kent-managed task worktrees under
   `~/.kent/worktrees/workspace-.../<TASK-ID>` must use `./tools/agentw` to isolate Gradle state.
-- `.kent/worktrees/setup.sh` may seed `local.properties` with `sdk.dir` from the primary workspace. It must not copy API
-  secrets; tasks needing them use environment variables or explicit user-approved secret provisioning.
+- `.kent/worktrees/setup.sh` attempts early SDK setup, and `tools/agentw` repeats it as a build-time fallback through
+  `tools/configure-worktree-sdk`. They may seed `local.properties` with `sdk.dir` only and must not copy API secrets;
+  tasks needing secrets use environment variables or explicit user-approved provisioning.
 - Device smoke tests must acquire a shared mobile resource lock before touching an emulator/device.
 - If multiple `adb` emulators are already running, smoke agents should acquire any free emulator-specific lock and use
   that serial with `adb -s`.

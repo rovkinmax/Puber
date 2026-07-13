@@ -3,32 +3,14 @@ set -euo pipefail
 
 mkdir -p "$HOME/.gradle-agents"
 
-git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-main_workspace=""
-if [[ "$git_common_dir" == */.git ]]; then
-  main_workspace="${git_common_dir%/.git}"
-fi
-
-if [[ -n "$main_workspace" && "$PWD" != "$main_workspace" && ! -e local.properties ]]; then
-  main_local_properties="$main_workspace/local.properties"
-  sdk_property=""
-  if [[ -f "$main_local_properties" ]]; then
-    sdk_property="$(grep -m1 '^sdk\.dir=' "$main_local_properties" || true)"
-  fi
-
-  if [[ -n "$sdk_property" ]]; then
-    umask 077
-    printf '%s\n' "$sdk_property" > local.properties
-    cat >&2 <<'EOF'
-[kent worktree setup] Created local.properties with sdk.dir only.
-Project API secrets were not copied; provide them through environment variables when a task requires runtime access.
+source_workspace="${KENT_WORKTREE_SOURCE_WORKSPACE_ROOT:-${1:-}}"
+if [[ -x "./tools/configure-worktree-sdk" ]]; then
+  ./tools/configure-worktree-sdk "$source_workspace"
+else
+  cat >&2 <<'EOF'
+[kent worktree setup] ./tools/configure-worktree-sdk was not found or is not executable.
+Android builds may fail until sdk.dir is configured in this worktree.
 EOF
-  else
-    cat >&2 <<'EOF'
-[kent worktree setup] Android sdk.dir is unavailable.
-Configure sdk.dir in the primary workspace local.properties before running Android builds here.
-EOF
-  fi
 fi
 
 cat >&2 <<'EOF'

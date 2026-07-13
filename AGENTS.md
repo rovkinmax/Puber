@@ -213,8 +213,9 @@ Kent commands are invoked as `/prompt:<name>`, for example `/prompt:feature-star
   `../Puber-<task>`.
 - Kent-managed workflow task worktrees are owned by Kent and may live under
   `~/.kent/worktrees/workspace-.../<TASK-ID>`. Do not move or recreate them manually.
-- `.kent/worktrees/setup.sh` writes an ignored `local.properties` containing only `sdk.dir`; it must not copy
-  `PUBER_CLIENT_SECRET`, `TMDB_READ_ACCESS_TOKEN`, or other project secrets into task worktrees.
+- `.kent/worktrees/setup.sh` and `tools/agentw` use `tools/configure-worktree-sdk` to write an ignored
+  `local.properties` containing only `sdk.dir`; they must not copy `PUBER_CLIENT_SECRET`, `TMDB_READ_ACCESS_TOKEN`, or
+  other project secrets into task worktrees.
 
 MCP access is through wrapper scripts, not native `mcp__...` tool names:
 
