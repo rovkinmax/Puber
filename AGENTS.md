@@ -192,7 +192,8 @@ All exact versions are in `gradle/libs.versions.toml` — always read from there
 
 - For build errors use: `./gradlew :app:compileDevDebugKotlin 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3` — catches Kotlin compiler errors, Java errors, and Gradle failures in one pass
 - App module has flavors: use `:app:compileDevDebugKotlin` (NOT `:app:compileDebugKotlin`)
-- In Kent worktrees, use `./tools/agentw :app:compileDevDebugKotlin` instead of direct `./gradlew` so Gradle state is isolated under `~/.gradle-agents`.
+- In both project-local and Kent-managed task worktrees, use `./tools/agentw :app:compileDevDebugKotlin` instead of
+  direct `./gradlew` so Gradle state is isolated under `~/.gradle-agents`.
 
 ## Kent Workflow
 
@@ -208,7 +209,10 @@ Legacy `.claude/` files may remain as historical reference. Do not update `.clau
 
 Kent commands are invoked as `/prompt:<name>`, for example `/prompt:feature-start` or `/prompt:refactor-start`.
 
-Kent worktrees must be created under `.kent/worktrees/`. Do not create sibling worktrees such as `../Puber-<task>`.
+- Project-local/manual worktrees must be created under `.kent/worktrees/`; do not create sibling worktrees such as
+  `../Puber-<task>`.
+- Kent-managed workflow task worktrees are owned by Kent and may live under
+  `~/.kent/worktrees/workspace-.../<TASK-ID>`. Do not move or recreate them manually.
 
 MCP access is through wrapper scripts, not native `mcp__...` tool names:
 
@@ -228,15 +232,6 @@ Commands in `.kent/commands/`, recipes in `.kent/skills/puber-android-workflow/r
 3. **Review** — `/prompt:feature-review` → `/prompt:feature-fix` (maker-checker, up to 3 iterations)
 
 Standalone commands (plan AND execute in one go): `/prompt:refactor-start`, `/prompt:migration-start`
-
-### Parallel execution
-
-Plan steps tagged with `parallel-group: <letter>` are executed simultaneously by worker agents:
-- `/prompt:feature-plan` identifies independent steps (no shared files, no mutual dependencies) and assigns group letters
-- `/prompt:feature-implement` detects groups → delegates to `feature-parallel-orchestrator` agent
-- Orchestrator prepares self-contained prompts → launches `feature-step-worker` agents in parallel → compiles after all finish
-- Workers do NOT compile (other agents edit code simultaneously) — orchestrator compiles once and fixes errors
-- Shared files (strings.xml, PuberApp.kt, ScreensImpl.kt) are handled via "Needs external change" reports — orchestrator merges them after workers complete
 
 ### Auto-detection (no /slash-command needed)
 

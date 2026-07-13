@@ -59,17 +59,16 @@ For each unresolved issue:
    - Mark issue as `[x]` in review-report.md
    - Brief note of what was changed
 
-### Step 4: Re-review (boomerang)
+### Step 4: Return to review
 - After all issues processed (or user stopped):
   - Report: "Fixed M of N issues. K skipped."
-  - If fixes were applied → **use Kent prompt command to invoke
-    `/prompt:feature-review .todo/<feature>`** to check for regressions
-  - Save updated report to
-    `.todo/<feature>/review-report.md`
+  - Save the updated report to `.todo/<feature>/review-report.md`.
+  - In a Kent workflow task, do not invoke a nested review command. Finish the fix node so the workflow can transition
+    back to its audit/review node.
+  - In manual command use, report `/prompt:feature-review .todo/<feature>` as the next command without invoking it.
 
 ### Step 5: Iteration tracking
-- Track iteration count in `.todo/<feature>/meta.json`:
-  `reviewIterations: N`
+- Track iteration count in the `> Iteration:` header and history inside `review-report.md`, not in `meta.json`.
 - **Maximum 3 iterations**. After 3rd review:
   - Report remaining issues as "Deferred"
   - Save final report
@@ -117,4 +116,4 @@ The report in `.todo/<feature>/review-report.md`:
 - Preserve the user's skip decisions across iterations
 - Each iteration reviews ALL code, not just fixed parts
 - After 3 iterations, stop regardless of remaining issues
-- Use Kent prompt command for `/prompt:feature-review .todo/<feature>` — don't inline review
+- In workflow tasks, let the workflow transition trigger the next review pass.

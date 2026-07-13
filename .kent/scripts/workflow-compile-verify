@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# Kent script nodes provide transition inputs on stdin. This verifier currently
+# needs only the task execution root, but consuming stdin keeps the contract explicit.
+IFS= read -r _kent_input || true
+
+log_dir="build/kent-workflow"
+log_path="$log_dir/compile-dev-debug.log"
+mkdir -p "$log_dir"
+
+if [[ "$PWD" == *"/.kent/worktrees/"* ]]; then
+  command=(./tools/agentw :app:compileDevDebugKotlin)
+else
+  command=(./gradlew :app:compileDevDebugKotlin)
+fi
+
+if [[ ! -x "${command[0]}" ]]; then
+  jq -nc \
+    --arg transition "failed" \
+    --arg commentary "Compile verifier could not find executable ${command[0]}." \
+    --arg verification_report "Command unavailable: ${command[*]}" \
+    '{transition: $transition, commentary: $commentary, verification_report: $verification_report}'
+  exit 0
+fi
+
+if "${command[@]}" >"$log_path" 2>&1; then
+  transition="passed"
+  commentary="Dev debug Kotlin compilation passed."
+else
+  transition="failed"
+  commentary="Dev debug Kotlin compilation failed. Inspect $log_path."
+fi
+
+jq -nc \
+  --arg transition "$transition" \
+  --arg commentary "$commentary" \
+  --arg verification_report "Command: ${command[*]}; log: $log_path" \
+  '{transition: $transition, commentary: $commentary, verification_report: $verification_report}'

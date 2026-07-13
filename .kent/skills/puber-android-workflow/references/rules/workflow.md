@@ -19,7 +19,7 @@ change it.
 ## Gradle
 
 - Main checkout: use `./gradlew`.
-- Kent worktrees: use `./tools/agentw`.
+- Project-local and Kent-managed task worktrees: use `./tools/agentw`.
 - Main compile check: `./gradlew :app:compileDevDebugKotlin`.
 - Worktree compile check: `./tools/agentw :app:compileDevDebugKotlin`.
 - For noisy errors, filter with:
@@ -30,9 +30,11 @@ change it.
 
 ## Worktrees
 
-- Kent worktrees must live under `.kent/worktrees/`.
+- Project-local/manual worktrees must live under `.kent/worktrees/`.
+- Kent-managed workflow task worktrees may live under `~/.kent/worktrees/workspace-.../<TASK-ID>` and are owned by
+  Kent. Do not move, recreate, or remove them manually.
 - Do not create sibling worktrees such as `../Puber-<task>`.
-- Kent `/wt create` runs `.kent/worktrees/setup.sh`.
+- Project-local Kent worktree creation runs `.kent/worktrees/setup.sh`.
 - Manual `git worktree add` does not run setup automatically; use `.kent/worktrees/<name>` explicitly and run setup if
   needed.
 

@@ -26,7 +26,6 @@ and implements them step by step.
   {
     "type": "test-coverage",
     "module": "<path>",
-    "status": "planning",
     "createdAt": "<date>"
   }
   ```
@@ -123,7 +122,7 @@ For each step:
    ```
 7. Fix any failing tests
 8. Mark step `[x]` in plan.md
-9. Update `meta.json`
+9. Do not mirror step or lifecycle progress into `meta.json`
 
 ### Phase 5: Report
 

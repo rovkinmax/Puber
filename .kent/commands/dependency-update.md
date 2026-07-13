@@ -96,7 +96,7 @@ For each step:
 4. If compilation fails → check deprecation replacements,
    API changes, fix
 5. Mark `[x]` in plan.md
-6. Update `meta.json`
+6. Do not mirror step or lifecycle progress into `meta.json`
 
 ### Phase 5: Report
 

@@ -17,8 +17,8 @@ Generates a step-by-step implementation plan based on design and spec data colle
 
 ### Step 1: Load context
 - Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
-- Resolve the feature target from arguments or Kent workflow task context, then read `.todo/<name>/meta.json` for
-  `screens`, `figmaUrl`
+- Resolve the feature target from arguments or Kent workflow task context. Read `.todo/<name>/meta.json` only for
+  identity and source/artifact metadata such as screens or Figma URLs; ignore legacy lifecycle fields.
 - Read `.todo/<feature>/spec.md`; this is required for every feature plan.
 - If present, read `.todo/<feature>/design.md` (screen map) + `.todo/<feature>/layouts.md` (detailed layouts, tokens,
   components). These are optional for non-visual/code-only features.
@@ -93,35 +93,6 @@ Create a detailed implementation plan with:
 - **Wiring steps must list ALL affected files**: when a step wires a new feature into an existing VM, list ALL files that need changes — not just the VM, but also its model (ViewState), interactor, UI mapper, etc.
 - **Field changes must be explicit**: if the spec says "skip field X" but the field exists in the current model — explicitly state "Remove field X" in the plan step
 
-**Parallel execution groups:**
-
-Steps that are independent (no mutual dependencies, no shared files) can be executed in parallel by the `/prompt:feature-implement` command. Mark them with `parallel-group: <letter>` in the step header.
-
-**Rules for parallel grouping:**
-- Steps in the same group MUST NOT depend on each other
-- Steps in the same group MUST NOT modify the same files
-- Steps in the same group SHOULD have `complexity: low` or `complexity: medium` — do NOT parallelize `complexity: high` steps (they need full context attention)
-- Typical parallel candidates:
-  - Multiple independent screen steps (different screens, different VMs)
-  - Multiple independent data layer steps (different endpoints)
-  - Multiple independent VM steps (different features, no shared state)
-  - String resources + previews + DI bindings (low-complexity support tasks)
-- Steps that modify shared files (e.g., a navigation registry, a shared DI module) are NOT parallel candidates
-- Maximum group size: 4 steps (more than 4 parallel agents cause diminishing returns and increase conflict risk)
-- **Cross-group ordering**: groups are executed sequentially (all of group A before group B), steps within a group are parallel
-
-**Format in plan.md:**
-```markdown
-### [ ] Step 3: Details Screen  `type: screen`  `complexity: medium`  `parallel-group: A`
-...
-### [ ] Step 4: Player Screen  `type: screen`  `complexity: medium`  `parallel-group: A`
-...
-### [ ] Step 5: Wiring + Navigation  `type: navigation`  `complexity: low`
-...
-```
-
-In this example, Steps 3 and 4 run in parallel (group A), then Step 5 runs after both complete.
-
 ### Step 4: Save plan
 
 Save to `.todo/<feature>/plan.md`:
@@ -155,7 +126,7 @@ Check each and mark as met or add as a blocker:
 - **What:** Add API client methods and interactor for the feature
 - **Depends on:** —
 
-### [ ] Step 2: <ViewModel>  `type: viewmodel`  `complexity: medium`  `parallel-group: A`
+### [ ] Step 2: <ViewModel>  `type: viewmodel`  `complexity: medium`
 - **Files:** `app/src/main/java/com/kino/puber/ui/feature/<name>/vm/<Name>VM.kt` (create)
 - **Design ref:** `layouts.md` → <Name> section, or `—` for non-visual steps
 - **Spec ref:** Screen Behavior → <Name>
@@ -220,8 +191,8 @@ Before showing the plan to the user, review it as if you were an agent with NO c
 - If `plan.md` already exists → warn user: "Plan already exists. Overwrite?" (use ask_question)
 - Show the plan summary (number of steps, key decisions)
 - Ask if anything needs adjustment before implementation
-- Update `meta.json`: set `totalSteps` to the number of plan steps, `currentStep` to 0, `status` to `plan-complete`
 - The plan is a REFERENCE document — it guides implementation but can be updated
+- Do not mirror plan or workflow progress into `meta.json`.
 
 ## Progress tracking
 
@@ -251,4 +222,3 @@ The `/prompt:feature-context .todo/<feature> plan` command shows progress summar
 - Use direct shell searches for simple existence checks and import lookups.
 - For UI steps, always include **Screenshots** field with relevant PNG filenames
 - Load `.todo/_shared/` knowledge to avoid repeating past mistakes
-- **Parallel groups**: After generating all steps, scan for parallel candidates — steps with no mutual file conflicts and no mutual dependencies. Assign `parallel-group: <letter>` tags. This is NOT optional — always look for parallelization opportunities. Even 2 steps in parallel saves significant time.

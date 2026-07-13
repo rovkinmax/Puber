@@ -24,6 +24,14 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - Explicit task cancellation produces `closure_reason` or `cleanup_reason`.
 - Cleanup produces `cleanup_report`.
 
+## Lifecycle State Authority
+
+- The Kent task's current node, transition history, approvals, and comments are the workflow lifecycle source of truth.
+- `plan.md` checkboxes are the source of implementation-step progress within a planning artifact.
+- `meta.json` stores stable identity plus source/artifact metadata such as task IDs, Figma sources, screens, and spec
+  origin. Commands must not write lifecycle mirrors such as `status`, `currentStep`, `totalSteps`, or `stepHistory`.
+- Existing lifecycle fields in old `.todo` workspaces are compatibility-only and must not drive new decisions.
+
 ## Command Contract
 
 - `feature_start_command`: `.kent/commands/feature-start.md`
@@ -42,14 +50,21 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 Commands that operate on feature artifacts accept an explicit feature name, `.todo/<feature>` path, or workflow-provided
 workspace path.
 
+The Feature Delivery `plan` node owns bootstrap, optional design ingestion, spec creation, and implementation planning in
+one Kent session. `feature-start.md` may load `feature-design.md`, `feature-spec.md`, and `feature-plan.md` as procedure
+modules, but must not invoke nested `/prompt:*` flows or start child sessions for those phases.
+
 ## Agent Contract
 
 Workflow nodes should generally use the `default` assignee for Kent Desktop validation portability. Prompts may delegate
 to project-local capability roles:
 
+- `.kent/config.toml` enables `[workflow] subagents = true`.
+- Canonical delegated roles are explicitly marked `agent_callable = true` and `workflow_subagent = true`; do not rely on
+  Kent defaults for workflow delegation eligibility.
+
 - `project-researcher`: Puber codebase research, alias for `android-codebase-analyst`.
-- `implementation-worker`: bounded feature step implementation, alias for `feature-step-worker`.
-- `feature-orchestrator`: parallel feature step orchestration, alias for `feature-parallel-orchestrator`.
+- `implementation-worker`: bounded feature step implementation.
 - `quality-reviewer`: read-only quality audit.
 - `build-doctor`: Gradle diagnostics, alias for `gradle-build-doctor`.
 - `compose-reviewer`: Compose-specific review.
@@ -59,7 +74,9 @@ to project-local capability roles:
 
 - Main compile check: `./gradlew :app:compileDevDebugKotlin`.
 - Kent worktree compile check: `./tools/agentw :app:compileDevDebugKotlin`.
-- Main checkout may use direct Gradle; Kent worktrees must use `./tools/agentw` to isolate Gradle state.
+- Main checkout may use direct Gradle.
+- Project-local worktrees under `.kent/worktrees/` and Kent-managed task worktrees under
+  `~/.kent/worktrees/workspace-.../<TASK-ID>` must use `./tools/agentw` to isolate Gradle state.
 - Device smoke tests must acquire a shared mobile resource lock before touching an emulator/device.
 - If multiple `adb` emulators are already running, smoke agents should acquire any free emulator-specific lock and use
   that serial with `adb -s`.

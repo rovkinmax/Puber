@@ -24,7 +24,8 @@ Loads cached feature data (design screens, spec, plan) into the current session 
 ### Step 1: Determine feature
 - Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
 - Resolve the feature target from arguments or Kent workflow task context.
-- Read `.todo/<name>/meta.json` → quick-access metadata (`screens`, `currentStep`, `totalSteps`)
+- Read `.todo/<name>/meta.json` only for identity and source/artifact metadata such as screens and source URLs.
+- Derive implementation progress exclusively from `[x]` and `[ ]` step headers in `plan.md`.
 - If no target is available, list available feature dirs in `.todo/` and ask which one to use. Do not create or update
   `.todo/.current`.
 

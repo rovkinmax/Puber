@@ -30,8 +30,7 @@ When a command creates a workspace, write target identity into `meta.json`:
 ```json
 {
   "name": "<feature>",
-  "createdAt": "<yyyy-mm-dd>",
-  "currentStep": 0
+  "createdAt": "<yyyy-mm-dd>"
 }
 ```
 
@@ -44,3 +43,7 @@ When running inside Kent Desktop workflow tasks, also add task identifiers when 
   "workflow": "<workflow name>"
 }
 ```
+
+Kent task/node state is the lifecycle source of truth. `plan.md` checkboxes are the implementation-step checklist.
+Legacy `status`, `currentStep`, `totalSteps`, `stepHistory`, and similar fields may be read when inspecting old
+workspaces, but commands must not use them to determine current workflow state or write new lifecycle updates.

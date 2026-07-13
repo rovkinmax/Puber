@@ -34,6 +34,8 @@ Kent Desktop workflow graph
 - `Puber Release`: default next minor release from `origin/master` -> version bump branch/PR -> CI -> approved tag
   publication after the PR is merged -> optional automation monitor -> cleanup -> done. Patch/major releases require
   explicit task wording.
+- `Puber Compile Verify Canary`: non-default script-node canary for deterministic `compileDevDebugKotlin` verification.
+  Keep it isolated from product workflows until its backlog canary task passes from a committed revision.
 
 Only `Puber Feature Delivery` should be the project default. The other workflows are linked to the project for explicit
 task creation when the work type is known.

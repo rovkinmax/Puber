@@ -8,7 +8,9 @@ command, phase, or plan step.
 
 ## State
 
-- Feature artifacts: `.todo/<feature>/meta.json`, `design.md`, `layouts.md`, `spec.md`, `plan.md`
+- Feature artifacts: `.todo/<feature>/meta.json`, `design.md`, `layouts.md`, `spec.md`, `plan.md`.
+- Kent task/node state is the lifecycle authority. `meta.json` stores identity and source/artifact metadata only;
+  `plan.md` checkboxes track implementation-step progress.
 - Feature target is explicit: command arguments, Kent workflow task context, or a `.todo/<feature>` path/name.
 - There is no implicit global feature pointer.
 - MCP raw artifacts: `.todo/<feature-or-task>/mcp/`
@@ -28,7 +30,7 @@ this skill.
 - Package root: `com.kino.puber`.
 - Product flavors: `dev` and `prod`.
 - Main compile check: `./gradlew :app:compileDevDebugKotlin` in the main checkout.
-- In Kent worktrees, use `./tools/agentw :app:compileDevDebugKotlin`.
+- In project-local and Kent-managed task worktrees, use `./tools/agentw :app:compileDevDebugKotlin`.
 - Versions live in `gradle/libs.versions.toml`; do not hardcode dependency versions.
 - Static analysis: Detekt config under `config/detekt/`.
 
@@ -85,8 +87,8 @@ Workflow commands should pass `--raw-dir <dir>` when collecting external source 
 Use configured Kent roles:
 
 ```bash
-kent run --agent android-codebase-analyst --workspace "$PWD" "<prompt>"
-kent run --agent gradle-build-doctor --workspace "$PWD" "<prompt>"
+kent run --agent project-researcher --workspace "$PWD" "<prompt>"
+kent run --agent build-doctor --workspace "$PWD" "<prompt>"
 kent run --agent compose-reviewer --workspace "$PWD" "<prompt>"
 kent run --agent domain-model-reviewer --workspace "$PWD" "<prompt>"
 ```

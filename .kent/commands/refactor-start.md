@@ -27,7 +27,6 @@ and executes it with compilation checks after each step.
   {
     "type": "refactor",
     "description": "<user description>",
-    "status": "planning",
     "createdAt": "<date>"
   }
   ```
@@ -132,7 +131,7 @@ For each step:
    ```
 3. If compilation fails → fix immediately
 4. Mark step `[x]` in plan.md
-5. Update `meta.json`: `currentStep`, `lastUpdated`
+5. Do not mirror step or lifecycle progress into `meta.json`
 
 ### Phase 5: Verify
 

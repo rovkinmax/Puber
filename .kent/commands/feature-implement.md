@@ -22,21 +22,12 @@ Implements a step from the feature plan. Loads relevant context, recipes, and wr
 
 ### Step 1: Load plan
 - Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
-- Resolve the feature target from arguments or Kent workflow task context, then read `.todo/<name>/meta.json` for
-  `currentStep`
+- Resolve the feature target from arguments or Kent workflow task context.
 - Read `.todo/<feature>/plan.md`
 - Find the target step:
   - If step number given → use that step
-  - If not → find the first `[ ]` (unchecked) step
+  - If not → find the first `[ ]` (unchecked) step whose dependencies are complete
 - If all steps are `[x]` → report "All steps completed!"
-
-### Step 1b: Check for parallel group
-- If the target step has a `parallel-group: <letter>` tag:
-  1. Find ALL unchecked `[ ]` steps with the same `parallel-group` letter
-  2. Verify all their dependencies are satisfied (all `Depends on:` steps are `[x]`)
-  3. If 2+ steps are ready → enter **parallel execution mode** (see "Parallel Execution" section below)
-  4. If only 1 step is ready (others blocked by dependencies) → proceed with normal sequential execution
-- If no parallel-group tag → proceed with normal sequential execution
 
 ### Step 2: Load recipes for this step
 Based on the step's **type** tag, load the matching recipe from `.kent/skills/puber-android-workflow/references/recipes/`:
@@ -98,6 +89,9 @@ If no triggers match → skip advanced recipes (core is sufficient for most step
   2. The loaded recipe (HOW to do it — patterns, structure, checklist)
   3. The design file (WHAT it should look like)
   4. The spec (business logic and behavior)
+- Implement exactly one plan step per invocation. For a bounded slice with clear file ownership, delegation to
+  `kent run --agent=implementation-worker --workspace "$PWD" "<prompt>"` is allowed, but the parent agent remains
+  responsible for integration, verification, and progress updates.
 - Run through the recipe's checklist before moving on
 
 ### Step 5: Verify
@@ -180,10 +174,7 @@ After previews are ready, compare implementation with the Figma design screensho
 
 ### Step 6: Update progress
 - Update `plan.md`: change `[ ] Step N` → `[x] Step N`
-- Update `meta.json`:
-  - Set `currentStep` to the completed step number
-  - Set `lastUpdated` to current date
-  - Append to `stepHistory` array: `{ "step": N, "completedAt": "<date>" }`
+- Do not write lifecycle or step-progress mirrors to `meta.json`.
 - Report what was implemented and which files were created/modified
 - **Open key files** (skip if in worktree): call `.kent/adapters/mcp/mcp-call.sh jetbrains.open_file_in_editor` for each newly created file so user can immediately see them in the IDE
 
@@ -205,40 +196,6 @@ After previews are ready, compare implementation with the Figma design screensho
 - Format: `### <Title>` + `**Problem:**` + `**Solution:**` + `**Files:**` + `**Date:**`
 - Skip if nothing new was learned
 
-## Parallel Execution
-
-When Step 1b detects a parallel group with 2+ ready steps, delegate to the **feature-parallel-orchestrator** agent.
-
-### How to delegate:
-
-Launch one bounded subagent with `kent run --agent=feature-orchestrator --workspace "$PWD" "<prompt>"` and provide:
-
-```
-Feature: <name>
-Workspace: .todo/<feature>/
-Parallel group: <letter>
-Steps to execute: <N, M, K>
-Compile command:
-- Main checkout: ./gradlew :app:compileDevDebugKotlin 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
-- Kent worktree: ./tools/agentw :app:compileDevDebugKotlin 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
-
-## Plan
-<paste full plan.md content>
-```
-
-The orchestrator will:
-1. Read all context (recipes, design, spec, existing files) for each step
-2. Compose self-contained prompts for `feature-step-worker` agents
-3. Launch workers in parallel
-4. Compile after all workers finish
-5. Fix errors, run quality gates
-6. Update plan.md and meta.json progress
-7. Report results
-
-**max_turns**: 80 (orchestrator needs room to prepare prompts + compile + fix)
-
-After the orchestrator completes, read its report and proceed to the next step or group.
-
 ## Important
 - Load ONLY the context and recipes needed for the current step — not everything
 - Follow the plan's dependency order — if step depends on a previous unchecked step, warn the user
@@ -246,4 +203,3 @@ After the orchestrator completes, read its report and proceed to the next step o
 - After implementation, suggest the next step
 - Do NOT commit automatically — let user decide when to commit
 - **Ambiguous UI patterns — always ask**: if the design shows a search field, list, or interactive element but it's unclear which specific component or interaction pattern to use, ask the user via ask_question before implementing. Do NOT guess — wrong pattern choice leads to significant rework
-- **Parallel execution**: when a parallel group is detected, ALWAYS use parallel mode — do NOT fall back to sequential without a good reason (e.g., all steps share a file). Report "Running N steps in parallel (group <letter>)" before launching workers

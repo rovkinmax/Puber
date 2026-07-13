@@ -3,7 +3,7 @@
     "id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
     "name": "Puber Feature Delivery",
     "description": "Plan, implement, audit, fix, optionally smoke-test, and conservatively clean up a Puber Android feature.",
-    "version": 198
+    "version": 203
   },
   "nodes": [
     {
@@ -380,7 +380,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run the Puber feature planning flow for this Kent task.\n\nRead .kent/project-contract.md first, then use .kent/commands/feature-start.md as the project feature planning command. Treat the task title/body as the feature arguments and source context. Resolve or create an explicit .todo/<feature> workspace; do not infer or create .todo/.current.\n\nGather available Figma/spec/source context through project-local adapters only when present. Produce .todo/<feature>/spec.md as needed and .todo/<feature>/plan.md. Do not implement production code.\n\nComplete with transition implement when the plan is ready and has no unresolved product/API/UX ambiguity and provide workspace_path plus plan_path. Complete with needs_user_action if required source context or product input is unavailable, and provide blocker_reason in the task language when practical."
+      "prompt_template": "Run the Puber feature planning flow for this Kent task in one Plan session.\n\nRead .kent/project-contract.md first, then use .kent/commands/feature-start.md as the project feature planning procedure. Treat the task title/body as the feature arguments and source context. Resolve or create an explicit .todo/<feature> workspace; do not infer or create .todo/.current.\n\nKeep bootstrap, optional design ingestion, spec creation, and implementation planning in this session. Read feature-design.md, feature-spec.md, and feature-plan.md as procedure modules when needed, but do not invoke nested /prompt:* flows or start child sessions for those phases.\n\nGather available Figma/spec/source context through project-local adapters only when present. Produce .todo/<feature>/spec.md as needed and .todo/<feature>/plan.md. Do not implement production code.\n\nComplete with transition implement when the plan is ready and has no unresolved product/API/UX ambiguity and provide workspace_path plus plan_path. Complete with needs_user_action if required source context or product input is unavailable, and provide blocker_reason in the task language when practical."
     },
     {
       "id": "edge-3ae5e6b8-37e9-4adf-aa70-62032cf14fae",
@@ -393,7 +393,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Implement the Puber feature plan.\n\nRead .kent/project-contract.md first. Use .kent/commands/feature-implement.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nImplement one next unchecked ready step or one ready parallel group. For parallel groups, delegate to project-local orchestration with: kent run --agent=feature-orchestrator --workspace \"$PWD\" \"<bounded prompt containing workspace_path, plan_path, selected steps, file boundaries, and compile command>\". Use kent run --agent=implementation-worker for bounded slices and kent run --agent=build-doctor for noisy compile failures.\n\nVerify with the narrowest relevant Gradle/test command, using ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout. Update plan.md and meta.json progress.\n\nIf more unchecked implementation steps remain, complete with transition continue_implementation and provide workspace_path plus plan_path again. If all implementation steps are complete, complete with transition audit and provide workspace_path, plan_path, and verification_report. Complete with needs_user_action on unresolved blockers and provide blocker_reason.",
+      "prompt_template": "Implement the Puber feature plan.\n\nRead .kent/project-contract.md first. Use .kent/commands/feature-implement.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nImplement the next unchecked ready step. Work sequentially and complete one plan step per workflow iteration. Use kent run --agent=implementation-worker for a bounded implementation slice only when delegation materially helps, and use kent run --agent=build-doctor for noisy compile failures.\n\nVerify with the narrowest relevant Gradle/test command, using ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout. Update plan.md progress; do not mirror lifecycle or step progress into meta.json.\n\nIf more unchecked implementation steps remain, complete with transition continue_implementation and provide workspace_path plus plan_path again. If all implementation steps are complete, complete with transition audit and provide workspace_path, plan_path, and verification_report. Complete with needs_user_action on unresolved blockers and provide blocker_reason.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -435,7 +435,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Continue the same Puber feature implementation.\n\nRead .kent/project-contract.md, then use .kent/commands/feature-implement.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nSelect the next unchecked ready step or ready parallel group, implement it, verify it, and update plan.md/meta.json. Use project-local delegated agents only for bounded work: feature-orchestrator, implementation-worker, and build-doctor.\n\nComplete with continue_implementation and provide workspace_path plus plan_path if more steps remain. Complete with audit and provide workspace_path, plan_path, and verification_report when all implementation steps are complete. Complete with needs_user_action and blocker_reason if needs_user_action.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
+      "prompt_template": "Continue the same Puber feature implementation.\n\nRead .kent/project-contract.md, then use .kent/commands/feature-implement.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nSelect the next unchecked ready step, implement it, verify it, and update plan.md. Do not mirror lifecycle or step progress into meta.json. Use project-local delegated agents only for bounded work: implementation-worker and build-doctor.\n\nComplete with continue_implementation and provide workspace_path plus plan_path if more steps remain. Complete with audit and provide workspace_path, plan_path, and verification_report when all implementation steps are complete. Complete with needs_user_action and blocker_reason if needs_user_action.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
       "parameters": [
         {
           "key": "workspace_path",

@@ -29,8 +29,7 @@ Creates a minimal feature workspace directory in `.todo/`.
    ```json
    {
      "name": "<normalized-name>",
-     "createdAt": "<YYYY-MM-DD>",
-     "currentStep": 0
+     "createdAt": "<YYYY-MM-DD>"
    }
    ```
 5. Reports the explicit workspace path: `.todo/<normalized-name>`.
@@ -44,6 +43,7 @@ Creates a minimal feature workspace directory in `.todo/`.
 ## Important
 - There is no global active feature pointer.
 - Do not create or update `.todo/.current`.
-- All metadata lives in `.todo/<feature>/meta.json`.
+- `meta.json` stores feature identity and source/artifact metadata only. Kent task state owns lifecycle status, while
+  `plan.md` checkboxes own implementation-step progress.
 - Creates ONLY the root directory — sub-folders are created by commands that populate them
 - If `.todo/<name>/` already exists, ask user whether to reset or keep existing data

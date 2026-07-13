@@ -27,7 +27,6 @@ and executes it file by file with build verification.
   {
     "type": "migration",
     "description": "<user description>",
-    "status": "planning",
     "createdAt": "<date>"
   }
   ```
@@ -130,7 +129,7 @@ For each step:
    ```
 3. If fails → fix (migration-specific issues are expected)
 4. Mark `[x]` in plan.md
-5. Update `meta.json`
+5. Do not mirror step or lifecycle progress into `meta.json`
 
 **After all steps:**
 1. Full project compile:
