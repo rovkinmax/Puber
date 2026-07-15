@@ -3,7 +3,7 @@
     "id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
     "name": "Puber Feature Delivery",
     "description": "Plan, implement, audit, fix, optionally smoke-test, and conservatively clean up a Puber Android feature.",
-    "version": 203
+    "version": 237
   },
   "nodes": [
     {
@@ -111,6 +111,38 @@
       "completion_mode": "shell_command"
     },
     {
+      "id": "node-a9a4c74f-6ea4-4d4d-9d82-e5783917df66",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "key": "verification_split",
+      "kind": "script",
+      "display_name": "Verification Split",
+      "script_path": ".kent/scripts/workflow-verification-split"
+    },
+    {
+      "id": "node-0c4e969b-4058-48fe-b648-4a38e072360c",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "key": "compile_verify",
+      "kind": "script",
+      "display_name": "Compile Verify",
+      "script_path": ".kent/scripts/workflow-compile-report"
+    },
+    {
+      "id": "node-018e5540-63a2-4e0c-b398-e54ed9a09db9",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "key": "verification_join",
+      "kind": "join",
+      "display_name": "Verification Join"
+    },
+    {
+      "id": "node-95114ef3-d028-4fa7-990b-ed2455042730",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "key": "verification_result",
+      "kind": "agent",
+      "display_name": "Verification Result",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
       "id": "node-99d6b5c3-9c55-4b48-a767-ee53465e349f",
       "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
       "key": "done",
@@ -155,9 +187,9 @@
       "id": "group-02dd3b57-df1a-4e23-a8df-01c840db1f7b",
       "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
       "source_node_id": "node-2f67f636-18bc-4279-8d5e-bd7875befdf5",
-      "transition_id": "audit",
-      "display_name": "Audit",
-      "description": "All implementation steps are complete; run read-only audit."
+      "transition_id": "verify",
+      "display_name": "Verify",
+      "description": "All implementation steps are complete; prepare parallel read-only verification."
     },
     {
       "id": "group-362b1402-9eb9-4ca9-bbbc-6a3d3e9bacd9",
@@ -168,44 +200,12 @@
       "description": "implement cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-10df1811-99b9-40ea-b7f0-012c9ae9ee80",
-      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
-      "source_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
-      "transition_id": "needs_changes",
-      "display_name": "Needs Changes",
-      "description": "Audit found issues; continue to fixes without manual approval."
-    },
-    {
-      "id": "group-056da8c9-a711-48ee-9ce9-7e7ae75d0360",
-      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
-      "source_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
-      "transition_id": "smoke",
-      "display_name": "Smoke",
-      "description": "Audit is acceptable and a focused device smoke test is useful."
-    },
-    {
-      "id": "group-dd5fdae9-7977-4fa6-aa8a-84fc70ad552f",
-      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
-      "source_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
-      "transition_id": "compliance",
-      "display_name": "Compliance",
-      "description": "Work passed this stage; run mandatory compliance review before any PR/cleanup path."
-    },
-    {
-      "id": "group-2387bd03-a0a3-4513-95db-660db539c42a",
-      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
-      "source_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
-      "transition_id": "needs_user_action",
-      "display_name": "Needs User Action",
-      "description": "audit cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
-    },
-    {
       "id": "group-7dafb6af-924d-42c0-b204-cbbdb9f49328",
       "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
       "source_node_id": "node-9062f417-dae0-4134-8ce6-941b08acd8c9",
-      "transition_id": "audit",
-      "display_name": "Audit",
-      "description": "Fixes were applied; re-run audit."
+      "transition_id": "verify",
+      "display_name": "Verify",
+      "description": "Fixes are complete; rerun parallel read-only verification."
     },
     {
       "id": "group-03c0801f-bfda-47bf-9c33-34e5b8f0969b",
@@ -366,6 +366,70 @@
       "transition_id": "wont_do",
       "display_name": "Wont Do",
       "description": "Latest user comment explicitly cancels this task or declares it not planned; finish without treating it as a recoverable blocker."
+    },
+    {
+      "id": "group-cdf2ccc2-5c53-4f6f-af96-db1ffe804ac1",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "source_node_id": "node-a9a4c74f-6ea4-4d4d-9d82-e5783917df66",
+      "transition_id": "fanout_verify",
+      "display_name": "Fanout Verify",
+      "description": "Run read-only audit and deterministic compilation in parallel."
+    },
+    {
+      "id": "group-d7f8926b-02d3-4723-84b3-18ebed082b62",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "source_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+      "transition_id": "reported",
+      "display_name": "Reported",
+      "description": "Read-only audit completed with one normalized outcome and report."
+    },
+    {
+      "id": "group-31ff5fa6-51dc-49f9-9f37-a7d77ff4801d",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "source_node_id": "node-0c4e969b-4058-48fe-b648-4a38e072360c",
+      "transition_id": "reported",
+      "display_name": "Reported",
+      "description": "Deterministic compilation completed and reported its status."
+    },
+    {
+      "id": "group-015fb229-6f86-4e97-a050-f1d6e318b052",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "source_node_id": "node-018e5540-63a2-4e0c-b398-e54ed9a09db9",
+      "transition_id": "evaluate",
+      "display_name": "Evaluate",
+      "description": "Both direct fan-out branches completed; evaluate their stable reports."
+    },
+    {
+      "id": "group-09d7277f-3de6-4519-98ba-800a0e843f5e",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "source_node_id": "node-95114ef3-d028-4fa7-990b-ed2455042730",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Audit or deterministic compilation requires task-scoped changes."
+    },
+    {
+      "id": "group-cd150a78-d38b-462d-bd13-1d2bd7689270",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "source_node_id": "node-95114ef3-d028-4fa7-990b-ed2455042730",
+      "transition_id": "smoke",
+      "display_name": "Smoke",
+      "description": "Both checks passed and focused device smoke testing is useful."
+    },
+    {
+      "id": "group-9ef91aaa-65ed-44fd-a357-2517e19f861f",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "source_node_id": "node-95114ef3-d028-4fa7-990b-ed2455042730",
+      "transition_id": "compliance",
+      "display_name": "Compliance",
+      "description": "Both checks passed and no device smoke test is needed."
+    },
+    {
+      "id": "group-325312cb-3d32-42fd-811a-0cdc38ec5973",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "source_node_id": "node-95114ef3-d028-4fa7-990b-ed2455042730",
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "Verification is blocked; after approval rerun both direct verification branches with fresh context."
     }
   ],
   "edges": [
@@ -393,7 +457,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Implement the Puber feature plan.\n\nRead .kent/project-contract.md first. Use .kent/commands/feature-implement.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nImplement the next unchecked ready step. Work sequentially and complete one plan step per workflow iteration. Use kent run --agent=implementation-worker for a bounded implementation slice only when delegation materially helps, and use kent run --agent=build-doctor for noisy compile failures.\n\nVerify with the narrowest relevant Gradle/test command, using ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout. Update plan.md progress; do not mirror lifecycle or step progress into meta.json.\n\nIf more unchecked implementation steps remain, complete with transition continue_implementation and provide workspace_path plus plan_path again. If all implementation steps are complete, complete with transition audit and provide workspace_path, plan_path, and verification_report. Complete with needs_user_action on unresolved blockers and provide blocker_reason.",
+      "prompt_template": "Implement the Puber feature plan.\n\nRead .kent/project-contract.md first. Use .kent/commands/feature-implement.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nImplement the next unchecked ready step. Work sequentially and complete one plan step per workflow iteration. Use kent run --agent=implementation-worker for a bounded implementation slice only when delegation materially helps, and use kent run --agent=build-doctor for noisy compile failures.\n\nVerify with the narrowest relevant Gradle/test command, using ./tools/agentw in .kent/worktrees and ./gradlew in the main checkout. Update plan.md progress; do not mirror lifecycle or step progress into meta.json.\n\nIf more unchecked implementation steps remain, complete with transition continue_implementation and provide workspace_path plus plan_path again. If all implementation steps are complete, complete with transition verify and provide workspace_path plus review_context summarizing the plan path and implementation verification. Complete with needs_user_action on unresolved blockers and provide blocker_reason.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -435,7 +499,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Continue the same Puber feature implementation.\n\nRead .kent/project-contract.md, then use .kent/commands/feature-implement.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nSelect the next unchecked ready step, implement it, verify it, and update plan.md. Do not mirror lifecycle or step progress into meta.json. Use project-local delegated agents only for bounded work: implementation-worker and build-doctor.\n\nComplete with continue_implementation and provide workspace_path plus plan_path if more steps remain. Complete with audit and provide workspace_path, plan_path, and verification_report when all implementation steps are complete. Complete with needs_user_action and blocker_reason if needs_user_action.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
+      "prompt_template": "Continue the same Puber feature implementation.\n\nRead .kent/project-contract.md, then use .kent/commands/feature-implement.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nSelect the next unchecked ready step, implement it, verify it, and update plan.md. Do not mirror lifecycle or step progress into meta.json. Use project-local delegated agents only for bounded work: implementation-worker and build-doctor.\n\nComplete with continue_implementation and provide workspace_path plus plan_path if more steps remain. Complete with verify and provide workspace_path plus review_context summarizing the plan path and implementation verification when all implementation steps are complete. Complete with needs_user_action and blocker_reason if needs_user_action.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -452,25 +516,20 @@
       "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
       "transition_group_id": "group-02dd3b57-df1a-4e23-a8df-01c840db1f7b",
       "key": "implementation_done",
-      "target_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+      "target_node_id": "node-a9a4c74f-6ea4-4d4d-9d82-e5783917df66",
       "requires_approval": false,
-      "context_mode": "compact_and_continue_session",
+      "context_mode": "new_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run a read-only Puber feature audit.\n\nRead .kent/project-contract.md first. Use .kent/commands/feature-audit.md with explicit workspace {{.Params.workspace_path}} and plan {{.Params.plan_path}}. Do not infer .todo/.current.\n\nReview implementation against spec, optional design artifacts, plan, Puber architecture in AGENTS.md, Compose quality, API/domain contracts, and verification coverage. Delegate broad read-only review when useful with kent run --agent=quality-reviewer --workspace \"$PWD\" \"<bounded review prompt>\". Use compose-reviewer and domain-model-reviewer for focused read-only review when applicable.\n\nWrite/update an audit report under the feature workspace. Complete with needs_changes if fixes are required and provide workspace_path plus audit_report. Complete with smoke if implementation is acceptable and device smoke is useful, providing workspace_path plus audit_report. Complete with compliance if no smoke is needed, providing workspace_path plus audit_report. Complete with needs_user_action and blocker_reason if verification cannot continue.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
       "parameters": [
         {
           "key": "workspace_path",
           "description": "Path to the task workspace or worktree relevant to this workflow transition."
         },
         {
-          "key": "plan_path",
-          "description": "Path to the plan.md used by this workflow transition."
-        },
-        {
-          "key": "verification_report",
-          "description": "Commands/tests run and their results, or path to a verification report."
+          "key": "review_context",
+          "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
         }
       ]
     },
@@ -494,113 +553,24 @@
       ]
     },
     {
-      "id": "edge-a990b934-5812-48c3-bdc5-3718d23717b7",
-      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
-      "transition_group_id": "group-10df1811-99b9-40ea-b7f0-012c9ae9ee80",
-      "key": "audit_fix",
-      "target_node_id": "node-9062f417-dae0-4134-8ce6-941b08acd8c9",
-      "requires_approval": false,
-      "context_mode": "compact_and_continue_session",
-      "context_source": {
-        "kind": "immediate_source"
-      },
-      "prompt_template": "Apply audit fixes for the Puber feature audit.\n\nRead .kent/project-contract.md first. Use .kent/commands/feature-fix.md with explicit workspace {{.Params.workspace_path}} and audit report {{.Params.audit_report}}, or apply the smallest safe manual fixes described in the audit report. Do not infer .todo/.current.\n\nUse kent run --agent=implementation-worker for bounded fix slices and kent run --agent=build-doctor for compile diagnostics when useful. Keep the fix scope narrow, verify locally, update the audit report, then complete with transition audit and provide workspace_path plus audit_report. Complete with needs_user_action and blocker_reason if needs_user_action.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
-      "parameters": [
-        {
-          "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
-        },
-        {
-          "key": "audit_report",
-          "description": "Path or summary of the current audit/review report."
-        }
-      ]
-    },
-    {
-      "id": "edge-3db7d3f7-e718-4162-b9d1-5ccca065d519",
-      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
-      "transition_group_id": "group-056da8c9-a711-48ee-9ce9-7e7ae75d0360",
-      "key": "audit_smoke",
-      "target_node_id": "node-3f862fff-37e7-47e3-810c-46efe5cdafce",
-      "requires_approval": false,
-      "context_mode": "compact_and_continue_session",
-      "context_source": {
-        "kind": "immediate_source"
-      },
-      "prompt_template": "Run a focused Puber device smoke test.\n\nRead .kent/project-contract.md first. Use .kent/commands/smoke-test.md for workspace {{.Params.workspace_path}} and audit report {{.Params.audit_report}}. Before touching any emulator/device, use .kent/adapters/mobile/emulator-resource-lock.sh to discover running adb emulators and acquire any free emulator-specific lock. Pass the selected serial to every adb command with adb -s. Physical devices, including a real TV, are forbidden unless the task/user explicitly provides permission and an explicit serial for that physical device. Never rely on adb default target selection. If all running emulators are busy, inspect lock owners and start a second emulator only when the task/user explicitly allows parallel device usage and you can acquire a distinct lock for it. Install a trap immediately after acquiring a lock so it is released on failure.\n\nAlways build a fresh devDebug APK before device testing, install it with explicit adb -s \"$DEVICE_SERIAL\" install -r app/build/outputs/apk/dev/debug/app-dev-debug.apk, force-stop the app, and launch com.kino.puber.stage/com.kino.puber.MainActivity. Do not use Gradle install* tasks for smoke tests. Use Mobile MCP through .kent/adapters/mcp wrappers, save useful artifacts under build/test-artifacts or the feature workspace, and release the mobile resource lock after reporting.\n\nComplete with compliance if smoke passes. Complete with needs_changes if smoke finds implementation issues and provide workspace_path, audit_report, and smoke_report. Complete with needs_user_action for temporary external waits; provide blocker_reason. Complete with needs_user_action only for unrecoverable smoke blockers that cannot be solved by waiting, freeing an emulator, or user approval; provide blocker_reason.",
-      "parameters": [
-        {
-          "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
-        },
-        {
-          "key": "audit_report",
-          "description": "Path or summary of the current audit/review report."
-        }
-      ]
-    },
-    {
-      "id": "edge-ce425045-47bb-4395-8280-7c4e93637685",
-      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
-      "transition_group_id": "group-dd5fdae9-7977-4fa6-aa8a-84fc70ad552f",
-      "key": "audit_compliance",
-      "target_node_id": "node-e6237246-e06b-4dbd-8ef5-82cc5e4d37f9",
-      "requires_approval": false,
-      "context_mode": "compact_and_continue_session",
-      "context_source": {
-        "kind": "immediate_source"
-      },
-      "prompt_template": "Run mandatory Puber Compliance Review before cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, and AGENTS.md first. Reviewed scope: completed feature implementation in workspace {{.Params.workspace_path}} after audit {{.Params.audit_report}}. Review only compliance with task requirements, plan/design/specs, AGENTS.md, and workflow contract. Do not edit files.\n\nComplete with ship_pr and provide compliance_report when no compliance violations are found. Complete with needs_changes and provide workspace_path plus compliance_report when fixes are required. Complete with needs_user_action and provide blocker_reason if required sources are missing or contradictory.",
-      "parameters": [
-        {
-          "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
-        },
-        {
-          "key": "audit_report",
-          "description": "Path or summary of the current audit/review report."
-        }
-      ]
-    },
-    {
-      "id": "edge-5aa17012-ad22-47d8-8f99-8d900d1bf98f",
-      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
-      "transition_group_id": "group-2387bd03-a0a3-4513-95db-660db539c42a",
-      "key": "audit_needs_user_action",
-      "target_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
-      "requires_approval": true,
-      "context_mode": "compact_and_continue_session",
-      "context_source": {
-        "kind": "immediate_source"
-      },
-      "prompt_template": "Resume this Puber workflow stage after a user-visible blocker was resolved or explicit permission was granted.\n\nRead AGENTS.md, .kent/project-contract.md, the latest task comments, and the previous blocker reason: {{.Params.blocker_reason}}.\n\nDo not restart from backlog, do not discard existing .todo/worktree/PR context, and do not broaden scope. Continue only within the current stage. If the blocker is still present, add or update a task comment with the exact next action, then complete with needs_user_action and provide blocker_reason again. Never use a terminal state for a recoverable blocker. If the task was explicitly canceled, use a close/no-PR path only when that transition exists and the latest user comment clearly asks for it.\n\nApproval by itself is only permission to re-check this stage; it is not proof that the blocker was resolved. Before taking any non-wait transition, verify a new human task comment, task body update, or external proof that specifically resolves the previous blocker. If that proof is absent or the blocker still exists, add/update a task comment with the exact next action and complete with needs_user_action again, providing blocker_reason.",
-      "parameters": [
-        {
-          "key": "blocker_reason",
-          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
-        }
-      ]
-    },
-    {
       "id": "edge-53ef0019-074c-46fe-89f0-ce4471bb0ec4",
       "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
       "transition_group_id": "group-7dafb6af-924d-42c0-b204-cbbdb9f49328",
-      "key": "fix_reaudit",
-      "target_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+      "key": "fix_reverify",
+      "target_node_id": "node-a9a4c74f-6ea4-4d4d-9d82-e5783917df66",
       "requires_approval": false,
-      "context_mode": "compact_and_continue_session",
+      "context_mode": "new_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Re-run the Puber feature audit after fixes.\n\nRead .kent/project-contract.md first. Re-check workspace {{.Params.workspace_path}} with audit report {{.Params.audit_report}}. Focus on previous findings plus regressions from the fix pass. Do not infer .todo/.current.\n\nComplete with needs_changes, smoke, compliance, or needs_user_action. Provide workspace_path plus audit_report when continuing, or blocker_reason when needs_user_action.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
       "parameters": [
         {
           "key": "workspace_path",
           "description": "Path to the task workspace or worktree relevant to this workflow transition."
         },
         {
-          "key": "audit_report",
-          "description": "Path or summary of the current audit/review report."
+          "key": "review_context",
+          "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
         }
       ]
     },
@@ -657,7 +627,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix issues found during Puber smoke testing.\n\nRead .kent/project-contract.md first. Use workspace {{.Params.workspace_path}}, audit report {{.Params.audit_report}}, and smoke report {{.Params.smoke_report}}. Keep fixes narrow, verify locally, update the audit report, then complete with audit and provide workspace_path plus audit_report. Complete with needs_user_action and blocker_reason if needs_user_action.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
+      "prompt_template": "Fix issues found during Puber smoke testing.\n\nRead .kent/project-contract.md first. Use workspace {{.Params.workspace_path}}, audit report {{.Params.audit_report}}, and smoke report {{.Params.smoke_report}}. Keep fixes narrow, verify locally, update the audit report, then complete with verify and provide workspace_path plus review_context summarizing the smoke findings, fixes, and relevant report paths. Complete with needs_user_action and blocker_reason if needs_user_action.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -740,7 +710,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix Puber feature compliance violations only.\n\nRead .kent/project-contract.md and .kent/commands/compliance-review.md first. Apply only the minimum changes required by compliance findings in {{.Params.compliance_report}} for workspace {{.Params.workspace_path}}. Verify narrowly, then complete with audit and provide workspace_path plus audit_report. Complete with needs_user_action and provide blocker_reason if unsafe or missing input.",
+      "prompt_template": "Fix Puber feature compliance violations only.\n\nRead .kent/project-contract.md and .kent/commands/compliance-review.md first. Apply only the minimum changes required by compliance findings in {{.Params.compliance_report}} for workspace {{.Params.workspace_path}}. Verify narrowly, then complete with verify and provide workspace_path plus review_context summarizing the compliance findings, fixes, and relevant report paths. Complete with needs_user_action and provide blocker_reason if unsafe or missing input.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -878,7 +848,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix Puber feature CI failures only.\n\nRead .kent/project-contract.md first. Apply only the minimum changes required by CI report {{.Params.ci_report}} in workspace {{.Params.workspace_path}}. Verify narrowly, then complete with audit and provide workspace_path plus audit_report. Complete with needs_user_action and provide blocker_reason if unsafe or missing input.",
+      "prompt_template": "Fix Puber feature CI failures only.\n\nRead .kent/project-contract.md first. Apply only the minimum changes required by CI report {{.Params.ci_report}} in workspace {{.Params.workspace_path}}. Verify narrowly, then complete with verify and provide workspace_path plus review_context summarizing the CI findings, fixes, and relevant report paths. Complete with needs_user_action and provide blocker_reason if unsafe or missing input.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -920,7 +890,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix recoverable Puber PR creation/update issues only.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Previous PR blocker: {{.Params.blocker_reason}}. Work in {{.Params.workspace_path}}. Apply only the minimum changes needed to make the task branch/PR shippable, such as rebasing, resolving merge conflicts, fixing branch metadata, or repairing the PR-ready commit set. Do not expand product scope. Verify narrowly, then continue through the workflow's normal review/compliance path. Complete with needs_user_action only if the recovery is unsafe or requires user credentials/policy changes.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.",
+      "prompt_template": "Fix recoverable Puber PR creation/update issues only.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, and AGENTS.md first. Previous PR blocker: {{.Params.blocker_reason}}. Work in {{.Params.workspace_path}}. Apply only the minimum changes needed to make the task branch/PR shippable, such as rebasing, resolving merge conflicts, fixing branch metadata, or repairing the PR-ready commit set. Do not expand product scope. Verify narrowly, then continue through the workflow's normal review/compliance path. Complete with needs_user_action only if the recovery is unsafe or requires user credentials/policy changes.\n\nFor any needs_user_action transition, provide blocker_reason with the exact next user or external action needed.\n\nAfter recovery changes, complete with verify and provide workspace_path plus review_context summarizing the PR repair and verification context.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -970,7 +940,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Fix Puber PR feedback only.\n\nRead AGENTS.md, .kent/project-contract.md, latest task comments, workspace {{.Params.workspace_path}}, and PR feedback report {{.Params.pr_report}}. Apply only task-scoped changes needed for PR review comments, merge conflicts, or post-CI regressions. Do not force-push unless the latest user comment explicitly permits force-push for this exact PR/branch. Verify narrowly, then return through the workflow's normal review/verify/compliance path with an updated report. If user input is required, complete with needs_user_action and provide blocker_reason.",
+      "prompt_template": "Fix Puber PR feedback only.\n\nRead AGENTS.md, .kent/project-contract.md, latest task comments, workspace {{.Params.workspace_path}}, and PR feedback report {{.Params.pr_report}}. Apply only task-scoped changes needed for PR review comments, merge conflicts, or post-CI regressions. Do not force-push unless the latest user comment explicitly permits force-push for this exact PR/branch. Verify narrowly, then complete with verify and provide workspace_path plus review_context summarizing the PR feedback fixes and updated report. If user input is required, complete with needs_user_action and provide blocker_reason.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -1057,6 +1027,215 @@
           "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
         }
       ]
+    },
+    {
+      "id": "edge-b2b2fd00-67b9-4baf-b75b-b968812028a5",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "transition_group_id": "group-cdf2ccc2-5c53-4f6f-af96-db1ffe804ac1",
+      "key": "verification_audit",
+      "target_node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run the read-only Puber feature audit in parallel with deterministic compilation.\n\nRead .kent/project-contract.md first. Workspace: {{.Params.workspace_path}}. Review context: {{.Params.review_context}}. Use .kent/commands/feature-audit.md, but do not run Gradle because the sibling Compile Verify branch is authoritative for compilation. Do not edit files. Delegate bounded read-only review to quality-reviewer, compose-reviewer, or domain-model-reviewer only when relevant.\n\nWrite or update the audit report under the feature workspace. Complete only with transition reported and provide audit_outcome plus audit_result. audit_outcome must be exactly one of needs_changes, smoke, compliance, or needs_user_action. audit_result must include the report path or summary and the findings, smoke rationale, or exact blocker for that outcome.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+        },
+        {
+          "key": "review_context",
+          "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
+        }
+      ]
+    },
+    {
+      "id": "edge-330497ef-3f23-4095-b236-75cb29863919",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "transition_group_id": "group-cdf2ccc2-5c53-4f6f-af96-db1ffe804ac1",
+      "key": "verification_compile",
+      "target_node_id": "node-0c4e969b-4058-48fe-b648-4a38e072360c",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+        },
+        {
+          "key": "review_context",
+          "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
+        }
+      ]
+    },
+    {
+      "id": "edge-27e2bcef-6020-44de-a4f7-2d1d3932fbd2",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "transition_group_id": "group-d7f8926b-02d3-4723-84b3-18ebed082b62",
+      "key": "audit_report_to_join",
+      "target_node_id": "node-018e5540-63a2-4e0c-b398-e54ed9a09db9",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "audit_outcome",
+          "description": "Audit outcome: needs_changes, smoke, compliance, or needs_user_action."
+        },
+        {
+          "key": "audit_result",
+          "description": "Audit report package containing report path or summary and the reason, findings, or blocker."
+        }
+      ]
+    },
+    {
+      "id": "edge-82e95418-85dc-4ca3-9f36-87c6491e79ae",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "transition_group_id": "group-31ff5fa6-51dc-49f9-9f37-a7d77ff4801d",
+      "key": "compile_report_to_join",
+      "target_node_id": "node-018e5540-63a2-4e0c-b398-e54ed9a09db9",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "compile_status",
+          "description": "Deterministic compile outcome: passed or failed."
+        },
+        {
+          "key": "verification_report",
+          "description": "Compile command and log path produced by deterministic verification."
+        }
+      ]
+    },
+    {
+      "id": "edge-dbd569a1-e12d-407a-a3b6-bab489014ac0",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "transition_group_id": "group-015fb229-6f86-4e97-a050-f1d6e318b052",
+      "key": "joined_verification_result",
+      "target_node_id": "node-95114ef3-d028-4fa7-990b-ed2455042730",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Evaluate the joined Puber verification reports without editing files.\n\nWorkspace: {{.Params.fanout_verify.workspace_path}}\nReview context: {{.Params.fanout_verify.review_context}}\nAudit outcome: {{.Params.audit_outcome}}\nAudit result: {{.Params.audit_result}}\nCompile status: {{.Params.compile_status}}\nCompile report: {{.Params.verification_report}}\n\nChoose needs_user_action when audit_outcome is needs_user_action or compilation is blocked by an external/environmental condition that cannot be fixed in task scope. Choose needs_changes when audit_outcome is needs_changes or compilation failed because of task code. Choose smoke when audit_outcome is smoke and compile_status is passed. Choose compliance when audit_outcome is compliance and compile_status is passed. For needs_changes, smoke, or compliance provide workspace_path from the fanout input, audit_report from audit_result, and verification_report. For needs_user_action provide workspace_path, review_context summarizing the blocker and both reports, and blocker_reason with the exact next action; after approval both verification branches will rerun."
+    },
+    {
+      "id": "edge-a7f1dbd1-fdd9-406f-8f9c-b40d85963ebc",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "transition_group_id": "group-09d7277f-3de6-4519-98ba-800a0e843f5e",
+      "key": "verification_result_fix",
+      "target_node_id": "node-9062f417-dae0-4134-8ce6-941b08acd8c9",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Apply only the fixes required by the joined Puber verification results.\n\nRead .kent/project-contract.md first. Workspace: {{.Params.workspace_path}}. Audit: {{.Params.audit_report}}. Compile: {{.Params.verification_report}}. Keep changes narrow and single-writer. Use implementation-worker for bounded fixes and build-doctor for diagnostics when useful.\n\nAfter fixes, complete with verify and provide workspace_path plus review_context summarizing the findings, fixes, and relevant report paths. Complete with needs_user_action and blocker_reason only when continuing is unsafe without user or external input.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+        },
+        {
+          "key": "audit_report",
+          "description": "Path or summary of the current audit/review report."
+        },
+        {
+          "key": "verification_report",
+          "description": "Compile command and log path produced by deterministic verification."
+        }
+      ]
+    },
+    {
+      "id": "edge-8ab13cb4-e721-4a74-bbe2-bfd9766711fa",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "transition_group_id": "group-cd150a78-d38b-462d-bd13-1d2bd7689270",
+      "key": "verification_result_smoke",
+      "target_node_id": "node-3f862fff-37e7-47e3-810c-46efe5cdafce",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run a focused Puber device smoke test.\n\nRead .kent/project-contract.md first. Use .kent/commands/smoke-test.md for workspace {{.Params.workspace_path}} and audit report {{.Params.audit_report}}. Deterministic compile report: {{.Params.verification_report}}. Follow the emulator resource-lock and explicit adb serial rules in AGENTS.md. Build and install a fresh devDebug APK before testing.\n\nComplete with compliance if smoke passes. Complete with needs_changes if smoke finds implementation issues and provide workspace_path, audit_report, and smoke_report. Complete with needs_user_action and blocker_reason for unresolved external blockers.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+        },
+        {
+          "key": "audit_report",
+          "description": "Path or summary of the current audit/review report."
+        },
+        {
+          "key": "verification_report",
+          "description": "Compile command and log path produced by deterministic verification."
+        }
+      ]
+    },
+    {
+      "id": "edge-b8dc1931-7ed3-42d9-9747-76bc9d3af1ce",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "transition_group_id": "group-9ef91aaa-65ed-44fd-a357-2517e19f861f",
+      "key": "verification_result_compliance",
+      "target_node_id": "node-e6237246-e06b-4dbd-8ef5-82cc5e4d37f9",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run mandatory Puber Compliance Review before PR or cleanup.\n\nRead .kent/commands/compliance-review.md, .kent/project-contract.md, and AGENTS.md first. Workspace: {{.Params.workspace_path}}. Audit: {{.Params.audit_report}}. Deterministic compile: {{.Params.verification_report}}. Review only compliance; do not edit files.\n\nComplete with ship_pr and compliance_report when compliant. Complete with needs_changes and provide workspace_path plus compliance_report when fixes are required. Complete with needs_user_action and blocker_reason if required sources are missing or contradictory.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+        },
+        {
+          "key": "audit_report",
+          "description": "Path or summary of the current audit/review report."
+        },
+        {
+          "key": "verification_report",
+          "description": "Compile command and log path produced by deterministic verification."
+        }
+      ]
+    },
+    {
+      "id": "edge-a9712f8d-e0f6-4452-9ba8-a23e639ce575",
+      "workflow_id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
+      "transition_group_id": "group-325312cb-3d32-42fd-811a-0cdc38ec5973",
+      "key": "verification_result_needs_user_action",
+      "target_node_id": "node-a9a4c74f-6ea4-4d4d-9d82-e5783917df66",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+        },
+        {
+          "key": "review_context",
+          "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Short human-readable blocker explanation and exact next user or external action needed."
+        }
+      ]
     }
   ],
   "derived_wiring": {
@@ -1097,8 +1276,8 @@
             "description": "Path to the plan.md used by this workflow transition."
           },
           {
-            "name": "verification_report",
-            "description": "Commands/tests run and their results, or path to a verification report."
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
           },
           {
             "name": "blocker_reason",
@@ -1110,16 +1289,12 @@
         "node_id": "node-79d3facb-ccb3-4c41-87f6-557b52ddd9c0",
         "possible_provision_fields": [
           {
-            "name": "workspace_path",
-            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+            "name": "audit_outcome",
+            "description": "Audit outcome: needs_changes, smoke, compliance, or needs_user_action."
           },
           {
-            "name": "audit_report",
-            "description": "Path or summary of the current audit/review report."
-          },
-          {
-            "name": "blocker_reason",
-            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+            "name": "audit_result",
+            "description": "Audit report package containing report path or summary and the reason, findings, or blocker."
           }
         ]
       },
@@ -1131,8 +1306,8 @@
             "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
-            "name": "audit_report",
-            "description": "Path or summary of the current audit/review report."
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
           },
           {
             "name": "blocker_reason",
@@ -1274,6 +1449,78 @@
         ]
       },
       {
+        "node_id": "node-a9a4c74f-6ea4-4d4d-9d82-e5783917df66",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
+          }
+        ]
+      },
+      {
+        "node_id": "node-0c4e969b-4058-48fe-b648-4a38e072360c",
+        "possible_provision_fields": [
+          {
+            "name": "compile_status",
+            "description": "Deterministic compile outcome: passed or failed."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ]
+      },
+      {
+        "node_id": "node-018e5540-63a2-4e0c-b398-e54ed9a09db9",
+        "join_output_fields": [
+          {
+            "name": "audit_outcome",
+            "description": "Audit outcome: needs_changes, smoke, compliance, or needs_user_action."
+          },
+          {
+            "name": "audit_result",
+            "description": "Audit report package containing report path or summary and the reason, findings, or blocker."
+          },
+          {
+            "name": "compile_status",
+            "description": "Deterministic compile outcome: passed or failed."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ]
+      },
+      {
+        "node_id": "node-95114ef3-d028-4fa7-990b-ed2455042730",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "audit_report",
+            "description": "Path or summary of the current audit/review report."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          },
+          {
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Short human-readable blocker explanation and exact next user or external action needed."
+          }
+        ]
+      },
+      {
         "node_id": "node-99d6b5c3-9c55-4b48-a767-ee53465e349f"
       }
     ],
@@ -1324,65 +1571,13 @@
             "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
-            "name": "plan_path",
-            "description": "Path to the plan.md used by this workflow transition."
-          },
-          {
-            "name": "verification_report",
-            "description": "Commands/tests run and their results, or path to a verification report."
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
           }
         ]
       },
       {
         "transition_group_id": "group-362b1402-9eb9-4ca9-bbbc-6a3d3e9bacd9",
-        "required_provision_fields": [
-          {
-            "name": "blocker_reason",
-            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
-          }
-        ]
-      },
-      {
-        "transition_group_id": "group-10df1811-99b9-40ea-b7f0-012c9ae9ee80",
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Path to the task workspace or worktree relevant to this workflow transition."
-          },
-          {
-            "name": "audit_report",
-            "description": "Path or summary of the current audit/review report."
-          }
-        ]
-      },
-      {
-        "transition_group_id": "group-056da8c9-a711-48ee-9ce9-7e7ae75d0360",
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Path to the task workspace or worktree relevant to this workflow transition."
-          },
-          {
-            "name": "audit_report",
-            "description": "Path or summary of the current audit/review report."
-          }
-        ]
-      },
-      {
-        "transition_group_id": "group-dd5fdae9-7977-4fa6-aa8a-84fc70ad552f",
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Path to the task workspace or worktree relevant to this workflow transition."
-          },
-          {
-            "name": "audit_report",
-            "description": "Path or summary of the current audit/review report."
-          }
-        ]
-      },
-      {
-        "transition_group_id": "group-2387bd03-a0a3-4513-95db-660db539c42a",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1398,8 +1593,8 @@
             "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
-            "name": "audit_report",
-            "description": "Path or summary of the current audit/review report."
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
           }
         ]
       },
@@ -1658,6 +1853,116 @@
             "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
         ]
+      },
+      {
+        "transition_group_id": "group-cdf2ccc2-5c53-4f6f-af96-db1ffe804ac1",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-d7f8926b-02d3-4723-84b3-18ebed082b62",
+        "required_provision_fields": [
+          {
+            "name": "audit_outcome",
+            "description": "Audit outcome: needs_changes, smoke, compliance, or needs_user_action."
+          },
+          {
+            "name": "audit_result",
+            "description": "Audit report package containing report path or summary and the reason, findings, or blocker."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-31ff5fa6-51dc-49f9-9f37-a7d77ff4801d",
+        "required_provision_fields": [
+          {
+            "name": "compile_status",
+            "description": "Deterministic compile outcome: passed or failed."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-015fb229-6f86-4e97-a050-f1d6e318b052"
+      },
+      {
+        "transition_group_id": "group-09d7277f-3de6-4519-98ba-800a0e843f5e",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "audit_report",
+            "description": "Path or summary of the current audit/review report."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-cd150a78-d38b-462d-bd13-1d2bd7689270",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "audit_report",
+            "description": "Path or summary of the current audit/review report."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-9ef91aaa-65ed-44fd-a357-2517e19f861f",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "audit_report",
+            "description": "Path or summary of the current audit/review report."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-325312cb-3d32-42fd-811a-0cdc38ec5973",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Short human-readable blocker explanation and exact next user or external action needed."
+          }
+        ]
       }
     ],
     "edges": [
@@ -1739,14 +2044,9 @@
             "field": "workspace_path"
           },
           {
-            "name": "plan_path",
+            "name": "review_context",
             "source": "transition_output",
-            "field": "plan_path"
-          },
-          {
-            "name": "verification_report",
-            "source": "transition_output",
-            "field": "verification_report"
+            "field": "review_context"
           }
         ],
         "required_provision_fields": [
@@ -1755,108 +2055,13 @@
             "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
-            "name": "plan_path",
-            "description": "Path to the plan.md used by this workflow transition."
-          },
-          {
-            "name": "verification_report",
-            "description": "Commands/tests run and their results, or path to a verification report."
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
           }
         ]
       },
       {
         "edge_id": "edge-84dba5e3-443c-48a4-8d76-78356d82fcc7",
-        "input_bindings": [
-          {
-            "name": "blocker_reason",
-            "source": "transition_output",
-            "field": "blocker_reason"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "blocker_reason",
-            "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-a990b934-5812-48c3-bdc5-3718d23717b7",
-        "input_bindings": [
-          {
-            "name": "workspace_path",
-            "source": "transition_output",
-            "field": "workspace_path"
-          },
-          {
-            "name": "audit_report",
-            "source": "transition_output",
-            "field": "audit_report"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Path to the task workspace or worktree relevant to this workflow transition."
-          },
-          {
-            "name": "audit_report",
-            "description": "Path or summary of the current audit/review report."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-3db7d3f7-e718-4162-b9d1-5ccca065d519",
-        "input_bindings": [
-          {
-            "name": "workspace_path",
-            "source": "transition_output",
-            "field": "workspace_path"
-          },
-          {
-            "name": "audit_report",
-            "source": "transition_output",
-            "field": "audit_report"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Path to the task workspace or worktree relevant to this workflow transition."
-          },
-          {
-            "name": "audit_report",
-            "description": "Path or summary of the current audit/review report."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-ce425045-47bb-4395-8280-7c4e93637685",
-        "input_bindings": [
-          {
-            "name": "workspace_path",
-            "source": "transition_output",
-            "field": "workspace_path"
-          },
-          {
-            "name": "audit_report",
-            "source": "transition_output",
-            "field": "audit_report"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Path to the task workspace or worktree relevant to this workflow transition."
-          },
-          {
-            "name": "audit_report",
-            "description": "Path or summary of the current audit/review report."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-5aa17012-ad22-47d8-8f99-8d900d1bf98f",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1880,9 +2085,9 @@
             "field": "workspace_path"
           },
           {
-            "name": "audit_report",
+            "name": "review_context",
             "source": "transition_output",
-            "field": "audit_report"
+            "field": "review_context"
           }
         ],
         "required_provision_fields": [
@@ -1891,8 +2096,8 @@
             "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
-            "name": "audit_report",
-            "description": "Path or summary of the current audit/review report."
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
           }
         ]
       },
@@ -2384,6 +2589,265 @@
           {
             "name": "closure_reason",
             "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-b2b2fd00-67b9-4baf-b75b-b968812028a5",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-330497ef-3f23-4095-b236-75cb29863919",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-27e2bcef-6020-44de-a4f7-2d1d3932fbd2",
+        "input_bindings": [
+          {
+            "name": "audit_outcome",
+            "source": "transition_output",
+            "field": "audit_outcome"
+          },
+          {
+            "name": "audit_result",
+            "source": "transition_output",
+            "field": "audit_result"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "audit_outcome",
+            "description": "Audit outcome: needs_changes, smoke, compliance, or needs_user_action."
+          },
+          {
+            "name": "audit_result",
+            "description": "Audit report package containing report path or summary and the reason, findings, or blocker."
+          }
+        ],
+        "required_provider_fields": [
+          {
+            "name": "audit_outcome",
+            "description": "Audit outcome: needs_changes, smoke, compliance, or needs_user_action."
+          },
+          {
+            "name": "audit_result",
+            "description": "Audit report package containing report path or summary and the reason, findings, or blocker."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-82e95418-85dc-4ca3-9f36-87c6491e79ae",
+        "input_bindings": [
+          {
+            "name": "compile_status",
+            "source": "transition_output",
+            "field": "compile_status"
+          },
+          {
+            "name": "verification_report",
+            "source": "transition_output",
+            "field": "verification_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "compile_status",
+            "description": "Deterministic compile outcome: passed or failed."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ],
+        "required_provider_fields": [
+          {
+            "name": "compile_status",
+            "description": "Deterministic compile outcome: passed or failed."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-dbd569a1-e12d-407a-a3b6-bab489014ac0"
+      },
+      {
+        "edge_id": "edge-a7f1dbd1-fdd9-406f-8f9c-b40d85963ebc",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "audit_report",
+            "source": "transition_output",
+            "field": "audit_report"
+          },
+          {
+            "name": "verification_report",
+            "source": "transition_output",
+            "field": "verification_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "audit_report",
+            "description": "Path or summary of the current audit/review report."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-8ab13cb4-e721-4a74-bbe2-bfd9766711fa",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "audit_report",
+            "source": "transition_output",
+            "field": "audit_report"
+          },
+          {
+            "name": "verification_report",
+            "source": "transition_output",
+            "field": "verification_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "audit_report",
+            "description": "Path or summary of the current audit/review report."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-b8dc1931-7ed3-42d9-9747-76bc9d3af1ce",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "audit_report",
+            "source": "transition_output",
+            "field": "audit_report"
+          },
+          {
+            "name": "verification_report",
+            "source": "transition_output",
+            "field": "verification_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "audit_report",
+            "description": "Path or summary of the current audit/review report."
+          },
+          {
+            "name": "verification_report",
+            "description": "Compile command and log path produced by deterministic verification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-a9712f8d-e0f6-4452-9ba8-a23e639ce575",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          },
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          },
+          {
+            "name": "review_context",
+            "description": "Plan, implementation, fix, or blocker context needed by both verification branches."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Short human-readable blocker explanation and exact next user or external action needed."
           }
         ]
       }

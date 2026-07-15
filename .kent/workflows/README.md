@@ -19,8 +19,9 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Feature Delivery` (default): plan -> implement loop -> audit -> fix loop -> optional smoke -> compliance ->
-  create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
+- `Puber Feature Delivery` (default): plan -> implement loop -> parallel read-only audit and deterministic compile
+  verification -> join -> verification result -> fix loop or optional smoke -> compliance -> create/update PR ->
+  monitor CI -> waiting PR -> cleanup -> done.
 - `Puber Refactor With Audit`: plan/audit -> implement loop -> read-only review -> fix loop -> compliance ->
   create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
 - `Puber Bugfix Investigation`: reproduce/diagnose -> fix or report-only -> verify/fix loop -> compliance ->
@@ -34,9 +35,6 @@ Kent Desktop workflow graph
 - `Puber Release`: default next minor release from `origin/master` -> version bump branch/PR -> CI -> approved tag
   publication after the PR is merged -> optional automation monitor -> cleanup -> done. Patch/major releases require
   explicit task wording.
-- `Puber Compile Verify Canary`: non-default script-node canary for deterministic `compileDevDebugKotlin` verification.
-  Keep it isolated from product workflows until its backlog canary task passes from a committed revision.
-
 Only `Puber Feature Delivery` should be the project default. The other workflows are linked to the project for explicit
 task creation when the work type is known.
 
@@ -47,6 +45,13 @@ Legacy split release workflows (`Puber Release Preparation` and `Puber Release P
 
 - Use `default` as node assignee unless Kent workflow validation can see project-local roles.
 - Delegate to project roles inside prompts, for example `kent run --agent implementation-worker ...`.
+- Keep workflow-level fan-out read-only. The feature verification workflow runs
+  audit and deterministic compilation in parallel, joins both reports, and
+  sends any required code changes through the existing single-writer Fix node.
+- Each branch must provide one stable join contract. Kent `2.2.0` runtime rejects mutually exclusive output field sets
+  as missing aggregate fields even when draft and execution validation pass.
+- Every fan-out branch must transition directly to its join. Kent `2.2.0` drops parallel branch lineage on an
+  intermediate node, leaving the task active with no placement after both branches complete.
 - Project role aliases are configured in `.kent/config.toml`; for example `project-researcher` maps to
   `subagents/android-codebase-analyst.md`, even though there is no `subagents/project-researcher.md` file.
 - After adding or changing subagent roles in `.kent/config.toml`, restart Kent service/GUI before expecting execution

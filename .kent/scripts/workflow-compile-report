@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+input="$(jq -c .)"
+result="$(./.kent/scripts/workflow-compile-verify <<<"$input")"
+
+compile_status="$(jq -er '.transition' <<<"$result")"
+commentary="$(jq -er '.commentary' <<<"$result")"
+verification_report="$(jq -er '.verification_report' <<<"$result")"
+
+jq -nc \
+  --arg transition "reported" \
+  --arg commentary "$commentary" \
+  --arg compile_status "$compile_status" \
+  --arg verification_report "$verification_report" \
+  '{
+    transition: $transition,
+    commentary: $commentary,
+    compile_status: $compile_status,
+    verification_report: $verification_report
+  }'
