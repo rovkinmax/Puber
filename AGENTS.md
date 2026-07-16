@@ -205,8 +205,6 @@ Active Kent infrastructure lives under `.kent/`:
 - MCP bridge: `.kent/adapters/mcp/`
 - worktree setup: `.kent/worktrees/setup.sh`
 
-Legacy `.claude/` files may remain as historical reference. Do not update `.claude/` unless explicitly requested.
-
 Kent commands are invoked as `/prompt:<name>`, for example `/prompt:feature-start` or `/prompt:refactor-start`.
 
 - Project-local/manual worktrees must be created under `.kent/worktrees/`; do not create sibling worktrees such as
@@ -294,6 +292,12 @@ emulators are busy, check owners with `.kent/adapters/mobile/emulator-resource-l
 second emulator only when the task/user explicitly allows parallel device usage and a suitable AVD/host capacity is
 available; use a distinct lock name for that emulator. Use a physical device only with explicit user permission and an
 explicit serial.
+
+Bind Mobile MCP to the same serial with
+`.kent/adapters/mcp/mcp-call.sh mobile.device action=set
+deviceId="$DEVICE_SERIAL" platform=android --allow-mutate`. Pass the same
+explicit `deviceId` to every target-specific Mobile MCP call. If the bridge
+cannot list or select the locked serial, block instead of switching targets.
 
 **Tool priority (cheap → expensive):**
 1. `assert_visible` / `assert_not_exists` — check element presence

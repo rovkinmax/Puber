@@ -32,7 +32,9 @@ Kent Desktop workflow graph
   Smoke and the PR/CI tail.
 - `Puber Engineering Smoke Lab` (experimental, non-default): unversioned
   generic planning and implementation, full verification fan-out/Gate,
-  conditional TV Smoke, and conservative cleanup without PR/CI.
+  conditional TV Smoke, and conservative cleanup without PR/CI. Both
+  `delivery_ready` and `smoke_required` passed managed-worktree canaries on
+  2026-07-16.
 - `Puber Engineering Delivery v4` and `Puber Engineering Canary v1`: previous
   schema-2 generated snapshots retained for comparison.
 - `Puber Engineering Delivery v2`: superseded and retained because task

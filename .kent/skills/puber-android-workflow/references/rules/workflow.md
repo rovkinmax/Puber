@@ -1,7 +1,6 @@
 # Kent Workflow
 
-Use `.kent/commands/` as the active command set. Treat `.claude/` as legacy reference unless the user explicitly asks to
-change it.
+Use `.kent/commands/` as the active command set.
 
 ## Commands
 

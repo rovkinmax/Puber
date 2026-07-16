@@ -21,9 +21,6 @@ command, phase, or plan step.
 
 Kent commands live under `.kent/commands/` and are invoked as `/prompt:<name>`.
 
-Legacy `.claude/` files may remain as historical reference, but active Kent sessions should use `.kent/commands/` and
-this skill.
-
 ## Project Basics
 
 - Single Android project with modules `:app` and `:baselineprofile`; feature/runtime code belongs in `:app`.
@@ -93,12 +90,12 @@ kent run --agent compose-reviewer --workspace "$PWD" "<prompt>"
 kent run --agent domain-model-reviewer --workspace "$PWD" "<prompt>"
 ```
 
-Use subagents for broad search, noisy diagnostics, implementation slices, and read-only review.
+Use subagents for broad read-only search, noisy diagnostics, and review. The active implementation or fix session
+remains the single writer. Do not run parallel implementation writers.
 
 ## Safety
 
 - Do not create or update global feature pointer files such as `.todo/.current`.
-- Do not modify `.claude/` during Kent migration follow-up work unless explicitly requested.
 - Do not commit or push unless explicitly requested.
 - Keep local paths, tokens, MCP configs, raw MCP outputs, and call logs out of git.
 - Mark plan steps complete only after verification succeeds.
