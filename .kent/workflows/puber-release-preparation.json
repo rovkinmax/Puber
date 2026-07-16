@@ -3,7 +3,10 @@
     "id": "workflow-bf83678e-423b-4262-be73-5cc9369497a3",
     "name": "Puber Release Preparation",
     "description": "Prepare a Puber release branch and version bump, push only after approval, and clean up safely.",
-    "version": 55
+    "version": 55,
+    "execution_target_policy": {
+      "mode": "head"
+    }
   },
   "nodes": [
     {

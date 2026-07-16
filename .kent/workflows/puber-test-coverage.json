@@ -3,7 +3,10 @@
     "id": "workflow-139803ac-9f20-4f0a-9db3-6dfaf474566a",
     "name": "Puber Test Coverage",
     "description": "Plan, add, review, fix, and clean up focused Puber Android test coverage improvements.",
-    "version": 155
+    "version": 155,
+    "execution_target_policy": {
+      "mode": "head"
+    }
   },
   "nodes": [
     {

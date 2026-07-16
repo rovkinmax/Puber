@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+verify_script="${KENT_WORKFLOW_VERIFY_SCRIPT:-./.kent/scripts/workflow-compile-verify}"
+verify_log="${KENT_WORKFLOW_VERIFY_LOG:-build/kent-workflow/compile-dev-debug.log}"
+input="$(jq -c . 2>/dev/null || true)"
+
+emit_report() {
+  local status="$1"
+  local commentary="$2"
+  local report="$3"
+
+  jq -nc \
+    --arg transition "reported" \
+    --arg commentary "$commentary" \
+    --arg verification_status "$status" \
+    --arg verification_report "$report" \
+    '{
+      transition: $transition,
+      commentary: $commentary,
+      verification_status: $verification_status,
+      verification_report: $verification_report
+    }'
+}
+
+if [[ -z "$input" ]]; then
+  emit_report "blocked" \
+    "Verification wrapper received invalid workflow input." \
+    "Input was not valid JSON."
+  exit 0
+fi
+
+if [[ ! -x "$verify_script" ]]; then
+  emit_report "blocked" \
+    "Verification executable is unavailable." \
+    "Command unavailable: $verify_script"
+  exit 0
+fi
+
+stdout_file="$(mktemp)"
+stderr_file="$(mktemp)"
+trap 'rm -f "$stdout_file" "$stderr_file"' EXIT
+
+if ! "$verify_script" <<<"$input" >"$stdout_file" 2>"$stderr_file"; then
+  result="$(cat "$stdout_file")"
+  diagnostics="$(cat "$stderr_file")"
+  emit_report "blocked" \
+    "Verification executable exited without a valid workflow report." \
+    "Command failed: $verify_script; stdout: ${result:0:1000}; stderr: ${diagnostics:0:1000}"
+  exit 0
+fi
+
+result="$(cat "$stdout_file")"
+diagnostics="$(cat "$stderr_file")"
+if ! jq -e 'type == "object"' <<<"$result" >/dev/null 2>&1; then
+  emit_report "blocked" \
+    "Verification executable returned malformed output." \
+    "Invalid JSON from $verify_script: ${result:0:1500}; stderr: ${diagnostics:0:500}"
+  exit 0
+fi
+
+raw_status="$(jq -r '.transition // ""' <<<"$result")"
+commentary="$(jq -r '.commentary // "Verification completed."' <<<"$result")"
+verification_report="$(jq -r '.verification_report // "No report provided."' <<<"$result")"
+
+case "$raw_status" in
+  passed)
+    verification_status="passed"
+    ;;
+  blocked)
+    verification_status="blocked"
+    ;;
+  failed)
+    environment_pattern='SDK location not found|JAVA_HOME|Network is unreachable'
+    environment_pattern+='|Could not resolve|No space left|Permission denied'
+    environment_pattern+='|daemon disappeared|Timeout waiting to lock'
+    environment_pattern+='|could not find executable|Command unavailable'
+    classification_text="$commentary $verification_report $diagnostics"
+    if grep -Eqi "$environment_pattern" <<<"$classification_text" ||
+      grep -Eqi "$environment_pattern" "$verify_log" 2>/dev/null; then
+      verification_status="blocked"
+    else
+      verification_status="needs_changes"
+    fi
+    ;;
+  *)
+    verification_status="blocked"
+    ;;
+esac
+
+emit_report "$verification_status" "$commentary" "$verification_report"

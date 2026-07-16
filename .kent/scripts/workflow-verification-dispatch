@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+input="$(jq -c .)"
+workspace_path="$(jq -er '.workspace_path | strings' <<<"$input")"
+review_context="$(jq -er '.review_context | strings' <<<"$input")"
+
+jq -nc \
+  --arg transition "fanout_verify" \
+  --arg commentary "Starting deterministic and independent read-only verification." \
+  --arg workspace_path "$workspace_path" \
+  --arg review_context "$review_context" \
+  '{
+    transition: $transition,
+    commentary: $commentary,
+    workspace_path: $workspace_path,
+    review_context: $review_context
+  }'

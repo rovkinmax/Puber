@@ -3,7 +3,10 @@
     "id": "workflow-ee05cfa8-8fc8-49e7-8eda-2e3893424ad2",
     "name": "Puber Dependency Update",
     "description": "Update Puber Gradle dependencies or tooling, verify fallout, fix issues, and clean up safely.",
-    "version": 139
+    "version": 139,
+    "execution_target_policy": {
+      "mode": "head"
+    }
   },
   "nodes": [
     {

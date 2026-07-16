@@ -3,7 +3,10 @@
     "id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
-    "version": 160
+    "version": 160,
+    "execution_target_policy": {
+      "mode": "head"
+    }
   },
   "nodes": [
     {

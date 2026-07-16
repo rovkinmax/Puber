@@ -3,7 +3,7 @@
 
 [shell]
 postprocessing_mode = "all"
-postprocess_hook = ".kent/hooks/shell-postprocess-hook"
+postprocess_hook = "~/.kent/hooks/gradle-worktree-warning"
 
 [worktrees]
 # Applies to project-local/manual worktrees. Kent-managed task worktrees are owned under Kent's persistence root.

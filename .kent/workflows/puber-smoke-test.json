@@ -3,7 +3,10 @@
     "id": "workflow-0b5d2d8a-ce13-402c-98ff-11823327e173",
     "name": "Puber Smoke Test",
     "description": "Run focused Puber Android TV smoke tests, optionally fix approved findings, and clean up safely.",
-    "version": 148
+    "version": 148,
+    "execution_target_policy": {
+      "mode": "head"
+    }
   },
   "nodes": [
     {

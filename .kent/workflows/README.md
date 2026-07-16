@@ -19,6 +19,15 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
+- `Puber Engineering Delivery v2` (generated, non-default): one Plan session,
+  default operational orchestration, deterministic compile plus independent
+  global standards/spec reviews, direct Join/Gate, optional TV smoke,
+  PR/CI/waiting, and conservative cleanup. It uses
+  `ask-on-first-execution` and must pass a managed-worktree canary before any
+  default migration.
+- `Puber Engineering Delivery v1`: taskless, unlinked superseded draft. Kent
+  2.3 cannot remove its stale edge through the CLI, so do not create tasks from
+  it and do not repair it through direct database mutation.
 - `Puber Feature Delivery` (default): plan -> implement loop -> parallel read-only audit and deterministic compile
   verification -> join -> verification result -> fix loop or optional smoke -> compliance -> create/update PR ->
   monitor CI -> waiting PR -> cleanup -> done.
@@ -35,8 +44,9 @@ Kent Desktop workflow graph
 - `Puber Release`: default next minor release from `origin/master` -> version bump branch/PR -> CI -> approved tag
   publication after the PR is merged -> optional automation monitor -> cleanup -> done. Patch/major releases require
   explicit task wording.
-Only `Puber Feature Delivery` should be the project default. The other workflows are linked to the project for explicit
-task creation when the work type is known.
+`Puber Feature Delivery` remains the project default. Generated and auxiliary
+workflows are linked only for explicit task creation when the work type is
+known.
 
 Legacy split release workflows (`Puber Release Preparation` and `Puber Release Publication`) are superseded by
 `Puber Release` and must not be linked to the project for new tasks.
@@ -89,17 +99,17 @@ Legacy split release workflows (`Puber Release Preparation` and `Puber Release P
 - Keep prompts project-neutral where possible: "run the project feature planning command" rather than naming another
   repository's skill path, Jira project, module graph, or release process.
 
-## Portability Next Step
+## Shared Generator
 
-Snapshots are not enough for reuse across repositories because Kent workflow graphs live in the Kent DB. The next
-practical extraction should be a global Kent workflow template/generator that creates project-local graph instances from a
-stable contract:
+Snapshots are not enough for reuse across repositories because Kent workflow
+graphs live in the Kent DB. `kent-engineering-kit/scripts/generate-workflow`
+now creates versioned project-local graph instances from a stable contract:
 
 - Global: graph families, transition parameter contract, naming rules, and safe cleanup/release gates.
 - Project-local: `.kent/project-contract.md`, command files, adapters, worktree setup, and subagent alias mapping.
 
-That keeps reusable orchestration global while preserving project-specific build commands, release policy, MCP adapters,
-and architecture rules.
+That keeps reusable orchestration global while preserving project-specific
+build commands, release policy, MCP adapters, and architecture rules.
 
 ## Workflow Smoke Test Checklist
 
@@ -111,3 +121,5 @@ Before making a workflow default for the project:
 - Exercise an implementation continuation path and verify params are re-emitted.
 - Exercise cleanup in conservative mode and verify `cleanup_report`.
 - Validate with `kent workflow validate "<workflow>" --mode execution`.
+- Verify generator idempotency by applying the same version twice without a
+  graph version change.

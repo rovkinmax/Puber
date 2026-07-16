@@ -3,7 +3,10 @@
     "id": "workflow-d80d00fc-529a-41b5-8668-c4851002fb44",
     "name": "Puber Bugfix Investigation",
     "description": "Reproduce, diagnose, fix, verify, and conservatively clean up a Puber Android bugfix.",
-    "version": 150
+    "version": 150,
+    "execution_target_policy": {
+      "mode": "head"
+    }
   },
   "nodes": [
     {

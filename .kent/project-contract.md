@@ -15,12 +15,13 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - Compliance Review produces `compliance_report`.
 - PR creation produces `pr_url`, `branch_name`, and `workspace_path`; no-diff/report-only PR skips produce `pr_report`.
 - PR/CI monitoring produces `ci_report`.
-- Waiting PR produces `waiting_reason` while the PR is open, `merge_report` after GitHub reports `state=MERGED`, or
-  `pr_report` when PR review/conflict/post-CI feedback must be fixed.
+- Waiting PR produces `blocker_reason` while the PR is open,
+  `merge_report` after GitHub reports `state=MERGED`, or `pr_report` when PR
+  review/conflict/post-CI feedback must be fixed.
 - Release preparation produces `release_version`, `release_type`, `release_branch`, `release_tag`, `workspace_path`,
   `version_bump_commit`, and `verification_summary`.
 - Release publication produces `target_commit`, `tag_push_status`, and `release_report`.
-- Every recoverable wait transition must provide `blocker_reason` or `waiting_reason`.
+- Every recoverable wait transition must provide `blocker_reason`.
 - Explicit task cancellation produces `closure_reason` or `cleanup_reason`.
 - Cleanup produces `cleanup_report`.
 
@@ -53,6 +54,8 @@ workspace path.
 The Feature Delivery `plan` node owns bootstrap, optional design ingestion, spec creation, and implementation planning in
 one Kent session. `feature-start.md` may load `feature-design.md`, `feature-spec.md`, and `feature-plan.md` as procedure
 modules, but must not invoke nested `/prompt:*` flows or start child sessions for those phases.
+The generated `Puber Engineering Delivery v2` Plan node follows the same
+single-session procedure through `.kent/workflow-profile.toml`.
 
 ## Agent Contract
 
@@ -120,14 +123,17 @@ worktree metadata until Kent rebind behavior is fixed.
 Recoverable blockers must not use a terminal node. The workflow keeps the task in its current stage:
 
 - `needs_user_action`: the current stage cannot safely continue until the user or an external system resolves a blocker.
-  The transition is approval-gated, loops back to the same node, and must provide `blocker_reason`.
+  The transition is approval-gated and must provide `blocker_reason`. It
+  normally loops back to the same node; after a joined verification gate it may
+  return to verification dispatch so every read-only branch reruns.
 - `needs_changes`: audit/review/compliance/CI/PR feedback needs task-scoped fixes. Internal fix loops should not require
   approval; `ship_pr -> needs_changes` stays approval-gated because branch recovery can involve rebase or force-push
   policy.
 - `no_pr`: the task has no repository changes or is explicitly report-only. This transition is approval-gated because it
   allows cleanup/done without a merged PR.
 
-Terminal `wont_do` is only for explicit user cancellation or "not planned" decisions and requires approval. It is not a
+Terminal `wont_do` is only for explicit user cancellation or "not planned"
+decisions, requires approval, and emits `closure_reason`. It is not a
 recoverable blocker.
 
 ## PR Waiting Policy
@@ -163,6 +169,7 @@ Use `Puber Release` for human-facing release tasks.
 
 Use generic workflow graph keys and project-prefixed live workflow names:
 
+- Generated non-default workflow: `Puber Engineering Delivery v2`.
 - Live workflow names: `Puber Feature Delivery`, `Puber Refactor With Audit`, `Puber Bugfix Investigation`,
   `Puber Dependency Update`, `Puber Test Coverage`, `Puber Smoke Test`, `Puber Release`.
 - Node keys: `plan`, `implement`, `audit`, `fix`, `smoke`, `prepare`, `compliance`, `ship_pr`, `ci_monitor`,
@@ -171,6 +178,6 @@ Use generic workflow graph keys and project-prefixed live workflow names:
   `compliance`, `ship_pr`, `monitor_ci`, `waiting_pr`, `pr_merged`, `close_without_merge`, `no_pr`,
   `release_published`, `done`, `wont_do`.
 - Portable params: `workspace_path`, `plan_path`, `audit_report`, `review_report`, `verification_report`, `pr_url`,
-  `branch_name`, `pr_report`, `ci_report`, `compliance_report`, `waiting_reason`, `merge_report`, `cleanup_reason`,
+  `branch_name`, `pr_report`, `ci_report`, `compliance_report`, `merge_report`, `cleanup_reason`,
   `closure_reason`, `release_version`, `release_type`, `release_branch`, `release_tag`, `version_bump_commit`,
   `target_commit`, `tag_push_status`, `release_report`, `blocker_reason`, `cleanup_report`.

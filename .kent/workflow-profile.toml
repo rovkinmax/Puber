@@ -1,0 +1,51 @@
+schema_version = 2
+minimum_kent_version = "2.3.0"
+project_name = "Puber"
+workflow_prefix = "Puber"
+delivery_profile = "team"
+platforms = ["android-tv"]
+source_control = "github"
+issue_tracker = "none"
+release_topology = "tag-after-merged-release-pr"
+
+[execution]
+default_target = "ask-on-first-execution"
+
+[execution.overrides]
+canary = "head"
+maintenance = "default-branch"
+release = "ask-on-first-execution"
+
+[capabilities]
+managed_worktrees = true
+pull_requests = true
+ci_monitoring = true
+device_smoke = true
+compliance_review = true
+spec_review = true
+
+[commands]
+dispatch = ".kent/scripts/workflow-verification-dispatch"
+verify = ".kent/scripts/workflow-verify-report"
+smoke = ""
+
+[procedures]
+plan = ".kent/commands/feature-start.md"
+implement = ".kent/commands/feature-implement.md"
+fix = ""
+smoke = ".kent/commands/smoke-test.md"
+ship = ".kent/commands/ship-pr.md"
+ci = ""
+waiting_pr = ""
+cleanup = ".kent/commands/cleanup-task.md"
+
+[roles]
+orchestrator = "default"
+researcher = "project-researcher"
+implementation = "implementation-worker"
+build_doctor = "build-doctor"
+standards_review = "standards-reviewer"
+spec_review = "spec-reviewer"
+qa = "default"
+release = "default"
+ci = "default"

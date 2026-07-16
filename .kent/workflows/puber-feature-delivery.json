@@ -3,7 +3,10 @@
     "id": "workflow-fff53dd7-12b2-4506-af57-6493008f6ff9",
     "name": "Puber Feature Delivery",
     "description": "Plan, implement, audit, fix, optionally smoke-test, and conservatively clean up a Puber Android feature.",
-    "version": 237
+    "version": 237,
+    "execution_target_policy": {
+      "mode": "head"
+    }
   },
   "nodes": [
     {

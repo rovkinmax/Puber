@@ -3,7 +3,10 @@
     "id": "workflow-bed92924-4c7e-4c24-8322-aa29d26573ca",
     "name": "Puber Refactor With Audit",
     "description": "Plan, audit, implement, review, fix, and conservatively clean up a Puber Android refactor or migration.",
-    "version": 156
+    "version": 156,
+    "execution_target_policy": {
+      "mode": "head"
+    }
   },
   "nodes": [
     {
