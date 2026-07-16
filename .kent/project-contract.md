@@ -54,10 +54,15 @@ workspace path.
 The Feature Delivery `plan` node owns bootstrap, optional design ingestion, spec creation, and implementation planning in
 one Kent session. `feature-start.md` may load `feature-design.md`, `feature-spec.md`, and `feature-plan.md` as procedure
 modules, but must not invoke nested `/prompt:*` flows or start child sessions for those phases.
-The generated `Puber Engineering Delivery v4` Plan node follows the same
-single-session procedure through `.kent/workflow-profile.toml`.
-`Puber Engineering Canary v1` uses generic Plan/Implement/Fix prompts and omits
-Smoke and PR/CI delivery stages.
+The generated `Puber Engineering Delivery v5` Plan node follows the same
+single-session procedure through `.kent/workflow-profile.toml`. Its
+post-verification Gate follows `.kent/commands/smoke-policy.md` and records an
+explicit `smoke_required` or `delivery_ready` decision.
+`Puber Engineering Canary v2` uses generic Plan/Implement/Fix prompts and
+disables Smoke and PR/CI delivery stages.
+`Puber Engineering Smoke Lab` keeps the conditional Smoke Gate and runtime
+procedure but routes both successful branches to conservative cleanup without a
+PR/CI tail.
 
 ## Agent Contract
 
@@ -94,6 +99,9 @@ to project-local capability roles:
   explicit serial for that physical device. Smoke agents must never rely on adb's default target selection.
 - Device smoke tests must always install the freshly built dev APK before launch, even if the user says the app is already
   running.
+- Generated conditional Smoke decisions must provide `smoke_rationale`.
+  `smoke_required` also provides `smoke_scope`; unavailable runtime resources
+  route through `needs_user_action` and never justify `delivery_ready`.
 - Smoke agents must build with `:app:assembleDevDebug` and install with explicit
   `adb -s "$DEVICE_SERIAL" install -r app/build/outputs/apk/dev/debug/app-dev-debug.apk`; Gradle `install*` tasks are
   forbidden for smoke tests because they may target a physical device.
@@ -171,16 +179,23 @@ Use `Puber Release` for human-facing release tasks.
 
 Use generic workflow graph keys and project-prefixed live workflow names:
 
-- Generated non-default workflows: `Puber Engineering Delivery v4` and
-  `Puber Engineering Canary v1`.
+- Current generated non-default workflows: `Puber Engineering Delivery v5`
+  and `Puber Engineering Canary v2`, plus unversioned
+  `Puber Engineering Smoke Lab`. These are experimental labels; v4/v1 remain
+  comparison history.
 - Live workflow names: `Puber Feature Delivery`, `Puber Refactor With Audit`, `Puber Bugfix Investigation`,
   `Puber Dependency Update`, `Puber Test Coverage`, `Puber Smoke Test`, `Puber Release`.
-- Node keys: `plan`, `implement`, `audit`, `fix`, `smoke`, `prepare`, `compliance`, `ship_pr`, `ci_monitor`,
-  `waiting_pr`, `publish`, `monitor`, `cleanup`, `done`, `wont_do`.
-- Transition IDs: `implement`, `continue_implementation`, `audit`, `needs_changes`, `needs_user_action`, `smoke`,
-  `compliance`, `ship_pr`, `monitor_ci`, `waiting_pr`, `pr_merged`, `close_without_merge`, `no_pr`,
-  `release_published`, `done`, `wont_do`.
+- Node keys include `plan`, `implement`, `verification_dispatch`,
+  `deterministic_verify`, `standards_review`, `spec_review`,
+  `verification_join`, `verification_gate`, `fix`, `smoke`, `prepare_pr`,
+  `ci_monitor`, `waiting_pr`, `cleanup`, `done`, and `wont_do`.
+- Transition IDs include `implement`, `continue_implementation`, `verify`,
+  `fanout_verify`, `reported`, `evaluate`, `needs_changes`,
+  `needs_user_action`, `smoke_required`, `delivery_ready`, `monitor_ci`,
+  `waiting_pr`, `pr_merged`, `close_without_merge`, `no_pr`, `done`, and
+  `wont_do`.
 - Portable params: `workspace_path`, `plan_path`, `audit_report`, `review_report`, `verification_report`, `pr_url`,
   `branch_name`, `pr_report`, `ci_report`, `compliance_report`, `merge_report`, `cleanup_reason`,
-  `closure_reason`, `release_version`, `release_type`, `release_branch`, `release_tag`, `version_bump_commit`,
+  `closure_reason`, `smoke_rationale`, `smoke_scope`, `release_version`,
+  `release_type`, `release_branch`, `release_tag`, `version_bump_commit`,
   `target_commit`, `tag_push_status`, `release_report`, `blocker_reason`, `cleanup_report`.

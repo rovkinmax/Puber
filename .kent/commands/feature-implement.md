@@ -178,8 +178,13 @@ After previews are ready, compare implementation with the Figma design screensho
 - Report what was implemented and which files were created/modified
 - **Open key files** (skip if in worktree): call `.kent/adapters/mcp/mcp-call.sh jetbrains.open_file_in_editor` for each newly created file so user can immediately see them in the IDE
 
-### Step 6b: Smoke-test prompt (for `screen` + `navigation` steps only)
-- If the implemented screen is now reachable (navigation wired):
+### Step 6b: Legacy standalone smoke-test prompt
+
+- Do not run this step inside a generated Kent Engineering Delivery workflow.
+  Its post-verification Gate owns the Smoke decision through
+  `.kent/commands/smoke-policy.md`, and its Smoke node owns resource handling.
+- For legacy standalone execution only, if the implemented screen is now
+  reachable (navigation wired):
   1. First check if an emulator is connected: call `.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators`.
   2. If no emulator is found → skip smoke-test silently (don't ask the user). Physical devices are not eligible unless the
      user explicitly provided permission and an explicit physical serial.
