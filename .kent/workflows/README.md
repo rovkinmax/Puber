@@ -19,16 +19,22 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Engineering Delivery v4` (generated, non-default): one Plan session,
-  default operational orchestration, deterministic compile plus independent
-  global standards/spec reviews, direct Join/Gate, optional TV smoke,
-  PR/CI/waiting, and conservative cleanup. It uses
+- `Puber Engineering Delivery v5` (experimental, non-default): the current
+  profile-schema-3 hypothesis,
+  one Plan session, default operational orchestration, deterministic compile
+  plus independent global standards/spec reviews, direct Join/Gate,
+  conditional TV Smoke, PR/CI/waiting, and conservative cleanup. It uses
   `ask-on-first-execution` and must pass a managed-worktree canary before any
   default migration.
-- `Puber Engineering Canary v1` (generated, non-default): generic planning,
+- `Puber Engineering Canary v2` (experimental, non-default): generic planning,
   two-step implementation continuation, deterministic compile,
-  standards/spec fan-out and Join, and report-only cleanup. It omits device
+  standards/spec fan-out and Join, and report-only cleanup. It omits runtime
   Smoke and the PR/CI tail.
+- `Puber Engineering Smoke Lab` (experimental, non-default): unversioned
+  generic planning and implementation, full verification fan-out/Gate,
+  conditional TV Smoke, and conservative cleanup without PR/CI.
+- `Puber Engineering Delivery v4` and `Puber Engineering Canary v1`: previous
+  schema-2 generated snapshots retained for comparison.
 - `Puber Engineering Delivery v2`: superseded and retained because task
   `PUB-20` references it. Do not start `PUB-20`; its infrastructure-only body
   conflicts with the workflow's mandatory device Smoke stage.
@@ -128,5 +134,6 @@ Before making a workflow default for the project:
 - Exercise an implementation continuation path and verify params are re-emitted.
 - Exercise cleanup in conservative mode and verify `cleanup_report`.
 - Validate with `kent workflow validate "<workflow>" --mode execution`.
-- Verify generator idempotency by applying the same version twice without a
-  graph version change.
+- Reapply the same taskless experimental graph while iterating. Once tasks
+  reference it, preserve that graph and use another experimental label for
+  semantic changes.

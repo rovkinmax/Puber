@@ -1,4 +1,4 @@
-schema_version = 2
+schema_version = 3
 minimum_kent_version = "2.3.0"
 project_name = "Puber"
 workflow_prefix = "Puber"
@@ -13,14 +13,17 @@ default_target = "ask-on-first-execution"
 
 [execution.overrides]
 canary = "head"
+smoke-lab = "head"
 maintenance = "default-branch"
 release = "ask-on-first-execution"
+
+[policies]
+smoke = "conditional"
 
 [capabilities]
 managed_worktrees = true
 pull_requests = true
 ci_monitoring = true
-device_smoke = true
 compliance_review = true
 spec_review = true
 
@@ -33,6 +36,7 @@ smoke = ""
 plan = ".kent/commands/feature-start.md"
 implement = ".kent/commands/feature-implement.md"
 fix = ""
+smoke_decision = ".kent/commands/smoke-policy.md"
 smoke = ".kent/commands/smoke-test.md"
 ship = ".kent/commands/ship-pr.md"
 ci = ""
