@@ -54,8 +54,10 @@ workspace path.
 The Feature Delivery `plan` node owns bootstrap, optional design ingestion, spec creation, and implementation planning in
 one Kent session. `feature-start.md` may load `feature-design.md`, `feature-spec.md`, and `feature-plan.md` as procedure
 modules, but must not invoke nested `/prompt:*` flows or start child sessions for those phases.
-The generated `Puber Engineering Delivery v2` Plan node follows the same
+The generated `Puber Engineering Delivery v4` Plan node follows the same
 single-session procedure through `.kent/workflow-profile.toml`.
+`Puber Engineering Canary v1` uses generic Plan/Implement/Fix prompts and omits
+Smoke and PR/CI delivery stages.
 
 ## Agent Contract
 
@@ -169,7 +171,8 @@ Use `Puber Release` for human-facing release tasks.
 
 Use generic workflow graph keys and project-prefixed live workflow names:
 
-- Generated non-default workflow: `Puber Engineering Delivery v2`.
+- Generated non-default workflows: `Puber Engineering Delivery v4` and
+  `Puber Engineering Canary v1`.
 - Live workflow names: `Puber Feature Delivery`, `Puber Refactor With Audit`, `Puber Bugfix Investigation`,
   `Puber Dependency Update`, `Puber Test Coverage`, `Puber Smoke Test`, `Puber Release`.
 - Node keys: `plan`, `implement`, `audit`, `fix`, `smoke`, `prepare`, `compliance`, `ship_pr`, `ci_monitor`,

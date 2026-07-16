@@ -19,12 +19,19 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Engineering Delivery v2` (generated, non-default): one Plan session,
+- `Puber Engineering Delivery v4` (generated, non-default): one Plan session,
   default operational orchestration, deterministic compile plus independent
   global standards/spec reviews, direct Join/Gate, optional TV smoke,
   PR/CI/waiting, and conservative cleanup. It uses
   `ask-on-first-execution` and must pass a managed-worktree canary before any
   default migration.
+- `Puber Engineering Canary v1` (generated, non-default): generic planning,
+  two-step implementation continuation, deterministic compile,
+  standards/spec fan-out and Join, and report-only cleanup. It omits device
+  Smoke and the PR/CI tail.
+- `Puber Engineering Delivery v2`: superseded and retained because task
+  `PUB-20` references it. Do not start `PUB-20`; its infrastructure-only body
+  conflicts with the workflow's mandatory device Smoke stage.
 - `Puber Engineering Delivery v1`: taskless, unlinked superseded draft. Kent
   2.3 cannot remove its stale edge through the CLI, so do not create tasks from
   it and do not repair it through direct database mutation.

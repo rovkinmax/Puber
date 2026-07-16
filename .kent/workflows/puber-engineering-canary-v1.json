@@ -1,0 +1,1739 @@
+{
+  "workflow": {
+    "id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+    "name": "Puber Engineering Canary v1",
+    "description": "Exercise planning, implementation continuation, deterministic verification, fan-out, Join, and cleanup for Puber.",
+    "version": 64,
+    "execution_target_policy": {
+      "mode": "head"
+    }
+  },
+  "nodes": [
+    {
+      "id": "node-0229e866-7564-418a-a3a1-7b1707b2c86f",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "backlog",
+      "kind": "start",
+      "display_name": "Backlog"
+    },
+    {
+      "id": "node-db5061ac-5831-4cb9-86d0-0a9114c29374",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "plan",
+      "kind": "agent",
+      "display_name": "Plan",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-7c6f8d28-4de4-4e1c-939c-a0bd94908fee",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "implement",
+      "kind": "agent",
+      "display_name": "Implement",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-2f0a8798-19de-492d-8c4b-1256d7716a41",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "verification_dispatch",
+      "kind": "script",
+      "display_name": "Verification Dispatch",
+      "script_path": ".kent/scripts/workflow-verification-dispatch"
+    },
+    {
+      "id": "node-3fe23160-a95c-480a-a753-54dcd2517047",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "deterministic_verify",
+      "kind": "script",
+      "display_name": "Deterministic Verify",
+      "script_path": ".kent/scripts/workflow-verify-report"
+    },
+    {
+      "id": "node-a1aeba6a-86c3-4203-b8ae-17d8053d74f8",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "verification_gate",
+      "kind": "agent",
+      "display_name": "Verification Gate",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-f3534a06-7331-4a50-9297-357720dde532",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "fix",
+      "kind": "agent",
+      "display_name": "Fix",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-f27c8e9a-7882-4207-aa2b-3dce336c97c7",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "cleanup",
+      "kind": "agent",
+      "display_name": "Cleanup",
+      "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-d5bd60ab-ec90-4d1a-9984-b9b96fdf002a",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "wont_do",
+      "kind": "terminal",
+      "display_name": "Won't Do"
+    },
+    {
+      "id": "node-6193275a-2800-40ce-9c47-6ddbe3e4d7e4",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "standards_review",
+      "kind": "agent",
+      "display_name": "Standards Review",
+      "subagent_role": "standards-reviewer",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-bded4bcf-0a5a-47c1-9ae2-0186e65d2878",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "spec_review",
+      "kind": "agent",
+      "display_name": "Spec Review",
+      "subagent_role": "spec-reviewer",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-c259beb2-3669-44e6-9327-2b2474f40158",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "verification_join",
+      "kind": "join",
+      "display_name": "Verification Join"
+    },
+    {
+      "id": "node-3e5086f0-a5d7-4f36-afd0-c5aeae284a45",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "key": "done",
+      "kind": "terminal",
+      "display_name": "Done"
+    }
+  ],
+  "transition_groups": [
+    {
+      "id": "group-11a79bb3-41d5-4611-9dfa-792206dcee4a",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-0229e866-7564-418a-a3a1-7b1707b2c86f",
+      "transition_id": "start",
+      "display_name": "Start",
+      "description": "Start one planning session for this task."
+    },
+    {
+      "id": "group-04262a8f-12b7-4bd5-87e6-b07828d1200f",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-db5061ac-5831-4cb9-86d0-0a9114c29374",
+      "transition_id": "implement",
+      "display_name": "Implement",
+      "description": "Planning is complete and implementation can start without ambiguity."
+    },
+    {
+      "id": "group-556598d2-121d-4969-9a00-e97c7d796aba",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-db5061ac-5831-4cb9-86d0-0a9114c29374",
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "Work is externally blocked; continue this stage only after approval."
+    },
+    {
+      "id": "group-3a17bd8e-1bee-4a91-8f5d-25199a0dd59f",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-db5061ac-5831-4cb9-86d0-0a9114c29374",
+      "transition_id": "wont_do",
+      "display_name": "Wont Do",
+      "description": "Cancel this task only after explicit user approval and record why."
+    },
+    {
+      "id": "group-b267c03a-224b-4817-8f5d-3c80429df42e",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-7c6f8d28-4de4-4e1c-939c-a0bd94908fee",
+      "transition_id": "continue_implementation",
+      "display_name": "Continue Implementation",
+      "description": "One plan step is complete; continue with the next ready step."
+    },
+    {
+      "id": "group-411aaf2b-787c-4714-acad-ef611b171d4a",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-7c6f8d28-4de4-4e1c-939c-a0bd94908fee",
+      "transition_id": "verify",
+      "display_name": "Verify",
+      "description": "Implementation is complete; normalize inputs for read-only verification."
+    },
+    {
+      "id": "group-cdc8b0c4-57f1-4eff-96f1-3fc2012b2af4",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-7c6f8d28-4de4-4e1c-939c-a0bd94908fee",
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "Work is externally blocked; continue this stage only after approval."
+    },
+    {
+      "id": "group-9831f1e9-f944-445c-96be-d6de73f761b5",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-7c6f8d28-4de4-4e1c-939c-a0bd94908fee",
+      "transition_id": "wont_do",
+      "display_name": "Wont Do",
+      "description": "Cancel this task only after explicit user approval and record why."
+    },
+    {
+      "id": "group-1900d53a-8342-4831-bc49-ef7f80d96e25",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-f3534a06-7331-4a50-9297-357720dde532",
+      "transition_id": "verify",
+      "display_name": "Verify",
+      "description": "Task-scoped fixes are complete; rerun every verification branch."
+    },
+    {
+      "id": "group-51732c6c-baf6-4036-a6c7-e6037ad45cf7",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-f3534a06-7331-4a50-9297-357720dde532",
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "Work is externally blocked; continue this stage only after approval."
+    },
+    {
+      "id": "group-95b2882f-eb3f-4ee0-b4b3-743ef1266d60",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-f3534a06-7331-4a50-9297-357720dde532",
+      "transition_id": "wont_do",
+      "display_name": "Wont Do",
+      "description": "Cancel this task only after explicit user approval and record why."
+    },
+    {
+      "id": "group-cd47a9fc-699a-4ce8-93b5-ac40b6ef07ef",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-2f0a8798-19de-492d-8c4b-1256d7716a41",
+      "transition_id": "fanout_verify",
+      "display_name": "Fanout Verify",
+      "description": "Run deterministic verification and independent read-only reviews."
+    },
+    {
+      "id": "group-61923c12-ddd1-41f6-a5f4-39fdeb3c0f6e",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-3fe23160-a95c-480a-a753-54dcd2517047",
+      "transition_id": "reported",
+      "display_name": "Reported",
+      "description": "Deterministic verification completed and reported its status."
+    },
+    {
+      "id": "group-a3b9e909-c7c9-499d-ab01-22e5a1198de4",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-c259beb2-3669-44e6-9327-2b2474f40158",
+      "transition_id": "evaluate",
+      "display_name": "Evaluate",
+      "description": "All direct verification branches reported; evaluate them."
+    },
+    {
+      "id": "group-ea029199-fcde-46fb-8e9c-0a073ccb8028",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-6193275a-2800-40ce-9c47-6ddbe3e4d7e4",
+      "transition_id": "reported",
+      "display_name": "Reported",
+      "description": "Repository standards review completed and reported its status."
+    },
+    {
+      "id": "group-151a95a8-6611-4cda-8d55-d3f13fa4d7bd",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-bded4bcf-0a5a-47c1-9ae2-0186e65d2878",
+      "transition_id": "reported",
+      "display_name": "Reported",
+      "description": "Specification review completed and reported its status."
+    },
+    {
+      "id": "group-32c46ff5-2bed-4188-a1cf-d0dac2d69188",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-a1aeba6a-86c3-4203-b8ae-17d8053d74f8",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Verification found task-scoped issues for the single writer to fix."
+    },
+    {
+      "id": "group-5f26103e-59a5-4d8a-8d2f-f46a1f608da5",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-a1aeba6a-86c3-4203-b8ae-17d8053d74f8",
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "Verification is externally blocked; rerun all branches after approval."
+    },
+    {
+      "id": "group-b635d795-e6fd-4e46-88e7-40d64077da9d",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-a1aeba6a-86c3-4203-b8ae-17d8053d74f8",
+      "transition_id": "wont_do",
+      "display_name": "Wont Do",
+      "description": "Cancel this task only after explicit user approval and record why."
+    },
+    {
+      "id": "group-93c0d43c-a82d-44bd-9f2f-f486cacf3258",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-a1aeba6a-86c3-4203-b8ae-17d8053d74f8",
+      "transition_id": "accepted",
+      "display_name": "Accepted",
+      "description": "All enabled verification branches passed and delivery may continue."
+    },
+    {
+      "id": "group-43ac6f7e-37fe-48e9-bd7d-18292d9aa1b0",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-f27c8e9a-7882-4207-aa2b-3dce336c97c7",
+      "transition_id": "done",
+      "display_name": "Done",
+      "description": "Delivery and conservative cleanup are complete."
+    },
+    {
+      "id": "group-46540ecf-9772-4814-b213-f6392ec0207c",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "source_node_id": "node-f27c8e9a-7882-4207-aa2b-3dce336c97c7",
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "Work is externally blocked; continue this stage only after approval."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-b3e70ab7-42a7-4113-bbbe-2603f7c14e88",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-11a79bb3-41d5-4611-9dfa-792206dcee4a",
+      "key": "start_plan",
+      "target_node_id": "node-db5061ac-5831-4cb9-86d0-0a9114c29374",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Plan {{.TaskShortId}}: {{.TaskTitle}}\n\nRead .kent/project-contract.md, .kent/workflow-profile.toml, and repository\ninstructions first. Follow the project contract and repository instructions.\n\nTask body:\n{{.TaskBody}}\n\nKeep discovery, design/spec ingestion, decisions, and implementation planning in\nthis one Plan session. Ask questions when a product decision is required. Do not\ninvoke nested prompt flows and do not implement production changes.\n\nComplete with `implement` only when the plan has no unresolved product, API, UX,\nor safety ambiguity. Provide `workspace_path` and `plan_path`; use an empty\n`plan_path` only when the project contract explicitly allows planless work.\nComplete with `needs_user_action` and `blocker_reason` for an external blocker.\nChoose `wont_do` only for an explicit cancellation decision and provide\n`closure_reason`."
+    },
+    {
+      "id": "edge-2e667315-d17e-4642-b85a-4ffe44312b19",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-04262a8f-12b7-4bd5-87e6-b07828d1200f",
+      "key": "plan_implement",
+      "target_node_id": "node-7c6f8d28-4de4-4e1c-939c-a0bd94908fee",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Implement {{.TaskShortId}}: {{.TaskTitle}}\n\nRead .kent/project-contract.md, .kent/workflow-profile.toml, repository\ninstructions, and the plan at {{.Params.plan_path}}. Workspace:\n{{.Params.workspace_path}}.\n\nFollow the project contract and repository instructions.\nWhen useful, delegate bounded write slices to `implementation-worker`. Keep orchestration, integration, and transition selection in this node session.\n\nUse the project procedure for step selection, recipes, editing, focused checks,\nand plan progress. This generated workflow's completion contract overrides any\nlegacy procedure transition names such as `audit`.\n\nAct as the single writer and implement exactly one ready plan step per node run.\nAfter marking that step complete, choose `continue_implementation` with\n`workspace_path` and `plan_path` when unchecked ready steps remain. Choose\n`verify` only when every required plan step is complete; provide\n`workspace_path` plus `review_context` summarizing plan/spec paths, the fixed\ncomparison point, changed files, checks, and risks for the read-only branches.\nUse `needs_user_action` only for an external blocker and provide\n`blocker_reason`. Choose `wont_do` only for explicit cancellation and provide\n`closure_reason`.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "plan_path",
+          "description": "Path to the approved implementation plan, or an empty string when not applicable."
+        }
+      ]
+    },
+    {
+      "id": "edge-023ada83-ef5d-4939-8144-828223ac3f1d",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-556598d2-121d-4969-9a00-e97c7d796aba",
+      "key": "plan_needs_user_action",
+      "target_node_id": "node-db5061ac-5831-4cb9-86d0-0a9114c29374",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Resume the `plan` stage after user action.\n\nPrevious blocker: {{.Params.blocker_reason}}\n\nUse the retained compacted context, re-read current task comments and project\ninstructions, verify that the blocker is actually resolved, and continue the\nsame stage. Do not infer approval for any broader or destructive action.\nIf the latest user instruction explicitly cancels the task, choose `wont_do` and provide `closure_reason`.",
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Exact blocker and the next user or external action required."
+        }
+      ]
+    },
+    {
+      "id": "edge-b71836c3-d631-4aaa-b1e9-4ea017245a1e",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-3a17bd8e-1bee-4a91-8f5d-25199a0dd59f",
+      "key": "plan_wont_do",
+      "target_node_id": "node-d5bd60ab-ec90-4d1a-9984-b9b96fdf002a",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "closure_reason",
+          "description": "User-approved reason for closing or canceling delivery without merge."
+        }
+      ]
+    },
+    {
+      "id": "edge-6e0e3427-ce12-437a-8d26-bcaa9850d340",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-b267c03a-224b-4817-8f5d-3c80429df42e",
+      "key": "implement_continue",
+      "target_node_id": "node-7c6f8d28-4de4-4e1c-939c-a0bd94908fee",
+      "requires_approval": false,
+      "context_mode": "continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Implement {{.TaskShortId}}: {{.TaskTitle}}\n\nRead .kent/project-contract.md, .kent/workflow-profile.toml, repository\ninstructions, and the plan at {{.Params.plan_path}}. Workspace:\n{{.Params.workspace_path}}.\n\nFollow the project contract and repository instructions.\nWhen useful, delegate bounded write slices to `implementation-worker`. Keep orchestration, integration, and transition selection in this node session.\n\nUse the project procedure for step selection, recipes, editing, focused checks,\nand plan progress. This generated workflow's completion contract overrides any\nlegacy procedure transition names such as `audit`.\n\nAct as the single writer and implement exactly one ready plan step per node run.\nAfter marking that step complete, choose `continue_implementation` with\n`workspace_path` and `plan_path` when unchecked ready steps remain. Choose\n`verify` only when every required plan step is complete; provide\n`workspace_path` plus `review_context` summarizing plan/spec paths, the fixed\ncomparison point, changed files, checks, and risks for the read-only branches.\nUse `needs_user_action` only for an external blocker and provide\n`blocker_reason`. Choose `wont_do` only for explicit cancellation and provide\n`closure_reason`.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "plan_path",
+          "description": "Path to the approved implementation plan, or an empty string when not applicable."
+        }
+      ]
+    },
+    {
+      "id": "edge-87313cd0-08be-45c2-9255-c13adda54d20",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-411aaf2b-787c-4714-acad-ef611b171d4a",
+      "key": "implement_verify",
+      "target_node_id": "node-2f0a8798-19de-492d-8c4b-1256d7716a41",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "review_context",
+          "description": "Implementation, fix, report, and artifact context required by verification."
+        }
+      ]
+    },
+    {
+      "id": "edge-8fd683bf-e843-4c70-a38b-69bd1e308ffb",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-cdc8b0c4-57f1-4eff-96f1-3fc2012b2af4",
+      "key": "implement_needs_user_action",
+      "target_node_id": "node-7c6f8d28-4de4-4e1c-939c-a0bd94908fee",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Resume the `implement` stage after user action.\n\nPrevious blocker: {{.Params.blocker_reason}}\n\nUse the retained compacted context, re-read current task comments and project\ninstructions, verify that the blocker is actually resolved, and continue the\nsame stage. Do not infer approval for any broader or destructive action.\nIf the latest user instruction explicitly cancels the task, choose `wont_do` and provide `closure_reason`.",
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Exact blocker and the next user or external action required."
+        }
+      ]
+    },
+    {
+      "id": "edge-e7210ba4-8db8-4f09-8af2-74524835c7ff",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-9831f1e9-f944-445c-96be-d6de73f761b5",
+      "key": "implement_wont_do",
+      "target_node_id": "node-d5bd60ab-ec90-4d1a-9984-b9b96fdf002a",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "closure_reason",
+          "description": "User-approved reason for closing or canceling delivery without merge."
+        }
+      ]
+    },
+    {
+      "id": "edge-a3fe5fd6-75ef-4571-a0bd-81347113b49d",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-1900d53a-8342-4831-bc49-ef7f80d96e25",
+      "key": "fix_verify",
+      "target_node_id": "node-2f0a8798-19de-492d-8c4b-1256d7716a41",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "review_context",
+          "description": "Implementation, fix, report, and artifact context required by verification."
+        }
+      ]
+    },
+    {
+      "id": "edge-07f89750-924e-4879-aadd-2bd71c6d2af5",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-51732c6c-baf6-4036-a6c7-e6037ad45cf7",
+      "key": "fix_needs_user_action",
+      "target_node_id": "node-f3534a06-7331-4a50-9297-357720dde532",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Resume the `fix` stage after user action.\n\nPrevious blocker: {{.Params.blocker_reason}}\n\nUse the retained compacted context, re-read current task comments and project\ninstructions, verify that the blocker is actually resolved, and continue the\nsame stage. Do not infer approval for any broader or destructive action.\nIf the latest user instruction explicitly cancels the task, choose `wont_do` and provide `closure_reason`.",
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Exact blocker and the next user or external action required."
+        }
+      ]
+    },
+    {
+      "id": "edge-a98a183c-49a8-483b-8bae-f1da929e5e3b",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-95b2882f-eb3f-4ee0-b4b3-743ef1266d60",
+      "key": "fix_wont_do",
+      "target_node_id": "node-d5bd60ab-ec90-4d1a-9984-b9b96fdf002a",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "closure_reason",
+          "description": "User-approved reason for closing or canceling delivery without merge."
+        }
+      ]
+    },
+    {
+      "id": "edge-20a85ec8-a3a3-4648-9f98-e2ede5047a8c",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-cd47a9fc-699a-4ce8-93b5-ac40b6ef07ef",
+      "key": "dispatch_deterministic_verify",
+      "target_node_id": "node-3fe23160-a95c-480a-a753-54dcd2517047",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "review_context",
+          "description": "Implementation, fix, report, and artifact context required by verification."
+        }
+      ]
+    },
+    {
+      "id": "edge-6a718d49-b9aa-42ee-acd2-1cd4b863ef14",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-cd47a9fc-699a-4ce8-93b5-ac40b6ef07ef",
+      "key": "dispatch_standards_review",
+      "target_node_id": "node-6193275a-2800-40ce-9c47-6ddbe3e4d7e4",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run an independent read-only repository standards review.\n\nRead AGENTS.md and .kent/project-contract.md first. Workspace:\n{{.Params.workspace_path}}. Review context:\n{{.Params.review_context}}\n\nInspect the change against repository architecture, engineering rules, security,\nand maintainability constraints. Do not edit files and do not run destructive\ncommands. Findings are data for Join, not a routing decision.\n\nComplete only with `reported`. Provide `standards_status` as exactly `passed`,\n`needs_changes`, or `blocked`, plus `compliance_report` with evidence and\npath-specific findings.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "review_context",
+          "description": "Implementation, fix, report, and artifact context required by verification."
+        }
+      ]
+    },
+    {
+      "id": "edge-2d890faf-f7af-424e-8e06-71f2055eaef6",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-cd47a9fc-699a-4ce8-93b5-ac40b6ef07ef",
+      "key": "dispatch_spec_review",
+      "target_node_id": "node-bded4bcf-0a5a-47c1-9ae2-0186e65d2878",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Run an independent read-only specification review.\n\nRead the task body, plan/spec artifacts named in the review context, and\n.kent/project-contract.md. Workspace:\n{{.Params.workspace_path}}. Review context:\n{{.Params.review_context}}\n\nCheck acceptance criteria, product behavior, edge cases, and scope fidelity\nindependently from repository standards. Do not edit files. Findings are data\nfor Join, not a routing decision.\n\nComplete only with `reported`. Provide `spec_status` as exactly `passed`,\n`needs_changes`, or `blocked`, plus `review_report` with evidence and concrete\ngaps.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "review_context",
+          "description": "Implementation, fix, report, and artifact context required by verification."
+        }
+      ]
+    },
+    {
+      "id": "edge-0a8d32d7-a8a3-4023-9328-b23491aef808",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-61923c12-ddd1-41f6-a5f4-39fdeb3c0f6e",
+      "key": "deterministic_report_join",
+      "target_node_id": "node-c259beb2-3669-44e6-9327-2b2474f40158",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "verification_status",
+          "description": "Deterministic verification status: passed, needs_changes, or blocked."
+        },
+        {
+          "key": "verification_report",
+          "description": "Deterministic verification command, result, and report or log location."
+        }
+      ]
+    },
+    {
+      "id": "edge-282a0b51-403b-404a-a43f-19a102995209",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-a3b9e909-c7c9-499d-ab01-22e5a1198de4",
+      "key": "verification_join_gate",
+      "target_node_id": "node-a1aeba6a-86c3-4203-b8ae-17d8053d74f8",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Evaluate the joined verification reports without editing files.\n\nWorkspace: {{.Params.fanout_verify.workspace_path}}\nReview context: {{.Params.fanout_verify.review_context}}\nVerification status: {{.Params.verification_status}}\nVerification report: {{.Params.verification_report}}\nStandards status: {{.Params.standards_status}}\nStandards report: {{.Params.compliance_report}}\nSpec status: {{.Params.spec_status}}\nSpec report: {{.Params.review_report}}\n\nChoose `accepted` only when every enabled status is `passed`. Provide\n`workspace_path` and a refreshed `review_context` summarizing all reports.\nChoose `needs_changes` for task-scoped failures and provide `workspace_path`\nplus `fix_context`. Choose `needs_user_action` for external or contradictory\nblockers and provide `workspace_path`, `review_context`, and `blocker_reason`;\nafter approval every verification branch reruns. Choose `wont_do` only for an\nexplicit cancellation decision and provide `closure_reason`."
+    },
+    {
+      "id": "edge-dcabddf8-0e62-4e3e-aee5-60500d326ecf",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-ea029199-fcde-46fb-8e9c-0a073ccb8028",
+      "key": "standards_report_join",
+      "target_node_id": "node-c259beb2-3669-44e6-9327-2b2474f40158",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "standards_status",
+          "description": "Repository standards status: passed, needs_changes, or blocked."
+        },
+        {
+          "key": "compliance_report",
+          "description": "Read-only repository standards and architecture compliance report."
+        }
+      ]
+    },
+    {
+      "id": "edge-3b58824d-962f-4f3f-998d-e970994e74bb",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-151a95a8-6611-4cda-8d55-d3f13fa4d7bd",
+      "key": "spec_report_join",
+      "target_node_id": "node-c259beb2-3669-44e6-9327-2b2474f40158",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "spec_status",
+          "description": "Specification fidelity status: passed, needs_changes, or blocked."
+        },
+        {
+          "key": "review_report",
+          "description": "Read-only specification and acceptance-criteria review report."
+        }
+      ]
+    },
+    {
+      "id": "edge-eddbbb04-e8fe-4d12-8409-28208b57a177",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-32c46ff5-2bed-4188-a1cf-d0dac2d69188",
+      "key": "gate_fix",
+      "target_node_id": "node-f3534a06-7331-4a50-9297-357720dde532",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "previous_target_or_new"
+      },
+      "prompt_template": "Apply task-scoped fixes for {{.TaskShortId}}.\n\nRead .kent/project-contract.md and repository instructions first. Workspace:\n{{.Params.workspace_path}}. Findings:\n{{.Params.fix_context}}\n\nFollow the project contract and repository instructions.\nWhen useful, delegate bounded fixes to `implementation-worker`. Keep orchestration, integration, and transition selection in this node session.\n\nRemain the single writer. Fix root causes without broadening product scope.\nComplete with `verify` and provide `workspace_path` plus a refreshed\n`review_context` containing the findings, fixes, changed files, artifact paths,\nand focused checks. Use `needs_user_action` only for an external blocker and\nprovide `blocker_reason`. Choose `wont_do` only for explicit cancellation and\nprovide `closure_reason`.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "fix_context",
+          "description": "Concrete task-scoped findings that the single writer must fix."
+        }
+      ]
+    },
+    {
+      "id": "edge-547bad08-79be-4487-b55f-622bb001f6f3",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-5f26103e-59a5-4d8a-8d2f-f46a1f608da5",
+      "key": "gate_reverify_after_user_action",
+      "target_node_id": "node-2f0a8798-19de-492d-8c4b-1256d7716a41",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "review_context",
+          "description": "Implementation, fix, report, and artifact context required by verification."
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Exact blocker and the next user or external action required."
+        }
+      ]
+    },
+    {
+      "id": "edge-90ac974e-40e5-41e6-80bb-4e2991d547b9",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-b635d795-e6fd-4e46-88e7-40d64077da9d",
+      "key": "verification_gate_wont_do",
+      "target_node_id": "node-d5bd60ab-ec90-4d1a-9984-b9b96fdf002a",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "closure_reason",
+          "description": "User-approved reason for closing or canceling delivery without merge."
+        }
+      ]
+    },
+    {
+      "id": "edge-e48d5897-aa98-466d-96bc-eedbbcf6b2b4",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-93c0d43c-a82d-44bd-9f2f-f486cacf3258",
+      "key": "gate_cleanup",
+      "target_node_id": "node-f27c8e9a-7882-4207-aa2b-3dce336c97c7",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Perform conservative cleanup for {{.TaskShortId}}.\n\nWorkspace: {{.Params.workspace_path}}\nDelivery context: {{.Params.review_context}}\n\nUse .kent/commands/cleanup-task.md as the project procedure.\n\nTreat cleanup as report-first. Do not move, rename, or directly delete\nKent-managed worktrees. Remove a checkout or branch only when the project\nprocedure and user authorization make recovery safety conclusive.\n\nComplete with `done` and provide `cleanup_report` describing performed and\nskipped actions. Use `needs_user_action` with `blocker_reason` when safe cleanup\nrequires a human decision.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "review_context",
+          "description": "Implementation, fix, report, and artifact context required by verification."
+        }
+      ]
+    },
+    {
+      "id": "edge-9eff1f19-1ce5-46a8-b3e7-334f8fbf4a1b",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-43ac6f7e-37fe-48e9-bd7d-18292d9aa1b0",
+      "key": "cleanup_done",
+      "target_node_id": "node-3e5086f0-a5d7-4f36-afd0-c5aeae284a45",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "cleanup_report",
+          "description": "Report of cleanup performed, skipped, or blocked."
+        }
+      ]
+    },
+    {
+      "id": "edge-307478b2-304c-485d-ac7e-a66d29663a44",
+      "workflow_id": "workflow-00e73157-5099-49fd-ae7b-2d6a76e13621",
+      "transition_group_id": "group-46540ecf-9772-4814-b213-f6392ec0207c",
+      "key": "cleanup_needs_user_action",
+      "target_node_id": "node-f27c8e9a-7882-4207-aa2b-3dce336c97c7",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Resume the `cleanup` stage after user action.\n\nPrevious blocker: {{.Params.blocker_reason}}\n\nUse the retained compacted context, re-read current task comments and project\ninstructions, verify that the blocker is actually resolved, and continue the\nsame stage. Do not infer approval for any broader or destructive action.",
+      "parameters": [
+        {
+          "key": "blocker_reason",
+          "description": "Exact blocker and the next user or external action required."
+        }
+      ]
+    }
+  ],
+  "derived_wiring": {
+    "nodes": [
+      {
+        "node_id": "node-0229e866-7564-418a-a3a1-7b1707b2c86f"
+      },
+      {
+        "node_id": "node-db5061ac-5831-4cb9-86d0-0a9114c29374",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          },
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "node_id": "node-7c6f8d28-4de4-4e1c-939c-a0bd94908fee",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          },
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "node_id": "node-2f0a8798-19de-492d-8c4b-1256d7716a41",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "node_id": "node-3fe23160-a95c-480a-a753-54dcd2517047",
+        "possible_provision_fields": [
+          {
+            "name": "verification_status",
+            "description": "Deterministic verification status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "verification_report",
+            "description": "Deterministic verification command, result, and report or log location."
+          }
+        ]
+      },
+      {
+        "node_id": "node-a1aeba6a-86c3-4203-b8ae-17d8053d74f8",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "fix_context",
+            "description": "Concrete task-scoped findings that the single writer must fix."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          },
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "node_id": "node-f3534a06-7331-4a50-9297-357720dde532",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          },
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "node_id": "node-f27c8e9a-7882-4207-aa2b-3dce336c97c7",
+        "possible_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Report of cleanup performed, skipped, or blocked."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "node_id": "node-d5bd60ab-ec90-4d1a-9984-b9b96fdf002a"
+      },
+      {
+        "node_id": "node-6193275a-2800-40ce-9c47-6ddbe3e4d7e4",
+        "possible_provision_fields": [
+          {
+            "name": "standards_status",
+            "description": "Repository standards status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Read-only repository standards and architecture compliance report."
+          }
+        ]
+      },
+      {
+        "node_id": "node-bded4bcf-0a5a-47c1-9ae2-0186e65d2878",
+        "possible_provision_fields": [
+          {
+            "name": "spec_status",
+            "description": "Specification fidelity status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "review_report",
+            "description": "Read-only specification and acceptance-criteria review report."
+          }
+        ]
+      },
+      {
+        "node_id": "node-c259beb2-3669-44e6-9327-2b2474f40158",
+        "join_output_fields": [
+          {
+            "name": "verification_status",
+            "description": "Deterministic verification status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "verification_report",
+            "description": "Deterministic verification command, result, and report or log location."
+          },
+          {
+            "name": "standards_status",
+            "description": "Repository standards status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Read-only repository standards and architecture compliance report."
+          },
+          {
+            "name": "spec_status",
+            "description": "Specification fidelity status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "review_report",
+            "description": "Read-only specification and acceptance-criteria review report."
+          }
+        ]
+      },
+      {
+        "node_id": "node-3e5086f0-a5d7-4f36-afd0-c5aeae284a45"
+      }
+    ],
+    "transition_groups": [
+      {
+        "transition_group_id": "group-11a79bb3-41d5-4611-9dfa-792206dcee4a"
+      },
+      {
+        "transition_group_id": "group-04262a8f-12b7-4bd5-87e6-b07828d1200f",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-556598d2-121d-4969-9a00-e97c7d796aba",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-3a17bd8e-1bee-4a91-8f5d-25199a0dd59f",
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-b267c03a-224b-4817-8f5d-3c80429df42e",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-411aaf2b-787c-4714-acad-ef611b171d4a",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-cdc8b0c4-57f1-4eff-96f1-3fc2012b2af4",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-9831f1e9-f944-445c-96be-d6de73f761b5",
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-1900d53a-8342-4831-bc49-ef7f80d96e25",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-51732c6c-baf6-4036-a6c7-e6037ad45cf7",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-95b2882f-eb3f-4ee0-b4b3-743ef1266d60",
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-cd47a9fc-699a-4ce8-93b5-ac40b6ef07ef",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-61923c12-ddd1-41f6-a5f4-39fdeb3c0f6e",
+        "required_provision_fields": [
+          {
+            "name": "verification_status",
+            "description": "Deterministic verification status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "verification_report",
+            "description": "Deterministic verification command, result, and report or log location."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-a3b9e909-c7c9-499d-ab01-22e5a1198de4"
+      },
+      {
+        "transition_group_id": "group-ea029199-fcde-46fb-8e9c-0a073ccb8028",
+        "required_provision_fields": [
+          {
+            "name": "standards_status",
+            "description": "Repository standards status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Read-only repository standards and architecture compliance report."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-151a95a8-6611-4cda-8d55-d3f13fa4d7bd",
+        "required_provision_fields": [
+          {
+            "name": "spec_status",
+            "description": "Specification fidelity status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "review_report",
+            "description": "Read-only specification and acceptance-criteria review report."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-32c46ff5-2bed-4188-a1cf-d0dac2d69188",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "fix_context",
+            "description": "Concrete task-scoped findings that the single writer must fix."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-5f26103e-59a5-4d8a-8d2f-f46a1f608da5",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-b635d795-e6fd-4e46-88e7-40d64077da9d",
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-93c0d43c-a82d-44bd-9f2f-f486cacf3258",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-43ac6f7e-37fe-48e9-bd7d-18292d9aa1b0",
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Report of cleanup performed, skipped, or blocked."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-46540ecf-9772-4814-b213-f6392ec0207c",
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge-b3e70ab7-42a7-4113-bbbe-2603f7c14e88"
+      },
+      {
+        "edge_id": "edge-2e667315-d17e-4642-b85a-4ffe44312b19",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-023ada83-ef5d-4939-8144-828223ac3f1d",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-b71836c3-d631-4aaa-b1e9-4ea017245a1e",
+        "input_bindings": [
+          {
+            "name": "closure_reason",
+            "source": "transition_output",
+            "field": "closure_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-6e0e3427-ce12-437a-8d26-bcaa9850d340",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-87313cd0-08be-45c2-9255-c13adda54d20",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-8fd683bf-e843-4c70-a38b-69bd1e308ffb",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-e7210ba4-8db8-4f09-8af2-74524835c7ff",
+        "input_bindings": [
+          {
+            "name": "closure_reason",
+            "source": "transition_output",
+            "field": "closure_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-a3fe5fd6-75ef-4571-a0bd-81347113b49d",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-07f89750-924e-4879-aadd-2bd71c6d2af5",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-a98a183c-49a8-483b-8bae-f1da929e5e3b",
+        "input_bindings": [
+          {
+            "name": "closure_reason",
+            "source": "transition_output",
+            "field": "closure_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-20a85ec8-a3a3-4648-9f98-e2ede5047a8c",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-6a718d49-b9aa-42ee-acd2-1cd4b863ef14",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-2d890faf-f7af-424e-8e06-71f2055eaef6",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-0a8d32d7-a8a3-4023-9328-b23491aef808",
+        "input_bindings": [
+          {
+            "name": "verification_status",
+            "source": "transition_output",
+            "field": "verification_status"
+          },
+          {
+            "name": "verification_report",
+            "source": "transition_output",
+            "field": "verification_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "verification_status",
+            "description": "Deterministic verification status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "verification_report",
+            "description": "Deterministic verification command, result, and report or log location."
+          }
+        ],
+        "required_provider_fields": [
+          {
+            "name": "verification_status",
+            "description": "Deterministic verification status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "verification_report",
+            "description": "Deterministic verification command, result, and report or log location."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-282a0b51-403b-404a-a43f-19a102995209"
+      },
+      {
+        "edge_id": "edge-dcabddf8-0e62-4e3e-aee5-60500d326ecf",
+        "input_bindings": [
+          {
+            "name": "standards_status",
+            "source": "transition_output",
+            "field": "standards_status"
+          },
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "standards_status",
+            "description": "Repository standards status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Read-only repository standards and architecture compliance report."
+          }
+        ],
+        "required_provider_fields": [
+          {
+            "name": "standards_status",
+            "description": "Repository standards status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Read-only repository standards and architecture compliance report."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-3b58824d-962f-4f3f-998d-e970994e74bb",
+        "input_bindings": [
+          {
+            "name": "spec_status",
+            "source": "transition_output",
+            "field": "spec_status"
+          },
+          {
+            "name": "review_report",
+            "source": "transition_output",
+            "field": "review_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "spec_status",
+            "description": "Specification fidelity status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "review_report",
+            "description": "Read-only specification and acceptance-criteria review report."
+          }
+        ],
+        "required_provider_fields": [
+          {
+            "name": "spec_status",
+            "description": "Specification fidelity status: passed, needs_changes, or blocked."
+          },
+          {
+            "name": "review_report",
+            "description": "Read-only specification and acceptance-criteria review report."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-eddbbb04-e8fe-4d12-8409-28208b57a177",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "fix_context",
+            "source": "transition_output",
+            "field": "fix_context"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "fix_context",
+            "description": "Concrete task-scoped findings that the single writer must fix."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-547bad08-79be-4487-b55f-622bb001f6f3",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          },
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-90ac974e-40e5-41e6-80bb-4e2991d547b9",
+        "input_bindings": [
+          {
+            "name": "closure_reason",
+            "source": "transition_output",
+            "field": "closure_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-e48d5897-aa98-466d-96bc-eedbbcf6b2b4",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-9eff1f19-1ce5-46a8-b3e7-334f8fbf4a1b",
+        "input_bindings": [
+          {
+            "name": "cleanup_report",
+            "source": "transition_output",
+            "field": "cleanup_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "cleanup_report",
+            "description": "Report of cleanup performed, skipped, or blocked."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-307478b2-304c-485d-ac7e-a66d29663a44",
+        "input_bindings": [
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      }
+    ]
+  }
+}
