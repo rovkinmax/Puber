@@ -42,6 +42,8 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - `refactor_start_command`: `.kent/commands/refactor-start.md`
 - `migration_start_command`: `.kent/commands/migration-start.md`
 - `smoke_command`: `.kent/commands/smoke-test.md`
+- `mobile_resource_lock_adapter`:
+  `.kent/adapters/mobile/emulator-resource-lock.sh`
 - `ship_pr_command`: `.kent/commands/ship-pr.md`
 - `release_command`: `.kent/commands/release.md`
 - `release_prepare_command`: `.kent/commands/release-branch.md`
@@ -105,6 +107,9 @@ to project-local capability roles:
 - Smoke agents must build with `:app:assembleDevDebug` and install with explicit
   `adb -s "$DEVICE_SERIAL" install -r app/build/outputs/apk/dev/debug/app-dev-debug.apk`; Gradle `install*` tasks are
   forbidden for smoke tests because they may target a physical device.
+- Mobile MCP must select the acquired serial and receive the same explicit
+  `deviceId` on every target-specific UI/input/system call. Targeting failure
+  routes through `needs_user_action`.
 
 ## Source Adapters
 

@@ -74,7 +74,27 @@ Runs smoke test for a feature via MCP mobile.
      adb -s "$DEVICE_SERIAL" shell am force-stop com.kino.puber.stage
      adb -s "$DEVICE_SERIAL" shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
      ```
-4. Connects to device via MCP mobile
+4. **Binds Mobile MCP to the locked serial**
+   - List devices and confirm `DEVICE_SERIAL` is present:
+     ```bash
+     .kent/adapters/mcp/mcp-call.sh mobile.device \
+       action=list \
+       --output json \
+       --raw-dir <raw-dir>
+     ```
+   - Select the exact locked serial:
+     ```bash
+     .kent/adapters/mcp/mcp-call.sh mobile.device \
+       action=set \
+       platform=android \
+       deviceId="$DEVICE_SERIAL" \
+       --allow-mutate \
+       --output json \
+       --raw-dir <raw-dir>
+     ```
+   - Pass `deviceId="$DEVICE_SERIAL"` to every target-specific Mobile MCP call.
+   - If Mobile MCP cannot list or select the locked serial, complete with
+     `needs_user_action`; never switch to an implicit target.
 5. **Launches app via adb**:
    ```bash
    test -n "$DEVICE_SERIAL"
@@ -89,6 +109,8 @@ Runs smoke test for a feature via MCP mobile.
 ## Testing Strategy
 
 ### Use `get_ui` as the primary tool for screen inspection:
+- Call Mobile MCP only through `.kent/adapters/mcp/mcp-call.sh` and pass the
+  locked `deviceId` to every target-specific call.
 - **`get_ui`** — main tool for reading screen state, verifying content, and finding focus/tap targets
 - **`get_ui(showAll: true)`** — when you need to see non-interactive elements too
 - **`assert_visible`** for quick "is element on screen?" checks
