@@ -11,8 +11,11 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - Planning produces `workspace_path` and `plan_path`.
 - Implementation preserves and re-emits `workspace_path` and `plan_path` until all steps are complete.
 - Audit/review produces `audit_report` or `review_report`.
+- Current Delivery v5 and future generated workflows use `standards_status`
+  and `standards_report` for early Standards Review. Frozen Canary v2 and
+  Smoke Lab snapshots retain their legacy `compliance_report` output.
 - Verification produces `verification_report` or a concise verification summary.
-- Compliance Review produces `compliance_report`.
+- Final Compliance Review produces `compliance_report`.
 - PR creation produces `pr_url`, `branch_name`, and `workspace_path`; no-diff/report-only PR skips produce `pr_report`.
 - PR/CI monitoring produces `ci_report`.
 - Waiting PR produces `blocker_reason` while the PR is open,
@@ -204,15 +207,17 @@ Use generic workflow graph keys and project-prefixed live workflow names:
   `Puber Dependency Update`, `Puber Test Coverage`, `Puber Smoke Test`, `Puber Release`.
 - Node keys include `plan`, `implement`, `verification_dispatch`,
   `deterministic_verify`, `standards_review`, `spec_review`,
-  `verification_join`, `verification_gate`, `fix`, `smoke`, `prepare_pr`,
-  `ci_monitor`, `waiting_pr`, `cleanup`, `done`, and `wont_do`.
+  `verification_join`, `verification_gate`, `fix`, `smoke`, `compliance`,
+  `prepare_pr`, `ci_monitor`, `waiting_pr`, `cleanup`, `done`, and `wont_do`.
 - Transition IDs include `implement`, `continue_implementation`, `verify`,
   `fanout_verify`, `reported`, `evaluate`, `needs_changes`,
-  `needs_user_action`, `smoke_required`, `delivery_ready`, `monitor_ci`,
-  `waiting_pr`, `pr_merged`, `close_without_merge`, `no_pr`, `done`, and
-  `wont_do`.
-- Portable params: `workspace_path`, `plan_path`, `audit_report`, `review_report`, `verification_report`, `pr_url`,
-  `branch_name`, `pr_report`, `ci_report`, `compliance_report`, `merge_report`, `cleanup_reason`,
-  `closure_reason`, `smoke_rationale`, `smoke_scope`, `release_version`,
-  `release_type`, `release_branch`, `release_tag`, `version_bump_commit`,
-  `target_commit`, `tag_push_status`, `release_report`, `blocker_reason`, `cleanup_report`.
+  `needs_user_action`, `smoke_required`, `delivery_ready`, `ship_pr`,
+  `monitor_ci`, `waiting_pr`, `pr_merged`, `close_without_merge`, `no_pr`,
+  `done`, and `wont_do`.
+- Portable params: `workspace_path`, `plan_path`, `review_context`,
+  `fix_context`, `verification_status`, `verification_report`,
+  `standards_status`, `standards_report`, `spec_status`, `review_report`,
+  `compliance_report`, `smoke_rationale`, `smoke_scope`, `blocker_reason`,
+  `pr_url`, `branch_name`, `pr_report`, `ci_report`, `merge_report`,
+  `closure_reason`, and `cleanup_report`. Legacy workflow families also use
+  `audit_report`, `cleanup_reason`, and the release-specific parameters.

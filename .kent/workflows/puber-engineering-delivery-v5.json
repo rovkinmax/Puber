@@ -3,7 +3,7 @@
     "id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
     "name": "Puber Engineering Delivery v5",
     "description": "Plan, implement, independently verify, fix, and deliver an engineering change for Puber.",
-    "version": 95,
+    "version": 111,
     "execution_target_policy": {
       "mode": "ask_on_first_execution"
     }
@@ -143,6 +143,15 @@
       "kind": "agent",
       "display_name": "Monitor CI",
       "subagent_role": "default",
+      "completion_mode": "shell_command"
+    },
+    {
+      "id": "node-2db6634c-b6a9-45ed-8fd1-b1dfab29c341",
+      "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
+      "key": "compliance",
+      "kind": "agent",
+      "display_name": "Compliance Review",
+      "subagent_role": "compliance_reviewer",
       "completion_mode": "shell_command"
     },
     {
@@ -449,6 +458,38 @@
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
       "description": "Work is externally blocked; continue this stage only after approval."
+    },
+    {
+      "id": "group-27b6f101-f053-41aa-bea2-af5e44601052",
+      "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
+      "source_node_id": "node-2db6634c-b6a9-45ed-8fd1-b1dfab29c341",
+      "transition_id": "ship_pr",
+      "display_name": "Ship Pr",
+      "description": "Final compliance passed; prepare or update the task pull request."
+    },
+    {
+      "id": "group-967504f1-08ab-4b08-9477-235dc100f5d8",
+      "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
+      "source_node_id": "node-2db6634c-b6a9-45ed-8fd1-b1dfab29c341",
+      "transition_id": "needs_changes",
+      "display_name": "Needs Changes",
+      "description": "Final compliance found task-scoped issues that require fixes."
+    },
+    {
+      "id": "group-a26a51bc-d79f-4cba-8bfc-dd2e5093db78",
+      "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
+      "source_node_id": "node-2db6634c-b6a9-45ed-8fd1-b1dfab29c341",
+      "transition_id": "needs_user_action",
+      "display_name": "Needs User Action",
+      "description": "Final compliance is externally blocked; recheck after approval."
+    },
+    {
+      "id": "group-659b5713-76f3-4dcf-94a8-2dcf61aa8839",
+      "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
+      "source_node_id": "node-2db6634c-b6a9-45ed-8fd1-b1dfab29c341",
+      "transition_id": "wont_do",
+      "display_name": "Wont Do",
+      "description": "Cancel this task only after explicit user approval and record why."
     }
   ],
   "edges": [
@@ -699,7 +740,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Run an independent read-only repository standards review.\n\nRead AGENTS.md and .kent/project-contract.md first. Workspace:\n{{.Params.workspace_path}}. Review context:\n{{.Params.review_context}}\n\nInspect the change against repository architecture, engineering rules, security,\nand maintainability constraints. Do not edit files and do not run destructive\ncommands. Findings are data for Join, not a routing decision.\n\nComplete only with `reported`. Provide `standards_status` as exactly `passed`,\n`needs_changes`, or `blocked`, plus `compliance_report` with evidence and\npath-specific findings.",
+      "prompt_template": "Run an independent read-only repository standards review.\n\nRead AGENTS.md and .kent/project-contract.md first. Workspace:\n{{.Params.workspace_path}}. Review context:\n{{.Params.review_context}}\n\nInspect the change against repository architecture, engineering rules, security,\nand maintainability constraints. Do not edit files and do not run destructive\ncommands. Findings are data for Join, not a routing decision.\n\nComplete only with `reported`. Provide `standards_status` as exactly `passed`,\n`needs_changes`, or `blocked`, plus `standards_report` with evidence and\npath-specific findings.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -767,7 +808,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Evaluate the joined verification reports without editing files.\n\nWorkspace: {{.Params.fanout_verify.workspace_path}}\nReview context: {{.Params.fanout_verify.review_context}}\nVerification status: {{.Params.verification_status}}\nVerification report: {{.Params.verification_report}}\nStandards status: {{.Params.standards_status}}\nStandards report: {{.Params.compliance_report}}\nSpec status: {{.Params.spec_status}}\nSpec report: {{.Params.review_report}}\n\nChoose a delivery transition only when every enabled status is `passed`.\nProvide `workspace_path`, a refreshed `review_context` summarizing all reports,\nand the required Smoke decision fields. The refreshed `review_context` must\nrecord the profile Smoke policy, selected transition, rationale, and required\nscope or concrete evidence for bypassing Smoke.\n\nProject policy makes runtime Smoke conditional.\nUse .kent/commands/smoke-policy.md as the project procedure.\nChoose `smoke_required` for user-visible or runtime behavior, navigation, state\nor data flow, permissions or security, storage or migrations, external\nintegration, browser/device/hardware interaction, explicit acceptance criteria,\nor uncertain runtime impact. Provide `smoke_rationale` and a focused\n`smoke_scope`.\n\nChoose `delivery_ready` only for changes proven not to affect a runtime\nartifact or user-observable behavior, and provide an evidence-based\n`smoke_rationale`. Uncertainty must route to `smoke_required`. Resource\nunavailability must never downgrade the decision.\n\nChoose `needs_changes` for task-scoped failures and provide `workspace_path`\nplus `fix_context`. Choose `needs_user_action` for external or contradictory\nblockers and provide `workspace_path`, `review_context`, and `blocker_reason`;\nafter approval every verification branch reruns. Choose `wont_do` only for an\nexplicit cancellation decision and provide `closure_reason`."
+      "prompt_template": "Evaluate the joined verification reports without editing files.\n\nWorkspace: {{.Params.fanout_verify.workspace_path}}\nReview context: {{.Params.fanout_verify.review_context}}\nVerification status: {{.Params.verification_status}}\nVerification report: {{.Params.verification_report}}\nStandards status: {{.Params.standards_status}}\nStandards report: {{.Params.standards_report}}\nSpec status: {{.Params.spec_status}}\nSpec report: {{.Params.review_report}}\n\nChoose a delivery transition only when every enabled status is `passed`.\nProvide `workspace_path`, a refreshed `review_context` summarizing all reports,\nand the required Smoke decision fields. The refreshed `review_context` must\nrecord the profile Smoke policy, selected transition, rationale, and required\nscope or concrete evidence for bypassing Smoke.\n\nProject policy makes runtime Smoke conditional.\nUse .kent/commands/smoke-policy.md as the project procedure.\nChoose `smoke_required` for user-visible or runtime behavior, navigation, state\nor data flow, permissions or security, storage or migrations, external\nintegration, browser/device/hardware interaction, explicit acceptance criteria,\nor uncertain runtime impact. Provide `smoke_rationale` and a focused\n`smoke_scope`.\n\nChoose `delivery_ready` only for changes proven not to affect a runtime\nartifact or user-observable behavior, and provide an evidence-based\n`smoke_rationale`. Uncertainty must route to `smoke_required`. Resource\nunavailability must never downgrade the decision.\n\nChoose `needs_changes` for task-scoped failures and provide `workspace_path`\nplus `fix_context`. Choose `needs_user_action` for external or contradictory\nblockers and provide `workspace_path`, `review_context`, and `blocker_reason`;\nafter approval every verification branch reruns. Choose `wont_do` only for an\nexplicit cancellation decision and provide `closure_reason`."
     },
     {
       "id": "edge-a00e1304-32fd-46ff-a473-0bb9cd87a2a7",
@@ -786,8 +827,8 @@
           "description": "Repository standards status: passed, needs_changes, or blocked."
         },
         {
-          "key": "compliance_report",
-          "description": "Read-only repository standards and architecture compliance report."
+          "key": "standards_report",
+          "description": "Read-only repository standards, architecture, and engineering report."
         }
       ]
     },
@@ -916,13 +957,13 @@
       "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
       "transition_group_id": "group-90f30c4f-c9d7-4d7c-bfa8-c3009bd8245e",
       "key": "gate_delivery_ready",
-      "target_node_id": "node-7253fcc4-92eb-41ca-ac47-81e15e2bb6ea",
+      "target_node_id": "node-2db6634c-b6a9-45ed-8fd1-b1dfab29c341",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Prepare delivery for {{.TaskShortId}}.\n\nRead .kent/project-contract.md and repository instructions first. Workspace:\n{{.Params.workspace_path}}. Review context:\n{{.Params.review_context}}\n\nUse .kent/commands/ship-pr.md as the project procedure.\n\n\nThis workflow explicitly authorizes committing the task changes, pushing only\nthe current task branch, and creating or updating its pull request. It never\nauthorizes merging, pushing protected branches, or broadening scope.\n\nBefore committing, prove that the checkout is on a task-owned branch permitted\nby the project contract. A source workspace, detached checkout, protected\nbranch, or ambiguous branch owner must route to `needs_user_action`; never push\nthrough that ambiguity.\n\nComplete through `monitor_ci` and provide `workspace_path`, `pr_url`, and\n`branch_name`. If no PR is genuinely\napplicable, choose `no_pr` and provide `pr_report`; this path requires approval.\nUse `needs_changes` with `workspace_path` and `blocker_reason` for recoverable\nPR/branch issues; this path also requires approval. Use `needs_user_action` with\n`blocker_reason` for external blockers.",
+      "prompt_template": "Run the final read-only delivery compliance review for {{.TaskShortId}}.\n\nRead all applicable AGENTS.md files, .kent/project-contract.md, the task body,\nhuman-authored task comments, and the plan/spec sources named in the review\ncontext. Workspace: {{.Params.workspace_path}}. Final review context:\n{{.Params.review_context}}\n\nUse .kent/commands/compliance-review.md as the project procedure.\n\nThis is a thin final attestation, not another general code, architecture,\nspecification, or runtime review. Verify the authority hierarchy and final\nworktree diff; confirm that deterministic verification, Standards Review, Spec Review, Gate, and any required Smoke\ncompleted with adequate evidence; confirm that a Smoke bypass has a concrete\nrationale; and check that no unresolved blocker, approval, unauthorized\nrule/spec change, or workflow obligation remains. Do not edit files or perform\nstate-changing actions.\n\nChoose `ship_pr` only when the final work product is compliant. Provide\n`workspace_path`, a complete `review_context`, and `compliance_report`. Choose\n`needs_changes` for task-scoped violations and provide `workspace_path` plus\n`fix_context`; fixes must rerun the full verification flow. Choose\n`needs_user_action` for missing or contradictory authority, evidence, or\nexternal decisions and provide `workspace_path`, `review_context`, and\n`blocker_reason`. Choose `wont_do` only for explicit cancellation and provide\n`closure_reason`.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -943,13 +984,13 @@
       "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
       "transition_group_id": "group-a017a550-dbe3-4c25-9a2e-c1c566b618d5",
       "key": "smoke_prepare_pr",
-      "target_node_id": "node-7253fcc4-92eb-41ca-ac47-81e15e2bb6ea",
+      "target_node_id": "node-2db6634c-b6a9-45ed-8fd1-b1dfab29c341",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Prepare delivery for {{.TaskShortId}}.\n\nRead .kent/project-contract.md and repository instructions first. Workspace:\n{{.Params.workspace_path}}. Review context:\n{{.Params.review_context}}\n\nUse .kent/commands/ship-pr.md as the project procedure.\n\n\nThis workflow explicitly authorizes committing the task changes, pushing only\nthe current task branch, and creating or updating its pull request. It never\nauthorizes merging, pushing protected branches, or broadening scope.\n\nBefore committing, prove that the checkout is on a task-owned branch permitted\nby the project contract. A source workspace, detached checkout, protected\nbranch, or ambiguous branch owner must route to `needs_user_action`; never push\nthrough that ambiguity.\n\nComplete through `monitor_ci` and provide `workspace_path`, `pr_url`, and\n`branch_name`. If no PR is genuinely\napplicable, choose `no_pr` and provide `pr_report`; this path requires approval.\nUse `needs_changes` with `workspace_path` and `blocker_reason` for recoverable\nPR/branch issues; this path also requires approval. Use `needs_user_action` with\n`blocker_reason` for external blockers.",
+      "prompt_template": "Run the final read-only delivery compliance review for {{.TaskShortId}}.\n\nRead all applicable AGENTS.md files, .kent/project-contract.md, the task body,\nhuman-authored task comments, and the plan/spec sources named in the review\ncontext. Workspace: {{.Params.workspace_path}}. Final review context:\n{{.Params.review_context}}\n\nUse .kent/commands/compliance-review.md as the project procedure.\n\nThis is a thin final attestation, not another general code, architecture,\nspecification, or runtime review. Verify the authority hierarchy and final\nworktree diff; confirm that deterministic verification, Standards Review, Spec Review, Gate, and any required Smoke\ncompleted with adequate evidence; confirm that a Smoke bypass has a concrete\nrationale; and check that no unresolved blocker, approval, unauthorized\nrule/spec change, or workflow obligation remains. Do not edit files or perform\nstate-changing actions.\n\nChoose `ship_pr` only when the final work product is compliant. Provide\n`workspace_path`, a complete `review_context`, and `compliance_report`. Choose\n`needs_changes` for task-scoped violations and provide `workspace_path` plus\n`fix_context`; fixes must rerun the full verification flow. Choose\n`needs_user_action` for missing or contradictory authority, evidence, or\nexternal decisions and provide `workspace_path`, `review_context`, and\n`blocker_reason`. Choose `wont_do` only for explicit cancellation and provide\n`closure_reason`.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -1312,6 +1353,101 @@
           "description": "Exact blocker and the next user or external action required."
         }
       ]
+    },
+    {
+      "id": "edge-0d90666e-529b-4926-b4f1-15685b1cd9dc",
+      "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
+      "transition_group_id": "group-27b6f101-f053-41aa-bea2-af5e44601052",
+      "key": "compliance_prepare_pr",
+      "target_node_id": "node-7253fcc4-92eb-41ca-ac47-81e15e2bb6ea",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Prepare delivery for {{.TaskShortId}}.\n\nRead .kent/project-contract.md and repository instructions first. Workspace:\n{{.Params.workspace_path}}. Review context:\n{{.Params.review_context}}\nFinal Compliance Review: {{.Params.compliance_report}}\n\nUse .kent/commands/ship-pr.md as the project procedure.\n\n\nThis workflow explicitly authorizes committing the task changes, pushing only\nthe current task branch, and creating or updating its pull request. It never\nauthorizes merging, pushing protected branches, or broadening scope.\n\nBefore committing, prove that the checkout is on a task-owned branch permitted\nby the project contract. A source workspace, detached checkout, protected\nbranch, or ambiguous branch owner must route to `needs_user_action`; never push\nthrough that ambiguity.\n\nComplete through `monitor_ci` and provide `workspace_path`, `pr_url`, and\n`branch_name`. If no PR is genuinely\napplicable, choose `no_pr` and provide `pr_report`; this path requires approval.\nUse `needs_changes` with `workspace_path` and `blocker_reason` for recoverable\nPR/branch issues; this path also requires approval. Use `needs_user_action` with\n`blocker_reason` for external blockers.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "review_context",
+          "description": "Implementation, fix, report, and artifact context required by verification."
+        },
+        {
+          "key": "compliance_report",
+          "description": "Final delivery compliance attestation and any blocking findings."
+        }
+      ]
+    },
+    {
+      "id": "edge-4a617d79-9ffa-4fb6-812a-32f5e039c1f3",
+      "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
+      "transition_group_id": "group-967504f1-08ab-4b08-9477-235dc100f5d8",
+      "key": "compliance_fix",
+      "target_node_id": "node-51ec0936-cc9f-4f4c-8db5-98f59f40f30d",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "previous_target_or_new"
+      },
+      "prompt_template": "Apply task-scoped fixes for {{.TaskShortId}}.\n\nRead .kent/project-contract.md and repository instructions first. Workspace:\n{{.Params.workspace_path}}. Findings:\n{{.Params.fix_context}}\n\nFollow the project contract and repository instructions.\nWhen useful, delegate bounded fixes to `implementation-worker`. Keep orchestration, integration, and transition selection in this node session.\n\nRemain the single writer. Fix root causes without broadening product scope.\nComplete with `verify` and provide `workspace_path` plus a refreshed\n`review_context` containing the findings, fixes, changed files, artifact paths,\nand focused checks. Use `needs_user_action` only for an external blocker and\nprovide `blocker_reason`. Choose `wont_do` only for explicit cancellation and\nprovide `closure_reason`.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "fix_context",
+          "description": "Concrete task-scoped findings that the single writer must fix."
+        }
+      ]
+    },
+    {
+      "id": "edge-08b75257-1a78-403e-a252-62019de2b6ae",
+      "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
+      "transition_group_id": "group-a26a51bc-d79f-4cba-8bfc-dd2e5093db78",
+      "key": "compliance_needs_user_action",
+      "target_node_id": "node-2db6634c-b6a9-45ed-8fd1-b1dfab29c341",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "prompt_template": "Resume the final read-only delivery compliance review.\n\nWorkspace: {{.Params.workspace_path}}\nFinal review context: {{.Params.review_context}}\nPrevious blocker: {{.Params.blocker_reason}}\n\nRe-read current task comments and applicable authority sources, then verify\nthat the exact blocker is resolved. Do not infer approval for broader scope or\ndestructive actions.\n\nUse .kent/commands/compliance-review.md as the project procedure.\n\nChoose `ship_pr` only when the final work product is compliant. Provide\n`workspace_path`, a complete `review_context`, and `compliance_report`. Choose\n`needs_changes` with `workspace_path` and `fix_context` for task-scoped\nviolations. Choose `needs_user_action` with `workspace_path`, `review_context`,\nand `blocker_reason` if the blocker remains. Choose `wont_do` only for explicit\ncancellation and provide `closure_reason`.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Path to the task workspace or managed worktree."
+        },
+        {
+          "key": "review_context",
+          "description": "Implementation, fix, report, and artifact context required by verification."
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Exact blocker and the next user or external action required."
+        }
+      ]
+    },
+    {
+      "id": "edge-e243f50b-788b-4929-b5c9-09ab15ae2fcf",
+      "workflow_id": "workflow-d386f5ff-b47a-48ff-834e-601e9a0832b5",
+      "transition_group_id": "group-659b5713-76f3-4dcf-94a8-2dcf61aa8839",
+      "key": "compliance_wont_do",
+      "target_node_id": "node-7b433e60-a9d4-4915-b2ac-b5f724126162",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "context_source": {
+        "kind": "immediate_source"
+      },
+      "parameters": [
+        {
+          "key": "closure_reason",
+          "description": "User-approved reason for closing or canceling delivery without merge."
+        }
+      ]
     }
   ],
   "derived_wiring": {
@@ -1469,8 +1605,8 @@
             "description": "Repository standards status: passed, needs_changes, or blocked."
           },
           {
-            "name": "compliance_report",
-            "description": "Read-only repository standards and architecture compliance report."
+            "name": "standards_report",
+            "description": "Read-only repository standards, architecture, and engineering report."
           }
         ]
       },
@@ -1503,8 +1639,8 @@
             "description": "Repository standards status: passed, needs_changes, or blocked."
           },
           {
-            "name": "compliance_report",
-            "description": "Read-only repository standards and architecture compliance report."
+            "name": "standards_report",
+            "description": "Read-only repository standards, architecture, and engineering report."
           },
           {
             "name": "spec_status",
@@ -1621,6 +1757,35 @@
           {
             "name": "blocker_reason",
             "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "node_id": "node-2db6634c-b6a9-45ed-8fd1-b1dfab29c341",
+        "possible_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Final delivery compliance attestation and any blocking findings."
+          },
+          {
+            "name": "fix_context",
+            "description": "Concrete task-scoped findings that the single writer must fix."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          },
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
           }
         ]
       },
@@ -1775,8 +1940,8 @@
             "description": "Repository standards status: passed, needs_changes, or blocked."
           },
           {
-            "name": "compliance_report",
-            "description": "Read-only repository standards and architecture compliance report."
+            "name": "standards_report",
+            "description": "Read-only repository standards, architecture, and engineering report."
           }
         ]
       },
@@ -2083,6 +2248,62 @@
           {
             "name": "blocker_reason",
             "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-27b6f101-f053-41aa-bea2-af5e44601052",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Final delivery compliance attestation and any blocking findings."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-967504f1-08ab-4b08-9477-235dc100f5d8",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "fix_context",
+            "description": "Concrete task-scoped findings that the single writer must fix."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-a26a51bc-d79f-4cba-8bfc-dd2e5093db78",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-659b5713-76f3-4dcf-94a8-2dcf61aa8839",
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
           }
         ]
       }
@@ -2409,9 +2630,9 @@
             "field": "standards_status"
           },
           {
-            "name": "compliance_report",
+            "name": "standards_report",
             "source": "transition_output",
-            "field": "compliance_report"
+            "field": "standards_report"
           }
         ],
         "required_provision_fields": [
@@ -2420,8 +2641,8 @@
             "description": "Repository standards status: passed, needs_changes, or blocked."
           },
           {
-            "name": "compliance_report",
-            "description": "Read-only repository standards and architecture compliance report."
+            "name": "standards_report",
+            "description": "Read-only repository standards, architecture, and engineering report."
           }
         ],
         "required_provider_fields": [
@@ -2430,8 +2651,8 @@
             "description": "Repository standards status: passed, needs_changes, or blocked."
           },
           {
-            "name": "compliance_report",
-            "description": "Read-only repository standards and architecture compliance report."
+            "name": "standards_report",
+            "description": "Read-only repository standards, architecture, and engineering report."
           }
         ]
       },
@@ -3037,6 +3258,115 @@
           {
             "name": "blocker_reason",
             "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-0d90666e-529b-4926-b4f1-15685b1cd9dc",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          },
+          {
+            "name": "compliance_report",
+            "source": "transition_output",
+            "field": "compliance_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "compliance_report",
+            "description": "Final delivery compliance attestation and any blocking findings."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-4a617d79-9ffa-4fb6-812a-32f5e039c1f3",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "fix_context",
+            "source": "transition_output",
+            "field": "fix_context"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "fix_context",
+            "description": "Concrete task-scoped findings that the single writer must fix."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-08b75257-1a78-403e-a252-62019de2b6ae",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          },
+          {
+            "name": "blocker_reason",
+            "source": "transition_output",
+            "field": "blocker_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Path to the task workspace or managed worktree."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "blocker_reason",
+            "description": "Exact blocker and the next user or external action required."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-e243f50b-788b-4929-b5c9-09ab15ae2fcf",
+        "input_bindings": [
+          {
+            "name": "closure_reason",
+            "source": "transition_output",
+            "field": "closure_reason"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "closure_reason",
+            "description": "User-approved reason for closing or canceling delivery without merge."
           }
         ]
       }

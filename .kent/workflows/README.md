@@ -23,7 +23,8 @@ Kent Desktop workflow graph
   profile-schema-3 hypothesis,
   one Plan session, default operational orchestration, deterministic compile
   plus independent global standards/spec reviews, direct Join/Gate,
-  conditional TV Smoke, PR/CI/waiting, and conservative cleanup. It uses
+  conditional TV Smoke, final Compliance Review, PR/CI/waiting, and
+  conservative cleanup. It uses
   `ask-on-first-execution` and must pass a managed-worktree canary before any
   default migration.
 - `Puber Engineering Canary v2` (experimental, non-default): generic planning,
@@ -83,9 +84,12 @@ Legacy split release workflows (`Puber Release Preparation` and `Puber Release P
   validation or new workflow tasks to see the role.
 - Do not model recoverable blockers as terminal states. Use `needs_user_action` back to the same node with
   `blocker_reason` and human approval.
-- Every successful work-product path must pass through `compliance` before `cleanup`. Compliance Review is not a
-  replacement for audit/review/verify/smoke; it only checks adherence to AGENTS.md, project contracts, specs, plans,
-  human-approved design decisions, and workflow transition contracts.
+- Every successful code-producing PR delivery path must pass through
+  `compliance` before PR preparation. Report-only Canary/Smoke Lab experiments
+  are exempt. Compliance Review is not a replacement for
+  audit/review/verify/smoke; it only checks adherence to AGENTS.md, project
+  contracts, specs, plans, human-approved design decisions, and workflow
+  transition contracts.
 - Code-producing workflows must create or update a PR after compliance passes. `ship_pr` may skip PR only for explicit
   no-diff/report-only/smoke-only cases and must explain that through `pr_report`. That `no_pr` path must require user
   approval before cleanup because it finishes without a merged PR.

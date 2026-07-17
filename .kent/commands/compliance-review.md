@@ -27,10 +27,16 @@ Agent-authored comments, implementation commentary, and previous review summarie
 The workflow prompt must provide the available inputs:
 
 - `workspace_path`: the `.todo/<task>` workspace or task workspace being reviewed, when one exists.
+- `review_context`: for generated Delivery workflows, the canonical aggregate
+  containing plan/spec paths, reviewed scope, changed files, verification and
+  review reports, Gate decision, and Smoke evidence or bypass rationale.
 - `plan_path` or `plan_file_path`: the authoritative plan, when one exists.
 - `reviewed_scope`: what work product to inspect.
 - `commentary`: implementation/review/verification summary from the previous node.
 - `changed_files`: changed files, when known.
+
+When `review_context` contains these inputs, do not require duplicate standalone
+fields.
 
 If a required source is missing, report the review as waiting for user action or incomplete and name the missing source.
 
@@ -50,9 +56,12 @@ Complete with:
 
 - The success transition named in the current workflow prompt when no compliance violations are found. New PR-producing
   workflows use `ship_pr`; legacy no-PR release workflows may use `cleanup`. Provide `compliance_report`.
-- `needs_changes` when compliance violations require a fix/rework pass. Provide `compliance_report` and, when available,
-  `workspace_path` and `changed_files`.
-- `needs_user_action` when required rule/spec/task sources are missing or contradictory. Provide `blocker_reason`.
+- `needs_changes` when compliance violations require a fix/rework pass. Generated
+  Delivery workflows provide `workspace_path` and `fix_context`; follow the
+  current workflow prompt for legacy contracts.
+- `needs_user_action` when required rule/spec/task sources are missing or
+  contradictory. Generated Delivery workflows provide `workspace_path`,
+  `review_context`, and `blocker_reason`.
 
 Do not hardcode `done` from this command; `done` is reserved for cleanup completion.
 
