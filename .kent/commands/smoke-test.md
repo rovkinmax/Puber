@@ -101,10 +101,19 @@ Runs smoke test for a feature via MCP mobile.
        --allow-mutate \
        --output json \
        --raw-dir <raw-dir>
+     .kent/adapters/mcp/mcp-call.sh mobile.device \
+       action=get_target \
+       --output json \
+       --raw-dir <raw-dir>
      ```
+   - Confirm that the list contains `DEVICE_SERIAL`, `action=set` acknowledges
+     that exact serial, and `action=get_target` reports the same Android target.
+     Do not require an undocumented display marker such as `ACTIVE`; Mobile MCP
+     versions may omit it.
    - Pass `deviceId="$DEVICE_SERIAL"` to every target-specific Mobile MCP call.
-   - If Mobile MCP cannot list or select the locked serial, complete with
-     `needs_user_action`; never switch to an implicit target.
+   - If Mobile MCP cannot confirm the locked serial through those documented
+     responses, complete with `needs_user_action`; never switch to an implicit
+     target.
 5. **Launches app via adb**:
    ```bash
    test -n "$DEVICE_SERIAL"
@@ -157,6 +166,10 @@ Runs smoke test for a feature via MCP mobile.
 - Saves artifacts to build/test-artifacts/ on errors
 - Keeps only package-scoped crash/ANR/liveness summaries
 - Never saves full `adb logcat` output
+- If a task requires a launch-time log boundary, validates the exact
+  device-side command and parser first. Android shell `date` and `logcat`
+  option forms are not GNU-portable; command or parsing failure must not be
+  treated as an empty passing signal result.
 - Runs `.kent/adapters/mobile/mobile-evidence-audit.sh
   <evidence-dir> <package-name>` before reporting
 

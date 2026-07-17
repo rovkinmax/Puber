@@ -112,6 +112,13 @@ to project-local capability roles:
 - Mobile MCP must select the acquired serial and receive the same explicit
   `deviceId` on every target-specific UI/input/system call. Targeting failure
   routes through `needs_user_action`.
+- Confirm Mobile MCP targeting from documented response fields: serial
+  discovery, exact selection acknowledgement, and the selected target query.
+  Do not require an undocumented display marker such as `ACTIVE`.
+- Device-side timestamp and log-boundary syntax is not portable. Validate the
+  exact command before using it as an evidence gate. Command or parsing failure
+  is a Smoke blocker until a verified alternative is used, never an empty
+  passing signal result.
 - Runtime evidence must be scoped and sanitized. Full device logs, network
   payloads, auth headers, and unexpected authenticated UI dumps are forbidden.
   `.kent/adapters/mobile/mobile-evidence-audit.sh` must pass before completion.
