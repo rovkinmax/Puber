@@ -44,6 +44,8 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - `smoke_command`: `.kent/commands/smoke-test.md`
 - `mobile_resource_lock_adapter`:
   `.kent/adapters/mobile/emulator-resource-lock.sh`
+- `mobile_evidence_audit_adapter`:
+  `.kent/adapters/mobile/mobile-evidence-audit.sh`
 - `ship_pr_command`: `.kent/commands/ship-pr.md`
 - `release_command`: `.kent/commands/release.md`
 - `release_prepare_command`: `.kent/commands/release-branch.md`
@@ -110,6 +112,9 @@ to project-local capability roles:
 - Mobile MCP must select the acquired serial and receive the same explicit
   `deviceId` on every target-specific UI/input/system call. Targeting failure
   routes through `needs_user_action`.
+- Runtime evidence must be scoped and sanitized. Full device logs, network
+  payloads, auth headers, and unexpected authenticated UI dumps are forbidden.
+  `.kent/adapters/mobile/mobile-evidence-audit.sh` must pass before completion.
 
 ## Source Adapters
 

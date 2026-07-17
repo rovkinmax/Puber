@@ -15,6 +15,16 @@ Runs smoke test for a feature via MCP mobile.
 ## Parameters
 - feature: feature name (required)
 
+## Evidence Safety
+
+- Store only the minimum evidence required for the Smoke decision.
+- Never persist full `adb logcat`, network payloads, authentication headers, or
+  a raw UI dump/screenshot from an unexpected authenticated or sensitive state.
+- Establish the expected non-sensitive screen with assertions before
+  requesting a full UI tree.
+- Run `.kent/adapters/mobile/mobile-evidence-audit.sh
+  <evidence-dir> <package-name>` before reporting success or a blocker.
+
 ## What it does
 
 1. Reads the MCP Mobile Testing section in `AGENTS.md` to understand the process
@@ -103,25 +113,30 @@ Runs smoke test for a feature via MCP mobile.
    Note: `com.kino.puber.stage` is the dev flavor package. For prod builds use `com.kino.puber`.
 6. Navigates to feature
 7. Goes through main screens
-8. Outputs report
+8. Audits the evidence directory and outputs a sanitized report
 9. Releases the mobile resource lock
 
 ## Testing Strategy
 
-### Use `get_ui` as the primary tool for screen inspection:
+### Use assertions before full screen inspection:
 - Call Mobile MCP only through `.kent/adapters/mcp/mcp-call.sh` and pass the
   locked `deviceId` to every target-specific call.
+- Use `assert_visible` to establish the expected non-sensitive state first.
 - **`get_ui`** — main tool for reading screen state, verifying content, and finding focus/tap targets
 - **`get_ui(showAll: true)`** — when you need to see non-interactive elements too
-- **`assert_visible`** for quick "is element on screen?" checks
 - **`screenshot`** only for visual bug evidence or when user explicitly asks
 - **NEVER use `screenshot` to read screen state** — always use `get_ui` instead
+- If an unexpected authenticated/account state appears, do not persist its
+  full UI tree or screenshot. Record a redacted blocker and use
+  `needs_user_action`.
 
 ### Speed optimizations:
 - **`tap(hints: true)`** — get state change info without extra get_ui
 - **`wait_for_element`** instead of `wait(ms)` for loading/animations
 - **`find_and_tap`** for fuzzy element matching when exact text is unknown
-- **`get_logs(package: "com.kino.puber.stage", level: "E")`** for error-only logs
+- **`get_logs(package: "com.kino.puber.stage", level: "E")`** for a
+  task-specific error signal; summarize and redact instead of persisting raw
+  output
 
 ### Screen verification checklist:
 - Loading → Content transition (use `wait_for_element`)
@@ -138,9 +153,12 @@ Runs smoke test for a feature via MCP mobile.
 
 ## On Issues
 - Asks if unclear where to navigate
-- Takes screenshot for visual evidence (only for bugs)
+- Takes a screenshot only for a visual bug on a known non-sensitive screen
 - Saves artifacts to build/test-artifacts/ on errors
-- Checks `get_logs(package: "com.kino.puber.stage", level: "E")` for crashes
+- Keeps only package-scoped crash/ANR/liveness summaries
+- Never saves full `adb logcat` output
+- Runs `.kent/adapters/mobile/mobile-evidence-audit.sh
+  <evidence-dir> <package-name>` before reporting
 
 ## Example Report
 

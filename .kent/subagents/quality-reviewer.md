@@ -17,7 +17,7 @@ to audit current changes without editing files.
 When reviewing, check the files in the prompt for:
 
 - correctness against `AGENTS.md` and `.kent/skills/puber-android-workflow/SKILL.md`;
-- broken paths, stale `.claude/` references, and invalid Kent command/subagent names;
+- broken paths and invalid Kent command/subagent names;
 - accidental local files, generated outputs, raw MCP data, secrets, or machine-specific configuration;
 - executable bit and shell portability issues for scripts;
 - build or verification gaps that should block a commit;

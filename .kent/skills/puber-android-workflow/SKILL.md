@@ -76,8 +76,11 @@ Kent may not expose MCP as first-class native tools. Use project-local wrappers:
 .kent/adapters/mcp/mcp-call.sh <server.tool> [arguments]
 ```
 
-Workflow commands should pass `--raw-dir <dir>` when collecting external source data. Mutating calls require
-`--allow-mutate` and explicit user approval.
+Source-ingestion commands should pass `--raw-dir <dir>` when collecting
+external source data. Runtime Smoke is the exception: do not persist
+unfiltered logs or unexpected authenticated UI output, and run the declared
+mobile evidence audit before reporting. Mutating calls require `--allow-mutate`
+and explicit user approval.
 
 ## Subagents
 
