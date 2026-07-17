@@ -296,8 +296,12 @@ explicit serial.
 Bind Mobile MCP to the same serial with
 `.kent/adapters/mcp/mcp-call.sh mobile.device action=set
 deviceId="$DEVICE_SERIAL" platform=android --allow-mutate`. Pass the same
-explicit `deviceId` to every target-specific Mobile MCP call. If the bridge
-cannot list or select the locked serial, block instead of switching targets.
+explicit `deviceId` to every target-specific Mobile MCP call. Confirm the
+target through documented serial presence, exact selection acknowledgement,
+and the selected-target query; do not require an undocumented `ACTIVE` label.
+If a runtime test needs a device-side timestamp or log boundary, validate the
+exact command syntax before using it as evidence. If the bridge cannot confirm
+the locked serial, block instead of switching targets.
 
 **Tool priority (cheap → expensive):**
 1. `assert_visible` / `assert_not_exists` — check element presence
