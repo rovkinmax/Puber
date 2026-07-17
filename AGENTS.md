@@ -307,6 +307,12 @@ cannot list or select the locked serial, block instead of switching targets.
 
 **Key tips:** `tap(hints: true)` saves a separate get_ui call, `wait_for_element` instead of `wait(ms)`, `get_logs(package: "com.kino.puber.stage")` for filtering.
 
+Runtime evidence must be least-privilege. Never persist full device logs,
+network payloads, authentication headers, or an unexpected authenticated UI
+tree/screenshot. Keep only scoped crash/ANR/liveness summaries and run
+`.kent/adapters/mobile/mobile-evidence-audit.sh <evidence-dir> <package-name>`
+before reporting Smoke.
+
 ### Before ANY Device Testing (MANDATORY)
 
 ```bash

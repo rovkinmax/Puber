@@ -4,7 +4,7 @@ project_name = "Puber"
 workflow_prefix = "Puber"
 delivery_profile = "team"
 platforms = ["android-tv"]
-required_adapters = ["mobile_resource_lock"]
+required_adapters = ["mobile_resource_lock", "mobile_evidence_audit"]
 source_control = "github"
 issue_tracker = "none"
 release_topology = "tag-after-merged-release-pr"
@@ -46,6 +46,7 @@ cleanup = ".kent/commands/cleanup-task.md"
 
 [adapters]
 mobile_resource_lock = ".kent/adapters/mobile/emulator-resource-lock.sh"
+mobile_evidence_audit = ".kent/adapters/mobile/mobile-evidence-audit.sh"
 
 [roles]
 orchestrator = "default"
