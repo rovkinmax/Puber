@@ -29,7 +29,7 @@ Kent Desktop workflow graph
 - `Puber Engineering Canary v2` (experimental, non-default): generic planning,
   two-step implementation continuation, deterministic compile,
   standards/spec fan-out and Join, and report-only cleanup. It omits runtime
-  Smoke and the PR/CI tail.
+  Smoke and the PR/CI tail. Its managed-worktree canary passed on 2026-07-17.
 - `Puber Engineering Smoke Lab` (experimental, non-default): unversioned
   generic planning and implementation, full verification fan-out/Gate,
   conditional TV Smoke, and conservative cleanup without PR/CI. Both
