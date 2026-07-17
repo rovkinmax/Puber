@@ -67,6 +67,24 @@ known.
 Legacy split release workflows (`Puber Release Preparation` and `Puber Release Publication`) are superseded by
 `Puber Release` and must not be linked to the project for new tasks.
 
+### Full Delivery v5 Canary Scope
+
+`PUB-25` exercises Full Delivery v5 from exact source revision
+`29c5a6520636688027dba5dc66792db3040b73a7`, which contains this six-commit
+workflow infrastructure baseline:
+
+- `29c5a65 Adopt final delivery compliance review`
+- `0e429ed Record current Canary v2 result`
+- `3fbd65d Align mobile smoke targeting contract`
+- `a06cb9d Harden mobile smoke evidence handling`
+- `a5ca5e1 Adopt shared mobile resource locking`
+- `890434c Add conditional Smoke workflow experiments`
+
+The canary exercises Final Compliance Review through the global
+`compliance_reviewer`, PR preparation, CI monitoring only after the PR exists,
+and waiting for GitHub to report an actual merge.
+The workflow does not merge the PR itself.
+
 ## Authoring Rules
 
 - Use `default` as node assignee unless Kent workflow validation can see project-local roles.
