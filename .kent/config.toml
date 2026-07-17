@@ -81,18 +81,3 @@ workflow_subagent = true
 
 [subagents."quality-reviewer".tools]
 patch = false
-
-[subagents."compliance_reviewer"]
-description = "Agent for reviewing code, plans, documents, diffs, or other scopes only for compliance with applicable specifications and AGENTS.md rules. Cannot edit files."
-model = "gpt-5.5"
-thinking_level = "high"
-model_verbosity = "low"
-system_prompt_file = "subagents/compliance_reviewer.md"
-
-[subagents."compliance_reviewer".tools]
-shell = true
-patch = false
-edit = false
-
-[subagents."compliance_reviewer".skills]
-planning = false
