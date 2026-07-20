@@ -19,14 +19,13 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Engineering Delivery v5` (experimental, non-default): the current
-  profile-schema-3 hypothesis,
+- `Puber Engineering Delivery v5` (default): the current profile-schema-3
+  delivery workflow,
   one Plan session, default operational orchestration, deterministic compile
   plus independent global standards/spec reviews, direct Join/Gate,
   conditional TV Smoke, final Compliance Review, PR/CI/waiting, and
-  conservative cleanup. It uses
-  `ask-on-first-execution` and must pass a managed-worktree canary before any
-  default migration.
+  conservative cleanup. It uses `ask-on-first-execution`. The full
+  managed-worktree canary `PUB-25` completed before default promotion.
 - `Puber Engineering Canary v2` (experimental, non-default): generic planning,
   two-step implementation continuation, deterministic compile,
   standards/spec fan-out and Join, and report-only cleanup. It omits runtime
@@ -44,9 +43,10 @@ Kent Desktop workflow graph
 - `Puber Engineering Delivery v1`: taskless, unlinked superseded draft. Kent
   2.3 cannot remove its stale edge through the CLI, so do not create tasks from
   it and do not repair it through direct database mutation.
-- `Puber Feature Delivery` (default): plan -> implement loop -> parallel read-only audit and deterministic compile
-  verification -> join -> verification result -> fix loop or optional smoke -> compliance -> create/update PR ->
-  monitor CI -> waiting PR -> cleanup -> done.
+- `Puber Feature Delivery` (legacy rollback): plan -> implement loop ->
+  parallel read-only audit and deterministic compile verification -> join ->
+  verification result -> fix loop or optional smoke -> compliance ->
+  create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
 - `Puber Refactor With Audit`: plan/audit -> implement loop -> read-only review -> fix loop -> compliance ->
   create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
 - `Puber Bugfix Investigation`: reproduce/diagnose -> fix or report-only -> verify/fix loop -> compliance ->
@@ -60,16 +60,16 @@ Kent Desktop workflow graph
 - `Puber Release`: default next minor release from `origin/master` -> version bump branch/PR -> CI -> approved tag
   publication after the PR is merged -> optional automation monitor -> cleanup -> done. Patch/major releases require
   explicit task wording.
-`Puber Feature Delivery` remains the project default. Generated and auxiliary
-workflows are linked only for explicit task creation when the work type is
-known.
+`Puber Engineering Delivery v5` is the project default. Legacy Feature
+Delivery remains linked as a rollback reference; auxiliary workflows are
+linked only for explicit task creation when the work type is known.
 
 Legacy split release workflows (`Puber Release Preparation` and `Puber Release Publication`) are superseded by
 `Puber Release` and must not be linked to the project for new tasks.
 
 ### Full Delivery v5 Canary Scope
 
-`PUB-25` exercises Full Delivery v5 from exact source revision
+`PUB-25` completed Full Delivery v5 from exact source revision
 `29c5a6520636688027dba5dc66792db3040b73a7`, which contains this six-commit
 workflow infrastructure baseline:
 
@@ -80,10 +80,26 @@ workflow infrastructure baseline:
 - `a5ca5e1 Adopt shared mobile resource locking`
 - `890434c Add conditional Smoke workflow experiments`
 
-The canary exercises Final Compliance Review through the global
+The canary passed Final Compliance Review through the global
 `compliance_reviewer`, PR preparation, CI monitoring only after the PR exists,
-and waiting for GitHub to report an actual merge.
-The workflow does not merge the PR itself.
+and waiting for GitHub to report an actual merge. The workflow did not merge
+the PR itself.
+
+## Revision Preflight
+
+Before starting a default Delivery v5 task from a selected revision, verify
+that it descends from the audited project adapter baseline and still carries
+the same workflow profile contract:
+
+```bash
+~/.kent/bin/kent-preflight-revision \
+  --project /Users/rovkinmax/dev/android/Puber \
+  --ref origin/master \
+  --baseline-ref b885f45e66fa6595bd94cdfd3f2f986c5f3905be
+```
+
+Use the exact selected task ref in place of `origin/master` when starting from
+another branch or commit.
 
 ## Authoring Rules
 
