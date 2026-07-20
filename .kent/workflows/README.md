@@ -26,23 +26,6 @@ Kent Desktop workflow graph
   conditional TV Smoke, final Compliance Review, PR/CI/waiting, and
   conservative cleanup. It uses `ask-on-first-execution`. The full
   managed-worktree canary `PUB-25` completed before default promotion.
-- `Puber Engineering Canary v2` (experimental, non-default): generic planning,
-  two-step implementation continuation, deterministic compile,
-  standards/spec fan-out and Join, and report-only cleanup. It omits runtime
-  Smoke and the PR/CI tail. Its managed-worktree canary passed on 2026-07-17.
-- `Puber Engineering Smoke Lab` (experimental, non-default): unversioned
-  generic planning and implementation, full verification fan-out/Gate,
-  conditional TV Smoke, and conservative cleanup without PR/CI. Both
-  `delivery_ready` and `smoke_required` passed managed-worktree canaries on
-  2026-07-16.
-- `Puber Engineering Delivery v4` and `Puber Engineering Canary v1`: previous
-  schema-2 generated snapshots retained for comparison.
-- `Puber Engineering Delivery v2`: superseded and retained because task
-  `PUB-20` references it. Do not start `PUB-20`; its infrastructure-only body
-  conflicts with the workflow's mandatory device Smoke stage.
-- `Puber Engineering Delivery v1`: taskless, unlinked superseded draft. Kent
-  2.3 cannot remove its stale edge through the CLI, so do not create tasks from
-  it and do not repair it through direct database mutation.
 - `Puber Feature Delivery` (legacy rollback): plan -> implement loop ->
   parallel read-only audit and deterministic compile verification -> join ->
   verification result -> fix loop or optional smoke -> compliance ->
@@ -55,35 +38,22 @@ Kent Desktop workflow graph
   create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
 - `Puber Test Coverage`: coverage gap plan -> test implementation loop -> review/fix loop -> compliance ->
   create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
-- `Puber Smoke Test`: focused device smoke test -> optional fix -> rerun smoke -> compliance ->
-  create/update PR when changes exist -> monitor CI -> waiting PR -> cleanup -> done.
 - `Puber Release`: default next minor release from `origin/master` -> version bump branch/PR -> CI -> approved tag
   publication after the PR is merged -> optional automation monitor -> cleanup -> done. Patch/major releases require
   explicit task wording.
 `Puber Engineering Delivery v5` is the project default. Legacy Feature
-Delivery remains linked as a rollback reference; auxiliary workflows are
-linked only for explicit task creation when the work type is known.
-
-Legacy split release workflows (`Puber Release Preparation` and `Puber Release Publication`) are superseded by
-`Puber Release` and must not be linked to the project for new tasks.
+Delivery remains linked because it owns real task history and provides a
+rollback reference. Auxiliary workflows are linked only for explicit task
+creation when the work type is known.
 
 ### Full Delivery v5 Canary Scope
 
-`PUB-25` completed Full Delivery v5 from exact source revision
-`29c5a6520636688027dba5dc66792db3040b73a7`, which contains this six-commit
-workflow infrastructure baseline:
-
-- `29c5a65 Adopt final delivery compliance review`
-- `0e429ed Record current Canary v2 result`
-- `3fbd65d Align mobile smoke targeting contract`
-- `a06cb9d Harden mobile smoke evidence handling`
-- `a5ca5e1 Adopt shared mobile resource locking`
-- `890434c Add conditional Smoke workflow experiments`
-
-The canary passed Final Compliance Review through the global
+`PUB-25` completed Full Delivery v5 from source revision
+`29c5a6520636688027dba5dc66792db3040b73a7`. It passed Final Compliance Review through the global
 `compliance_reviewer`, PR preparation, CI monitoring only after the PR exists,
 and waiting for GitHub to report an actual merge. The workflow did not merge
-the PR itself.
+the PR itself. The resulting audited master baseline is
+`b885f45e66fa6595bd94cdfd3f2f986c5f3905be`.
 
 ## Revision Preflight
 

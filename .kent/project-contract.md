@@ -12,8 +12,7 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - Implementation preserves and re-emits `workspace_path` and `plan_path` until all steps are complete.
 - Audit/review produces `audit_report` or `review_report`.
 - Current Delivery v5 and future generated workflows use `standards_status`
-  and `standards_report` for early Standards Review. Frozen Canary v2 and
-  Smoke Lab snapshots retain their legacy `compliance_report` output.
+  and `standards_report` for early Standards Review.
 - Verification produces `verification_report` or a concise verification summary.
 - Final Compliance Review produces `compliance_report`.
 - PR creation produces `pr_url`, `branch_name`, and `workspace_path`; no-diff/report-only PR skips produce `pr_report`.
@@ -65,11 +64,6 @@ The generated `Puber Engineering Delivery v5` Plan node follows the same
 single-session procedure through `.kent/workflow-profile.toml`. Its
 post-verification Gate follows `.kent/commands/smoke-policy.md` and records an
 explicit `smoke_required` or `delivery_ready` decision.
-`Puber Engineering Canary v2` uses generic Plan/Implement/Fix prompts and
-disables Smoke and PR/CI delivery stages.
-`Puber Engineering Smoke Lab` keeps the conditional Smoke Gate and runtime
-procedure but routes both successful branches to conservative cleanup without a
-PR/CI tail.
 
 ## Agent Contract
 
@@ -193,18 +187,16 @@ Use `Puber Release` for human-facing release tasks.
   `waiting_pr`, then publishes the tag only after explicit approval and after verifying the release PR is merged into
   `origin/master`.
 - Never create or push a release tag before the version bump is present on `origin/master`.
-- Legacy split workflows (`Puber Release Preparation`, `Puber Release Publication`) are not intended for new tasks.
 
 ## Naming Policy
 
 Use generic workflow graph keys and project-prefixed live workflow names:
 
-- Current generated non-default workflows: `Puber Engineering Delivery v5`
-  and `Puber Engineering Canary v2`, plus unversioned
-  `Puber Engineering Smoke Lab`. These are experimental labels; v4/v1 remain
-  comparison history.
+- Current generated default: `Puber Engineering Delivery v5`.
+- Temporary Canary and Smoke Lab names are reserved for bounded future
+  experiments and should be removed after their evidence is incorporated.
 - Live workflow names: `Puber Feature Delivery`, `Puber Refactor With Audit`, `Puber Bugfix Investigation`,
-  `Puber Dependency Update`, `Puber Test Coverage`, `Puber Smoke Test`, `Puber Release`.
+  `Puber Dependency Update`, `Puber Test Coverage`, `Puber Release`.
 - Node keys include `plan`, `implement`, `verification_dispatch`,
   `deterministic_verify`, `standards_review`, `spec_review`,
   `verification_join`, `verification_gate`, `fix`, `smoke`, `compliance`,
