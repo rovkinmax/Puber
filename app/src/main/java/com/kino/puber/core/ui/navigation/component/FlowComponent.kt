@@ -119,6 +119,11 @@ private fun FlowCommandRunner(router: AppRouter) {
             } else {
                 when (event) {
                     is Command.NavigateTo -> navigator.puberPush(event.screen)
+                    is Command.NavigateForResult -> {
+                        router.setOnceResultListener(event.requestCode, event.listener)
+                        navigator.puberPush(event.screen)
+                    }
+
                     is Command.Replace -> navigator.puberReplace(event.screen)
                     is Command.NewRoot -> navigator.puberReplaceAll(*event.screens.toTypedArray())
                     is Command.BackTo -> onBackTo(navigator, event)
@@ -288,6 +293,16 @@ private fun TabFlowCommandRunner(
                             navigator.puberPush(event.screen)
                         }
                     }
+                    is Command.NavigateForResult -> {
+                        contentFocusRequester.saveFocusedChild()
+                        onTabNavigateForResult(
+                            event = event,
+                            router = router,
+                            rootRouter = rootRouter,
+                            pushScreen = navigator::puberPush,
+                        )
+                    }
+
                     is Command.Replace -> navigator.puberReplace(event.screen)
                     is Command.NewRoot -> navigator.puberReplaceAll(*event.screens.toTypedArray())
                     is Command.BackTo -> onBackTo(navigator, event)
@@ -298,5 +313,41 @@ private fun TabFlowCommandRunner(
                 }
             }
         }
+    }
+}
+
+internal fun onTabNavigateForResult(
+    event: Command.NavigateForResult,
+    router: AppRouter,
+    rootRouter: AppRouter?,
+    pushScreen: (PuberScreen) -> Unit,
+) {
+    when (resolveTabResultNavigationTarget(event.screen, rootRouter)) {
+        TabResultNavigationTarget.Root -> rootRouter?.navigateForResult(
+            screen = event.screen,
+            requestCode = event.requestCode,
+            listener = event.listener,
+        )
+
+        TabResultNavigationTarget.Tab -> {
+            router.setOnceResultListener(event.requestCode, event.listener)
+            pushScreen(event.screen)
+        }
+    }
+}
+
+internal enum class TabResultNavigationTarget {
+    Root,
+    Tab,
+}
+
+internal fun resolveTabResultNavigationTarget(
+    screen: PuberScreen,
+    rootRouter: AppRouter?,
+): TabResultNavigationTarget {
+    return if (screen is RootPuberScreen && rootRouter != null) {
+        TabResultNavigationTarget.Root
+    } else {
+        TabResultNavigationTarget.Tab
     }
 }

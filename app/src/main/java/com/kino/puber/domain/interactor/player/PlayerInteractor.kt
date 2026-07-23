@@ -11,6 +11,7 @@ import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
 import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.feature.player.model.BufferPreset
+import kotlinx.coroutines.CancellationException
 
 private const val WATCHED_STATUS = 1
 private const val UNWATCHED_STATUS = 0
@@ -24,11 +25,17 @@ internal data class ResolvedMedia(
     val videoNumber: Int?,
     val episodeId: Int?,
     val episodeTitle: String?,
+    val isCurrentMediaWatched: Boolean,
     val isSeries: Boolean,
     val hasNext: Boolean,
     val hasPrevious: Boolean,
     val seasonNumber: Int?,
     val episodeNumber: Int?,
+)
+
+internal class WatchedDetailsRefreshException(cause: Throwable) : RuntimeException(
+    "Watched status was saved, but item details could not be refreshed",
+    cause,
 )
 
 private data class EpisodeCursor(
@@ -70,6 +77,7 @@ internal class PlayerInteractor(
                 videoNumber = episode?.number,
                 episodeId = episode?.id,
                 episodeTitle = episode?.title,
+                isCurrentMediaWatched = isWatched(episode?.watched),
                 isSeries = true,
                 hasNext = resolvedSeason != null && resolvedEpisode != null &&
                         findNextEpisode(item, resolvedSeason, resolvedEpisode) != null,
@@ -89,6 +97,7 @@ internal class PlayerInteractor(
                 videoNumber = video?.number,
                 episodeId = null,
                 episodeTitle = null,
+                isCurrentMediaWatched = isWatched(item.watched),
                 isSeries = false,
                 hasNext = false,
                 hasPrevious = false,
@@ -102,6 +111,8 @@ internal class PlayerInteractor(
         ItemType.SERIAL, ItemType.TV_SHOW, ItemType.DOCU_SERIAL -> true
         else -> false
     }
+
+    private fun isWatched(watched: Int?): Boolean = watched == WATCHED_STATUS
 
     fun findEpisode(item: Item, seasonNumber: Int, episodeNumber: Int) =
         item.seasons
@@ -216,30 +227,55 @@ internal class PlayerInteractor(
     }
 
     suspend fun saveWatchingTime(id: Int, videoNumber: Int, time: Int, season: Int? = null) {
-        api.setWatchingTime(id, videoNumber, time, season)
+        api.setWatchingTime(id, videoNumber, time, season).getOrThrow()
+        itemDetailsRepository.invalidate(id)
     }
 
     suspend fun markAsWatched(id: Int, season: Int? = null, videoNumber: Int? = null) {
-        api.toggleWatchingStatus(id, status = WATCHED_STATUS, season = season, video = videoNumber)
+        api.toggleWatchingStatus(id, status = WATCHED_STATUS, season = season, video = videoNumber).getOrThrow()
+        itemDetailsRepository.invalidate(id)
     }
 
-    suspend fun setEpisodeWatched(id: Int, season: Int, episode: Int, watched: Boolean): Item {
+    suspend fun markCurrentAsWatched(id: Int, season: Int? = null, episode: Int? = null): Item {
+        markAsWatched(id = id, season = season, videoNumber = episode)
+        return try {
+            itemDetailsRepository.getItemDetails(id)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            throw WatchedDetailsRefreshException(error)
+        }
+    }
+
+    suspend fun setEpisodeWatched(id: Int, season: Int, episode: Int, watched: Boolean): Item? {
         api.toggleWatchingStatus(
             id = id,
             status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS,
             season = season,
             video = episode,
         ).getOrThrow()
-        return itemDetailsRepository.refresh(id)
+        itemDetailsRepository.invalidate(id)
+        return loadItemDetailsAfterMutation(id)
     }
 
-    suspend fun setSeasonWatched(id: Int, season: Int, watched: Boolean): Item {
+    suspend fun setSeasonWatched(id: Int, season: Int, watched: Boolean): Item? {
         api.toggleWatchingStatus(
             id = id,
             status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS,
             season = season,
         ).getOrThrow()
-        return itemDetailsRepository.refresh(id)
+        itemDetailsRepository.invalidate(id)
+        return loadItemDetailsAfterMutation(id)
+    }
+
+    private suspend fun loadItemDetailsAfterMutation(id: Int): Item? {
+        return try {
+            itemDetailsRepository.getItemDetails(id)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     fun getPreferredAudioLang(itemId: Int): String? {

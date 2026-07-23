@@ -4,8 +4,12 @@ import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.PaginatedResponse
+import com.kino.puber.data.repository.ItemDetailsRepository
 
-class BookmarkInteractor(private val api: KinoPubApiClient) {
+class BookmarkInteractor(
+    private val api: KinoPubApiClient,
+    private val itemDetailsRepository: ItemDetailsRepository,
+) {
 
     suspend fun getBookmarks(): List<Bookmark> {
         return api.getBookmarks().getOrThrow()
@@ -21,5 +25,6 @@ class BookmarkInteractor(private val api: KinoPubApiClient) {
         } else {
             api.removeBookmarkItem(itemId = itemId, folderId = folderId).getOrThrow()
         }
+        itemDetailsRepository.invalidate(itemId)
     }
 }

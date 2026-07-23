@@ -1,11 +1,15 @@
 package com.kino.puber.ui.feature.details.vm
 
 import com.kino.puber.R
+import com.kino.puber.core.content.ContentChange
+import com.kino.puber.core.content.ContentChangeSet
+import com.kino.puber.core.content.ContentChangeType
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -18,6 +22,13 @@ import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
 import com.kino.puber.ui.feature.details.model.DetailsScreenUIMapper
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 internal class DetailsVM(
     router: AppRouter,
@@ -39,14 +50,23 @@ internal class DetailsVM(
         }
     }
     private var currentItem: Item? = null
+    private var contentChanges = ContentChangeSet.empty()
+    private val pendingMutations = mutableSetOf<Job>()
+    private val mutationMutex = Mutex()
+    private var closeJob: Job? = null
+    private var closing = false
 
     override fun onStart() {
         loadData()
     }
 
-    private fun loadData() {
+    private fun loadData(forceRefresh: Boolean = false) {
         launch {
-            val item = interactor.getItemDetails(params.itemId)
+            val item = if (forceRefresh) {
+                interactor.refreshItemDetails(params.itemId)
+            } else {
+                interactor.getItemDetails(params.itemId)
+            }
             currentItem = item
             updateViewState(mapper.map(item, isInWatchlist = interactor.isInWatchLaterFolder(item)))
             loadSimilarItems()
@@ -69,8 +89,9 @@ internal class DetailsVM(
     }
 
     override fun onAction(action: UIAction) {
+        if (closing) return
         when (action) {
-            is DetailsAction.PlayClicked -> router.navigateTo(router.screens.player(params.itemId))
+            is DetailsAction.PlayClicked -> openPlayer(params.itemId)
             is DetailsAction.TrailerClicked -> showTrailer()
             is DetailsAction.CloseTrailer -> hideTrailer()
             is DetailsAction.SelectSeasonClicked -> showSeasonsPanel()
@@ -79,15 +100,15 @@ internal class DetailsVM(
             is DetailsAction.EpisodeSelected -> onEpisodeSelected(action.item)
             is DetailsAction.EpisodeWatchedChanged -> onEpisodeWatchedChanged(action.item, action.watched)
             is DetailsAction.SeasonWatchedChanged -> onSeasonWatchedChanged(action.item, action.watched)
-            is DetailsAction.SimilarSelected -> router.navigateTo(router.screens.details(action.item.id))
+            is DetailsAction.SimilarSelected -> openDetails(action.item.id)
             is DetailsAction.CloseSeasonsPanel -> hideSeasonsPanel()
             is CommonAction.ItemSelected<*> -> {
                 val item = action.item as VideoItemUIState
-                router.navigateTo(router.screens.details(item.id))
+                openDetails(item.id)
             }
             is CommonAction.ItemPlayed<*> -> {
                 val item = action.item as VideoItemUIState
-                router.navigateTo(router.screens.player(item.id))
+                openPlayer(item.id)
             }
             is CommonAction.ItemSavedChanged<*> -> {
                 val item = action.item as VideoItemUIState
@@ -116,9 +137,7 @@ internal class DetailsVM(
         for (season in seasons) {
             val episode = season.episodes?.find { it.id == episodeItem.id }
             if (episode != null) {
-                router.navigateTo(
-                    router.screens.player(params.itemId, season.number, episode.number)
-                )
+                openPlayer(params.itemId, season.number, episode.number)
                 return
             }
         }
@@ -127,12 +146,14 @@ internal class DetailsVM(
     private fun onEpisodeWatchedChanged(episodeItem: VideoItemUIState, watched: Boolean) {
         val season = episodeItem.seasonNumber ?: return
         val episode = episodeItem.episodeNumber ?: return
-        launch {
-            val item = interactor.setEpisodeWatched(params.itemId, season, episode, watched)
-            updateCurrentItem(item)
+        launchMutation {
+            val update = interactor.setEpisodeWatched(params.itemId, season, episode, watched)
+            markContentChanged(params.itemId, ContentChangeType.Watched)
+            applyEpisodeWatched(season, episode, update.isWatched)
+            refreshAfterMutation()
             showMessage(
                 resources.getString(
-                    if (watched) {
+                    if (update.isWatched) {
                         R.string.context_menu_episode_watched
                     } else {
                         R.string.context_menu_episode_unwatched
@@ -144,12 +165,14 @@ internal class DetailsVM(
 
     private fun onSeasonWatchedChanged(episodeItem: VideoItemUIState, watched: Boolean) {
         val season = episodeItem.seasonNumber ?: return
-        launch {
-            val item = interactor.setSeasonWatched(params.itemId, season, watched)
-            updateCurrentItem(item)
+        launchMutation {
+            val update = interactor.setSeasonWatched(params.itemId, season, watched)
+            markContentChanged(params.itemId, ContentChangeType.Watched)
+            applySeasonWatched(season, update.isWatched)
+            refreshAfterMutation()
             showMessage(
                 resources.getString(
-                    if (watched) {
+                    if (update.isWatched) {
                         R.string.context_menu_season_watched
                     } else {
                         R.string.context_menu_season_unwatched
@@ -159,11 +182,18 @@ internal class DetailsVM(
         }
     }
 
-    private suspend fun updateCurrentItem(item: Item) {
+    private fun updateCurrentItem(
+        item: Item,
+        isInWatchlist: Boolean,
+        isWatched: Boolean? = null,
+    ) {
         val state = stateValue as? DetailsScreenState.Content
+        val mapped = mapper.map(item, isInWatchlist = isInWatchlist)
         currentItem = item
         updateViewState(
-            mapper.map(item, isInWatchlist = interactor.isInWatchLaterFolder(item)).copy(
+            mapped.copy(
+                isInWatchlist = isInWatchlist,
+                isWatched = isWatched ?: mapped.isWatched,
                 seasonsPanelVisible = state?.seasonsPanelVisible ?: false,
                 similarItems = state?.similarItems.orEmpty(),
                 trailerUrl = state?.trailerUrl,
@@ -185,12 +215,16 @@ internal class DetailsVM(
     }
 
     override fun onBackPressed() {
+        if (closing) {
+            router.addBackDispatcher(this)
+            return
+        }
         val state = stateValue as? DetailsScreenState.Content
         when {
             state?.trailerUrl != null -> hideTrailer()
             state?.seasonsPanelVisible == true -> hideSeasonsPanel()
             else -> {
-                router.back()
+                closeDetails()
                 return
             }
         }
@@ -199,63 +233,68 @@ internal class DetailsVM(
 
     private fun onWatchlistToggle() {
         val previous = (stateValue as? DetailsScreenState.Content)?.isInWatchlist ?: return
+        val desired = !previous
         updateViewState<DetailsScreenState.Content> {
-            copy(isInWatchlist = !isInWatchlist)
+            copy(isInWatchlist = desired)
         }
-        launch {
+        launchMutation {
             try {
-                val item = if (itemIsSeriesLike()) {
-                    interactor.toggleWatchlist(params.itemId)
+                if (itemIsSeriesLike()) {
+                    updateSeriesWatchlist(desired)
                 } else {
-                    val update = interactor.setMovieBookmarked(params.itemId, bookmarked = !previous)
-                    currentItem = update.item
-                    updateViewState<DetailsScreenState.Content> {
-                        copy(isInWatchlist = update.isBookmarked)
-                    }
-                    val message = if (update.isBookmarked) {
-                        resources.getString(
-                            R.string.video_details_bookmark_added_to_folder,
-                            update.folderTitle ?: WatchLaterBookmarkInteractor.FOLDER_TITLE,
-                        )
-                    } else {
-                        resources.getString(
-                            R.string.video_details_bookmark_removed_from_folder,
-                            update.folderTitle ?: WatchLaterBookmarkInteractor.FOLDER_TITLE,
-                        )
-                    }
-                    showMessage(message)
-                    return@launch
+                    updateMovieBookmark(previous)
                 }
-                currentItem = item
-                val inWatchlist = if (itemIsSeriesLike()) {
-                    item.inWatchlist ?: !previous
-                } else {
-                    interactor.isInWatchLaterFolder(item)
-                }
-                updateViewState<DetailsScreenState.Content> {
-                    copy(isInWatchlist = inWatchlist)
-                }
-                val messageRes = if (inWatchlist) {
-                    if (itemIsSeriesLike()) {
-                        R.string.video_details_watchlist_added
-                    } else {
-                        R.string.video_details_watch_later_added
-                    }
-                } else {
-                    if (itemIsSeriesLike()) {
-                        R.string.video_details_watchlist_removed
-                    } else {
-                        R.string.video_details_watch_later_removed
-                    }
-                }
-                showMessage(resources.getString(messageRes))
-            } catch (e: Exception) {
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
                 updateViewState<DetailsScreenState.Content> {
                     copy(isInWatchlist = previous)
                 }
-                throw e
+                throw error
             }
         }
+    }
+
+    private suspend fun updateSeriesWatchlist(desired: Boolean) {
+        val isInWatchlist = savedItemInteractor.setSaved(
+            itemId = params.itemId,
+            isSeriesLike = true,
+            saved = desired,
+        ).getOrThrow()
+        markContentChanged(params.itemId, ContentChangeType.Watchlist)
+        updateViewState<DetailsScreenState.Content> {
+            copy(isInWatchlist = isInWatchlist)
+        }
+        currentItem = currentItem?.copy(inWatchlist = isInWatchlist)
+        refreshAfterMutation(isInWatchlist = isInWatchlist)
+        showMessage(
+            resources.getString(
+                if (isInWatchlist) {
+                    R.string.video_details_watchlist_added
+                } else {
+                    R.string.video_details_watchlist_removed
+                }
+            )
+        )
+    }
+
+    private suspend fun updateMovieBookmark(previous: Boolean) {
+        val update = interactor.setMovieBookmarked(params.itemId, bookmarked = !previous)
+        markContentChanged(params.itemId, ContentChangeType.Bookmark)
+        updateViewState<DetailsScreenState.Content> {
+            copy(isInWatchlist = update.isBookmarked)
+        }
+        refreshAfterMutation(isInWatchlist = update.isBookmarked)
+        showMessage(
+            resources.getString(
+                if (update.isBookmarked) {
+                    R.string.video_details_bookmark_added_to_folder
+                } else {
+                    R.string.video_details_bookmark_removed_from_folder
+                },
+                update.folderTitle ?: WatchLaterBookmarkInteractor.FOLDER_TITLE,
+            )
+        )
     }
 
     private fun onWatchedToggle() {
@@ -264,40 +303,55 @@ internal class DetailsVM(
         updateViewState<DetailsScreenState.Content> {
             copy(isWatched = !isWatched)
         }
-        launch {
+        launchMutation {
             try {
                 val update = interactor.setMovieWatched(params.itemId, watched = !previous)
-                currentItem = update.item
+                markContentChanged(params.itemId, ContentChangeType.Watched)
                 updateViewState<DetailsScreenState.Content> {
                     copy(isWatched = update.isWatched)
                 }
-                val messageRes = if (!previous) {
+                currentItem = currentItem?.copy(watched = update.isWatched.toStatus())
+                refreshAfterMutation(isWatched = update.isWatched)
+                val messageRes = if (update.isWatched) {
                     R.string.video_details_watched_added
                 } else {
                     R.string.video_details_watched_removed
                 }
                 showMessage(resources.getString(messageRes))
-            } catch (e: Exception) {
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
                 updateViewState<DetailsScreenState.Content> {
                     copy(isWatched = previous)
                 }
-                throw e
+                throw error
             }
         }
     }
 
     private fun setSimilarItemSaved(item: VideoItemUIState, saved: Boolean) {
         updateSimilarItemSaved(item.id, saved)
-        launch {
-            savedItemInteractor.setSaved(
-                itemId = item.id,
-                isSeriesLike = item.isSeriesLike,
-                saved = saved,
-            ).onSuccess { actualSaved ->
+        launchMutation {
+            try {
+                val actualSaved = savedItemInteractor.setSaved(
+                    itemId = item.id,
+                    isSeriesLike = item.isSeriesLike,
+                    saved = saved,
+                ).getOrThrow()
+                markContentChanged(
+                    itemId = item.id,
+                    type = if (item.isSeriesLike) {
+                        ContentChangeType.Watchlist
+                    } else {
+                        ContentChangeType.Bookmark
+                    },
+                )
                 updateSimilarItemSaved(item.id, actualSaved)
-            }.onFailure {
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
                 updateSimilarItemSaved(item.id, item.isSaved)
-                throw it
+                throw error
             }
         }
     }
@@ -316,4 +370,154 @@ internal class DetailsVM(
         return currentItem?.type?.isSeriesLike() ?: false
     }
 
+    private fun openPlayer(itemId: Int, seasonNumber: Int? = null, episodeNumber: Int? = null) {
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.player(itemId, seasonNumber, episodeNumber),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
+    }
+
+    private fun openDetails(itemId: Int) {
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.details(itemId),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
+    }
+
+    private fun onReturnedContentChanges(changes: ContentChangeSet?) {
+        if (changes == null || changes.isEmpty) return
+        contentChanges = contentChanges.merge(changes)
+        if (changes.affectsItem(params.itemId)) {
+            loadData(forceRefresh = true)
+            return
+        }
+
+        val content = stateValue as? DetailsScreenState.Content ?: return
+        if (content.similarItems.any { item -> changes.affectsItem(item.id) }) {
+            loadSimilarItems()
+        }
+    }
+
+    private fun markContentChanged(itemId: Int, type: ContentChangeType) {
+        contentChanges = contentChanges.merge(ContentChange(itemId, type))
+    }
+
+    private fun launchMutation(block: suspend CoroutineScope.() -> Unit): Job {
+        lateinit var job: Job
+        job = launch(start = CoroutineStart.LAZY) {
+            try {
+                mutationMutex.withLock {
+                    block()
+                }
+            } finally {
+                pendingMutations.remove(job)
+            }
+        }
+        pendingMutations += job
+        job.start()
+        return job
+    }
+
+    private suspend fun awaitPendingMutations() {
+        while (true) {
+            val activeJobs = pendingMutations.filter(Job::isActive)
+            if (activeJobs.isEmpty()) return
+            activeJobs.joinAll()
+        }
+    }
+
+    private fun closeDetails() {
+        if (closeJob != null) return
+        closing = true
+        router.addBackDispatcher(this)
+        closeJob = launch {
+            awaitPendingMutations()
+            router.removeBackDispatcher(this@DetailsVM)
+            router.back(RESULT_CONTENT_CHANGED, contentChanges)
+        }
+    }
+
+    private suspend fun refreshAfterMutation(
+        isInWatchlist: Boolean? = null,
+        isWatched: Boolean? = null,
+    ) {
+        val item = try {
+            interactor.refreshItemDetails(params.itemId)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            return
+        }
+        val resolvedWatchlist = if (item.type.isSeriesLike() && isInWatchlist != null) {
+            isInWatchlist
+        } else {
+            try {
+                interactor.isInWatchLaterFolder(item)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                isInWatchlist ?: (stateValue as? DetailsScreenState.Content)?.isInWatchlist ?: false
+            }
+        }
+        updateCurrentItem(
+            item = item,
+            isInWatchlist = resolvedWatchlist,
+            isWatched = isWatched,
+        )
+    }
+
+    private fun applyEpisodeWatched(seasonNumber: Int, episodeNumber: Int, watched: Boolean) {
+        val item = currentItem ?: return
+        currentItem = item.copy(
+            seasons = item.seasons?.map { season ->
+                if (season.number != seasonNumber) {
+                    season
+                } else {
+                    season.copy(
+                        episodes = season.episodes?.map { episode ->
+                            if (episode.number == episodeNumber) {
+                                episode.copy(watched = watched.toStatus())
+                            } else {
+                                episode
+                            }
+                        }
+                    )
+                }
+            }
+        )
+        remapCurrentItem()
+    }
+
+    private fun applySeasonWatched(seasonNumber: Int, watched: Boolean) {
+        val item = currentItem ?: return
+        currentItem = item.copy(
+            seasons = item.seasons?.map { season ->
+                if (season.number != seasonNumber) {
+                    season
+                } else {
+                    season.copy(
+                        episodes = season.episodes?.map { episode ->
+                            episode.copy(watched = watched.toStatus())
+                        }
+                    )
+                }
+            }
+        )
+        remapCurrentItem()
+    }
+
+    private fun remapCurrentItem() {
+        val item = currentItem ?: return
+        val watchlist = (stateValue as? DetailsScreenState.Content)?.isInWatchlist ?: false
+        updateCurrentItem(item, watchlist)
+    }
+
+    private fun Boolean.toStatus(): Int = if (this) WATCHED_STATUS else UNWATCHED_STATUS
+
+    private companion object {
+        const val WATCHED_STATUS = 1
+        const val UNWATCHED_STATUS = 0
+    }
 }

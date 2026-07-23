@@ -1,10 +1,12 @@
 package com.kino.puber.ui.feature.search.vm
 
+import com.kino.puber.core.content.ContentChangeSet
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -68,11 +70,24 @@ internal class SearchVM(
     }
 
     private fun onItemSelected(item: VideoItemUIState) {
-        router.navigateTo(router.screens.details(itemId = item.id))
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.details(itemId = item.id),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
     }
 
     private fun onItemPlayed(item: VideoItemUIState) {
-        router.navigateTo(router.screens.player(itemId = item.id))
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.player(itemId = item.id),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
+    }
+
+    private fun onReturnedContentChanges(changes: ContentChangeSet?) {
+        if (changes == null || changes.isEmpty || query.length < MIN_QUERY_LENGTH) return
+        executeSearch()
     }
 
     private fun setItemSaved(item: VideoItemUIState, saved: Boolean) {

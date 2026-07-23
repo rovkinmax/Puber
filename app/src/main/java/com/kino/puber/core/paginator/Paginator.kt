@@ -14,6 +14,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import java.util.Collections
+import kotlin.coroutines.CoroutineContext
 
 
 @Suppress("UNCHECKED_CAST")
@@ -645,9 +646,12 @@ object Paginator {
     }
 
 
-    class Store<T>(private val comparator: EquallyFunction<T>) :
+    class Store<T>(
+        coroutineContext: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
+        private val comparator: EquallyFunction<T>,
+    ) :
         CoroutineScope by CoroutineScope(
-            Dispatchers.Default.limitedParallelism(1) + CoroutineName("Paginator.State"),
+            coroutineContext + CoroutineName("Paginator.State"),
         ) {
         private var state: State = State.Empty
         private val actions = Channel<Action>(Channel.UNLIMITED)

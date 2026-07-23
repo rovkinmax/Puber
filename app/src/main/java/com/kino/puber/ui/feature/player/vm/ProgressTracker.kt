@@ -8,8 +8,6 @@ import kotlinx.coroutines.launch
 
 internal class ProgressTracker {
     private var syncJob: Job? = null
-    var isMarkedWatched = false
-        private set
 
     fun startSync(
         scope: CoroutineScope,
@@ -32,11 +30,4 @@ internal class ProgressTracker {
         syncJob?.cancel()
     }
 
-    fun markAsWatched() {
-        isMarkedWatched = true
-    }
-
-    fun reset() {
-        isMarkedWatched = false
-    }
 }

@@ -42,10 +42,21 @@ internal class ContentListInteractor(
     }
 
     suspend fun getItemDetails(id: Int): Item {
-        val cacheKey = "${KinoPubConfig.CURRENT_API_DOMAIN}_$id"
-        return detailedItemsCache.getOrPut(cacheKey) {
+        return detailedItemsCache.getOrPut(itemDetailsCacheKey(id)) {
             api.getItemDetails(id).getOrThrow().item!!
         }
+    }
+
+    fun invalidateFirstPageCache() {
+        firstPageCache.clear()
+    }
+
+    fun invalidateItemDetails(id: Int) {
+        detailedItemsCache.remove(itemDetailsCacheKey(id))
+    }
+
+    private fun itemDetailsCacheKey(id: Int): String {
+        return "${KinoPubConfig.CURRENT_API_DOMAIN}_$id"
     }
 
     companion object {

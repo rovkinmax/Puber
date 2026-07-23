@@ -19,6 +19,10 @@ class ItemDetailsRepository(private val api: KinoPubApiClient) {
         return getItemDetails(id)
     }
 
+    fun invalidate(id: Int) {
+        cache.remove(id)
+    }
+
     fun clear() {
         cache.clear()
     }

@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -63,11 +64,12 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
 
     protected fun launch(
         context: CoroutineContext = exceptionHandler(),
+        start: CoroutineStart = CoroutineStart.DEFAULT,
         block: suspend CoroutineScope.() -> Unit,
     ): Job {
         return viewModelScope.launch(
             context = context,
-            CoroutineStart.DEFAULT
+            start = start,
         ) { block.invoke(this) }
     }
 
@@ -105,6 +107,11 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
         if (started.compareAndSet(false, true)) {
             onStart()
         }
+    }
+
+    @VisibleForTesting
+    internal fun testCancelScope() {
+        viewModelScope.cancel()
     }
 
     open fun onAction(action: UIAction) {

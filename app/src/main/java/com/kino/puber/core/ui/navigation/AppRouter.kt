@@ -16,7 +16,7 @@ class AppRouter(
     //val scopeName: String, // for debug info
 ) {
     private val sharedFlow = MutableSharedFlow<Command>(extraBufferCapacity = 0, replay = 1)
-    private val onceListeners = HashMap<Int, OnResult<Any>>()
+    private val onceListeners = HashMap<Int, ArrayDeque<OnResult<Any>>>()
     private val backDispatchersStack = ArrayDeque<BackButtonDispatcher>()
 
     fun events(): Flow<Command> {
@@ -29,20 +29,21 @@ class AppRouter(
 
     @Suppress("UNCHECKED_CAST")
     fun <T : Any> navigateForResult(screen: PuberScreen, requestCode: Int, listener: OnResult<T>) {
-        onceListeners[requestCode] = listener as OnResult<Any>
-        navigateTo(screen)
+        runCommand(Command.NavigateForResult(screen, requestCode, listener as OnResult<Any>))
     }
 
     @Suppress("UNCHECKED_CAST")
     fun <T : Any> setOnceResultListener(resultCode: Int, listener: OnResult<T>) {
-        onceListeners[resultCode] = listener as OnResult<Any>
+        onceListeners.getOrPut(resultCode) { ArrayDeque() }.addLast(listener as OnResult<Any>)
     }
 
     fun newRootScreen(vararg screen: PuberScreen) {
+        onceListeners.clear()
         runCommand(Command.NewRoot(screen.toList()))
     }
 
     fun newRootScreens(screens: List<PuberScreen>) {
+        onceListeners.clear()
         runCommand(Command.NewRoot(screens.toList()))
     }
 
@@ -92,9 +93,10 @@ class AppRouter(
     }
 
     private fun dispatchResult(resultCode: Int, result: Any?) {
-        val resultListener = onceListeners[resultCode]
-        if (resultListener != null) {
-            resultListener.invoke(result)
+        val resultListeners = onceListeners[resultCode] ?: return
+        val resultListener = resultListeners.pollLast() ?: return
+        resultListener.invoke(result)
+        if (resultListeners.isEmpty()) {
             onceListeners.remove(resultCode)
         }
     }
@@ -108,6 +110,12 @@ class AppRouter(
 
 sealed class Command(open val screen: PuberScreen? = null) {
     data class NavigateTo(override val screen: PuberScreen) : Command(screen)
+    data class NavigateForResult(
+        override val screen: PuberScreen,
+        val requestCode: Int,
+        val listener: OnResult<Any>,
+    ) : Command(screen)
+
     data class NewRoot(val screens: List<PuberScreen>) : Command(screens.lastOrNull())
     data class Replace(override val screen: PuberScreen) : Command(screen)
     data object Back : Command()

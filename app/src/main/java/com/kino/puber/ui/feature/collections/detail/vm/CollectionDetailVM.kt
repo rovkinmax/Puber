@@ -1,10 +1,12 @@
 package com.kino.puber.ui.feature.collections.detail.vm
 
+import com.kino.puber.core.content.ContentChangeSet
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -40,11 +42,11 @@ internal class CollectionDetailVM(
         when (action) {
             is CommonAction.ItemSelected<*> -> {
                 val item = action.item as VideoItemUIState
-                router.navigateTo(router.screens.details(item.id))
+                openDetails(item.id)
             }
             is CommonAction.ItemPlayed<*> -> {
                 val item = action.item as VideoItemUIState
-                router.navigateTo(router.screens.player(item.id))
+                openPlayer(item.id)
             }
             is CommonAction.ItemSavedChanged<*> -> {
                 val item = action.item as VideoItemUIState
@@ -66,6 +68,27 @@ internal class CollectionDetailVM(
                 )
             )
         }
+    }
+
+    private fun openDetails(itemId: Int) {
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.details(itemId),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
+    }
+
+    private fun openPlayer(itemId: Int) {
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.player(itemId),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
+    }
+
+    private fun onReturnedContentChanges(changes: ContentChangeSet?) {
+        if (changes == null || changes.isEmpty) return
+        loadItems()
     }
 
     private fun setItemSaved(item: VideoItemUIState, saved: Boolean) {

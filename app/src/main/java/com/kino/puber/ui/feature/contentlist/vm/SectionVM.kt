@@ -25,6 +25,7 @@ internal class SectionVM(
     private val mapper: VideoItemUIMapper,
     router: AppRouter,
     errorHandler: ErrorHandler,
+    private val contentListRefreshCoordinator: ContentListRefreshCoordinator,
 ) : PagingVM<Item, SectionState>(paginator, router, errorHandler) {
 
     // Collect state without back dispatcher — for use outside LazyColumn items
@@ -40,7 +41,18 @@ internal class SectionVM(
 
     override val initialViewState = SectionState.Loading
 
-    override fun onStart() = init()
+    override fun onStart() {
+        init()
+        launch {
+            contentListRefreshCoordinator.refreshRequests.collect {
+                refreshFirstPage()
+            }
+        }
+    }
+
+    fun refreshFirstPage() {
+        resetPaging()
+    }
 
     override fun onLoadFirstPage() {
         currentPage = 0
@@ -117,6 +129,8 @@ internal class SectionVM(
                 saved = saved,
             ).onSuccess { actualSaved ->
                 updateSavedItem(item.id, actualSaved)
+                interactor.invalidateFirstPageCache()
+                contentListRefreshCoordinator.requestRefresh()
             }.onFailure {
                 updateSavedItem(item.id, item.isSaved)
                 throw it

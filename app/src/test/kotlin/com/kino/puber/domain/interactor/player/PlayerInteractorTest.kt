@@ -7,10 +7,16 @@ import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.Season
 import com.kino.puber.data.api.models.VideoFile
 import com.kino.puber.data.api.models.VideoUrl
+import com.kino.puber.data.api.models.WatchingStatus
+import com.kino.puber.data.api.models.WatchingToggleResponse
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -262,12 +268,19 @@ class PlayerInteractorTest {
     fun resolveMedia_movie_returnsCorrectFlags() {
         val result = interactor.resolveMedia(movieItem, seasonNumber = null, episodeNumber = null)
         assertFalse(result.isSeries)
+        assertFalse(result.isCurrentMediaWatched)
         assertFalse(result.hasNext)
         assertFalse(result.hasPrevious)
         assertNull(result.seasonNumber)
         assertNull(result.episodeNumber)
         assertNull(result.episodeId)
         assertNull(result.episodeTitle)
+    }
+
+    @Test
+    fun resolveMedia_movie_setsWatchedStateFromItem() {
+        val result = interactor.resolveMedia(movieItem.copy(watched = 1), seasonNumber = null, episodeNumber = null)
+        assertTrue(result.isCurrentMediaWatched)
     }
 
     @Test
@@ -303,6 +316,163 @@ class PlayerInteractorTest {
         assertEquals(episode1.id, result.episodeId)
         assertEquals(episode1.title, result.episodeTitle)
         assertEquals(episode1.number, result.videoNumber)
+    }
+
+    @Test
+    fun resolveMedia_series_setsWatchedStateFromEpisode() {
+        val watchedEpisode = episode2.copy(watched = 1)
+        val item = serialItem.copy(
+            seasons = listOf(season1.copy(episodes = listOf(episode1, watchedEpisode, episode3)), season2)
+        )
+
+        val result = interactor.resolveMedia(item, seasonNumber = 1, episodeNumber = 2)
+
+        assertTrue(result.isCurrentMediaWatched)
+    }
+
+    @Test
+    fun markCurrentAsWatched_movieMarksAndRefreshesItem() = runTest {
+        val refreshed = movieItem.copy(watched = 1)
+        coEvery {
+            api.toggleWatchingStatus(id = 10, status = 1, season = null, video = null)
+        } returns Result.success(WatchingToggleResponse(status = 1, watched = 1))
+        every { itemDetailsRepository.invalidate(10) } returns Unit
+        coEvery { itemDetailsRepository.getItemDetails(10) } returns refreshed
+
+        val result = interactor.markCurrentAsWatched(id = 10)
+
+        assertEquals(refreshed, result)
+        coVerify(exactly = 1) {
+            api.toggleWatchingStatus(id = 10, status = 1, season = null, video = null)
+        }
+        verify(exactly = 1) { itemDetailsRepository.invalidate(10) }
+        coVerify(exactly = 1) { itemDetailsRepository.getItemDetails(10) }
+    }
+
+    @Test
+    fun markCurrentAsWatched_episodeUsesSeasonAndEpisodeThenRefreshesItem() = runTest {
+        val refreshed = serialItem.copy(seasons = listOf(season1.copy(episodes = listOf(episode1.copy(watched = 1)))))
+        coEvery {
+            api.toggleWatchingStatus(id = 42, status = 1, season = 1, video = 1)
+        } returns Result.success(WatchingToggleResponse(status = 1, watched = 1))
+        every { itemDetailsRepository.invalidate(42) } returns Unit
+        coEvery { itemDetailsRepository.getItemDetails(42) } returns refreshed
+
+        val result = interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1)
+
+        assertEquals(refreshed, result)
+        coVerify(exactly = 1) {
+            api.toggleWatchingStatus(id = 42, status = 1, season = 1, video = 1)
+        }
+        verify(exactly = 1) { itemDetailsRepository.invalidate(42) }
+        coVerify(exactly = 1) { itemDetailsRepository.getItemDetails(42) }
+    }
+
+    @Test
+    fun markCurrentAsWatched_writeSuccessAndRefreshFailure_reportsPartialSuccess() = runTest {
+        coEvery {
+            api.toggleWatchingStatus(id = 42, status = 1, season = 1, video = 1)
+        } returns Result.success(WatchingToggleResponse(status = 1, watched = 1))
+        every { itemDetailsRepository.invalidate(42) } returns Unit
+        coEvery { itemDetailsRepository.getItemDetails(42) } throws IllegalStateException("refresh failed")
+
+        val failure = runCatching {
+            interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1)
+        }.exceptionOrNull()
+
+        assertTrue(failure is WatchedDetailsRefreshException)
+        assertTrue(failure?.cause is IllegalStateException)
+        verify(exactly = 1) { itemDetailsRepository.invalidate(42) }
+    }
+
+    @Test
+    fun setEpisodeWatched_writeSuccessAndRefreshFailure_returnsNull() = runTest {
+        coEvery {
+            api.toggleWatchingStatus(id = 42, status = 1, season = 1, video = 2)
+        } returns Result.success(WatchingToggleResponse(status = 1, watched = 1))
+        every { itemDetailsRepository.invalidate(42) } returns Unit
+        coEvery { itemDetailsRepository.getItemDetails(42) } throws IllegalStateException("refresh failed")
+
+        val result = interactor.setEpisodeWatched(42, season = 1, episode = 2, watched = true)
+
+        assertNull(result)
+        verify(exactly = 1) { itemDetailsRepository.invalidate(42) }
+    }
+
+    @Test
+    fun setSeasonWatched_writeSuccessAndRefreshFailure_returnsNull() = runTest {
+        coEvery {
+            api.toggleWatchingStatus(id = 42, status = 0, season = 1, video = null)
+        } returns Result.success(WatchingToggleResponse(status = 0, watched = 0))
+        every { itemDetailsRepository.invalidate(42) } returns Unit
+        coEvery { itemDetailsRepository.getItemDetails(42) } throws IllegalStateException("refresh failed")
+
+        val result = interactor.setSeasonWatched(42, season = 1, watched = false)
+
+        assertNull(result)
+        verify(exactly = 1) { itemDetailsRepository.invalidate(42) }
+    }
+
+    // endregion
+
+    // region cache invalidation
+
+    @Test
+    fun saveWatchingTime_success_invalidatesItemDetailsCache() = runTest {
+        coEvery { api.setWatchingTime(42, 1, 120, 2) } returns Result.success(
+            WatchingStatus(id = 42, status = 1, time = 120, season = 2, episode = 1),
+        )
+        every { itemDetailsRepository.invalidate(any()) } returns Unit
+
+        interactor.saveWatchingTime(id = 42, videoNumber = 1, time = 120, season = 2)
+
+        coVerify(exactly = 1) { api.setWatchingTime(42, 1, 120, 2) }
+        verify(exactly = 1) { itemDetailsRepository.invalidate(42) }
+    }
+
+    @Test
+    fun saveWatchingTime_failure_doesNotInvalidateItemDetailsCache() = runTest {
+        coEvery { api.setWatchingTime(42, 1, 120, null) } returns Result.failure(
+            IllegalStateException("save failed"),
+        )
+        every { itemDetailsRepository.invalidate(any()) } returns Unit
+
+        val failure = runCatching {
+            interactor.saveWatchingTime(id = 42, videoNumber = 1, time = 120)
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        coVerify(exactly = 1) { api.setWatchingTime(42, 1, 120, null) }
+        verify(exactly = 0) { itemDetailsRepository.invalidate(any()) }
+    }
+
+    @Test
+    fun markAsWatched_success_invalidatesItemDetailsCache() = runTest {
+        coEvery { api.toggleWatchingStatus(42, 1, 2, 3) } returns Result.success(
+            WatchingToggleResponse(status = 1, watched = 1),
+        )
+        every { itemDetailsRepository.invalidate(any()) } returns Unit
+
+        interactor.markAsWatched(id = 42, season = 2, videoNumber = 3)
+
+        coVerify(exactly = 1) { api.toggleWatchingStatus(42, 1, 2, 3) }
+        verify(exactly = 1) { itemDetailsRepository.invalidate(42) }
+    }
+
+    @Test
+    fun markAsWatched_failure_doesNotInvalidateItemDetailsCache() = runTest {
+        coEvery { api.toggleWatchingStatus(42, 1, null, null) } returns Result.failure(
+            IllegalStateException("mark failed"),
+        )
+        every { itemDetailsRepository.invalidate(any()) } returns Unit
+
+        val failure = runCatching {
+            interactor.markAsWatched(id = 42)
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        coVerify(exactly = 1) { api.toggleWatchingStatus(42, 1, null, null) }
+        verify(exactly = 0) { itemDetailsRepository.invalidate(any()) }
     }
 
     // endregion
