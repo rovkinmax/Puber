@@ -19,10 +19,12 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
@@ -56,7 +58,18 @@ class SectionVMTest {
         verify(exactly = 0) { interactor.invalidateFirstPageCache() }
         assertEquals(listOf(Paginator.SideEffect.LoadFirstPage), sideEffects)
         sideEffectCollector.cancel()
+        vm.testCancelScope()
         paginator.close()
+    }
+
+    @Test
+    fun coordinatorSubscriber_createdBeforeRefreshReceivesItWhenCollectionStartsAfter() = runTest {
+        val coordinator = ContentListRefreshCoordinator()
+        val refreshRequests = coordinator.refreshRequests()
+
+        coordinator.requestRefresh()
+
+        assertEquals(Unit, withTimeout(1_000) { refreshRequests.first() })
     }
 
     @Test
@@ -84,6 +97,8 @@ class SectionVMTest {
         verify(exactly = 1) { interactor.invalidateFirstPageCache() }
         coVerify(timeout = 1_000, exactly = 2) { interactor.loadPage(firstConfig, page = 1) }
         coVerify(timeout = 1_000, exactly = 2) { interactor.loadPage(siblingConfig, page = 1) }
+        first.testCancelScope()
+        sibling.testCancelScope()
         firstPaginator.close()
         siblingPaginator.close()
     }
