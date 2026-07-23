@@ -42,9 +42,10 @@ internal class SectionVM(
     override val initialViewState = SectionState.Loading
 
     override fun onStart() {
+        val refreshRequests = contentListRefreshCoordinator.refreshRequests()
         init()
         launch {
-            contentListRefreshCoordinator.refreshRequests.collect {
+            refreshRequests.collect {
                 refreshFirstPage()
             }
         }
