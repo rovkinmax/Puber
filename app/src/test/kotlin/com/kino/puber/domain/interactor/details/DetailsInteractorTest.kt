@@ -6,6 +6,7 @@ import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.BookmarkFolder
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
+import com.kino.puber.data.api.models.WatchingToggleResponse
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import io.mockk.coEvery
@@ -74,50 +75,77 @@ class DetailsInteractorTest {
     @Test
     fun setMovieBookmarked_removesItemFromActualBookmarkFolder() = runTest {
         val folder = BookmarkFolder(id = 9, title = "For weekend")
-        val refreshed = movie(bookmarks = emptyList())
-        coEvery { api.getItemBookmarkFolders(42) } returns Result.success(listOf(folder)) andThen Result.success(emptyList())
+        coEvery { api.getItemBookmarkFolders(42) } returns Result.success(listOf(folder)) andThen
+            Result.success(emptyList())
         coEvery { api.removeBookmarkItem(itemId = 42, folderId = folder.id) } returns Result.success(Unit)
-        coEvery { itemDetailsRepository.refresh(42) } returns refreshed
 
         val result = interactor.setMovieBookmarked(id = 42, bookmarked = false)
 
         assertEquals(false, result.isBookmarked)
         assertEquals(folder.title, result.folderTitle)
-        assertEquals(refreshed, result.item)
         coVerify(exactly = 1) { api.removeBookmarkItem(itemId = 42, folderId = folder.id) }
+        coVerify(exactly = 0) { itemDetailsRepository.refresh(any()) }
     }
 
     @Test
-    fun setMovieBookmarked_keepsBookmarkActiveWhenItemRemainsInAnotherFolder() = runTest {
-        val firstFolder = BookmarkFolder(id = 9, title = "For weekend")
-        val secondFolder = BookmarkFolder(id = 10, title = "Favorites")
-        val refreshed = movie(bookmarks = listOf(Bookmark(id = secondFolder.id, title = secondFolder.title)))
-        coEvery { api.getItemBookmarkFolders(42) } returns Result.success(
-            listOf(firstFolder, secondFolder),
-        ) andThen Result.success(listOf(secondFolder))
-        coEvery { api.removeBookmarkItem(itemId = 42, folderId = firstFolder.id) } returns Result.success(Unit)
-        coEvery { itemDetailsRepository.refresh(42) } returns refreshed
+    fun setMovieBookmarked_keepsSavedStateWhenAnotherFolderRemains() = runTest {
+        val first = BookmarkFolder(id = 9, title = "For weekend")
+        val second = BookmarkFolder(id = 10, title = "Favorites")
+        coEvery { api.getItemBookmarkFolders(42) } returns Result.success(listOf(first, second)) andThen
+            Result.success(listOf(second))
+        coEvery { api.removeBookmarkItem(itemId = 42, folderId = first.id) } returns Result.success(Unit)
 
         val result = interactor.setMovieBookmarked(id = 42, bookmarked = false)
 
         assertEquals(true, result.isBookmarked)
-        assertEquals(firstFolder.title, result.folderTitle)
-        assertEquals(refreshed, result.item)
-        coVerify(exactly = 1) { api.removeBookmarkItem(itemId = 42, folderId = firstFolder.id) }
+        assertEquals(first.title, result.folderTitle)
     }
 
     @Test
     fun setMovieBookmarked_addsItemToWatchLaterFolderByDefault() = runTest {
         val folder = Bookmark(id = 7, title = WatchLaterBookmarkInteractor.FOLDER_TITLE)
-        val refreshed = movie(bookmarks = listOf(folder))
         coEvery { watchLaterBookmarkInteractor.add(42) } returns Result.success(folder)
-        coEvery { itemDetailsRepository.refresh(42) } returns refreshed
 
         val result = interactor.setMovieBookmarked(id = 42, bookmarked = true)
 
         assertEquals(true, result.isBookmarked)
         assertEquals(WatchLaterBookmarkInteractor.FOLDER_TITLE, result.folderTitle)
-        assertEquals(refreshed, result.item)
+        coVerify(exactly = 0) { itemDetailsRepository.refresh(any()) }
+    }
+    @Test
+    fun setMovieWatched_returnsApiConfirmedState_withoutRefreshingDetails() = runTest {
+        coEvery { api.toggleWatchingStatus(42, status = 1) } returns Result.success(
+            WatchingToggleResponse(status = 200, watched = 1)
+        )
+
+        val result = interactor.setMovieWatched(42, watched = true)
+
+        assertEquals(true, result.isWatched)
+        coVerify(exactly = 0) { itemDetailsRepository.refresh(any()) }
+    }
+
+    @Test
+    fun setEpisodeWatched_returnsRequestedStateWhenApiOmitsConfirmation_withoutRefreshingDetails() = runTest {
+        coEvery { api.toggleWatchingStatus(42, status = 1, season = 1, video = 2) } returns Result.success(
+            WatchingToggleResponse(status = 200)
+        )
+
+        val result = interactor.setEpisodeWatched(42, season = 1, episode = 2, watched = true)
+
+        assertEquals(true, result.isWatched)
+        coVerify(exactly = 0) { itemDetailsRepository.refresh(any()) }
+    }
+
+    @Test
+    fun setSeasonWatched_returnsApiConfirmedState_withoutRefreshingDetails() = runTest {
+        coEvery { api.toggleWatchingStatus(42, status = 0, season = 1) } returns Result.success(
+            WatchingToggleResponse(status = 200, watched = 0)
+        )
+
+        val result = interactor.setSeasonWatched(42, season = 1, watched = false)
+
+        assertEquals(false, result.isWatched)
+        coVerify(exactly = 0) { itemDetailsRepository.refresh(any()) }
     }
 
     private fun movie(bookmarks: List<Bookmark>?): Item {

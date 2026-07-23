@@ -2,9 +2,12 @@ package com.kino.puber.ui.feature.bookmarks.vm
 
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.content.ContentChangeSet
+import com.kino.puber.core.content.ContentChangeType
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -40,11 +43,11 @@ internal class BookmarksVM(
         when (action) {
             is CommonAction.ItemSelected<*> -> {
                 val item = action.item as VideoItemUIState
-                router.navigateTo(router.screens.details(item.id))
+                openDetails(item.id)
             }
             is CommonAction.ItemPlayed<*> -> {
                 val item = action.item as VideoItemUIState
-                router.navigateTo(router.screens.player(item.id))
+                openPlayer(item.id)
             }
             is CommonAction.ItemSavedChanged<*> -> {
                 val item = action.item as VideoItemUIState
@@ -59,6 +62,31 @@ internal class BookmarksVM(
             copy(selectedFolderId = folderId, isLoadingItems = true)
         }
         loadFolderItems(folderId)
+    }
+
+    private fun openDetails(itemId: Int) {
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.details(itemId),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
+    }
+
+    private fun openPlayer(itemId: Int) {
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.player(itemId),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
+    }
+
+    private fun onReturnedContentChanges(changes: ContentChangeSet?) {
+        if (changes == null || changes.isEmpty) return
+        if (ContentChangeType.Bookmark in changes.types || ContentChangeType.Watchlist in changes.types) {
+            loadBookmarks()
+            return
+        }
+        (stateValue as? BookmarksViewState.Content)?.selectedFolderId?.let(::loadFolderItems)
     }
 
     private fun loadBookmarks() {

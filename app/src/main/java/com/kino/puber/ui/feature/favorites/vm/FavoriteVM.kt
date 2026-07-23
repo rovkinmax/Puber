@@ -2,10 +2,12 @@ package com.kino.puber.ui.feature.favorites.vm
 
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.core.content.ContentChangeSet
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.favorites.FavoritesInteractor
 import com.kino.puber.ui.feature.favorites.model.FavoriteItemUIMapper
@@ -56,11 +58,24 @@ internal class FavoriteVM(
     }
 
     private fun onItemSelected(state: VideoItemUIState) {
-        router.navigateTo(router.screens.details(itemId = state.id))
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.details(itemId = state.id),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
     }
 
     private fun onItemPlayed(state: VideoItemUIState) {
-        router.navigateTo(router.screens.player(itemId = state.id))
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.player(itemId = state.id),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
+    }
+
+    private fun onReturnedContentChanges(changes: ContentChangeSet?) {
+        if (changes == null || changes.isEmpty) return
+        loadData()
     }
 
     private fun onItemFocused(selectedItem: VideoItemUIState) {

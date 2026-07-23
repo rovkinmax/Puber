@@ -39,6 +39,7 @@ internal sealed class PlayerAction : UIAction {
     data class SelectEpisodeById(val episodeId: Int) : PlayerAction()
     data class EpisodeWatchedChanged(val item: VideoItemUIState, val watched: Boolean) : PlayerAction()
     data class SeasonWatchedChanged(val item: VideoItemUIState, val watched: Boolean) : PlayerAction()
+    data object MarkCurrentWatched : PlayerAction()
     data object NextEpisode : PlayerAction()
     data object PreviousEpisode : PlayerAction()
     data object CancelNextEpisodeCountdown : PlayerAction()

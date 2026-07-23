@@ -4,12 +4,16 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.kino.puber.R
-import com.kino.puber.core.logger.log
+import com.kino.puber.core.content.ContentChange
+import com.kino.puber.core.content.ContentChangeSet
+import com.kino.puber.core.content.ContentChangeType
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.logger.log
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
@@ -19,6 +23,7 @@ import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.data.api.models.VideoFile
 import com.kino.puber.domain.interactor.player.PlayerInteractor
 import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
+import com.kino.puber.domain.interactor.player.WatchedDetailsRefreshException
 import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
 import com.kino.puber.ui.feature.player.model.ActivePanel
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
@@ -33,9 +38,15 @@ import com.kino.puber.ui.feature.player.model.PlayerViewState
 import com.kino.puber.ui.feature.player.model.ResumeDialogState
 import com.kino.puber.ui.feature.player.model.SeekIndicatorState
 import com.kino.puber.domain.model.SubtitleSize
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 internal class PlayerVM(
     router: AppRouter,
@@ -52,7 +63,11 @@ internal class PlayerVM(
     override val initialViewState: PlayerViewState = PlayerViewState.Loading
 
     override fun dispatchError(error: ErrorEntity) {
-        updateViewState(PlayerViewState.Error(error.message))
+        if (stateValue is PlayerViewState.Content) {
+            showMessage(error.message)
+        } else {
+            updateViewState(PlayerViewState.Error(error.message))
+        }
     }
 
     private inline fun updateContent(crossinline update: PlayerContentState.() -> PlayerContentState) {
@@ -60,12 +75,42 @@ internal class PlayerVM(
     }
 
     private data class CurrentMedia(
+        val token: MediaToken,
         val item: Item,
         val seasonNumber: Int?,
         val episodeNumber: Int?,
         val videoNumber: Int?,
         val files: List<VideoFile>?,
         val subtitles: List<SubtitleLink>?,
+    )
+
+    private data class MediaKey(
+        val itemId: Int,
+        val seasonNumber: Int?,
+        val episodeNumber: Int?,
+        val videoNumber: Int?,
+    )
+
+    private data class MediaToken(
+        val generation: Long,
+        val key: MediaKey,
+    )
+
+    private data class ProgressSave(
+        val key: MediaKey,
+        val videoNumber: Int,
+        val timeSeconds: Int,
+        val seasonNumber: Int?,
+    )
+
+    private enum class WatchedOrigin {
+        Auto,
+        Manual,
+    }
+
+    private data class WatchedRequest(
+        val token: MediaToken,
+        val isMovie: Boolean,
     )
 
     private data class CurrentEpisode(
@@ -75,12 +120,14 @@ internal class PlayerVM(
     )
 
     private var currentMedia: CurrentMedia? = null
+    private var mediaGeneration = 0L
 
     private var controlsHideJob: Job? = null
     private var seekIndicatorHideJob: Job? = null
     private var playPauseHideJob: Job? = null
     private var countdownJob: Job? = null
     private var positionUpdateJob: Job? = null
+    private var skipSegmentsJob: Job? = null
     private var skipCountdownJob: Job? = null
     private var bufferingDebounceJob: Job? = null
 
@@ -91,6 +138,15 @@ internal class PlayerVM(
     private var tracksRestoredForCurrentMedia = false
     private var episodeSwitchInProgress = false
     private var lastPositionMs: Long = 0L
+    private var contentChanges = ContentChangeSet.empty()
+    private val pendingMutations = mutableSetOf<Job>()
+    private val queuedProgressSaves = LinkedHashMap<MediaKey, ProgressSave>()
+    private val watchedMutationsInFlight = mutableMapOf<MediaKey, Int>()
+    private val watchedMutationMutex = Mutex()
+    private var progressDrainJob: Job? = null
+    private var autoMarkHandledToken: MediaToken? = null
+    private var closeJob: Job? = null
+    private var closing = false
 
     private val seekHandler = SeekHandler()
     private val controlsStateMachine = ControlsStateMachine()
@@ -158,14 +214,47 @@ internal class PlayerVM(
     }
 
     private fun loadContent() {
-        launch { preparePlayback(params.seasonNumber, params.episodeNumber) }
+        startPreparingPlayback(params.seasonNumber, params.episodeNumber)
     }
 
-    private suspend fun preparePlayback(seasonNumber: Int?, episodeNumber: Int?, forceFromBeginning: Boolean = false) {
+    private fun startPreparingPlayback(
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+        forceFromBeginning: Boolean = false,
+    ) {
+        val generation = ++mediaGeneration
+        launch {
+            preparePlayback(
+                generation = generation,
+                seasonNumber = seasonNumber,
+                episodeNumber = episodeNumber,
+                forceFromBeginning = forceFromBeginning,
+            )
+        }
+    }
+
+    private suspend fun preparePlayback(
+        generation: Long,
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+        forceFromBeginning: Boolean = false,
+    ) {
         val item = interactor.getItemDetails(params.itemId)
+        if (!isCurrentPrepare(generation)) return
         val resolved = interactor.resolveMedia(item, seasonNumber, episodeNumber)
+        if (!isCurrentPrepare(generation)) return
+        val token = MediaToken(
+            generation = generation,
+            key = MediaKey(
+                itemId = params.itemId,
+                seasonNumber = resolved.seasonNumber,
+                episodeNumber = resolved.episodeNumber,
+                videoNumber = resolved.videoNumber,
+            ),
+        )
 
         currentMedia = CurrentMedia(
+            token = token,
             item = item,
             seasonNumber = resolved.seasonNumber,
             episodeNumber = resolved.episodeNumber,
@@ -181,14 +270,21 @@ internal class PlayerVM(
             subtitleSize = interactor.getSubtitleSize(),
             savedBufferPreset = interactor.getBufferPreset(),
             fastDnsEnabled = interactor.isFastDnsEnabled(),
+        ).copy(
+            isMarkCurrentWatchedInFlight = watchedMutationsInFlight[token.key].orZero() > 0,
         )
 
         updateViewState(PlayerViewState.Content(contentState))
+        autoMarkHandledToken = token.takeIf { resolved.isCurrentMediaWatched }
         episodeSwitchInProgress = false
         initializePlayer(savedPosition = if (resumeDialog != null) null else 0L)
         startProgressSync()
         if (resumeDialog == null) scheduleControlsHide()
-        loadSkipSegments(item, resolved.seasonNumber, resolved.episodeNumber)
+        loadSkipSegments(item, resolved.seasonNumber, resolved.episodeNumber, token)
+    }
+
+    private fun isCurrentPrepare(generation: Long): Boolean {
+        return !closing && generation == mediaGeneration
     }
 
     private fun buildResumeDialog(watchingTime: Int?): ResumeDialogState? {
@@ -254,6 +350,12 @@ internal class PlayerVM(
     }
 
     override fun onAction(action: UIAction) {
+        if (closing) {
+            if (action is PlayerAction.OnBackPressed) {
+                onBackPressed()
+            }
+            return
+        }
         when (action) {
             is PlayerAction.TogglePlayPause -> togglePlayPause()
             is PlayerAction.SeekForward -> seekForward()
@@ -278,6 +380,7 @@ internal class PlayerVM(
             is PlayerAction.SelectEpisodeById -> selectEpisodeById(action.episodeId)
             is PlayerAction.EpisodeWatchedChanged -> onEpisodeWatchedChanged(action.item, action.watched)
             is PlayerAction.SeasonWatchedChanged -> onSeasonWatchedChanged(action.item, action.watched)
+            is PlayerAction.MarkCurrentWatched -> markCurrentMediaWatched()
             is PlayerAction.NextEpisode -> playNextEpisode()
             is PlayerAction.PreviousEpisode -> playPreviousEpisode()
             is PlayerAction.CancelNextEpisodeCountdown -> cancelCountdown()
@@ -288,7 +391,7 @@ internal class PlayerVM(
             is PlayerAction.StartFromBeginning -> startFromBeginning()
             is PlayerAction.RetryPlayback -> retryPlayback()
             is PlayerAction.OnBackground -> pauseForBackground()
-            is PlayerAction.OnBackPressed -> handleBackAndCheckExit()
+            is PlayerAction.OnBackPressed -> onBackPressed()
             else -> super.onAction(action)
         }
     }
@@ -402,10 +505,7 @@ internal class PlayerVM(
                 is ControlsStateMachine.Effect.CancelHide -> controlsHideJob?.cancel()
                 is ControlsStateMachine.Effect.PausePlayback -> playbackController.pause()
                 is ControlsStateMachine.Effect.ResumePlayback -> playbackController.play()
-                is ControlsStateMachine.Effect.SaveAndExit -> {
-                    saveCurrentPosition()
-                    router.back()
-                }
+                is ControlsStateMachine.Effect.SaveAndExit -> exitPlayer()
             }
         }
     }
@@ -520,7 +620,7 @@ internal class PlayerVM(
         skipCountdownJob?.cancel()
         seekIndicatorHideJob?.cancel()
         positionUpdateJob?.cancel()
-        progressTracker.reset()
+        skipSegmentsJob?.cancel()
         segments = emptyList()
         creditsSegment = null
         dismissedSegmentType = null
@@ -528,7 +628,7 @@ internal class PlayerVM(
         tracksRestoredForCurrentMedia = false
 
         updateViewState(PlayerViewState.Loading)
-        launch { preparePlayback(seasonNumber, episodeNumber, forceFromBeginning = true) }
+        startPreparingPlayback(seasonNumber, episodeNumber, forceFromBeginning = true)
     }
 
     private fun playNextEpisode() {
@@ -558,11 +658,25 @@ internal class PlayerVM(
     private fun onEpisodeWatchedChanged(item: VideoItemUIState, watched: Boolean) {
         val season = item.seasonNumber ?: return
         val episode = item.episodeNumber ?: return
-        launch {
-            runCatching {
-                interactor.setEpisodeWatched(params.itemId, season, episode, watched)
-            }.onSuccess { updated ->
-                updateEpisodes(updated)
+        val currentToken = currentMedia?.token?.takeIf { token ->
+            token.key.seasonNumber == season && token.key.episodeNumber == episode
+        }
+        val previousAutoMarkToken = autoMarkHandledToken
+        if (currentToken != null) {
+            autoMarkHandledToken = currentToken
+            beginWatchedMutation(currentToken)
+        }
+        launchMutation {
+            try {
+                val updated = watchedMutationMutex.withLock {
+                    interactor.setEpisodeWatched(params.itemId, season, episode, watched)
+                }
+                markContentChanged(ContentChangeType.Watched)
+                if (updated != null) {
+                    syncContentWithItem(updated)
+                } else {
+                    syncEpisodeWatchedLocally(season, episode, watched)
+                }
                 showMessage(
                     resources.getString(
                         if (watched) {
@@ -572,19 +686,42 @@ internal class PlayerVM(
                         }
                     )
                 )
-            }.onFailure { throwable ->
+            } catch (error: CancellationException) {
+                throw error
+            } catch (throwable: Throwable) {
+                if (currentToken != null && autoMarkHandledToken == currentToken) {
+                    autoMarkHandledToken = previousAutoMarkToken
+                }
                 showMessage(errorHandler.map(throwable).message)
+            } finally {
+                currentToken?.let { token ->
+                    endWatchedMutation(token)
+                }
             }
         }
     }
 
     private fun onSeasonWatchedChanged(item: VideoItemUIState, watched: Boolean) {
         val season = item.seasonNumber ?: return
-        launch {
-            runCatching {
-                interactor.setSeasonWatched(params.itemId, season, watched)
-            }.onSuccess { updated ->
-                updateEpisodes(updated)
+        val currentToken = currentMedia?.token?.takeIf { token ->
+            token.key.seasonNumber == season
+        }
+        val previousAutoMarkToken = autoMarkHandledToken
+        if (currentToken != null) {
+            autoMarkHandledToken = currentToken
+            beginWatchedMutation(currentToken)
+        }
+        launchMutation {
+            try {
+                val updated = watchedMutationMutex.withLock {
+                    interactor.setSeasonWatched(params.itemId, season, watched)
+                }
+                markContentChanged(ContentChangeType.Watched)
+                if (updated != null) {
+                    syncContentWithItem(updated)
+                } else {
+                    syncSeasonWatchedLocally(season, watched)
+                }
                 showMessage(
                     resources.getString(
                         if (watched) {
@@ -594,16 +731,244 @@ internal class PlayerVM(
                         }
                     )
                 )
-            }.onFailure { throwable ->
+            } catch (error: CancellationException) {
+                throw error
+            } catch (throwable: Throwable) {
+                if (currentToken != null && autoMarkHandledToken == currentToken) {
+                    autoMarkHandledToken = previousAutoMarkToken
+                }
                 showMessage(errorHandler.map(throwable).message)
+            } finally {
+                currentToken?.let { token ->
+                    endWatchedMutation(token)
+                }
             }
         }
     }
 
-    private fun updateEpisodes(item: Item) {
-        currentMedia = currentMedia?.copy(item = item)
-        updateContent { copy(episodes = mapper.mapEpisodes(item)) }
+    private fun markCurrentMediaWatched() {
+        requestCurrentMediaWatched(WatchedOrigin.Manual)
     }
+
+    private fun requestCurrentMediaWatched(origin: WatchedOrigin) {
+        val request = currentWatchedRequest(origin) ?: return
+        val token = request.token
+
+        if (origin == WatchedOrigin.Auto) {
+            autoMarkHandledToken = token
+        }
+        beginWatchedMutation(token)
+        launchMutation {
+            try {
+                val updated = watchedMutationMutex.withLock {
+                    interactor.markCurrentAsWatched(
+                        id = token.key.itemId,
+                        season = token.key.seasonNumber,
+                        episode = token.key.episodeNumber,
+                    )
+                }
+                markContentChanged(ContentChangeType.Watched)
+                if (currentMedia?.token == token) {
+                    syncContentWithItem(updated, fallbackCurrentWatched = true)
+                    autoMarkHandledToken = token
+                    if (origin == WatchedOrigin.Manual) {
+                        showMessage(
+                            resources.getString(
+                                if (request.isMovie) {
+                                    R.string.video_details_watched_added
+                                } else {
+                                    R.string.context_menu_episode_watched
+                                }
+                            )
+                        )
+                    }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: WatchedDetailsRefreshException) {
+                markContentChanged(ContentChangeType.Watched)
+                if (currentMedia?.token == token) {
+                    syncCurrentMediaWatchedLocally(watched = true)
+                    autoMarkHandledToken = token
+                    if (origin == WatchedOrigin.Manual) {
+                        showMessage(errorHandler.map(error.cause ?: error).message)
+                    } else {
+                        log(error, "Watched status saved without refreshed item details")
+                    }
+                }
+            } catch (throwable: Throwable) {
+                if (currentMedia?.token == token) {
+                    showMessage(errorHandler.map(throwable).message)
+                }
+            } finally {
+                endWatchedMutation(token)
+            }
+        }
+    }
+
+    private fun currentWatchedRequest(origin: WatchedOrigin): WatchedRequest? {
+        val media = currentMedia
+        val content = (stateValue as? PlayerViewState.Content)?.content
+        if (closing || media == null || content == null) return null
+        val token = media.token
+        val blocked = content.isCurrentMediaWatched ||
+            !content.canMarkCurrentWatched ||
+            watchedMutationsInFlight[token.key].orZero() > 0 ||
+            (origin == WatchedOrigin.Auto && autoMarkHandledToken == token)
+        return if (blocked) null else WatchedRequest(token = token, isMovie = content.isMovie)
+    }
+
+    private fun beginWatchedMutation(token: MediaToken) {
+        watchedMutationsInFlight[token.key] = watchedMutationsInFlight[token.key].orZero() + 1
+        updateWatchedMutationState(token.key)
+    }
+
+    private fun endWatchedMutation(token: MediaToken) {
+        val remaining = watchedMutationsInFlight[token.key].orZero() - 1
+        if (remaining > 0) {
+            watchedMutationsInFlight[token.key] = remaining
+        } else {
+            watchedMutationsInFlight.remove(token.key)
+        }
+        updateWatchedMutationState(token.key)
+    }
+
+    private fun updateWatchedMutationState(key: MediaKey) {
+        if (currentMedia?.token?.key == key) {
+            updateContent {
+                copy(isMarkCurrentWatchedInFlight = watchedMutationsInFlight[key].orZero() > 0)
+            }
+        }
+    }
+
+    private fun Int?.orZero(): Int = this ?: 0
+
+    private fun syncContentWithItem(item: Item, fallbackCurrentWatched: Boolean? = null) {
+        val media = currentMedia ?: return
+        val content = (stateValue as? PlayerViewState.Content)?.content ?: return
+        val watched = item.currentMediaWatched(
+            isMovie = content.isMovie,
+            seasonNumber = media.seasonNumber,
+            episodeNumber = media.episodeNumber,
+        ) ?: fallbackCurrentWatched ?: content.isCurrentMediaWatched
+        val episodes = if (content.isMovie) {
+            content.episodes
+        } else {
+            mapper.mapEpisodes(item) ?: content.episodes
+        }
+
+        currentMedia = media.copy(item = item)
+        updateContent {
+            copy(
+                isCurrentMediaWatched = watched,
+                episodes = episodes,
+            )
+        }
+    }
+
+    private fun syncCurrentMediaWatchedLocally(watched: Boolean) {
+        val media = currentMedia ?: return
+        val content = (stateValue as? PlayerViewState.Content)?.content ?: return
+        val updated = media.item.withCurrentMediaWatched(
+            watched = watched,
+            isMovie = content.isMovie,
+            seasonNumber = media.seasonNumber,
+            episodeNumber = media.episodeNumber,
+        )
+        syncContentWithItem(updated, fallbackCurrentWatched = watched)
+    }
+
+    private fun syncEpisodeWatchedLocally(seasonNumber: Int, episodeNumber: Int, watched: Boolean) {
+        val media = currentMedia ?: return
+        val updated = media.item.copy(
+            seasons = media.item.seasons?.map { season ->
+                if (season.number != seasonNumber) {
+                    season
+                } else {
+                    season.copy(
+                        episodes = season.episodes?.map { episode ->
+                            if (episode.number == episodeNumber) {
+                                episode.copy(watched = watched.toStatus())
+                            } else {
+                                episode
+                            }
+                        }
+                    )
+                }
+            }
+        )
+        syncContentWithItem(
+            item = updated,
+            fallbackCurrentWatched = watched.takeIf {
+                media.seasonNumber == seasonNumber && media.episodeNumber == episodeNumber
+            },
+        )
+    }
+
+    private fun syncSeasonWatchedLocally(seasonNumber: Int, watched: Boolean) {
+        val media = currentMedia ?: return
+        val updated = media.item.copy(
+            seasons = media.item.seasons?.map { season ->
+                if (season.number != seasonNumber) {
+                    season
+                } else {
+                    season.copy(
+                        episodes = season.episodes?.map { episode ->
+                            episode.copy(watched = watched.toStatus())
+                        },
+                    )
+                }
+            }
+        )
+        syncContentWithItem(
+            item = updated,
+            fallbackCurrentWatched = watched.takeIf { media.seasonNumber == seasonNumber },
+        )
+    }
+
+    private fun Item.currentMediaWatched(isMovie: Boolean, seasonNumber: Int?, episodeNumber: Int?): Boolean? {
+        return if (isMovie) {
+            isWatchedStatus(watched)
+        } else {
+            seasons
+                ?.find { it.number == seasonNumber }
+                ?.episodes
+                ?.find { it.number == episodeNumber }
+                ?.let { episode -> isWatchedStatus(episode.watched) }
+        }
+    }
+
+    private fun Item.withCurrentMediaWatched(
+        watched: Boolean,
+        isMovie: Boolean,
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+    ): Item {
+        val status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS
+        return if (isMovie) {
+            copy(watched = status)
+        } else {
+            copy(
+                seasons = seasons?.map { season ->
+                    if (season.number != seasonNumber) {
+                        season
+                    } else {
+                        season.copy(
+                            episodes = season.episodes?.map { episode ->
+                                if (episode.number == episodeNumber) episode.copy(watched = status) else episode
+                            }
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    private fun isWatchedStatus(status: Int?): Boolean? {
+        return status?.let { it == WATCHED_STATUS }
+    }
+
+    private fun Boolean.toStatus(): Int = if (this) WATCHED_STATUS else UNWATCHED_STATUS
 
     private fun currentEpisode(): CurrentEpisode? {
         val media = currentMedia ?: return null
@@ -625,7 +990,7 @@ internal class PlayerVM(
     }
 
     private fun onPlaybackEnded() {
-        markCurrentAsWatched()
+        autoMarkCurrentAsWatched()
         val state = stateValue as? PlayerViewState.Content ?: return
         val content = state.content
         when {
@@ -682,11 +1047,12 @@ internal class PlayerVM(
     }
 
     private fun pauseForBackground() {
-        if (playbackController.isPlaying) {
+        val wasPlaying = playbackController.isPlaying
+        if (wasPlaying) {
             playbackController.pause()
-            saveCurrentPosition()
             updateContent { copy(isPlaying = false) }
         }
+        saveCurrentPosition()
     }
 
     private fun retryPlayback() {
@@ -696,11 +1062,14 @@ internal class PlayerVM(
     }
 
     override fun onBackPressed() {
+        if (closing) {
+            router.addBackDispatcher(this)
+            return
+        }
         val navigatedAway = handleBackAndCheckExit()
-        if (!navigatedAway) {
+        if (!navigatedAway || closing) {
             // Re-register: dispatchBackPressed() removes us from the stack,
-            // but we need to stay registered for subsequent BACK presses
-            // (closing panels, hiding controls, etc.)
+            // and the screen remains visible while panels close or writes drain.
             router.addBackDispatcher(this)
         }
     }
@@ -709,8 +1078,7 @@ internal class PlayerVM(
         val state = stateValue as? PlayerViewState.Content
         return when {
             state == null -> {
-                saveCurrentPosition()
-                router.back()
+                exitPlayer()
                 true
             }
             state.content.activeSkipSegment != null -> {
@@ -803,10 +1171,13 @@ internal class PlayerVM(
         }
     }
 
-    private fun loadSkipSegments(item: Item, season: Int?, episode: Int?) {
+    private fun loadSkipSegments(item: Item, season: Int?, episode: Int?, token: MediaToken) {
         log("loadSkipSegments called: title='${item.title}', imdb=${item.imdb}, s=$season, e=$episode")
-        launch {
-            segments = skipSegmentInteractor.loadSegments(item, season, episode)
+        skipSegmentsJob?.cancel()
+        skipSegmentsJob = launch {
+            val loadedSegments = skipSegmentInteractor.loadSegments(item, season, episode)
+            if (closing || currentMedia?.token != token) return@launch
+            segments = loadedSegments
             creditsSegment = skipSegmentInteractor.findCreditsSegment(segments)
             dismissedSegmentType = null
             // Late arrival check: if credits segment exists and position already past it
@@ -908,7 +1279,7 @@ internal class PlayerVM(
         val skipState = state.activeSkipSegment ?: return
 
         if (skipState.type == SkipSegmentType.CREDITS && !state.isMovie && state.hasNextEpisode) {
-            markCurrentAsWatched()
+            autoMarkCurrentAsWatched()
             playNextEpisode()
         } else {
             playbackController.seekTo(skipState.targetPositionMs)
@@ -929,8 +1300,42 @@ internal class PlayerVM(
         val media = currentMedia ?: return
         val videoNumber = media.videoNumber ?: return
         val timeSeconds = (playbackController.currentPosition / 1000).toInt()
-        launch {
-            interactor.saveWatchingTime(params.itemId, videoNumber, timeSeconds, media.seasonNumber)
+        queuedProgressSaves[media.token.key] = ProgressSave(
+            key = media.token.key,
+            videoNumber = videoNumber,
+            timeSeconds = timeSeconds,
+            seasonNumber = media.seasonNumber,
+        )
+        if (progressDrainJob?.isActive != true) {
+            launchMutation(
+                onCreated = { job ->
+                    progressDrainJob = job
+                },
+            ) {
+                try {
+                    while (true) {
+                        val request = queuedProgressSaves.entries.firstOrNull()?.let { entry ->
+                            queuedProgressSaves.remove(entry.key)
+                            entry.value
+                        } ?: break
+                        try {
+                            interactor.saveWatchingTime(
+                                id = request.key.itemId,
+                                videoNumber = request.videoNumber,
+                                time = request.timeSeconds,
+                                season = request.seasonNumber,
+                            )
+                            markContentChanged(ContentChangeType.PlaybackProgress)
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (throwable: Throwable) {
+                            log(throwable, "Failed to save playback progress")
+                        }
+                    }
+                } finally {
+                    progressDrainJob = null
+                }
+            }
         }
     }
 
@@ -939,20 +1344,12 @@ internal class PlayerVM(
         if (duration <= 0) return
         val remaining = duration - playbackController.currentPosition
         if (remaining < duration * AUTO_MARK_WATCHED_THRESHOLD) {
-            markCurrentAsWatched()
+            autoMarkCurrentAsWatched()
         }
     }
 
-    private fun markCurrentAsWatched() {
-        if (progressTracker.isMarkedWatched) return
-        progressTracker.markAsWatched()
-        launch {
-            interactor.markAsWatched(
-                id = params.itemId,
-                season = currentMedia?.seasonNumber,
-                videoNumber = currentMedia?.videoNumber,
-            )
-        }
+    private fun autoMarkCurrentAsWatched() {
+        requestCurrentMediaWatched(WatchedOrigin.Auto)
     }
 
     private fun saveTrackPreferences() {
@@ -968,22 +1365,68 @@ internal class PlayerVM(
         )
     }
 
+    private fun markContentChanged(type: ContentChangeType) {
+        contentChanges = contentChanges.merge(ContentChange(params.itemId, type))
+    }
+
+    private fun launchMutation(
+        onCreated: (Job) -> Unit = {},
+        block: suspend CoroutineScope.() -> Unit,
+    ): Job {
+        lateinit var job: Job
+        job = launch(start = CoroutineStart.LAZY) {
+            try {
+                block()
+            } finally {
+                pendingMutations.remove(job)
+            }
+        }
+        pendingMutations += job
+        onCreated(job)
+        job.start()
+        return job
+    }
+
+    private suspend fun awaitPendingMutations() {
+        while (true) {
+            val activeJobs = pendingMutations.filter(Job::isActive)
+            if (activeJobs.isEmpty()) return
+            activeJobs.joinAll()
+        }
+    }
+
+    private fun exitPlayer() {
+        if (closeJob != null) return
+        closing = true
+        mediaGeneration += 1
+        progressTracker.stopSync()
+        positionUpdateJob?.cancel()
+        skipSegmentsJob?.cancel()
+        saveCurrentPosition()
+        closeJob = launch {
+            awaitPendingMutations()
+            router.back(RESULT_CONTENT_CHANGED, contentChanges)
+        }
+    }
+
     fun getExoPlayer(): ExoPlayer? = (playbackController as? PlaybackController)?.player
 
     override fun onCleared() {
-        saveCurrentPosition()
         playbackController.release()
         progressTracker.stopSync()
         controlsHideJob?.cancel()
         seekIndicatorHideJob?.cancel()
         playPauseHideJob?.cancel()
         countdownJob?.cancel()
+        skipSegmentsJob?.cancel()
         skipCountdownJob?.cancel()
         positionUpdateJob?.cancel()
         super.onCleared()
     }
 
     private companion object {
+        const val WATCHED_STATUS = 1
+        const val UNWATCHED_STATUS = 0
         const val CONTROLS_HIDE_DELAY_MS = 3000L
         const val SEEK_INDICATOR_HIDE_DELAY_MS = 1500L
         const val PROGRESS_SYNC_INTERVAL_MS = 30_000L

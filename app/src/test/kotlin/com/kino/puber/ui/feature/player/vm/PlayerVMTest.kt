@@ -1,41 +1,29 @@
 package com.kino.puber.ui.feature.player.vm
 
-import com.kino.puber.core.error.ErrorHandler
-import com.kino.puber.core.ui.navigation.AppRouter
-import com.kino.puber.data.api.models.Item
-import com.kino.puber.data.api.models.ItemType
-import com.kino.puber.domain.interactor.player.PlayerInteractor
-import com.kino.puber.domain.interactor.player.ResolvedMedia
-import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
+import com.kino.puber.core.content.ContentChangeSet
+import com.kino.puber.core.content.ContentChangeType
+import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
+import com.kino.puber.data.api.models.SkipSegment
+import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.feature.player.model.ActivePanel
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
-import com.kino.puber.ui.feature.player.model.BufferPreset
-import com.kino.puber.ui.feature.player.model.BufferPresetUIState
 import com.kino.puber.ui.feature.player.model.PlayerAction
-import com.kino.puber.ui.feature.player.model.PlayerContentState
-import com.kino.puber.ui.feature.player.model.PlayerScreenParams
-import com.kino.puber.ui.feature.player.model.PlayerUIMapper
 import com.kino.puber.ui.feature.player.model.PlayerViewState
 import com.kino.puber.ui.feature.player.model.ResumeDialogState
 import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
-import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
-import com.kino.puber.data.api.models.SkipSegmentType
-import com.kino.puber.util.FakeResourceProvider
 import com.kino.puber.util.MainDispatcherExtension
-import org.junit.jupiter.api.Assertions.assertFalse
-import io.mockk.clearAllMocks
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
-import io.mockk.mockk
-import io.mockk.slot
 import io.mockk.verify
-import org.junit.jupiter.api.AfterEach
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 
@@ -47,84 +35,13 @@ import org.junit.jupiter.api.extension.RegisterExtension
  * `startPositionUpdates()` loop forever → OOM.
  * Without `runTest`, the infinite loop stays suspended at its first `delay()` — harmless.
  */
-class PlayerVMTest {
+internal class PlayerVMTest : PlayerVMTestFixture() {
 
     companion object {
         @JvmField
         @RegisterExtension
         val mainDispatcher = MainDispatcherExtension()
     }
-
-    private lateinit var router: AppRouter
-    private lateinit var errorHandler: ErrorHandler
-    private lateinit var interactor: PlayerInteractor
-    private lateinit var skipSegmentInteractor: SkipSegmentInteractor
-    private lateinit var mapper: PlayerUIMapper
-    private lateinit var contentStateFactory: ContentStateFactory
-    private lateinit var playbackController: PlaybackControl
-    private val callbackSlot = slot<PlaybackControl.Callback>()
-
-    private val params = PlayerScreenParams(itemId = 42, seasonNumber = 1, episodeNumber = 1)
-
-    @BeforeEach
-    fun setup() {
-        router = mockk(relaxed = true)
-        errorHandler = mockk { every { proceed(any()) } returns { } }
-        interactor = mockk(relaxUnitFun = true)
-        skipSegmentInteractor = mockk()
-        mapper = mockk(relaxUnitFun = true)
-        contentStateFactory = mockk()
-        playbackController = mockk(relaxUnitFun = true) {
-            every { isPlaying } returns true
-            every { currentPosition } returns 0L
-            every { duration } returns 2_400_000L
-            every { bufferedPosition } returns 0L
-        }
-
-        coEvery { interactor.getItemDetails(any()) } returns testItem
-        coEvery { interactor.resolveMedia(any(), any(), any()) } returns testResolvedMedia
-        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState
-        every { interactor.selectStreamUrl(any(), any()) } returns "https://test/v.m3u8"
-        every { interactor.getPreferredAudioLabel(any()) } returns null
-        every { interactor.getPreferredAudioLang(any()) } returns null
-        every { interactor.getPreferredSubtitleLang(any()) } returns null
-        every { interactor.getPreferredSubtitleUrl(any()) } returns null
-        every { interactor.isDebugOverlayEnabled() } returns false
-        every { interactor.getSubtitleSize() } returns SubtitleSize.MEDIUM
-        every { interactor.getBufferPreset() } returns BufferPreset.AUTO
-        every { interactor.isFastDnsEnabled() } returns true
-        every { interactor.saveTrackPreferences(any(), any(), any(), any(), any()) } returns Unit
-        every { interactor.findNextEpisode(any(), any(), any()) } returns null
-        every { interactor.findPreviousEpisode(any(), any(), any()) } returns null
-        coEvery { skipSegmentInteractor.loadSegments(any(), any(), any()) } returns emptyList()
-        every { skipSegmentInteractor.findCreditsSegment(any()) } returns null
-        every { skipSegmentInteractor.findActiveSegment(any(), any()) } returns null
-        every { mapper.formatTime(any()) } returns "00:00"
-        every { mapper.formatSeekOffset(any(), any()) } returns "+10s"
-        every { mapper.buildTitle(any(), any(), any()) } returns "Title"
-        every { mapper.buildSubtitle(any(), any(), any(), any()) } returns "Sub"
-        every { mapper.mapSkipSegmentLabel(any()) } returns "Skip"
-        every { mapper.defaultSoundModeLabel() } returns "Stereo"
-        every { playbackController.setCallback(capture(callbackSlot)) } returns Unit
-    }
-
-    @AfterEach
-    fun tearDown() {
-        clearAllMocks()
-    }
-
-    private fun createVM() = PlayerVM(
-        router = router, errorHandler = errorHandler, params = params,
-        mapper = mapper, interactor = interactor,
-        resources = FakeResourceProvider(),
-        skipSegmentInteractor = skipSegmentInteractor,
-        contentStateFactory = contentStateFactory,
-        playbackController = playbackController,
-    )
-
-    private fun startedVM(): PlayerVM = createVM().also { it.testOnStart() }
-
-    private fun contentState(vm: PlayerVM) = (vm.testStateValue as PlayerViewState.Content).content
 
     // region Lifecycle
 
@@ -289,6 +206,72 @@ class PlayerVMTest {
         assertNull(contentState(vm).nextEpisodeCountdown)
     }
 
+    @Test
+    fun backPressed_beforeContent_consumesResultListenerWithEmptyChanges() {
+        createVM().onAction(PlayerAction.OnBackPressed)
+
+        verifyEmptyContentChangeResult()
+    }
+
+    @Test
+    fun backPressed_afterProgressSave_returnsPlaybackProgressResult() {
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.OnBackPressed)
+
+        verifyContentChangeResult(ContentChangeType.PlaybackProgress)
+    }
+
+    @Test
+    fun backPressed_waitsForFinalProgressSave() {
+        val releaseSave = CompletableDeferred<Unit>()
+        coEvery { interactor.saveWatchingTime(42, 1, 0, 1) } coAnswers {
+            releaseSave.await()
+        }
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.OnBackPressed)
+
+        verify(exactly = 0) { router.back(any(), any()) }
+        releaseSave.complete(Unit)
+        verifyContentChangeResult(ContentChangeType.PlaybackProgress)
+    }
+
+    @Test
+    fun repeatedBackWhileFinalProgressSavePending_staysInterceptedAndReturnsOnce() {
+        val releaseSave = CompletableDeferred<Unit>()
+        coEvery { interactor.saveWatchingTime(42, 1, 0, 1) } coAnswers {
+            releaseSave.await()
+        }
+        val vm = startedVM()
+
+        vm.onBackPressed()
+        vm.onBackPressed()
+
+        verify(exactly = 2) { router.addBackDispatcher(vm) }
+        verify(exactly = 0) { router.back(any(), any()) }
+        releaseSave.complete(Unit)
+        verify(exactly = 1) {
+            router.back(
+                RESULT_CONTENT_CHANGED,
+                match { result ->
+                    val changes = result as? ContentChangeSet ?: return@match false
+                    changes.changes[42] == setOf(ContentChangeType.PlaybackProgress)
+                },
+            )
+        }
+    }
+
+    @Test
+    fun failedFinalProgressSave_returnsEmptyChanges() {
+        coEvery { interactor.saveWatchingTime(42, 1, 0, 1) } throws IllegalStateException("save failed")
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.OnBackPressed)
+
+        verifyEmptyContentChangeResult()
+    }
+
     // endregion
 
     // region Episode switching
@@ -340,6 +323,62 @@ class PlayerVMTest {
         assertNotNull(contentState(vm).nextEpisodeCountdown)
     }
 
+    @Test
+    fun stalePrepareCompletion_cannotOverwriteNewEpisode() {
+        val releaseFirstLoad = CompletableDeferred<Unit>()
+        var detailsCalls = 0
+        coEvery { interactor.getItemDetails(42) } coAnswers {
+            detailsCalls += 1
+            if (detailsCalls == 1) {
+                releaseFirstLoad.await()
+            }
+            testItem
+        }
+        val nextEpisode = testResolvedMedia.copy(
+            videoNumber = 2,
+            episodeId = 102,
+            episodeNumber = 2,
+        )
+        coEvery { interactor.resolveMedia(any(), any(), any()) } returns nextEpisode
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns
+            testContentState.copy(currentEpisodeId = 102)
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.SelectEpisode(1, 2))
+        assertEquals(102, contentState(vm).currentEpisodeId)
+
+        releaseFirstLoad.complete(Unit)
+
+        assertEquals(102, contentState(vm).currentEpisodeId)
+        verify(exactly = 1) { playbackController.prepare(any(), any(), any()) }
+    }
+
+    @Test
+    fun staleSkipSegmentsCompletion_cannotAffectNewEpisode() {
+        val releaseFirstSegments = CompletableDeferred<Unit>()
+        val staleSegments = listOf(SkipSegment(SkipSegmentType.INTRO, startMs = 0, endMs = 10_000))
+        var segmentLoads = 0
+        coEvery { skipSegmentInteractor.loadSegments(any(), any(), any()) } coAnswers {
+            segmentLoads += 1
+            if (segmentLoads == 1) {
+                withContext(NonCancellable) {
+                    releaseFirstSegments.await()
+                }
+                staleSegments
+            } else {
+                emptyList()
+            }
+        }
+        coEvery { interactor.resolveMedia(any(), any(), any()) } returns testResolvedMedia andThen
+            testResolvedMedia.copy(videoNumber = 2, episodeId = 102, episodeNumber = 2)
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.SelectEpisode(1, 2))
+        releaseFirstSegments.complete(Unit)
+
+        verify(exactly = 0) { skipSegmentInteractor.findCreditsSegment(staleSegments) }
+    }
+
     // endregion
 
     // region Movie-specific behavior
@@ -370,15 +409,17 @@ class PlayerVMTest {
         vm.onAction(PlayerAction.OnBackground)
 
         verify { playbackController.pause() }
+        verify(exactly = 0) { router.back(any(), any()) }
         assertEquals(false, contentState(vm).isPlaying)
     }
 
     @Test
-    fun pauseForBackground_doesNothing_whenAlreadyPaused() {
+    fun pauseForBackground_savesPosition_whenAlreadyPaused() {
         every { playbackController.isPlaying } returns false
         startedVM().onAction(PlayerAction.OnBackground)
 
         verify(exactly = 0) { playbackController.pause() }
+        coVerify(exactly = 1) { interactor.saveWatchingTime(42, 1, 0, 1) }
     }
 
     @Test
@@ -668,73 +709,4 @@ class PlayerVMTest {
 
     // endregion
 
-    // region Back navigation (additional branches)
-
-    @Test
-    fun backPressed_cancelsSkipSegment_whenActive() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
-            activeSkipSegment = SkipSegmentUIState("Skip", 30_000L, SkipSegmentType.INTRO, 5),
-        )
-        val vm = startedVM()
-
-        vm.onAction(PlayerAction.OnBackPressed)
-
-        assertNull(contentState(vm).activeSkipSegment)
-    }
-
-    // endregion
-
-    // region PlaybackEnded edge cases
-
-    @Test
-    fun playbackEnded_showsControls_forSeriesWithoutNextEpisode() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
-            hasNextEpisode = false,
-        )
-        val vm = startedVM()
-
-        callbackSlot.captured.onPlaybackEnded()
-
-        assertNull(contentState(vm).nextEpisodeCountdown)
-        assertTrue(contentState(vm).controlsVisible)
-    }
-
-    // endregion
-
-    private val testItem = Item(id = 42, title = "Breaking Bad", type = ItemType.SERIAL, watched = 5, new = 3)
-
-    private val testResolvedMedia = ResolvedMedia(
-        files = emptyList(), audios = emptyList(), subtitles = emptyList(),
-        watchingTime = null, duration = 2400, videoNumber = 1, episodeId = 101,
-        episodeTitle = "Pilot", isSeries = true, hasNext = true,
-        hasPrevious = true, seasonNumber = 1, episodeNumber = 1,
-    )
-
-    private val testSubtitleTracks = listOf(
-        SubtitleTrackUIState(index = 0, label = "Off", language = "", url = ""),
-        SubtitleTrackUIState(index = 1, label = "Russian", language = "rus", url = "https://test/subtitles/rus.vtt"),
-        SubtitleTrackUIState(
-            index = 2,
-            label = "Russian forced",
-            language = "rus",
-            url = "https://test/subtitles/rus-forced.vtt",
-        ),
-    )
-
-    private val testContentState = PlayerContentState(
-        title = "Breaking Bad", subtitle = "S1E1", isPlaying = true,
-        currentPosition = 0L, duration = 2_400_000L, bufferedPosition = 0L,
-        controlsVisible = true, controlsFocusTarget = null,
-        activePanel = ActivePanel.None, seekIndicator = null, playPauseIndicator = null,
-        audioTracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus")),
-        selectedAudioTrackIndex = 0, subtitleTracks = testSubtitleTracks, selectedSubtitleIndex = 0,
-        soundModes = emptyList(), selectedSoundModeIndex = 0, subtitleSize = SubtitleSize.MEDIUM,
-        qualities = emptyList(), selectedQualityIndex = 0,
-        speeds = emptyList(), selectedSpeedIndex = 0,
-        aspectRatios = emptyList(), selectedAspectRatioIndex = 0,
-        bufferPresets = listOf(BufferPresetUIState(0, "Auto", BufferPreset.AUTO)),
-        selectedBufferPresetIndex = 0,
-        isMovie = false, hasNextEpisode = true, hasPreviousEpisode = true, nextEpisodeCountdown = null,
-        resumeDialog = null, episodes = null, currentEpisodeId = 101,
-    )
 }

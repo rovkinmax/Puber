@@ -4,11 +4,14 @@ import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.logger.log
 import com.kino.puber.core.system.ResourceProvider
+import com.kino.puber.core.content.ContentChangeSet
 import kotlinx.coroutines.async
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.supervisorScope
 import com.kino.puber.R
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.core.ui.uikit.model.CommonAction
@@ -43,6 +46,7 @@ internal class HomeVM(
     }
 
     override val initialViewState: HomeViewState = HomeViewState.Loading()
+    private var loadHomeJob: Job? = null
 
     override fun dispatchError(error: ErrorEntity) {
         if (stateValue is HomeViewState.Content) {
@@ -60,11 +64,11 @@ internal class HomeVM(
         when (action) {
             is CommonAction.ItemSelected<*> -> {
                 val item = action.item as VideoItemUIState
-                router.navigateTo(router.screens.details(item.id))
+                openDetails(item.id)
             }
             is CommonAction.ItemPlayed<*> -> {
                 val item = action.item as VideoItemUIState
-                router.navigateTo(router.screens.player(item.id))
+                openPlayer(item.id)
             }
             is CommonAction.ItemSavedChanged<*> -> {
                 val item = action.item as VideoItemUIState
@@ -82,7 +86,7 @@ internal class HomeVM(
     }
 
     fun onHeroClick(itemId: Int) {
-        router.navigateTo(router.screens.details(itemId))
+        openDetails(itemId)
     }
 
     fun onCollectionClick(id: Int, title: String) {
@@ -94,8 +98,30 @@ internal class HomeVM(
         loadHome(showDomainSearch = false)
     }
 
+    private fun openDetails(itemId: Int) {
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.details(itemId),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
+    }
+
+    private fun openPlayer(itemId: Int) {
+        router.navigateForResult<ContentChangeSet>(
+            screen = router.screens.player(itemId),
+            requestCode = RESULT_CONTENT_CHANGED,
+            listener = ::onReturnedContentChanges,
+        )
+    }
+
+    private fun onReturnedContentChanges(changes: ContentChangeSet?) {
+        if (changes == null || changes.isEmpty || stateValue !is HomeViewState.Content) return
+        silentRefresh()
+    }
+
     private fun loadHome(showDomainSearch: Boolean = stateValue !is HomeViewState.Content) {
-        launch {
+        loadHomeJob?.cancel()
+        loadHomeJob = launch {
             val preserveContentOnResolveFailure = !showDomainSearch && stateValue is HomeViewState.Content
             if (showDomainSearch) {
                 updateViewState(
@@ -128,44 +154,46 @@ internal class HomeVM(
                 }
             }
 
-            supervisorScope {
-                val hotMoviesDeferred = async { interactor.getHotItems("movie", HOT_ITEMS_COUNT).logFailure("hot movies") }
-                val hotSeriesDeferred = async { interactor.getHotItems("serial", HOT_ITEMS_COUNT).logFailure("hot series") }
-                val watchingDeferred = async { interactor.getWatchingItems().logFailure("watching") }
-                val freshMoviesDeferred = async { interactor.getFreshItems("movie").logFailure("fresh movies") }
-                val freshSeriesDeferred = async { interactor.getFreshItems("serial").logFailure("fresh series") }
-                val popularMoviesDeferred = async { interactor.getPopularByType("movie").logFailure("popular movies") }
-                val popularSeriesDeferred = async { interactor.getPopularByType("serial").logFailure("popular series") }
-                val watchLaterDeferred = async { interactor.getWatchLaterItems().logFailure("watch later") }
-                val bookmarksDeferred = async { loadBookmarkSection() }
-                val collectionsDeferred = async { interactor.getCollections().logFailure("collections") }
-
-                val hotMovies = hotMoviesDeferred.await().orEmpty()
-                val hotSeries = hotSeriesDeferred.await().orEmpty()
-                val hotItems = (hotMovies + hotSeries).sortedByDescending { it.ratingPercentage ?: 0 }
-                val freshItems = (freshMoviesDeferred.await().orEmpty() + freshSeriesDeferred.await().orEmpty())
-                    .sortedByDescending { it.updatedAt.orEmpty() }
-
-                val sections = listOfNotNull(
-                    watchingDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.ContinueWatching) },
-                    mapper.mapItemSection(freshItems, HomeSectionType.Fresh),
-                    popularMoviesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularMovies) },
-                    popularSeriesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularSeries) },
-                    watchLaterDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.WatchLater) },
-                    bookmarksDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.Bookmarks) },
-                    collectionsDeferred.await()?.let { mapper.mapCollectionSection(it) },
-                    mapper.mapItemSection(hotItems, HomeSectionType.Hot),
-                ).sortedBy { it.type.ordinal }
-
-                updateViewState(
-                    HomeViewState.Content(
-                        heroItems = mapper.mapHeroItems(hotItems.take(HERO_ITEMS_COUNT)),
-                        sections = sections,
-                        apiDomainDialog = currentDialogState(),
-                    )
-                )
-            }
+            loadContentSections()
         }
+    }
+
+    private suspend fun loadContentSections() = supervisorScope {
+        val hotMoviesDeferred = async { interactor.getHotItems("movie", HOT_ITEMS_COUNT).logFailure("hot movies") }
+        val hotSeriesDeferred = async { interactor.getHotItems("serial", HOT_ITEMS_COUNT).logFailure("hot series") }
+        val watchingDeferred = async { interactor.getWatchingItems().logFailure("watching") }
+        val freshMoviesDeferred = async { interactor.getFreshItems("movie").logFailure("fresh movies") }
+        val freshSeriesDeferred = async { interactor.getFreshItems("serial").logFailure("fresh series") }
+        val popularMoviesDeferred = async { interactor.getPopularByType("movie").logFailure("popular movies") }
+        val popularSeriesDeferred = async { interactor.getPopularByType("serial").logFailure("popular series") }
+        val watchLaterDeferred = async { interactor.getWatchLaterItems().logFailure("watch later") }
+        val bookmarksDeferred = async { loadBookmarkSection() }
+        val collectionsDeferred = async { interactor.getCollections().logFailure("collections") }
+
+        val hotMovies = hotMoviesDeferred.await().orEmpty()
+        val hotSeries = hotSeriesDeferred.await().orEmpty()
+        val hotItems = (hotMovies + hotSeries).sortedByDescending { it.ratingPercentage ?: 0 }
+        val freshItems = (freshMoviesDeferred.await().orEmpty() + freshSeriesDeferred.await().orEmpty())
+            .sortedByDescending { it.updatedAt.orEmpty() }
+
+        val sections = listOfNotNull(
+            watchingDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.ContinueWatching) },
+            mapper.mapItemSection(freshItems, HomeSectionType.Fresh),
+            popularMoviesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularMovies) },
+            popularSeriesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularSeries) },
+            watchLaterDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.WatchLater) },
+            bookmarksDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.Bookmarks) },
+            collectionsDeferred.await()?.let { mapper.mapCollectionSection(it) },
+            mapper.mapItemSection(hotItems, HomeSectionType.Hot),
+        ).sortedBy { it.type.ordinal }
+
+        updateViewState(
+            HomeViewState.Content(
+                heroItems = mapper.mapHeroItems(hotItems.take(HERO_ITEMS_COUNT)),
+                sections = sections,
+                apiDomainDialog = currentDialogState(),
+            )
+        )
     }
 
     private suspend fun loadBookmarkSection(): List<Item>? {
