@@ -28,6 +28,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
+import kotlin.coroutines.CoroutineContext
 
 class SectionVMTest {
 
@@ -39,7 +40,8 @@ class SectionVMTest {
 
     @Test
     fun coordinatorRefresh_restartsPagingWithoutClearingSharedCache() = runTest {
-        val paginator = paginator(testScheduler)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val paginator = paginator(dispatcher)
         val interactor = mockk<ContentListInteractor>(relaxed = true)
         val coordinator = ContentListRefreshCoordinator()
         val sideEffects = mutableListOf<Paginator.SideEffect>()
@@ -47,7 +49,7 @@ class SectionVMTest {
             paginator.sideEffects.collect(sideEffects::add)
         }
         coEvery { interactor.loadPage(any(), page = 1) } returns emptyPage()
-        val vm = createVM(paginator, config("popular"), interactor, coordinator)
+        val vm = createVM(paginator, config("popular"), interactor, coordinator, dispatcher)
         vm.testOnStart()
         testScheduler.advanceUntilIdle()
         sideEffects.clear()
@@ -74,8 +76,9 @@ class SectionVMTest {
 
     @Test
     fun directSavedChange_invalidatesCacheOnceAndRestartsSiblingSections() = runTest {
-        val firstPaginator = paginator(testScheduler)
-        val siblingPaginator = paginator(testScheduler)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val firstPaginator = paginator(dispatcher)
+        val siblingPaginator = paginator(dispatcher)
         val interactor = mockk<ContentListInteractor>(relaxed = true)
         val savedItemInteractor = mockk<SavedItemInteractor>(relaxed = true)
         val coordinator = ContentListRefreshCoordinator()
@@ -85,8 +88,22 @@ class SectionVMTest {
         coEvery {
             savedItemInteractor.setSaved(itemId = 42, isSeriesLike = false, saved = false)
         } returns Result.success(false)
-        val first = createVM(firstPaginator, firstConfig, interactor, coordinator, savedItemInteractor)
-        val sibling = createVM(siblingPaginator, siblingConfig, interactor, coordinator, savedItemInteractor)
+        val first = createVM(
+            paginator = firstPaginator,
+            config = firstConfig,
+            interactor = interactor,
+            coordinator = coordinator,
+            pagingCoroutineContext = dispatcher,
+            savedItemInteractor = savedItemInteractor,
+        )
+        val sibling = createVM(
+            paginator = siblingPaginator,
+            config = siblingConfig,
+            interactor = interactor,
+            coordinator = coordinator,
+            pagingCoroutineContext = dispatcher,
+            savedItemInteractor = savedItemInteractor,
+        )
         first.testOnStart()
         sibling.testOnStart()
         testScheduler.advanceUntilIdle()
@@ -95,8 +112,8 @@ class SectionVMTest {
         testScheduler.advanceUntilIdle()
 
         verify(exactly = 1) { interactor.invalidateFirstPageCache() }
-        coVerify(timeout = 1_000, exactly = 2) { interactor.loadPage(firstConfig, page = 1) }
-        coVerify(timeout = 1_000, exactly = 2) { interactor.loadPage(siblingConfig, page = 1) }
+        coVerify(exactly = 2) { interactor.loadPage(firstConfig, page = 1) }
+        coVerify(exactly = 2) { interactor.loadPage(siblingConfig, page = 1) }
         first.testCancelScope()
         sibling.testCancelScope()
         firstPaginator.close()
@@ -108,6 +125,7 @@ class SectionVMTest {
         config: SectionConfig,
         interactor: ContentListInteractor,
         coordinator: ContentListRefreshCoordinator,
+        pagingCoroutineContext: CoroutineContext,
         savedItemInteractor: SavedItemInteractor = mockk(relaxed = true),
     ) = SectionVM(
         paginator = paginator,
@@ -118,11 +136,12 @@ class SectionVMTest {
         router = mockk<AppRouter>(relaxed = true),
         errorHandler = mockk<ErrorHandler> { every { proceed(any()) } returns { } },
         contentListRefreshCoordinator = coordinator,
+        pagingCoroutineContext = pagingCoroutineContext,
     )
 
-    private fun paginator(testScheduler: TestCoroutineScheduler) = Paginator.Store<Item>(
+    private fun paginator(coroutineContext: CoroutineContext) = Paginator.Store<Item>(
         comparator = { old, new -> old.id == new.id },
-        coroutineContext = StandardTestDispatcher(testScheduler),
+        coroutineContext = coroutineContext,
     )
 
     private fun config(id: String) = SectionConfig(id = id, title = id)
