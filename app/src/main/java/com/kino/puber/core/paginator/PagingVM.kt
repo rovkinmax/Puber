@@ -22,10 +22,11 @@ abstract class PagingVM<T, VS>(
     protected val paginator: Paginator.Store<T>,
     router: AppRouter,
     override val errorHandler: ErrorHandler,
+    pagingCoroutineContext: CoroutineContext = Dispatchers.Default,
 ) : PuberVM<VS>(router) {
 
     private val pagingJob = SupervisorJob()
-    private val pagingScope = CoroutineScope(Dispatchers.Default + pagingJob)
+    private val pagingScope = CoroutineScope(pagingCoroutineContext + pagingJob)
     protected var isFullDataNext = false
     protected var isFullDataPrev = false
     protected open val errorHandlerGeneral by lazy { errorHandler.handler(::setGeneralError) }

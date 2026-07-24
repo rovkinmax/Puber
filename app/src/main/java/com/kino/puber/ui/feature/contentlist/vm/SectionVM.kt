@@ -16,6 +16,8 @@ import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.contentlist.model.SectionState
+import kotlinx.coroutines.Dispatchers
+import kotlin.coroutines.CoroutineContext
 
 internal class SectionVM(
     paginator: Paginator.Store<Item>,
@@ -26,7 +28,8 @@ internal class SectionVM(
     router: AppRouter,
     errorHandler: ErrorHandler,
     private val contentListRefreshCoordinator: ContentListRefreshCoordinator,
-) : PagingVM<Item, SectionState>(paginator, router, errorHandler) {
+    pagingCoroutineContext: CoroutineContext = Dispatchers.Default,
+) : PagingVM<Item, SectionState>(paginator, router, errorHandler, pagingCoroutineContext) {
 
     // Collect state without back dispatcher — for use outside LazyColumn items
     @Composable
