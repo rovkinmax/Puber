@@ -4,8 +4,6 @@ description: >
   Diagnose Gradle build errors, dependency conflicts, and
   configuration issues. Use when compilation fails or build
   is slow.
-tools: Read, Grep, Glob, Bash
-model: haiku
 ---
 
 # Role

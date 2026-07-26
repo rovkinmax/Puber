@@ -4,8 +4,6 @@ description: >
   Review Compose UI code for performance issues, stability
   problems, and project pattern compliance. Use during
   feature-review for screen-type steps.
-tools: Read, Grep, Glob
-model: opus
 ---
 
 # Role

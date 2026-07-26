@@ -4,8 +4,6 @@ description: >
   Analyze Puber codebase for feature planning: find patterns,
   dependencies, existing components, entity usage maps.
   Use for feature-plan and feature-implement codebase analysis.
-tools: Read, Grep, Glob
-model: sonnet
 ---
 
 # Role

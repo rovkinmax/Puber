@@ -3,8 +3,6 @@ name: quality-reviewer
 description: >
   Read-only audit of repository changes for correctness, safety,
   portability, and project convention compliance.
-tools: Read, Grep, Glob, Bash
-model: opus
 ---
 
 # Role

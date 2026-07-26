@@ -8,14 +8,18 @@ project internals from another repository.
 
 Puber workflow commands must use explicit task artifacts. Do not infer a feature from `.todo/.current`.
 
-- Planning produces `workspace_path` and `plan_path`.
+- Planning produces `workspace_path` and `plan_path`. `workspace_path` is
+  always the repository or managed-worktree root; `.todo/<feature>` is an
+  artifact directory and belongs in `plan_path` or another explicit artifact
+  field.
 - Implementation preserves and re-emits `workspace_path` and `plan_path` until all steps are complete.
 - Audit/review produces `audit_report` or `review_report`.
 - Current Delivery v5 and future generated workflows use `standards_status`
   and `standards_report` for early Standards Review.
 - Verification produces `verification_report` or a concise verification summary.
 - Final Compliance Review produces `compliance_report`.
-- PR creation produces `pr_url`, `branch_name`, and `workspace_path`; no-diff/report-only PR skips produce `pr_report`.
+- PR creation produces `pr_url`, `branch_name`, `workspace_path`, and the
+  resolved `merge_strategy`; no-diff/report-only PR skips produce `pr_report`.
 - PR/CI monitoring produces `ci_report`.
 - Waiting PR produces `blocker_reason` while the PR is open,
   `merge_report` after GitHub reports `state=MERGED`, or `pr_report` when PR
@@ -73,6 +77,10 @@ to project-local capability roles:
 - `.kent/config.toml` enables `[workflow] subagents = true`.
 - Canonical delegated roles are explicitly marked `agent_callable = true` and `workflow_subagent = true`; do not rely on
   Kent defaults for workflow delegation eligibility.
+- Role prompts define behavior only. Model, reasoning, verbosity, tools, and delegation eligibility are owned by Kent
+  configuration; role-prompt frontmatter must not declare `model` or `tools`.
+- Generated Delivery Standards, Specification, and Compliance nodes own final review. Implementation and Fix procedures
+  must not launch nested final reviewers that duplicate those graph stages.
 
 - `project-researcher`: Puber codebase research, alias for `android-codebase-analyst`.
 - `implementation-worker`: bounded feature step implementation.
@@ -85,6 +93,18 @@ to project-local capability roles:
 
 - Main compile check: `./gradlew :app:compileDevDebugKotlin`.
 - Kent worktree compile check: `./tools/agentw :app:compileDevDebugKotlin`.
+- Detekt findings are task-scoped only when comparison with the pinned
+  `origin/master` baseline proves a new or worsened violation. A failing full
+  repository Detekt run and a touched path are not sufficient evidence.
+  For metric rules, worsening means the same rule, path, and declaration has a
+  larger measured value. For non-metric rules, it means a new normalized
+  declaration signature or increased occurrence count. Line shifts do not
+  count, and a lower total finding count does not waive an individual
+  regression.
+  Pre-existing findings are reported as baseline debt, not assigned to the
+  feature writer. If an explicit absolute-clean rule conflicts with the
+  baseline repository state, report `blocked` and request a policy decision;
+  do not start broad cleanup.
 - Main checkout may use direct Gradle.
 - Project-local worktrees under `.kent/worktrees/` and Kent-managed task worktrees under
   `~/.kent/worktrees/workspace-.../<TASK-ID>` must use `./tools/agentw` to isolate Gradle state.
@@ -164,12 +184,29 @@ recoverable blocker.
 
 `done` is reserved for delivered work, not "agent finished." For PR-producing workflows:
 
+- `.kent/workflow-profile.toml` uses `pr_merge_strategy = "auto"`. Resolve it
+  from GitHub repository-enabled methods, `master` branch protection/rulesets,
+  and merge-queue policy. Continue only when exactly one method remains; do not
+  guess from the PR UI.
+- Supported explicit policies are `merge`, `squash`, and `rebase`. The selected
+  method must remain enabled and compatible with the target branch.
+- Generic `mergeable=MERGEABLE` or `mergeStateStatus=CLEAN` proves only that
+  the final tree can merge. For rebase delivery, GitHub GraphQL
+  `canBeRebased=true` is separately required. A clean merge-tree or proof that
+  `master` is already an ancestor does not replace the replay check.
+- Diagnose conflicting rebase signals only in an isolated temporary clone or
+  branch with a forced replay onto fresh `origin/master`; do not mutate the
+  task branch while investigating.
 - `ci_monitor` routes successful or intentionally skipped checks to `waiting_pr`.
 - `waiting_pr` checks the pull request through GitHub. It must not merge, push, tag, or clean up.
 - If the PR is still open, `waiting_pr` writes a task comment with the current PR status and takes the approval-gated
   `needs_user_action` self-loop.
 - If the PR has review comments, conflicts, or post-CI regressions that fit the task scope, `waiting_pr` takes
   `needs_changes` back to `fix` or `prepare`.
+- History rewriting or force-pushing requires exact user authorization naming
+  the task branch and repair. Preserve the old remote head in a local backup,
+  verify the authorized final-tree invariant, and use force-with-lease pinned
+  to the expected remote head. Any mismatch returns `needs_user_action`.
 - If GitHub reports `state=MERGED`, `waiting_pr` advances to cleanup for normal workflows.
 - Release workflows route `waiting_pr -> pr_merged -> publish` with human approval before tag publication.
 - `close_without_merge` is approval-gated and valid only when the latest user comment explicitly says to close, cancel, or

@@ -4,8 +4,6 @@ description: >
   Audit data and domain layer quality: API models, UIMappers,
   interactors. Find duplications, anti-patterns, misplaced logic.
   Use during feature-review or before refactoring.
-tools: Read, Grep, Glob
-model: sonnet
 ---
 
 # Domain Model Reviewer Agent

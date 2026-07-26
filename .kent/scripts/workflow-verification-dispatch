@@ -5,10 +5,47 @@ input="$(jq -c .)"
 workspace_path="$(jq -er '.workspace_path | strings' <<<"$input")"
 review_context="$(jq -er '.review_context | strings' <<<"$input")"
 
+canonical_directory() {
+  (
+    cd -P "$1" 2>/dev/null
+    pwd -P
+  )
+}
+
+execution_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+execution_root="$(canonical_directory "$execution_root")"
+reported_root="$(canonical_directory "$workspace_path" || true)"
+reported_git_root="$(
+  git -C "$workspace_path" rev-parse --show-toplevel 2>/dev/null || true
+)"
+if [[ -n "$reported_git_root" ]]; then
+  reported_git_root="$(canonical_directory "$reported_git_root")"
+else
+  reported_git_root="$reported_root"
+fi
+
+if [[ -z "$reported_root" ||
+  "$reported_root" != "$reported_git_root" ||
+  "$reported_root" != "$execution_root" ]]; then
+  jq -nc \
+    --arg transition "invalid_workspace" \
+    --arg commentary "Rejected a non-root or foreign workspace path." \
+    --arg reported_workspace_path "$workspace_path" \
+    --arg fix_context \
+      "workspace_path must equal the canonical task execution root: $execution_root" \
+    '{
+      transition: $transition,
+      commentary: $commentary,
+      reported_workspace_path: $reported_workspace_path,
+      fix_context: $fix_context
+    }'
+  exit 0
+fi
+
 jq -nc \
   --arg transition "fanout_verify" \
   --arg commentary "Starting deterministic and independent read-only verification." \
-  --arg workspace_path "$workspace_path" \
+  --arg workspace_path "$execution_root" \
   --arg review_context "$review_context" \
   '{
     transition: $transition,
