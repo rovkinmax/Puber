@@ -3,6 +3,7 @@ package com.kino.puber.core.ui.uikit.component.moviesList
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,10 +18,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -57,9 +60,23 @@ fun VideoGrid(
     onItemFocused: (VideoItemUIState) -> Unit = {},
     onItemContextMenu: ((VideoItemUIState) -> Unit)? = null,
     enableTopSideGradient: Boolean = true,
+    initialFocusedItemId: Int? = null,
 ) {
     val lazyListState = rememberLazyListState()
-    var focusedColumnIndex by rememberSaveable { mutableIntStateOf(-1) }
+    val initialColumnIndex = remember(state, initialFocusedItemId) {
+        state.list.indexOfFirst { gridItem ->
+            gridItem is VideoGridItemUIState.Items &&
+                gridItem.items.any { it.id == initialFocusedItemId }
+        }
+    }
+    var focusedColumnIndex by rememberSaveable(initialFocusedItemId) {
+        mutableIntStateOf(initialColumnIndex)
+    }
+    LaunchedEffect(initialColumnIndex) {
+        if (initialColumnIndex >= 0) {
+            lazyListState.scrollToItem(initialColumnIndex)
+        }
+    }
 
     val showTopGradient by remember { derivedStateOf { lazyListState.firstVisibleItemScrollOffset > 0 } }
 
@@ -89,6 +106,9 @@ fun VideoGrid(
                         items = columnItem,
                         columnIndex = indexC,
                         isTargetRow = indexC == focusedColumnIndex,
+                        initialFocusedItemId = initialFocusedItemId?.takeIf { itemId ->
+                            columnItem.items.any { it.id == itemId }
+                        },
                         onItemClick = onItemClick,
                         onItemContextMenu = onItemContextMenu,
                         onItemFocused = { item ->
@@ -100,25 +120,29 @@ fun VideoGrid(
             }
         }
 
-        if (enableTopSideGradient && showTopGradient) {
-            val gradientHeight = 48.dp
-            val surfaceColor = MaterialTheme.colorScheme.surface
-            val density = LocalDensity.current
-            val gradientBrush = remember(surfaceColor) {
-                Brush.verticalGradient(
-                    colors = listOf(surfaceColor, surfaceColor.copy(alpha = 0F)),
-                    endY = with(density) { gradientHeight.toPx() },
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(gradientHeight)
-                    .align(Alignment.TopCenter)
-                    .background(brush = gradientBrush)
-            )
-        }
+        VideoGridTopGradient(visible = enableTopSideGradient && showTopGradient)
     }
+}
+
+@Composable
+private fun BoxScope.VideoGridTopGradient(visible: Boolean) {
+    if (!visible) return
+    val gradientHeight = 48.dp
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val density = LocalDensity.current
+    val gradientBrush = remember(surfaceColor) {
+        Brush.verticalGradient(
+            colors = listOf(surfaceColor, surfaceColor.copy(alpha = 0F)),
+            endY = with(density) { gradientHeight.toPx() },
+        )
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(gradientHeight)
+            .align(Alignment.TopCenter)
+            .background(brush = gradientBrush),
+    )
 }
 
 @Composable
@@ -126,6 +150,7 @@ private fun VideoGridItems(
     items: VideoGridItemUIState.Items,
     columnIndex: Int,
     isTargetRow: Boolean,
+    initialFocusedItemId: Int?,
     onItemClick: (VideoItemUIState) -> Unit,
     onItemContextMenu: ((VideoItemUIState) -> Unit)?,
     onItemFocused: (VideoItemUIState) -> Unit,
@@ -136,10 +161,21 @@ private fun VideoGridItems(
             .fillMaxWidth(),
     ) {
         val listState = rememberLazyListState()
-        var focusedItemIndex by rememberSaveable { mutableIntStateOf(0) }
+        val initialItemIndex = remember(items, initialFocusedItemId) {
+            items.items.indexOfFirst { it.id == initialFocusedItemId }
+        }
+        var focusedItemIndex by rememberSaveable(columnIndex, initialFocusedItemId) {
+            mutableIntStateOf(initialItemIndex.coerceAtLeast(0))
+        }
 
         val rowFocusRequester = remember { FocusRequester() }
         val savedItemFocusRequester = remember { FocusRequester() }
+        LaunchedEffect(initialFocusedItemId, initialItemIndex) {
+            if (initialItemIndex >= 0) {
+                withFrameNanos { }
+                savedItemFocusRequester.requestFocus()
+            }
+        }
         PositionFocusedItemInLazyLayout {
             LazyRow(
                 modifier = Modifier
@@ -157,35 +193,62 @@ private fun VideoGridItems(
                     } else {
                         indexR == 0
                     }
-                    val focusModifier = remember(indexR, item.id) {
-                        Modifier.onFocusChanged { state ->
-                            if (state.isFocused) {
-                                focusedItemIndex = indexR
-                                onItemFocused(item)
-                            }
-                        }
-                    }
-                    val clickCallback = remember(item.id) {
-                        {
-                            runCatching { rowFocusRequester.saveFocusedChild() }
-                            onItemClick(item)
-                        }
-                    }
-
-                    VideoItem(
-                        modifier = Modifier
-                            .then(
-                                if (isFallbackTarget) Modifier.focusRequester(savedItemFocusRequester)
-                                else Modifier
-                            )
-                            .then(focusModifier),
-                        state = item,
-                        onClick = clickCallback,
-                        onContextMenu = onItemContextMenu?.let { callback -> { callback(item) } },
+                    VideoGridRowItem(
+                        item = item,
+                        itemIndex = indexR,
+                        isFallbackTarget = isFallbackTarget,
+                        rowFocusRequester = rowFocusRequester,
+                        savedItemFocusRequester = savedItemFocusRequester,
+                        onItemClick = onItemClick,
+                        onItemContextMenu = onItemContextMenu,
+                        onItemFocused = { focusedIndex, focusedItem ->
+                            focusedItemIndex = focusedIndex
+                            onItemFocused(focusedItem)
+                        },
                     )
                 }
             }
             FadeGradient(listState)
         }
     }
+}
+
+@Composable
+private fun VideoGridRowItem(
+    item: VideoItemUIState,
+    itemIndex: Int,
+    isFallbackTarget: Boolean,
+    rowFocusRequester: FocusRequester,
+    savedItemFocusRequester: FocusRequester,
+    onItemClick: (VideoItemUIState) -> Unit,
+    onItemContextMenu: ((VideoItemUIState) -> Unit)?,
+    onItemFocused: (Int, VideoItemUIState) -> Unit,
+) {
+    val focusModifier = remember(itemIndex, item.id) {
+        Modifier.onFocusChanged { state ->
+            if (state.isFocused) {
+                onItemFocused(itemIndex, item)
+            }
+        }
+    }
+    val clickCallback = remember(item.id) {
+        {
+            runCatching { rowFocusRequester.saveFocusedChild() }
+            onItemClick(item)
+        }
+    }
+    VideoItem(
+        modifier = Modifier
+            .then(
+                if (isFallbackTarget) {
+                    Modifier.focusRequester(savedItemFocusRequester)
+                } else {
+                    Modifier
+                },
+            )
+            .then(focusModifier),
+        state = item,
+        onClick = clickCallback,
+        onContextMenu = onItemContextMenu?.let { callback -> { callback(item) } },
+    )
 }

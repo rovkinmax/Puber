@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="error_generic">Не удалось выполнить запрос. Попробуйте ещё раз.</string>
+    <string name="history_title">История</string>
+    <string name="history_empty_title">История просмотров пуста</string>
+    <string name="history_empty_description">Начните смотреть фильм или сериал — он появится здесь.</string>
+    <string name="history_refresh">Обновить</string>
+    <string name="history_episode_metadata">Сезон %1$d · Серия %2$d</string>
+    <string name="history_context_episode_title">%1$s · Сезон %2$d · Серия %3$d</string>
+    <string name="history_context_continue">Продолжить просмотр</string>
+    <string name="history_context_play">Смотреть сначала</string>
+    <string name="history_context_delete_exact_media">Удалить эту запись</string>
+    <string name="history_context_account_disclosure">Удаление влияет на историю просмотров вашего аккаунта.</string>
     <string name="settings_updates_title">Обновления</string>
     <string name="settings_auto_update_check">Автоматически проверять обновления</string>
     <string name="settings_auto_update_check_subtitle">Puber будет искать новую версию при запуске приложения.</string>

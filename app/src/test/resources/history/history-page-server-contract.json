@@ -1,0 +1,32 @@
+{
+  "history": [
+    {
+      "counter": 1,
+      "first_seen": 411111100,
+      "item": {
+        "id": 92001,
+        "title": "Synthetic Server Contract Movie",
+        "type": "movie",
+        "posters": {
+          "small": "https://assets.example.test/server-contract-small.jpg",
+          "wide": "https://assets.example.test/server-contract-wide.jpg"
+        }
+      },
+      "last_seen": 411111111,
+      "media": {
+        "id": 93001,
+        "number": 2,
+        "snumber": 0,
+        "duration": 4800
+      },
+      "time": 1200,
+      "deleted": false
+    }
+  ],
+  "pagination": {
+    "current": 1,
+    "perpage": 20,
+    "total": 1,
+    "total_items": 1
+  }
+}

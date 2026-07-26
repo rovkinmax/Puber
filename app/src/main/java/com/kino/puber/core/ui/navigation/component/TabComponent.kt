@@ -26,23 +26,38 @@ import org.koin.compose.koinInject
 
 internal val LocalTabAppRouterHolder = staticCompositionLocalOf<TabAppRouterHolder?> { null }
 
+internal class TabFlowSession(
+    val router: AppRouter,
+    initialContentInstanceKey: ScreenKey,
+) {
+    private var contentInstanceKey: ScreenKey = initialContentInstanceKey
+
+    fun beginContentInstance(nextKey: ScreenKey): Boolean {
+        val previousKey = contentInstanceKey
+        contentInstanceKey = nextKey
+        return previousKey != nextKey
+    }
+}
+
 internal class TabAppRouterHolder(private val screens: Screens) {
-    private data class Entry(val router: AppRouter, val scope: CoroutineScope)
+    private data class Entry(val session: TabFlowSession, val scope: CoroutineScope)
 
     private val entries = mutableMapOf<ScreenKey, Entry>()
 
-    fun getOrCreate(key: ScreenKey): AppRouter {
+    fun getOrCreate(
+        key: ScreenKey,
+        initialContentInstanceKey: ScreenKey,
+    ): TabFlowSession {
         return entries.getOrPut(key) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
             Entry(
-                router = AppRouter(coroutineScope = scope, screens = screens),
+                session = TabFlowSession(
+                    router = AppRouter(coroutineScope = scope, screens = screens),
+                    initialContentInstanceKey = initialContentInstanceKey,
+                ),
                 scope = scope,
             )
-        }.router
-    }
-
-    fun dispose(key: ScreenKey) {
-        entries.remove(key)?.scope?.cancel()
+        }.session
     }
 
     fun dispose() {
@@ -77,6 +92,9 @@ internal fun TabComponent(
     CompositionLocalProvider(LocalTabAppRouterHolder provides holder) {
         TabNavigator(
             tab = LoadingTab,
+            // Voyager retains one nested Navigator per logical tab so switching tabs preserves its stack.
+            // Refreshes replace that Navigator's root instead of creating generation-specific child Navigators.
+            disposeNestedNavigators = false,
             key = scopeName,
         ) {
             val navigator = LocalTabNavigator.current

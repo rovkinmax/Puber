@@ -26,7 +26,16 @@ import org.koin.dsl.module
 internal data class DetailsScreen(private val params: DetailsScreenParams) : RootPuberScreen {
 
     @IgnoredOnParcel
-    override val key: ScreenKey = "DetailsScreen_${params.itemId}"
+    override val key: ScreenKey = buildString {
+        append("DetailsScreen_")
+        append(params.itemId)
+        params.initialEpisode?.let { episode ->
+            append("_s")
+            append(episode.seasonNumber)
+            append("_e")
+            append(episode.episodeNumber)
+        }
+    }
 
     @Suppress("unused")
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {

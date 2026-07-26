@@ -25,6 +25,7 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 internal fun EpisodesPanel(
     visible: Boolean,
     episodes: VideoGridUIState?,
+    initialFocusedItemId: Int? = null,
     onEpisodeSelected: (VideoItemUIState) -> Unit,
     onEpisodeContextMenu: ((VideoItemUIState) -> Unit)? = null,
     onBackPressed: (() -> Unit)? = null,
@@ -54,6 +55,7 @@ internal fun EpisodesPanel(
             if (episodes != null) {
                 VideoGrid(
                     state = episodes,
+                    initialFocusedItemId = initialFocusedItemId,
                     onItemClick = onEpisodeSelected,
                     onItemContextMenu = onEpisodeContextMenu,
                     enableTopSideGradient = true,

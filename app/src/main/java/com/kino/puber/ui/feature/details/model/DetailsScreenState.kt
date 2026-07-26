@@ -21,6 +21,7 @@ internal sealed class DetailsScreenState {
         val seasonsPanelVisible: Boolean = false,
         val episodes: VideoGridUIState? = null,
         val currentEpisode: VideoItemUIState? = null,
+        val initialEpisodeFocusId: Int? = null,
         val similarItems: List<VideoItemUIState> = emptyList(),
         val trailerUrl: String? = null,
     ) : DetailsScreenState()

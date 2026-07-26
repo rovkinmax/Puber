@@ -5,8 +5,10 @@ import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.Season
+import com.kino.puber.data.api.models.Video
 import com.kino.puber.data.api.models.VideoFile
 import com.kino.puber.data.api.models.VideoUrl
+import com.kino.puber.data.api.models.WatchingInfo
 import com.kino.puber.data.api.models.WatchingStatus
 import com.kino.puber.data.api.models.WatchingToggleResponse
 import com.kino.puber.data.repository.ItemDetailsRepository
@@ -52,10 +54,21 @@ class PlayerInteractorTest {
         seasons = listOf(season1, season2),
     )
 
+    private val movieVideo1 = Video(
+        id = 101,
+        number = 1,
+        files = listOf(VideoFile(url = VideoUrl(hls = "hls://movie-1.m3u8"))),
+    )
+    private val movieVideo2 = Video(
+        id = 102,
+        number = 2,
+        files = listOf(VideoFile(url = VideoUrl(hls = "hls://movie-2.m3u8"))),
+    )
     private val movieItem = Item(
         id = 10,
         title = "Test Movie",
         type = ItemType.MOVIE,
+        videos = listOf(movieVideo1, movieVideo2),
     )
 
     // endregion
@@ -278,8 +291,94 @@ class PlayerInteractorTest {
     }
 
     @Test
-    fun resolveMedia_movie_setsWatchedStateFromItem() {
+    fun resolveMedia_movieWithoutExplicitNumber_selectsFirstVideo() {
+        val result = interactor.resolveMedia(
+            item = movieItem,
+            seasonNumber = null,
+            episodeNumber = null,
+            videoNumber = null,
+        )
+
+        assertEquals(movieVideo1.number, result.videoNumber)
+        assertEquals(movieVideo1.files, result.files)
+    }
+
+    @Test
+    fun resolveMedia_movieWithExplicitNumber_selectsExactVideo() {
+        val result = interactor.resolveMedia(
+            item = movieItem,
+            seasonNumber = null,
+            episodeNumber = null,
+            videoNumber = 2,
+        )
+
+        assertEquals(movieVideo2.number, result.videoNumber)
+        assertEquals(movieVideo2.files, result.files)
+    }
+
+    @Test
+    fun resolveMedia_movieWithMissingExplicitNumber_doesNotFallback() {
+        val result = interactor.resolveMedia(
+            item = movieItem,
+            seasonNumber = null,
+            episodeNumber = null,
+            videoNumber = 99,
+        )
+
+        assertNull(result.videoNumber)
+        assertNull(result.files)
+        assertNull(result.audios)
+        assertNull(result.subtitles)
+    }
+
+    @Test
+    fun resolveMedia_series_ignoresMovieVideoNumber() {
+        val result = interactor.resolveMedia(
+            item = serialItem,
+            seasonNumber = 1,
+            episodeNumber = 2,
+            videoNumber = 99,
+        )
+
+        assertEquals(episode2.number, result.videoNumber)
+        assertEquals(1, result.seasonNumber)
+        assertEquals(2, result.episodeNumber)
+    }
+
+    @Test
+    fun resolveMedia_movieFallsBackToItemWatchedStateWhenSelectedVideoHasNoStatus() {
         val result = interactor.resolveMedia(movieItem.copy(watched = 1), seasonNumber = null, episodeNumber = null)
+        assertTrue(result.isCurrentMediaWatched)
+    }
+
+    @Test
+    fun resolveMedia_movieUsesSelectedVideoWatchedState() {
+        val item = movieItem.copy(
+            watched = 1,
+            videos = listOf(
+                movieVideo1.copy(watched = 0),
+                movieVideo2.copy(watched = 1),
+            ),
+        )
+
+        val first = interactor.resolveMedia(item, seasonNumber = null, episodeNumber = null, videoNumber = 1)
+        val second = interactor.resolveMedia(item, seasonNumber = null, episodeNumber = null, videoNumber = 2)
+
+        assertFalse(first.isCurrentMediaWatched)
+        assertTrue(second.isCurrentMediaWatched)
+    }
+
+    @Test
+    fun resolveMedia_movieUsesSelectedVideoWatchingStatus() {
+        val item = movieItem.copy(
+            videos = listOf(
+                movieVideo1.copy(watching = WatchingInfo(status = 1)),
+                movieVideo2,
+            ),
+        )
+
+        val result = interactor.resolveMedia(item, seasonNumber = null, episodeNumber = null, videoNumber = 1)
+
         assertTrue(result.isCurrentMediaWatched)
     }
 
@@ -331,19 +430,21 @@ class PlayerInteractorTest {
     }
 
     @Test
-    fun markCurrentAsWatched_movieMarksAndRefreshesItem() = runTest {
-        val refreshed = movieItem.copy(watched = 1)
+    fun markCurrentAsWatched_movieUsesExactVideoAndRefreshesItem() = runTest {
+        val refreshed = movieItem.copy(
+            videos = listOf(movieVideo1, movieVideo2.copy(watched = 1)),
+        )
         coEvery {
-            api.toggleWatchingStatus(id = 10, status = 1, season = null, video = null)
+            api.toggleWatchingStatus(id = 10, status = 1, season = null, video = 2)
         } returns Result.success(WatchingToggleResponse(status = 1, watched = 1))
         every { itemDetailsRepository.invalidate(10) } returns Unit
         coEvery { itemDetailsRepository.getItemDetails(10) } returns refreshed
 
-        val result = interactor.markCurrentAsWatched(id = 10)
+        val result = interactor.markCurrentAsWatched(id = 10, videoNumber = 2)
 
         assertEquals(refreshed, result)
         coVerify(exactly = 1) {
-            api.toggleWatchingStatus(id = 10, status = 1, season = null, video = null)
+            api.toggleWatchingStatus(id = 10, status = 1, season = null, video = 2)
         }
         verify(exactly = 1) { itemDetailsRepository.invalidate(10) }
         coVerify(exactly = 1) { itemDetailsRepository.getItemDetails(10) }
@@ -358,7 +459,7 @@ class PlayerInteractorTest {
         every { itemDetailsRepository.invalidate(42) } returns Unit
         coEvery { itemDetailsRepository.getItemDetails(42) } returns refreshed
 
-        val result = interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1)
+        val result = interactor.markCurrentAsWatched(id = 42, season = 1, videoNumber = 1)
 
         assertEquals(refreshed, result)
         coVerify(exactly = 1) {
@@ -377,7 +478,7 @@ class PlayerInteractorTest {
         coEvery { itemDetailsRepository.getItemDetails(42) } throws IllegalStateException("refresh failed")
 
         val failure = runCatching {
-            interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1)
+            interactor.markCurrentAsWatched(id = 42, season = 1, videoNumber = 1)
         }.exceptionOrNull()
 
         assertTrue(failure is WatchedDetailsRefreshException)

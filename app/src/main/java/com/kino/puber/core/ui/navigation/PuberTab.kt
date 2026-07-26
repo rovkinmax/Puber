@@ -22,14 +22,19 @@ data class PuberTab(
 ) : PuberScreen, Tab {
 
     @IgnoredOnParcel
-    override val key: ScreenKey = buildString {
-        append("Tab:")
-        append(screen.key)
+    internal val navigationSlotKey: ScreenKey = "Tab:${screen.key}"
+
+    @IgnoredOnParcel
+    internal val contentInstanceKey: ScreenKey = buildString {
+        append(navigationSlotKey)
         if (instanceKey.isNotBlank()) {
             append(":")
             append(instanceKey)
         }
     }
+
+    @IgnoredOnParcel
+    override val key: ScreenKey = navigationSlotKey
 
     override val options: TabOptions
         @Composable
@@ -44,11 +49,18 @@ data class PuberTab(
             Navigator(screen)
             return
         }
-        val tabRouter = remember(key) { holder.getOrCreate(key) }
+        val tabSession = remember(key) {
+            holder.getOrCreate(
+                key = key,
+                initialContentInstanceKey = contentInstanceKey,
+            )
+        }
         TabFlowComponent(
             scopeName = key,
+            navigationSlotKey = navigationSlotKey,
+            contentInstanceKey = contentInstanceKey,
             screen = screen,
-            tabRouter = tabRouter,
+            tabSession = tabSession,
         )
     }
 }

@@ -1,0 +1,37 @@
+{
+  "history": [
+    {
+      "counter": 4,
+      "first_seen": 4102444800,
+      "item": {
+        "id": 72001,
+        "title": "Synthetic Movie Alpha",
+        "type": "movie",
+        "posters": {
+          "small": "https://assets.example.test/movie-small.jpg",
+          "wide": "https://assets.example.test/movie-wide.jpg"
+        },
+        "synthetic_item_field": "ignored"
+      },
+      "last_seen": 4102444810,
+      "media": {
+        "id": 73001,
+        "number": 2,
+        "snumber": 0,
+        "duration": 5400,
+        "synthetic_media_field": "ignored"
+      },
+      "time": 1200,
+      "deleted": false,
+      "synthetic_history_field": "ignored"
+    }
+  ],
+  "pagination": {
+    "current": 1,
+    "perpage": 20,
+    "total": 1,
+    "total_items": 1,
+    "synthetic_pagination_field": "ignored"
+  },
+  "synthetic_envelope_field": "ignored"
+}

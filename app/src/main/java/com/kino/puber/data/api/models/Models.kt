@@ -179,9 +179,16 @@ data class Tracklist(
     val url: String? = null,
 )
 
+/**
+ * A normalized server history row.
+ *
+ * [recordId] is present only when an endpoint exposes a verified record identifier. The paginated `/history` endpoint
+ * does not expose one, so its adapter leaves this null. Exact playback semantics come from the item/media coordinates,
+ * while media-level deletion identity comes from [video].
+ */
 @Serializable
 data class History(
-    val id: Int,
+    @SerialName("id") val recordId: Int? = null,
     val item: Item,
     val video: Video? = null,
     val season: Int? = null,

@@ -25,6 +25,7 @@ import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberTab
 import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
+import com.kino.puber.ui.feature.history.model.HistoryPresentation
 
 internal class MainUIMapper(
     private val resources: ResourceProvider,
@@ -84,15 +85,19 @@ internal class MainUIMapper(
         )
     }
 
-    fun buildTabContent(type: TabType, refreshVersion: Int = 0): PuberTab {
+    fun buildTabContent(
+        type: TabType,
+        navigationMode: NavigationMode,
+        refreshVersion: Int = 0,
+    ): PuberTab {
         return PuberTab(
-            screen = tabScreen(type),
+            screen = tabScreen(type, navigationMode),
             tag = type,
             instanceKey = refreshVersion.takeIf { it > 0 }?.let { "refresh_$it" }.orEmpty(),
         )
     }
 
-    private fun tabScreen(type: TabType): PuberScreen {
+    private fun tabScreen(type: TabType, navigationMode: NavigationMode): PuberScreen {
         return when (type) {
             TabType.Home -> screens.home()
             TabType.Search -> screens.search()
@@ -106,7 +111,12 @@ internal class MainUIMapper(
             TabType.DocSeries,
             TabType.TvShows -> screens.contentList(type)
             TabType.Bookmarks -> screens.bookmarks()
-            TabType.History -> screens.underDevelopment()
+            TabType.History -> screens.history(
+                presentation = when (navigationMode) {
+                    NavigationMode.TopTabs -> HistoryPresentation.TopTabs
+                    NavigationMode.SideDrawer -> HistoryPresentation.SideDrawer
+                },
+            )
             TabType.Collections -> screens.collections()
             TabType.SportTV -> screens.underDevelopment()
             TabType.Settings -> screens.deviceSettings()

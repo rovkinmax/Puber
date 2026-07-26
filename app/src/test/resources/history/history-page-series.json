@@ -1,0 +1,37 @@
+{
+  "history": [
+    {
+      "counter": 9,
+      "first_seen": 4105296000,
+      "item": {
+        "id": 82001,
+        "title": "Synthetic Series Beta",
+        "type": "serial",
+        "posters": {
+          "small": "https://assets.example.test/series-small.jpg",
+          "wide": "https://assets.example.test/series-wide.jpg"
+        },
+        "synthetic_item_field": "ignored"
+      },
+      "last_seen": 4105296010,
+      "media": {
+        "id": 83001,
+        "number": 9,
+        "snumber": 4,
+        "duration": 2700,
+        "synthetic_media_field": "ignored"
+      },
+      "time": 2700,
+      "deleted": false,
+      "synthetic_history_field": "ignored"
+    }
+  ],
+  "pagination": {
+    "current": 1,
+    "perpage": 20,
+    "total": 1,
+    "total_items": 1,
+    "synthetic_pagination_field": "ignored"
+  },
+  "synthetic_envelope_field": "ignored"
+}

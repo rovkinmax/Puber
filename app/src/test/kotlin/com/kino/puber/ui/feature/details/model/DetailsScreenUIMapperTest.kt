@@ -81,6 +81,38 @@ class DetailsScreenUIMapperTest {
         assertEquals("2", state.audioTracksRowValue())
     }
 
+    @Test
+    fun map_initialEpisodeSelectsExactEpisodeForPanelFocus() {
+        val state = mapper.map(
+            item = series(
+                trailer = null,
+                seasons = listOf(
+                    Season(
+                        id = 1,
+                        number = 1,
+                        episodes = listOf(Episode(id = 101, number = 1)),
+                    ),
+                    Season(
+                        id = 2,
+                        number = 2,
+                        episodes = listOf(
+                            Episode(id = 201, number = 1),
+                            Episode(id = 204, number = 4),
+                        ),
+                    ),
+                ),
+            ),
+            isInWatchlist = false,
+            initialEpisode = DetailsEpisodeTarget(
+                seasonNumber = 2,
+                episodeNumber = 4,
+            ),
+        )
+
+        assertEquals(204, state.currentEpisode?.id)
+        assertEquals(204, state.initialEpisodeFocusId)
+    }
+
     private inline fun <reified T : DetailsButtonUIState> List<DetailsButtonUIState>.count(
         action: DetailsAction,
     ): Int {

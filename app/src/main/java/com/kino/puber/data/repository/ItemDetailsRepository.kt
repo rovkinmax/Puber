@@ -15,12 +15,12 @@ class ItemDetailsRepository(private val api: KinoPubApiClient) {
     }
 
     suspend fun refresh(id: Int): Item {
-        cache.remove(id)
+        invalidate(id)
         return getItemDetails(id)
     }
 
-    fun invalidate(id: Int) {
-        cache.remove(id)
+    fun invalidate(itemId: Int) {
+        cache.remove(itemId)
     }
 
     fun clear() {

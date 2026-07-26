@@ -119,8 +119,8 @@ internal fun DetailsScreenContent(
         is DetailsScreenState.Content -> {
             val seasonsPanelFocusRequester = remember { FocusRequester() }
             var episodeContextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
-            LaunchedEffect(state.seasonsPanelVisible) {
-                if (state.seasonsPanelVisible) {
+            LaunchedEffect(state.seasonsPanelVisible, state.initialEpisodeFocusId) {
+                if (state.seasonsPanelVisible && state.initialEpisodeFocusId == null) {
                     delay(SEASONS_PANEL_FOCUS_DELAY_MS)
                     try {
                         seasonsPanelFocusRequester.requestFocus()
@@ -138,6 +138,7 @@ internal fun DetailsScreenContent(
                     EpisodesPanel(
                         visible = state.seasonsPanelVisible,
                         episodes = state.episodes,
+                        initialFocusedItemId = state.initialEpisodeFocusId,
                         onEpisodeSelected = { item -> onAction(DetailsAction.EpisodeSelected(item)) },
                         onEpisodeContextMenu = { episodeContextMenuItem = it },
                         onBackPressed = { onAction(DetailsAction.CloseSeasonsPanel) },

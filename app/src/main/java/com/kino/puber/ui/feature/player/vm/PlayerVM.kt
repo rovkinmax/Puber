@@ -9,7 +9,6 @@ import com.kino.puber.core.content.ContentChangeSet
 import com.kino.puber.core.content.ContentChangeType
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
-import com.kino.puber.core.logger.log
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
@@ -32,6 +31,7 @@ import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.ui.feature.player.model.PlayPauseIndicatorState
 import com.kino.puber.ui.feature.player.model.PlayerContentState
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
+import com.kino.puber.ui.feature.player.model.PlayerStartMode
 import com.kino.puber.ui.feature.player.model.BufferPreset
 import com.kino.puber.ui.feature.player.model.PlayerUIMapper
 import com.kino.puber.ui.feature.player.model.PlayerViewState
@@ -214,13 +214,19 @@ internal class PlayerVM(
     }
 
     private fun loadContent() {
-        startPreparingPlayback(params.seasonNumber, params.episodeNumber)
+        startPreparingPlayback(
+            seasonNumber = params.seasonNumber,
+            episodeNumber = params.episodeNumber,
+            startMode = params.startMode,
+            videoNumber = params.videoNumber,
+        )
     }
 
     private fun startPreparingPlayback(
         seasonNumber: Int?,
         episodeNumber: Int?,
-        forceFromBeginning: Boolean = false,
+        startMode: PlayerStartMode = PlayerStartMode.ResumeIfAvailable,
+        videoNumber: Int? = null,
     ) {
         val generation = ++mediaGeneration
         launch {
@@ -228,7 +234,8 @@ internal class PlayerVM(
                 generation = generation,
                 seasonNumber = seasonNumber,
                 episodeNumber = episodeNumber,
-                forceFromBeginning = forceFromBeginning,
+                startMode = startMode,
+                videoNumber = videoNumber,
             )
         }
     }
@@ -237,12 +244,22 @@ internal class PlayerVM(
         generation: Long,
         seasonNumber: Int?,
         episodeNumber: Int?,
-        forceFromBeginning: Boolean = false,
+        startMode: PlayerStartMode = PlayerStartMode.ResumeIfAvailable,
+        videoNumber: Int? = null,
     ) {
         val item = interactor.getItemDetails(params.itemId)
         if (!isCurrentPrepare(generation)) return
-        val resolved = interactor.resolveMedia(item, seasonNumber, episodeNumber)
+        val resolved = interactor.resolveMedia(item, seasonNumber, episodeNumber, videoNumber)
         if (!isCurrentPrepare(generation)) return
+        if (videoNumber != null && !resolved.isSeries && resolved.videoNumber != videoNumber) {
+            dispatchError(
+                ErrorEntity(
+                    message = resources.getString(R.string.player_error_playback),
+                    code = "PlaybackContent",
+                )
+            )
+            return
+        }
         val token = MediaToken(
             generation = generation,
             key = MediaKey(
@@ -262,7 +279,10 @@ internal class PlayerVM(
             files = resolved.files,
             subtitles = resolved.subtitles,
         )
-        val resumeDialog = if (!forceFromBeginning) buildResumeDialog(resolved.watchingTime) else null
+        val resumeDialog = when (startMode) {
+            PlayerStartMode.ResumeIfAvailable -> buildResumeDialog(resolved.watchingTime)
+            PlayerStartMode.StartFromBeginning -> null
+        }
         val contentState = contentStateFactory.build(
             item = item,
             resolved = resolved,
@@ -628,7 +648,11 @@ internal class PlayerVM(
         tracksRestoredForCurrentMedia = false
 
         updateViewState(PlayerViewState.Loading)
-        startPreparingPlayback(seasonNumber, episodeNumber, forceFromBeginning = true)
+        startPreparingPlayback(
+            seasonNumber = seasonNumber,
+            episodeNumber = episodeNumber,
+            startMode = PlayerStartMode.StartFromBeginning,
+        )
     }
 
     private fun playNextEpisode() {
@@ -764,7 +788,7 @@ internal class PlayerVM(
                     interactor.markCurrentAsWatched(
                         id = token.key.itemId,
                         season = token.key.seasonNumber,
-                        episode = token.key.episodeNumber,
+                        videoNumber = token.key.videoNumber,
                     )
                 }
                 markContentChanged(ContentChangeType.Watched)
@@ -792,8 +816,6 @@ internal class PlayerVM(
                     autoMarkHandledToken = token
                     if (origin == WatchedOrigin.Manual) {
                         showMessage(errorHandler.map(error.cause ?: error).message)
-                    } else {
-                        log(error, "Watched status saved without refreshed item details")
                     }
                 }
             } catch (throwable: Throwable) {
@@ -850,6 +872,7 @@ internal class PlayerVM(
             isMovie = content.isMovie,
             seasonNumber = media.seasonNumber,
             episodeNumber = media.episodeNumber,
+            videoNumber = media.videoNumber,
         ) ?: fallbackCurrentWatched ?: content.isCurrentMediaWatched
         val episodes = if (content.isMovie) {
             content.episodes
@@ -874,6 +897,7 @@ internal class PlayerVM(
             isMovie = content.isMovie,
             seasonNumber = media.seasonNumber,
             episodeNumber = media.episodeNumber,
+            videoNumber = media.videoNumber,
         )
         syncContentWithItem(updated, fallbackCurrentWatched = watched)
     }
@@ -926,9 +950,20 @@ internal class PlayerVM(
         )
     }
 
-    private fun Item.currentMediaWatched(isMovie: Boolean, seasonNumber: Int?, episodeNumber: Int?): Boolean? {
+    private fun Item.currentMediaWatched(
+        isMovie: Boolean,
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+        videoNumber: Int?,
+    ): Boolean? {
         return if (isMovie) {
-            isWatchedStatus(watched)
+            videos
+                ?.find { it.number == videoNumber }
+                ?.let { video ->
+                    isWatchedStatus(video.watched)
+                        ?: isWatchedStatus(video.watching?.status)
+                }
+                ?: isWatchedStatus(watched)
         } else {
             seasons
                 ?.find { it.number == seasonNumber }
@@ -943,10 +978,27 @@ internal class PlayerVM(
         isMovie: Boolean,
         seasonNumber: Int?,
         episodeNumber: Int?,
+        videoNumber: Int?,
     ): Item {
         val status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS
         return if (isMovie) {
-            copy(watched = status)
+            val hasExactVideo = videos?.any { it.number == videoNumber } == true
+            if (hasExactVideo) {
+                copy(
+                    videos = videos.map { video ->
+                        if (video.number == videoNumber) {
+                            video.copy(
+                                watched = status,
+                                watching = video.watching?.copy(status = status),
+                            )
+                        } else {
+                            video
+                        }
+                    },
+                )
+            } else {
+                copy(watched = status)
+            }
         } else {
             copy(
                 seasons = seasons?.map { season ->
@@ -1172,7 +1224,6 @@ internal class PlayerVM(
     }
 
     private fun loadSkipSegments(item: Item, season: Int?, episode: Int?, token: MediaToken) {
-        log("loadSkipSegments called: title='${item.title}', imdb=${item.imdb}, s=$season, e=$episode")
         skipSegmentsJob?.cancel()
         skipSegmentsJob = launch {
             val loadedSegments = skipSegmentInteractor.loadSegments(item, season, episode)
@@ -1328,8 +1379,8 @@ internal class PlayerVM(
                             markContentChanged(ContentChangeType.PlaybackProgress)
                         } catch (error: CancellationException) {
                             throw error
-                        } catch (throwable: Throwable) {
-                            log(throwable, "Failed to save playback progress")
+                        } catch (_: Throwable) {
+                            PlayerProgressDiagnostics.reportSaveFailure()
                         }
                     }
                 } finally {

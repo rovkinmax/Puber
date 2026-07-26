@@ -63,7 +63,7 @@ internal abstract class PlayerVMTestFixture {
         }
 
         coEvery { interactor.getItemDetails(any()) } returns testItem
-        coEvery { interactor.resolveMedia(any(), any(), any()) } returns testResolvedMedia
+        every { interactor.resolveMedia(any(), any(), any(), any()) } returns testResolvedMedia
         coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState
         coEvery { interactor.markCurrentAsWatched(any(), any(), any()) } returns
             testItem.withCurrentEpisodeWatched(true)
@@ -99,10 +99,13 @@ internal abstract class PlayerVMTestFixture {
         clearAllMocks()
     }
 
-    protected fun createVM() = PlayerVM(
+    protected fun createVM(
+        playerParams: PlayerScreenParams = params,
+        playerErrorHandler: ErrorHandler = errorHandler,
+    ) = PlayerVM(
         router = router,
-        errorHandler = errorHandler,
-        params = params,
+        errorHandler = playerErrorHandler,
+        params = playerParams,
         mapper = mapper,
         interactor = interactor,
         resources = FakeResourceProvider(),

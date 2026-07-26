@@ -18,12 +18,43 @@ class NavigationPreferencesRepository(context: Context) {
     }
 
     fun getVisibleTabs(mode: NavigationMode): List<TabType> {
+        if (mode == NavigationMode.TopTabs) {
+            migrateTopTabsIfNeeded()
+        }
         val key = tabsKeyForMode(mode)
         val stored = prefs.getString(key, null)
         if (stored != null) {
             return deserializeTabs(stored)
         }
         return defaultTabsForMode(mode)
+    }
+
+    private fun migrateTopTabsIfNeeded() {
+        val currentVersion = prefs.getInt(KEY_TOP_TABS_SCHEMA_VERSION, 0)
+        if (currentVersion >= TOP_TABS_SCHEMA_VERSION_HISTORY) return
+
+        val stored = prefs.getString(KEY_TOP_TABS, null)
+        val currentTabs = stored
+            ?.let(::deserializeTabs)
+            ?: resolveTabNames(TOP_TABS_DEFAULT_TAB_NAMES)
+        val normalizedTabs = normalizeTopTabsForHistory(currentTabs)
+        val editor = prefs.edit()
+        editor.putString(KEY_TOP_TABS, serializeTabs(normalizedTabs))
+        editor.putInt(KEY_TOP_TABS_SCHEMA_VERSION, TOP_TABS_SCHEMA_VERSION_HISTORY)
+        editor.apply()
+    }
+
+    private fun normalizeTopTabsForHistory(tabs: List<TabType>): List<TabType> {
+        val normalized = tabs
+            .filterNot { it == TabType.Search || it == TabType.Settings || it == TabType.History }
+            .toMutableList()
+        if (TabType.Home !in normalized) {
+            normalized.add(index = 0, element = TabType.Home)
+        }
+        val collectionsIndex = normalized.indexOf(TabType.Collections)
+        val historyIndex = if (collectionsIndex >= 0) collectionsIndex + 1 else normalized.size
+        normalized.add(index = historyIndex, element = TabType.History)
+        return normalized
     }
 
     fun setVisibleTabs(mode: NavigationMode, tabs: List<TabType>) {
@@ -33,11 +64,10 @@ class NavigationPreferencesRepository(context: Context) {
     }
 
     private fun defaultTabsForMode(mode: NavigationMode): List<TabType> {
-        val names = when (mode) {
-            NavigationMode.SideDrawer -> DRAWER_DEFAULT_TAB_NAMES
-            NavigationMode.TopTabs -> TOP_TABS_DEFAULT_TAB_NAMES
+        return when (mode) {
+            NavigationMode.SideDrawer -> TabType.entries.filter(TabType::enabled)
+            NavigationMode.TopTabs -> resolveTabNames(TOP_TABS_DEFAULT_TAB_NAMES)
         }
-        return resolveTabNames(names)
     }
 
     private fun resolveTabNames(names: List<String>): List<TabType> {
@@ -84,27 +114,16 @@ class NavigationPreferencesRepository(context: Context) {
         const val KEY_NAVIGATION_MODE = "navigation_mode"
         const val KEY_DRAWER_TABS = "drawer_tabs_visible"
         const val KEY_TOP_TABS = "toptabs_tabs_visible"
+        const val KEY_TOP_TABS_SCHEMA_VERSION = "toptabs_schema_version"
+        const val TOP_TABS_SCHEMA_VERSION_HISTORY = 1
         const val SEPARATOR = ","
-
-        val DRAWER_DEFAULT_TAB_NAMES = listOf(
-            "Search",
-            "Favourites",
-            "Movies",
-            "Series",
-            "Cartoons",
-            "For4k",
-            "Concerts",
-            "DocMovies",
-            "DocSeries",
-            "TvShows",
-            "Settings",
-        )
 
         val TOP_TABS_DEFAULT_TAB_NAMES = listOf(
             "Home",
             "Movies",
             "Series",
             "Collections",
+            "History",
         )
     }
 }

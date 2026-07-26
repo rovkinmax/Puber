@@ -1,6 +1,5 @@
 package com.kino.puber.data.api
 
-import com.kino.puber.core.logger.log
 import com.kino.puber.data.api.models.IntroDbAppResponse
 import com.kino.puber.data.api.models.IntroDbAppSegment
 import com.kino.puber.data.api.models.SkipSegment
@@ -32,14 +31,12 @@ class IntroDbAppApiClient {
 
     suspend fun getSegments(imdbId: String, season: Int?, episode: Int?): Result<List<SkipSegment>> = runCatching {
         val formattedId = if (imdbId.startsWith("tt", ignoreCase = true)) imdbId else "tt$imdbId"
-        log("IntroDbApp: GET /segments?imdb_id=$formattedId&season=$season&episode=$episode")
         val response = httpClient.get("segments") {
             parameter("imdb_id", formattedId)
             if (season != null) parameter("season", season)
             if (episode != null) parameter("episode", episode)
         }
         if (!response.status.isSuccess()) {
-            log("IntroDbApp: failed with status=${response.status}")
             return@runCatching emptyList()
         }
         val body = response.body<IntroDbAppResponse>()
