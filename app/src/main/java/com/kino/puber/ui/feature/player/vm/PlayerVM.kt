@@ -950,78 +950,6 @@ internal class PlayerVM(
         )
     }
 
-    private fun Item.currentMediaWatched(
-        isMovie: Boolean,
-        seasonNumber: Int?,
-        episodeNumber: Int?,
-        videoNumber: Int?,
-    ): Boolean? {
-        return if (isMovie) {
-            videos
-                ?.find { it.number == videoNumber }
-                ?.let { video ->
-                    isWatchedStatus(video.watched)
-                        ?: isWatchedStatus(video.watching?.status)
-                }
-                ?: isWatchedStatus(watched)
-        } else {
-            seasons
-                ?.find { it.number == seasonNumber }
-                ?.episodes
-                ?.find { it.number == episodeNumber }
-                ?.let { episode -> isWatchedStatus(episode.watched) }
-        }
-    }
-
-    private fun Item.withCurrentMediaWatched(
-        watched: Boolean,
-        isMovie: Boolean,
-        seasonNumber: Int?,
-        episodeNumber: Int?,
-        videoNumber: Int?,
-    ): Item {
-        val status = if (watched) WATCHED_STATUS else UNWATCHED_STATUS
-        return if (isMovie) {
-            val hasExactVideo = videos?.any { it.number == videoNumber } == true
-            if (hasExactVideo) {
-                copy(
-                    videos = videos.map { video ->
-                        if (video.number == videoNumber) {
-                            video.copy(
-                                watched = status,
-                                watching = video.watching?.copy(status = status),
-                            )
-                        } else {
-                            video
-                        }
-                    },
-                )
-            } else {
-                copy(watched = status)
-            }
-        } else {
-            copy(
-                seasons = seasons?.map { season ->
-                    if (season.number != seasonNumber) {
-                        season
-                    } else {
-                        season.copy(
-                            episodes = season.episodes?.map { episode ->
-                                if (episode.number == episodeNumber) episode.copy(watched = status) else episode
-                            }
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    private fun isWatchedStatus(status: Int?): Boolean? {
-        return status?.let { it == WATCHED_STATUS }
-    }
-
-    private fun Boolean.toStatus(): Int = if (this) WATCHED_STATUS else UNWATCHED_STATUS
-
     private fun currentEpisode(): CurrentEpisode? {
         val media = currentMedia ?: return null
         return if (canUseCurrentEpisode(media)) {
@@ -1476,8 +1404,6 @@ internal class PlayerVM(
     }
 
     private companion object {
-        const val WATCHED_STATUS = 1
-        const val UNWATCHED_STATUS = 0
         const val CONTROLS_HIDE_DELAY_MS = 3000L
         const val SEEK_INDICATOR_HIDE_DELAY_MS = 1500L
         const val PROGRESS_SYNC_INTERVAL_MS = 30_000L

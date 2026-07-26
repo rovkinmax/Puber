@@ -6,8 +6,9 @@ import com.kino.puber.data.api.auth.DeviceCodeResponse
 import com.kino.puber.data.api.auth.DeviceFlowResult
 import com.kino.puber.data.api.auth.OAuthError
 import com.kino.puber.data.api.auth.TokenResponse
-import com.kino.puber.data.api.history.HistoryRequest
 import com.kino.puber.data.api.history.HistoryPageResponse
+import com.kino.puber.data.api.history.clearHistoryMedia
+import com.kino.puber.data.api.history.fetchHistoryPage
 import com.kino.puber.core.session.SessionEvent
 import com.kino.puber.core.session.SessionEventBus
 import com.kino.puber.data.api.config.KinoPubConfig
@@ -348,13 +349,7 @@ class KinoPubApiClient(
      */
     suspend fun getHistoryData(page: Int): Result<PaginatedResponse<History>> =
         apiCall<HistoryPageResponse> {
-            val request = HistoryRequest.page(page)
-            httpClient.get(request.resolveUrl(mainApiBaseUrl)) {
-                request.query.forEach { (name, value) -> parameter(name, value) }
-                headers {
-                    append(HttpHeaders.CacheControl, request.cacheControl)
-                }
-            }
+            httpClient.fetchHistoryPage(page, mainApiBaseUrl)
         }.map(HistoryPageResponse::toModel)
 
     /**
@@ -375,19 +370,7 @@ class KinoPubApiClient(
      * Clear history for the exact media represented by a selected history row.
      */
     suspend fun clearExactMediaHistory(mediaId: Int): Result<Unit> =
-        apiCall {
-            val request = HistoryRequest.clearExactMedia(mediaId)
-            httpClient.post(request.resolveUrl(mainApiBaseUrl)) {
-                request.query.forEach { (name, value) -> parameter(name, value) }
-                headers {
-                    append(HttpHeaders.CacheControl, request.cacheControl)
-                }
-            }.also { response ->
-                check(response.status.isSuccess()) {
-                    "History exact-media deletion failed with HTTP ${response.status.value}"
-                }
-            }
-        }
+        apiCall { httpClient.clearHistoryMedia(mediaId, mainApiBaseUrl) }
 
     /**
      * Clear season history
