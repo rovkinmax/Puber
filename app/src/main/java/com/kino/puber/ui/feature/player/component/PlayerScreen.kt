@@ -14,6 +14,7 @@ import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.domain.interactor.player.PlayerInteractor
 import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
+import com.kino.puber.ui.feature.player.model.PlayerStartMode
 import com.kino.puber.ui.feature.player.model.PlayerUIMapper
 import com.kino.puber.ui.feature.player.vm.ContentStateFactory
 import com.kino.puber.ui.feature.player.vm.PlaybackControl
@@ -38,6 +39,8 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Fulls
         append(params.itemId)
         params.seasonNumber?.let { season -> append("_s").append(season) }
         params.episodeNumber?.let { episode -> append("_e").append(episode) }
+        params.videoNumber?.let { video -> append("_v").append(video) }
+        if (params.startMode == PlayerStartMode.StartFromBeginning) append("_startOver")
     }
 
     @Suppress("unused")

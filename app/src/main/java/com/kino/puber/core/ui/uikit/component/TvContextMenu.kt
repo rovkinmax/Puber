@@ -10,6 +10,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -52,6 +53,7 @@ internal fun TvContextMenuDialog(
     onAction: (TvContextMenuAction) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    supportingText: String? = null,
 ) {
     if (actions.isEmpty()) return
 
@@ -86,41 +88,79 @@ internal fun TvContextMenuDialog(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                ContextMenuHeader(
+                    title = title,
+                    supportingText = supportingText,
                 )
-                actions.forEachIndexed { index, action ->
-                    TvSafeButton(
-                        text = action.title,
-                        onClick = {
-                            dismiss()
-                            onAction(action)
-                        },
-                        enabled = action.enabled,
-                        primary = index == 0,
-                        modifier = if (index == initialFocusActionIndex) {
-                            Modifier.focusRequester(actionFocusRequester)
-                        } else {
-                            Modifier
-                        },
-                    )
-                }
-                TvSafeButton(
-                    text = stringResource(R.string.context_menu_close),
-                    onClick = dismiss,
-                    modifier = if (initialFocusActionIndex < 0) {
-                        Modifier.focusRequester(closeFocusRequester)
-                    } else {
-                        Modifier
+                ContextMenuActions(
+                    actions = actions,
+                    initialFocusActionIndex = initialFocusActionIndex,
+                    actionFocusRequester = actionFocusRequester,
+                    closeFocusRequester = closeFocusRequester,
+                    onAction = { action ->
+                        dismiss()
+                        onAction(action)
                     },
+                    onClose = dismiss,
                 )
             }
         }
     }
+}
+
+@Composable
+private fun ContextMenuHeader(
+    title: String,
+    supportingText: String?,
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
+    if (!supportingText.isNullOrBlank()) {
+        Text(
+            text = supportingText,
+            modifier = Modifier.focusProperties { canFocus = false },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ContextMenuActions(
+    actions: List<TvContextMenuAction>,
+    initialFocusActionIndex: Int,
+    actionFocusRequester: FocusRequester,
+    closeFocusRequester: FocusRequester,
+    onAction: (TvContextMenuAction) -> Unit,
+    onClose: () -> Unit,
+) {
+    actions.forEachIndexed { index, action ->
+        TvSafeButton(
+            text = action.title,
+            onClick = { onAction(action) },
+            enabled = action.enabled,
+            primary = index == 0,
+            modifier = if (index == initialFocusActionIndex) {
+                Modifier.focusRequester(actionFocusRequester)
+            } else {
+                Modifier
+            },
+        )
+    }
+    TvSafeButton(
+        text = stringResource(R.string.context_menu_close),
+        onClick = onClose,
+        modifier = if (initialFocusActionIndex < 0) {
+            Modifier.focusRequester(closeFocusRequester)
+        } else {
+            Modifier
+        },
+    )
 }
 
 @Composable
@@ -276,9 +316,8 @@ internal fun Modifier.onTvContextMenuKey(
                 true
             }
 
-            event.type == KeyEventType.KeyUp && event.key.isSelectKey() -> {
+            event.type == KeyEventType.KeyUp && event.key.isSelectKey() ->
                 longSelectState.onSelectKeyUp()
-            }
 
             else -> false
         }

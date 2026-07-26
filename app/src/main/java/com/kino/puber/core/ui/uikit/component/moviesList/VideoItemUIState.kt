@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -61,6 +62,8 @@ data class VideoItemUIState(
     val episodeNumber: Int? = null,
     val isSeasonWatched: Boolean? = null,
 )
+
+internal const val WATCHED_INDICATOR_TEST_TAG = "watched_indicator"
 
 @Composable
 fun VideoItem(
@@ -188,6 +191,7 @@ internal fun WatchedIndicatorBadge(
 
     Box(
         modifier = modifier
+            .testTag(WATCHED_INDICATOR_TEST_TAG)
             .padding(6.dp)
             .background(
                 MaterialTheme.colorScheme.scrim.copy(alpha = 0.48F),

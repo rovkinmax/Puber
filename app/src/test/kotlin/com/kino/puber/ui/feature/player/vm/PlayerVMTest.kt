@@ -1,18 +1,26 @@
 package com.kino.puber.ui.feature.player.vm
 
+import com.kino.puber.R
 import com.kino.puber.core.content.ContentChangeSet
 import com.kino.puber.core.content.ContentChangeType
+import com.kino.puber.core.error.DefaultErrorHandler
 import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
+import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.SkipSegment
 import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.domain.model.SubtitleSize
+import com.kino.puber.ui.ScreensImpl
 import com.kino.puber.ui.feature.player.model.ActivePanel
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.PlayerAction
+import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerViewState
 import com.kino.puber.ui.feature.player.model.ResumeDialogState
 import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
+import com.kino.puber.util.FakeResourceProvider
 import com.kino.puber.util.MainDispatcherExtension
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -20,12 +28,14 @@ import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
+import timber.log.Timber
 
 /**
  * PlayerVM tests.
@@ -63,7 +73,135 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         verify { playbackController.prepare("https://test/v.m3u8", any(), any()) }
     }
 
+    @Test
+    fun onStart_urlBearingItemDetailsFailurePreservesErrorAndSanitizesTimberPipeline() {
+        val privateItemId = 424_242
+        val privateUrl = "https://api.example.test/v1/items/$privateItemId"
+        val timeout = HttpRequestTimeoutException(privateUrl, 5_000L, null)
+        val failure = IllegalStateException("Player startup failed", timeout)
+        val logTree = CollectingLogTree()
+        coEvery { interactor.getItemDetails(privateItemId) } throws failure
+
+        Timber.plant(logTree)
+        val vm = try {
+            createVM(
+                playerParams = PlayerScreenParams(itemId = privateItemId, videoNumber = 1),
+                playerErrorHandler = DefaultErrorHandler(FakeResourceProvider()),
+            ).also(PlayerVM::testOnStart)
+        } finally {
+            Timber.uproot(logTree)
+        }
+
+        assertEquals(
+            "string_${R.string.error_generic}",
+            (vm.testStateValue as PlayerViewState.Error).message,
+        )
+        val output = logTree.output()
+        assertFalse(output.contains(privateItemId.toString()), output)
+        assertFalse(output.contains(privateUrl), output)
+        assertTrue(output.contains("/items/<redacted>"), output)
+        assertEquals(1, logTree.entryCount)
+        verify(exactly = 0) { contentStateFactory.build(any(), any(), any(), any(), any(), any()) }
+        verify(exactly = 0) { playbackController.prepare(any(), any(), any()) }
+    }
+
+    @Test
+    fun onStart_passesExplicitMovieVideoNumberToResolver() {
+        val movieParams = PlayerScreenParams(itemId = 42, videoNumber = 7)
+        val movieItem = Item(id = 42, title = "Movie", type = ItemType.MOVIE)
+        val movieMedia = testResolvedMedia.copy(
+            videoNumber = 7,
+            episodeId = null,
+            episodeTitle = null,
+            isSeries = false,
+            hasNext = false,
+            hasPrevious = false,
+            seasonNumber = null,
+            episodeNumber = null,
+        )
+        coEvery { interactor.getItemDetails(42) } returns movieItem
+        every { interactor.resolveMedia(movieItem, null, null, 7) } returns movieMedia
+
+        createVM(movieParams).testOnStart()
+
+        verify {
+            interactor.resolveMedia(
+                item = movieItem,
+                seasonNumber = null,
+                episodeNumber = null,
+                videoNumber = 7,
+            )
+        }
+    }
+
+    @Test
+    fun onStart_missingExplicitMovieVideo_showsPlaybackErrorWithoutInitialization() {
+        val movieParams = PlayerScreenParams(itemId = 42, videoNumber = 7)
+        val movieItem = Item(id = 42, title = "Movie", type = ItemType.MOVIE)
+        val missingMedia = testResolvedMedia.copy(
+            files = null,
+            audios = null,
+            subtitles = null,
+            videoNumber = null,
+            episodeId = null,
+            episodeTitle = null,
+            isSeries = false,
+            hasNext = false,
+            hasPrevious = false,
+            seasonNumber = null,
+            episodeNumber = null,
+        )
+        coEvery { interactor.getItemDetails(42) } returns movieItem
+        every { interactor.resolveMedia(movieItem, null, null, 7) } returns missingMedia
+
+        val vm = createVM(movieParams).also { it.testOnStart() }
+
+        assertEquals(
+            "string_${R.string.player_error_playback}",
+            (vm.testStateValue as PlayerViewState.Error).message,
+        )
+        verify(exactly = 0) { contentStateFactory.build(any(), any(), any(), any(), any(), any()) }
+        verify(exactly = 0) { playbackController.prepare(any(), any(), any()) }
+    }
+
+    @Test
+    fun playerScreenKey_includesExplicitMovieVideoNumber() {
+        assertEquals(
+            "PlayerScreen_42_v7",
+            ScreensImpl.player(itemId = 42, videoNumber = 7).key,
+        )
+    }
+
+    @Test
+    fun playerScreenKey_withoutVideoNumber_preservesExistingKey() {
+        assertEquals(
+            "PlayerScreen_42_s1_e2",
+            ScreensImpl.player(itemId = 42, seasonNumber = 1, episodeNumber = 2).key,
+        )
+    }
+
     // endregion
+
+    private class CollectingLogTree : Timber.Tree() {
+        private val entries = mutableListOf<Pair<String, Throwable?>>()
+        val entryCount: Int
+            get() = entries.size
+
+        override fun log(
+            priority: Int,
+            tag: String?,
+            message: String,
+            t: Throwable?,
+        ) {
+            entries += message to t
+        }
+
+        fun output(): String {
+            return entries.joinToString("\n") { (message, throwable) ->
+                listOfNotNull(message, throwable?.stackTraceToString()).joinToString("\n")
+            }
+        }
+    }
 
     // region Bug 2: Audio track restore by language
 
@@ -272,6 +410,35 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         verifyEmptyContentChangeResult()
     }
 
+    @Test
+    fun failedFinalProgressSave_emitsIdentityFreeDiagnostic() {
+        val privateItemId = 424_242
+        val privateTitle = "Private watched title"
+        val privateTime = "private-watching-time"
+        val failure = IllegalStateException(
+            "Failed to save $privateTitle for item=$privateItemId at time=$privateTime",
+        )
+        coEvery { interactor.saveWatchingTime(42, 1, 0, 1) } throws failure
+        val logTree = CollectingLogTree()
+        val vm = startedVM()
+
+        Timber.plant(logTree)
+        try {
+            vm.onAction(PlayerAction.OnBackPressed)
+        } finally {
+            Timber.uproot(logTree)
+        }
+
+        val output = logTree.output()
+        assertEquals(1, logTree.entryCount)
+        assertTrue(output.contains(PROGRESS_SAVE_FAILURE_DIAGNOSTIC), output)
+        assertFalse(output.contains(privateItemId.toString()), output)
+        assertFalse(output.contains(privateTitle), output)
+        assertFalse(output.contains(privateTime), output)
+        assertFalse(output.contains(failure.message.orEmpty()), output)
+        verifyEmptyContentChangeResult()
+    }
+
     // endregion
 
     // region Episode switching
@@ -280,6 +447,23 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
     fun switchEpisode_releasesPlayer() {
         startedVM().onAction(PlayerAction.SelectEpisode(1, 2))
         verify { playbackController.release() }
+    }
+
+    @Test
+    fun switchEpisode_doesNotReuseInitialMovieVideoNumber() {
+        val vm = createVM(PlayerScreenParams(itemId = 42, seasonNumber = 1, episodeNumber = 1, videoNumber = 7))
+            .also { it.testOnStart() }
+
+        vm.onAction(PlayerAction.SelectEpisode(1, 2))
+
+        verify {
+            interactor.resolveMedia(
+                item = testItem,
+                seasonNumber = 1,
+                episodeNumber = 2,
+                videoNumber = null,
+            )
+        }
     }
 
     @Test
@@ -339,7 +523,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
             episodeId = 102,
             episodeNumber = 2,
         )
-        coEvery { interactor.resolveMedia(any(), any(), any()) } returns nextEpisode
+        every { interactor.resolveMedia(any(), any(), any(), any()) } returns nextEpisode
         coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns
             testContentState.copy(currentEpisodeId = 102)
         val vm = startedVM()
@@ -369,7 +553,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
                 emptyList()
             }
         }
-        coEvery { interactor.resolveMedia(any(), any(), any()) } returns testResolvedMedia andThen
+        every { interactor.resolveMedia(any(), any(), any(), any()) } returns testResolvedMedia andThen
             testResolvedMedia.copy(videoNumber = 2, episodeId = 102, episodeNumber = 2)
         val vm = startedVM()
 

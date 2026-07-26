@@ -68,7 +68,15 @@ internal class DetailsVM(
                 interactor.getItemDetails(params.itemId)
             }
             currentItem = item
-            updateViewState(mapper.map(item, isInWatchlist = interactor.isInWatchLaterFolder(item)))
+            val mapped = mapDetails(
+                item = item,
+                isInWatchlist = interactor.isInWatchLaterFolder(item),
+            )
+            updateViewState(
+                mapped.copy(
+                    seasonsPanelVisible = mapped.initialEpisodeFocusId != null,
+                ),
+            )
             loadSimilarItems()
         }
     }
@@ -188,7 +196,7 @@ internal class DetailsVM(
         isWatched: Boolean? = null,
     ) {
         val state = stateValue as? DetailsScreenState.Content
-        val mapped = mapper.map(item, isInWatchlist = isInWatchlist)
+        val mapped = mapDetails(item = item, isInWatchlist = isInWatchlist)
         currentItem = item
         updateViewState(
             mapped.copy(
@@ -199,6 +207,19 @@ internal class DetailsVM(
                 trailerUrl = state?.trailerUrl,
             )
         )
+    }
+
+    private fun mapDetails(
+        item: Item,
+        isInWatchlist: Boolean,
+    ): DetailsScreenState.Content {
+        return params.initialEpisode?.let { initialEpisode ->
+            mapper.map(
+                item = item,
+                isInWatchlist = isInWatchlist,
+                initialEpisode = initialEpisode,
+            )
+        } ?: mapper.map(item, isInWatchlist = isInWatchlist)
     }
 
     private fun showTrailer() {

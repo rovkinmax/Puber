@@ -2,6 +2,7 @@ package com.kino.puber.data.api
 
 import com.kino.puber.BuildConfig
 import com.kino.puber.core.logger.log
+import com.kino.puber.data.api.network.CurlLogFormatter
 import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.request
@@ -21,6 +22,8 @@ private const val CLIENT_ID = "android"
 private const val CLIENT_SECRET = BuildConfig.CLIENT_SECRET
 private const val PADDING_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 private const val MAX_PADDING_LENGTH = 2048
+private const val BYTES_PER_MEBIBYTE = 1024L * 1024L
+private const val MAX_LOG_BODY_SIZE = BYTES_PER_MEBIBYTE
 
 val TrafficPaddingPlugin = createClientPlugin("TrafficPaddingPlugin") {
     onRequest { request, _ ->
@@ -53,61 +56,42 @@ val KinoPubParametersPlugin = createClientPlugin("KinoPubParametersPlugin") {
 }
 
 val CurlLogger = createClientPlugin("CurlLogger") {
-    val maxBodySize = 1024 * 1024L // 1MB
+    val formatter = CurlLogFormatter()
 
     onRequest { request, _ ->
-        val curl = StringBuilder("curl")
-
-        curl.append(" -X ").append(request.method.value)
-
-        request.headers.entries().forEach { (key, values) ->
-            values.forEach { value ->
-                curl.append(" -H \"$key: $value\"")
-            }
+        val headers = request.headers.entries().flatMap { (name, values) ->
+            values.map { value -> name to value }
         }
-
-        val body = request.body
-        if (body is TextContent) {
-            val data = body.text.replace("\n", "\\n")
-            curl.append(" --data $'").append(data).append("'")
-        } else {
-            curl.append(" --data-binary '<non-text or unknown body>'")
-        }
-
-        curl.append(" \"").append(request.url).append("\"")
-
-        log("╭--- cURL (${request.url})")
-        log(curl.toString())
-        log("╰--- (copy & paste to terminal)")
+        val textBody = (request.body as? TextContent)?.text
+        formatter.formatRequest(
+            method = request.method.value,
+            url = request.url.toString(),
+            headers = headers,
+            textBody = textBody,
+        ).forEach { line -> log(line) }
     }
 
     onResponse { response ->
-        log("<-- ${response.status} ${response.request.url}")
-        response.headers.entries().forEach { (key, values) ->
-            values.forEach { value ->
-                log("$key: $value")
-            }
+        val headers = response.headers.entries().flatMap { (name, values) ->
+            values.map { value -> name to value }
         }
-
-        if (
+        val content = if (
             shouldSkipBodyLogging(
                 host = response.request.url.host,
                 path = response.request.url.encodedPath,
                 contentType = response.headers[HttpHeaders.ContentType],
             )
         ) {
-            log("")
-            log("<body logging skipped>")
-            log("<-- END HTTP")
-            return@onResponse
+            "<body logging skipped>"
+        } else {
+            readTextLimited(response.bodyAsChannel(), MAX_LOG_BODY_SIZE)
         }
-
-        val responseBody = response.bodyAsChannel()
-        val content = readTextLimited(responseBody, maxBodySize)
-
-        log("")
-        log(content)
-        log("<-- END HTTP (${content.length}-char body)")
+        formatter.formatResponse(
+            status = response.status.toString(),
+            url = response.request.url.toString(),
+            headers = headers,
+            body = content,
+        ).forEach { line -> log(line) }
     }
 }
 
@@ -131,7 +115,6 @@ private suspend fun readTextLimited(channel: ByteReadChannel, maxSize: Long): St
         "<binary body or decode error>"
     }
 }
-
 private fun shouldSkipBodyLogging(host: String, path: String, contentType: String?): Boolean {
     val normalizedHost = host.lowercase()
     val normalizedPath = path.lowercase()

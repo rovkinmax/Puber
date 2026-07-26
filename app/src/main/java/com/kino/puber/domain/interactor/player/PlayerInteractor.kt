@@ -54,7 +54,12 @@ internal class PlayerInteractor(
         return itemDetailsRepository.getItemDetails(id)
     }
 
-    fun resolveMedia(item: Item, seasonNumber: Int?, episodeNumber: Int?): ResolvedMedia {
+    fun resolveMedia(
+        item: Item,
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+        videoNumber: Int? = null,
+    ): ResolvedMedia {
         val isSeries = isSeriesType(item.type)
 
         var resolvedSeason = seasonNumber
@@ -87,7 +92,11 @@ internal class PlayerInteractor(
                 episodeNumber = resolvedEpisode,
             )
         } else {
-            val video = item.videos?.firstOrNull()
+            val video = if (videoNumber == null) {
+                item.videos?.firstOrNull()
+            } else {
+                item.videos?.firstOrNull { it.number == videoNumber }
+            }
             ResolvedMedia(
                 files = video?.files,
                 audios = video?.audios,
@@ -97,7 +106,11 @@ internal class PlayerInteractor(
                 videoNumber = video?.number,
                 episodeId = null,
                 episodeTitle = null,
-                isCurrentMediaWatched = isWatched(item.watched),
+                isCurrentMediaWatched = isWatched(
+                    video?.watched
+                        ?: video?.watching?.status
+                        ?: item.watched,
+                ),
                 isSeries = false,
                 hasNext = false,
                 hasPrevious = false,
@@ -236,8 +249,8 @@ internal class PlayerInteractor(
         itemDetailsRepository.invalidate(id)
     }
 
-    suspend fun markCurrentAsWatched(id: Int, season: Int? = null, episode: Int? = null): Item {
-        markAsWatched(id = id, season = season, videoNumber = episode)
+    suspend fun markCurrentAsWatched(id: Int, season: Int? = null, videoNumber: Int? = null): Item {
+        markAsWatched(id = id, season = season, videoNumber = videoNumber)
         return try {
             itemDetailsRepository.getItemDetails(id)
         } catch (error: CancellationException) {

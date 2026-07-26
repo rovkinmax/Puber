@@ -24,6 +24,8 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import com.kino.puber.core.di.DIScope
+import com.kino.puber.core.di.LocalPuberKoinScope
+import com.kino.puber.core.di.LocalPuberScopePrefix
 import com.kino.puber.core.logger.log
 import com.kino.puber.core.ui.navigation.AppLauncher
 import com.kino.puber.core.ui.navigation.AppRouter
@@ -37,11 +39,10 @@ import com.kino.puber.core.ui.navigation.puberPush
 import com.kino.puber.core.ui.navigation.puberReplace
 import com.kino.puber.core.ui.navigation.puberReplaceAll
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
-import kotlinx.coroutines.yield
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.yield
+import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
-import com.kino.puber.core.di.LocalPuberKoinScope
-import com.kino.puber.core.di.LocalPuberScopePrefix
 import org.koin.core.module.Module
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -209,14 +210,23 @@ object LoadingScreen : PuberScreen {
 }
 
 @Composable
-fun TabFlowComponent(
+internal fun TabFlowComponent(
     scopeName: String,
+    navigationSlotKey: ScreenKey,
+    contentInstanceKey: ScreenKey,
     screen: PuberScreen,
-    tabRouter: AppRouter,
+    tabSession: TabFlowSession,
 ) {
     val composableScope = rememberCoroutineScope()
+    val tabRouter = tabSession.router
     val parentScope = LocalPuberKoinScope.current
     val rootRouter = remember(parentScope) { parentScope?.getOrNull<AppRouter>() }
+    val rootScreen = remember(contentInstanceKey, screen) {
+        TabRootScreen(
+            delegate = screen,
+            tabInstanceKey = contentInstanceKey,
+        )
+    }
     DIScope(
         scopeName = scopeName,
         moduleFactory = { scopeId, _ ->
@@ -230,9 +240,18 @@ fun TabFlowComponent(
     ) {
         val contentFocusRequester = remember { FocusRequester() }
         Navigator(
-            screen = screen,
+            screen = rootScreen,
             onBackPressed = null,
+            key = tabFlowNavigatorKey(navigationSlotKey),
         ) { navigator ->
+            LaunchedEffect(contentInstanceKey) {
+                replaceTabRootIfChanged(
+                    navigator = navigator,
+                    rootScreen = rootScreen,
+                    contentInstanceKey = contentInstanceKey,
+                    tabSession = tabSession,
+                )
+            }
             TabBackHandler(navigator, tabRouter)
             Box(
                 Modifier
@@ -255,6 +274,47 @@ fun TabFlowComponent(
             }
         }
     }
+}
+
+@Parcelize
+private data class TabRootScreen(
+    private val delegate: PuberScreen,
+    private val tabInstanceKey: ScreenKey,
+) : PuberScreen {
+
+    @IgnoredOnParcel
+    override val key: ScreenKey = tabRootScreenKey(
+        tabInstanceKey = tabInstanceKey,
+        delegateKey = delegate.key,
+    )
+
+    @Composable
+    override fun Content() {
+        delegate.Content()
+    }
+}
+
+internal fun tabRootScreenKey(
+    tabInstanceKey: ScreenKey,
+    delegateKey: ScreenKey,
+): ScreenKey = "TabRoot:$tabInstanceKey:$delegateKey"
+
+internal fun tabFlowNavigatorKey(navigationSlotKey: ScreenKey): String {
+    return "TabFlow:$navigationSlotKey"
+}
+
+internal fun replaceTabRootIfChanged(
+    navigator: Navigator,
+    rootScreen: PuberScreen,
+    contentInstanceKey: ScreenKey,
+    tabSession: TabFlowSession,
+): Boolean {
+    if (!tabSession.beginContentInstance(contentInstanceKey)) {
+        return false
+    }
+    tabSession.router.resetSession()
+    navigator.puberReplaceAll(rootScreen)
+    return true
 }
 
 @Composable

@@ -6,6 +6,8 @@ import com.kino.puber.data.api.auth.DeviceCodeResponse
 import com.kino.puber.data.api.auth.DeviceFlowResult
 import com.kino.puber.data.api.auth.OAuthError
 import com.kino.puber.data.api.auth.TokenResponse
+import com.kino.puber.data.api.history.HistoryRequest
+import com.kino.puber.data.api.history.HistoryPageResponse
 import com.kino.puber.core.session.SessionEvent
 import com.kino.puber.core.session.SessionEventBus
 import com.kino.puber.data.api.config.KinoPubConfig
@@ -90,6 +92,7 @@ class KinoPubApiClient(
     private val connectivityManager: ConnectivityManager,
     private val cryptoPreferenceRepository: ICryptoPreferenceRepository,
     private val sessionEventBus: SessionEventBus,
+    private val mainApiBaseUrl: String = KinoPubConfig.MAIN_API_BASE_URL,
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -120,7 +123,7 @@ class KinoPubApiClient(
 
                 refreshTokens {
                     val refreshToken = cryptoPreferenceRepository.getRefreshToken().orEmpty()
-                    log("Attempting to refresh token with refresh token: $refreshToken")
+                    log("Attempting to refresh access token")
 
                     try {
                         val response = client.post("${KinoPubConfig.OAUTH_BASE_URL}device") {
@@ -135,18 +138,17 @@ class KinoPubApiClient(
                             cryptoPreferenceRepository.saveRefreshToken(newTokens.refreshToken)
                             BearerTokens(newTokens.accessToken, newTokens.refreshToken)
                         } else {
-                            val errorBody = response.bodyAsText()
-                            log("Refresh token failed with ${response.status.value}: $errorBody")
+                            log("Refresh token failed with HTTP ${response.status.value}")
                             onSessionExpired()
-                            throw IllegalStateException("Failed to refresh token: $errorBody")
+                            throw IllegalStateException(REFRESH_TOKEN_FAILURE_MESSAGE)
                         }
                     } catch (e: Exception) {
-                        if (e is IllegalStateException && e.message?.startsWith("Failed to refresh token:") == true) {
+                        if (e is IllegalStateException && e.message == REFRESH_TOKEN_FAILURE_MESSAGE) {
                             throw e
                         }
-                        log("Refresh token error: ${e.message}")
+                        log("Refresh token request failed")
                         onSessionExpired()
-                        throw IllegalStateException("Failed to refresh token: ${e.message}", e)
+                        throw IllegalStateException(REFRESH_TOKEN_FAILURE_MESSAGE, e)
                     }
                 }
             }
@@ -344,11 +346,16 @@ class KinoPubApiClient(
     /**
      * Get history data with pagination
      */
-    suspend fun getHistoryData(page: Int): Result<PaginatedResponse<History>> = apiCall {
-        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}history") {
-            parameter("page", page)
-        }
-    }
+    suspend fun getHistoryData(page: Int): Result<PaginatedResponse<History>> =
+        apiCall<HistoryPageResponse> {
+            val request = HistoryRequest.page(page)
+            httpClient.get(request.resolveUrl(mainApiBaseUrl)) {
+                request.query.forEach { (name, value) -> parameter(name, value) }
+                headers {
+                    append(HttpHeaders.CacheControl, request.cacheControl)
+                }
+            }
+        }.map(HistoryPageResponse::toModel)
 
     /**
      * Clear item history
@@ -362,11 +369,25 @@ class KinoPubApiClient(
     /**
      * Clear media history
      */
-    suspend fun clearMediaHistory(id: Int): Result<Unit> = apiCall {
-        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}history/clear-for-media") {
-            parameter("id", id)
+    suspend fun clearMediaHistory(id: Int): Result<Unit> = clearExactMediaHistory(id)
+
+    /**
+     * Clear history for the exact media represented by a selected history row.
+     */
+    suspend fun clearExactMediaHistory(mediaId: Int): Result<Unit> =
+        apiCall {
+            val request = HistoryRequest.clearExactMedia(mediaId)
+            httpClient.post(request.resolveUrl(mainApiBaseUrl)) {
+                request.query.forEach { (name, value) -> parameter(name, value) }
+                headers {
+                    append(HttpHeaders.CacheControl, request.cacheControl)
+                }
+            }.also { response ->
+                check(response.status.isSuccess()) {
+                    "History exact-media deletion failed with HTTP ${response.status.value}"
+                }
+            }
         }
-    }
 
     /**
      * Clear season history
@@ -543,8 +564,6 @@ class KinoPubApiClient(
         title: String, hardware: String, software: String
     ): Result<Unit> = apiCall {
         httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}device/notify") {
-            val token = cryptoPreferenceRepository.getAccessToken().orEmpty()
-            log("Access token: $token")
             setBody(
                 mapOf(
                     "title" to title, "hardware" to hardware, "software" to software
@@ -1052,7 +1071,7 @@ class KinoPubApiClient(
     private suspend inline fun <reified T> handleApiResponse(response: HttpResponse): Result<T> = runCatching {
         if (!response.status.isSuccess()) {
             val errorText = response.bodyAsText()
-            throw IllegalStateException("HTTP ${response.status.value}: $errorText")
+            throw buildApiError(errorText, response.status.value)
         }
 
         val responseText = response.bodyAsText()
@@ -1060,25 +1079,30 @@ class KinoPubApiClient(
             throw buildApiError(responseText)
         }
 
-        json.decodeFromString<T>(responseText)
+        try {
+            json.decodeFromString<T>(responseText)
+        } catch (_: Exception) {
+            throw IllegalStateException("OAuth response decoding failed")
+        }
     }
 
-    private fun buildApiError(responseText: String): Exception {
+    private fun buildApiError(responseText: String, statusCode: Int? = null): Exception {
         return try {
             val error = json.decodeFromString<OAuthError>(responseText)
-            val description = error.errorDescription?.let { " - $it" }.orEmpty()
-            Exception("OAuth Error: ${error.error}$description")
-        } catch (e: Exception) {
-            Exception("API Error: $responseText", e)
+            Exception("OAuth Error: ${error.error}")
+        } catch (_: Exception) {
+            val prefix = statusCode?.let { "HTTP $it" } ?: "API"
+            Exception("$prefix error response")
         }
     }
 
     private fun shouldSendKinoPubToken(host: String): Boolean {
-        return host == Url(KinoPubConfig.MAIN_API_BASE_URL).host ||
+        return host == Url(mainApiBaseUrl).host ||
             host == Url(KinoPubConfig.OAUTH_BASE_URL).host
     }
 
     companion object {
+        private const val REFRESH_TOKEN_FAILURE_MESSAGE = "Failed to refresh token"
         private const val MAX_RETRIES = 3
         private const val CONNECT_TIMEOUT = 60_000L
         private const val READ_TIMEOUT = 120_000L

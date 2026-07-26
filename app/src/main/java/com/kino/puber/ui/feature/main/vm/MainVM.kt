@@ -21,7 +21,6 @@ internal class MainVM(
     override val initialViewState = MainViewState()
     internal val tabAppRouterHolder = TabAppRouterHolder(router.screens)
     private val tabRefreshVersions = mutableMapOf<TabType, Int>()
-    private val staleTabDisposeVersions = mutableMapOf<TabType, Int>()
 
     override fun onStart() {
         val state = mainUIMapper.buildViewState()
@@ -31,7 +30,7 @@ internal class MainVM(
         } else {
             TabType.Favourites
         }
-        tabRouter.openTab(buildTabContent(startTab))
+        tabRouter.openTab(buildTabContent(startTab, state.navigationMode))
     }
 
     override fun onAction(action: UIAction) {
@@ -46,35 +45,26 @@ internal class MainVM(
         updateViewState<MainViewState> {
             mainUIMapper.updateSelectedTab(state = this, item)
         }
-        tabRouter.openTab(buildTabContent(item.type))
+        tabRouter.openTab(buildTabContent(item.type, stateValue.navigationMode))
     }
 
     private fun onTabRefresh(item: MainTab) {
-        val staleTab = buildTabContent(item.type)
         tabRefreshVersions[item.type] = (tabRefreshVersions[item.type] ?: 0) + 1
-        val refreshedTab = buildTabContent(item.type)
+        val refreshedTab = buildTabContent(item.type, stateValue.navigationMode)
         updateViewState<MainViewState> {
             mainUIMapper.updateSelectedTab(state = this, item)
         }
         tabRouter.openTab(refreshedTab)
-        disposeStaleTabAfterRefresh(type = item.type, tab = staleTab)
     }
 
-    private fun buildTabContent(type: TabType) = mainUIMapper.buildTabContent(
+    private fun buildTabContent(
+        type: TabType,
+        navigationMode: NavigationMode,
+    ) = mainUIMapper.buildTabContent(
         type = type,
+        navigationMode = navigationMode,
         refreshVersion = tabRefreshVersions[type] ?: 0,
     )
-
-    private fun disposeStaleTabAfterRefresh(type: TabType, tab: com.kino.puber.core.ui.navigation.PuberTab) {
-        val version = (staleTabDisposeVersions[type] ?: 0) + 1
-        staleTabDisposeVersions[type] = version
-        launch {
-            kotlinx.coroutines.delay(STALE_TAB_DISPOSE_DELAY_MS)
-            if (staleTabDisposeVersions[type] == version) {
-                tabAppRouterHolder.dispose(tab.key)
-            }
-        }
-    }
 
     fun onSearchClick() {
         router.navigateTo(router.screens.search())
@@ -87,9 +77,5 @@ internal class MainVM(
     override fun onCleared() {
         tabAppRouterHolder.dispose()
         super.onCleared()
-    }
-
-    private companion object {
-        const val STALE_TAB_DISPOSE_DELAY_MS = 500L
     }
 }

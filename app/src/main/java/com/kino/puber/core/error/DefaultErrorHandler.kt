@@ -1,6 +1,11 @@
 package com.kino.puber.core.error
 
-internal class DefaultErrorHandler() : ErrorHandler {
+import com.kino.puber.R
+import com.kino.puber.core.system.ResourceProvider
+
+internal class DefaultErrorHandler(
+    private val resources: ResourceProvider,
+) : ErrorHandler {
     override fun proceed(action: ((ErrorEntity) -> Unit)?): (Throwable) -> Unit {
         return { e -> proceedInvoke(e, action) }
     }
@@ -13,8 +18,8 @@ internal class DefaultErrorHandler() : ErrorHandler {
 
     override fun map(e: Throwable): ErrorEntity {
         return ErrorEntity(
-            message = e.message.orEmpty(), code = "Unknown"
+            message = resources.getString(R.string.error_generic),
+            code = "Unknown",
         )
     }
-
 }

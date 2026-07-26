@@ -22,6 +22,13 @@ import kotlinx.coroutines.launch
  */
 val LocalAutoFocusOnLaunchEnabled = staticCompositionLocalOf { true }
 
+/**
+ * Whether the surrounding navigation host currently owns focus for its content.
+ * TopTabs keeps this false while the tab row owns focus so retained screens
+ * cannot reclaim focus merely by becoming selected.
+ */
+val LocalContentFocusActive = staticCompositionLocalOf { true }
+
 @Composable
 fun rememberFocusRequesterOnLaunch(): FocusRequester {
     val focusRequester = remember { FocusRequester() }

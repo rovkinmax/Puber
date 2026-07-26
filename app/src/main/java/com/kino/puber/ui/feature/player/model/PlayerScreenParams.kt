@@ -8,4 +8,6 @@ internal class PlayerScreenParams(
     val itemId: Int,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
+    val videoNumber: Int? = null,
+    val startMode: PlayerStartMode = PlayerStartMode.ResumeIfAvailable,
 ) : Parcelable

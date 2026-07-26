@@ -5,7 +5,6 @@ import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.uikit.component.RatingUIState
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
-import com.kino.puber.data.api.models.History
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.isSeriesLike
 import com.kino.puber.data.repository.PlayerPreferencesRepository
@@ -42,13 +41,6 @@ class VideoItemUIMapper(
                 item.bookmarks.orEmpty().isNotEmpty()
             },
         )
-    }
-
-    fun mapHistoryItem(history: History): VideoItemUIState {
-        val progress = history.video?.watching?.let { w ->
-            if (w.duration > 0) w.time.toFloat() / w.duration.toFloat() else null
-        }
-        return mapShortItem(history.item).copy(progressPercent = progress)
     }
 
     fun mapDetailedItem(item: Item): VideoDetailsUIState {

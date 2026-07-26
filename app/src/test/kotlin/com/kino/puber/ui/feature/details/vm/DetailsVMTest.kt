@@ -20,6 +20,7 @@ import com.kino.puber.domain.interactor.details.MovieBookmarkUpdate
 import com.kino.puber.domain.interactor.details.MovieWatchedUpdate
 import com.kino.puber.domain.interactor.details.WatchedUpdate
 import com.kino.puber.ui.feature.details.model.DetailsAction
+import com.kino.puber.ui.feature.details.model.DetailsEpisodeTarget
 import com.kino.puber.ui.feature.details.model.DetailsInfoUIState
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
@@ -142,6 +143,33 @@ class DetailsVMTest {
         verify {
             router.navigateForResult<ContentChangeSet>(detailsScreen, RESULT_CONTENT_CHANGED, any())
         }
+    }
+
+    @Test
+    fun historyEpisodeParamsOpenPanelWithExactEpisodeFocusTarget() {
+        val target = DetailsEpisodeTarget(seasonNumber = 1, episodeNumber = 2)
+        val mapped = content().copy(
+            currentEpisode = videoItem(id = 101, seasonNumber = 1, episodeNumber = 2),
+            initialEpisodeFocusId = 101,
+        )
+        every {
+            mapper.map(
+                item = testItem,
+                isInWatchlist = false,
+                initialEpisode = target,
+            )
+        } returns mapped
+        val vm = startedVM(
+            DetailsScreenParams(
+                itemId = 42,
+                initialEpisode = target,
+            ),
+        )
+
+        val content = vm.testStateValue as DetailsScreenState.Content
+        assertTrue(content.seasonsPanelVisible)
+        assertEquals(101, content.currentEpisode?.id)
+        assertEquals(101, content.initialEpisodeFocusId)
     }
 
     @Test
@@ -581,9 +609,13 @@ class DetailsVMTest {
         verifyContentChangeBack(itemId = 42, ContentChangeType.Watched)
     }
 
-    private fun startedVM(): DetailsVM = createVM().also { it.testOnStart() }
+    private fun startedVM(
+        params: DetailsScreenParams = this.params,
+    ): DetailsVM = createVM(params).also { it.testOnStart() }
 
-    private fun createVM() = DetailsVM(
+    private fun createVM(
+        params: DetailsScreenParams = this.params,
+    ) = DetailsVM(
         router = router,
         params = params,
         mapper = mapper,

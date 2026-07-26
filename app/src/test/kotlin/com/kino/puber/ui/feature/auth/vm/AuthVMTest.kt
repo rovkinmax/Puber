@@ -1,8 +1,11 @@
 package com.kino.puber.ui.feature.auth.vm
 
+import com.kino.puber.R
+import com.kino.puber.core.error.DefaultErrorHandler
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.uikit.model.SnackbarMessage
 import com.kino.puber.domain.interactor.api.ApiDomainAutoResolveResult
 import com.kino.puber.domain.interactor.api.ApiDomainInteractor
 import com.kino.puber.domain.interactor.api.ApiDomainState
@@ -39,7 +42,9 @@ class AuthVMTest {
     private val deviceInfoInteractor = mockk<IDeviceInfoInteractor>(relaxed = true)
     private val apiDomainInteractor = mockk<ApiDomainInteractor>(relaxed = true)
 
-    private fun createVM(): AuthVM {
+    private fun createVM(
+        authErrorHandler: ErrorHandler = errorHandler,
+    ): AuthVM {
         every { apiDomainInteractor.getState() } returns ApiDomainState(
             domain = "api.example.com",
             customDomain = null,
@@ -49,7 +54,7 @@ class AuthVMTest {
             deviceInfoInteractor = deviceInfoInteractor,
             apiDomainInteractor = apiDomainInteractor,
             resources = FakeResourceProvider(),
-            errorHandler = errorHandler,
+            errorHandler = authErrorHandler,
             router = router,
         )
     }
@@ -108,5 +113,21 @@ class AuthVMTest {
 
         verify(exactly = 1) { errorHandler.proceedInvoke(any(), any()) }
         coVerify(exactly = 0) { apiDomainInteractor.detectAndSaveAlternativeBuiltInDomain() }
+    }
+
+    @Test
+    fun transportFailure_displaysResourceBackedCopyWithoutRawExceptionMessage() {
+        val transportDetails = "OAuth response decoding failed: HTTP 502 error response"
+        every { authInteractor.isAuthenticated() } returns false
+        every { authInteractor.getAuthState() } returns flow {
+            throw IllegalStateException(transportDetails)
+        }
+        val vm = createVM(DefaultErrorHandler(FakeResourceProvider()))
+
+        vm.testOnStart()
+
+        val message = vm.testMessageValue as SnackbarMessage.Short
+        assertEquals("string_${R.string.error_generic}", message.message)
+        assertTrue(message.message.contains(transportDetails).not())
     }
 }

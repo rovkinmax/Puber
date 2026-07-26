@@ -14,13 +14,17 @@ import com.kino.puber.ui.feature.auth.component.AuthScreen
 import com.kino.puber.ui.feature.contentlist.ContentListScreen
 import com.kino.puber.ui.feature.details.component.DetailsScreen
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
+import com.kino.puber.ui.feature.details.model.DetailsEpisodeTarget
 import com.kino.puber.ui.feature.device.settings.flow.DeviceSettingsFlowScreen
 import com.kino.puber.ui.feature.player.component.PlayerScreen
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
+import com.kino.puber.ui.feature.player.model.PlayerStartMode
 import com.kino.puber.ui.feature.favorites.content.FavoritesScreen
 import com.kino.puber.ui.feature.main.component.MainScreen
 import com.kino.puber.ui.feature.search.SearchScreen
 import com.kino.puber.ui.feature.home.component.HomeScreen
+import com.kino.puber.ui.feature.history.component.HistoryScreen
+import com.kino.puber.ui.feature.history.model.HistoryPresentation
 import com.kino.puber.ui.feature.collections.component.CollectionsScreen
 import com.kino.puber.ui.feature.bookmarks.component.BookmarksScreen
 import com.kino.puber.ui.feature.main.model.TabType
@@ -40,6 +44,10 @@ internal object ScreensImpl : Screens {
     }
 
     override fun home(): PuberScreen = HomeScreen()
+
+    override fun history(presentation: HistoryPresentation): PuberScreen {
+        return HistoryScreen(presentation)
+    }
 
     override fun collections(): PuberScreen = CollectionsScreen()
 
@@ -65,8 +73,31 @@ internal object ScreensImpl : Screens {
         return DetailsScreen(DetailsScreenParams(itemId))
     }
 
-    override fun player(itemId: Int, seasonNumber: Int?, episodeNumber: Int?): PuberScreen {
-        return PlayerScreen(PlayerScreenParams(itemId, seasonNumber, episodeNumber))
+    override fun details(itemId: Int, initialEpisode: DetailsEpisodeTarget): PuberScreen {
+        return DetailsScreen(
+            DetailsScreenParams(
+                itemId = itemId,
+                initialEpisode = initialEpisode,
+            ),
+        )
+    }
+
+    override fun player(
+        itemId: Int,
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+        videoNumber: Int?,
+        startMode: PlayerStartMode,
+    ): PuberScreen {
+        return PlayerScreen(
+            PlayerScreenParams(
+                itemId = itemId,
+                seasonNumber = seasonNumber,
+                episodeNumber = episodeNumber,
+                videoNumber = videoNumber,
+                startMode = startMode,
+            ),
+        )
     }
 
 

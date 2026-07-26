@@ -1,6 +1,5 @@
 package com.kino.puber.data.api
 
-import com.kino.puber.core.logger.log
 import com.kino.puber.data.api.models.SkipSegment
 import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.data.api.models.TheIntroDbMediaResponse
@@ -31,29 +30,19 @@ class TheIntroDbApiClient {
     }
 
     suspend fun getSegments(tmdbId: Int, season: Int?, episode: Int?): Result<List<SkipSegment>> = runCatching {
-        log("TheIntroDB: GET /media?tmdb_id=$tmdbId&season=$season&episode=$episode")
         val response = httpClient.get("media") {
             parameter("tmdb_id", tmdbId)
             if (season != null) parameter("season", season)
             if (episode != null) parameter("episode", episode)
         }
-        log("TheIntroDB: status=${response.status}")
         when (response.status) {
             HttpStatusCode.OK -> {
                 val body = response.body<TheIntroDbMediaResponse>()
-                val segments = mapToSegments(body)
-                log("TheIntroDB: parsed ${segments.size} segments")
-                segments
+                mapToSegments(body)
             }
             HttpStatusCode.NoContent, HttpStatusCode.NotFound -> emptyList()
-            HttpStatusCode.TooManyRequests -> {
-                log("TheIntroDB rate limited")
-                emptyList()
-            }
-            else -> {
-                log("TheIntroDB unexpected status: ${response.status}")
-                emptyList()
-            }
+            HttpStatusCode.TooManyRequests -> emptyList()
+            else -> emptyList()
         }
     }
 

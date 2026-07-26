@@ -6,6 +6,7 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.SkipSegmentType
+import com.kino.puber.data.api.models.Video
 import com.kino.puber.domain.interactor.player.WatchedDetailsRefreshException
 import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
@@ -33,9 +34,16 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
     // region Manual mark watched
 
     @Test
-    fun markCurrentWatched_movieCallsInteractorWithoutEpisodeAndUpdatesState() {
-        val updated = testItem.copy(type = ItemType.MOVIE, watched = 1)
-        coEvery { interactor.resolveMedia(any(), any(), any()) } returns testResolvedMedia.copy(
+    fun markCurrentWatched_moviePassesExactVideoAndUpdatesState() {
+        val updated = testItem.copy(
+            type = ItemType.MOVIE,
+            videos = listOf(
+                Video(id = 700, number = 7, watched = 1),
+                Video(id = 800, number = 8, watched = 0),
+            ),
+        )
+        every { interactor.resolveMedia(any(), any(), any(), any()) } returns testResolvedMedia.copy(
+            videoNumber = 7,
             isSeries = false,
             hasNext = false,
             hasPrevious = false,
@@ -50,7 +58,7 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
             hasPreviousEpisode = false,
         )
         coEvery {
-            interactor.markCurrentAsWatched(id = 42, season = null, episode = null)
+            interactor.markCurrentAsWatched(id = 42, season = null, videoNumber = 7)
         } returns updated
         val vm = startedVM()
 
@@ -58,7 +66,87 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
 
         assertTrue(contentState(vm).isCurrentMediaWatched)
         coVerify(exactly = 1) {
-            interactor.markCurrentAsWatched(id = 42, season = null, episode = null)
+            interactor.markCurrentAsWatched(id = 42, season = null, videoNumber = 7)
+        }
+    }
+
+    @Test
+    fun markCurrentWatched_movieSynchronizesOnlySelectedVideoStatus() {
+        val updated = testItem.copy(
+            type = ItemType.MOVIE,
+            watched = 1,
+            videos = listOf(
+                Video(id = 700, number = 7, watched = 0),
+                Video(id = 800, number = 8, watched = 1),
+            ),
+        )
+        every { interactor.resolveMedia(any(), any(), any(), any()) } returns testResolvedMedia.copy(
+            videoNumber = 7,
+            isSeries = false,
+            hasNext = false,
+            hasPrevious = false,
+            seasonNumber = null,
+            episodeNumber = null,
+            episodeId = null,
+            episodeTitle = null,
+        )
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
+            isMovie = true,
+            hasNextEpisode = false,
+            hasPreviousEpisode = false,
+        )
+        coEvery {
+            interactor.markCurrentAsWatched(id = 42, season = null, videoNumber = 7)
+        } returns updated
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.MarkCurrentWatched)
+
+        assertFalse(contentState(vm).isCurrentMediaWatched)
+        coVerify(exactly = 1) {
+            interactor.markCurrentAsWatched(id = 42, season = null, videoNumber = 7)
+        }
+    }
+
+    @Test
+    fun markCurrentWatched_movieRefreshFailureSynchronizesSelectedVideoLocally() {
+        val movie = testItem.copy(
+            type = ItemType.MOVIE,
+            watched = 0,
+            videos = listOf(
+                Video(id = 700, number = 7, watched = 0),
+                Video(id = 800, number = 8, watched = 0),
+            ),
+        )
+        coEvery { interactor.getItemDetails(42) } returns movie
+        every { interactor.resolveMedia(any(), any(), any(), any()) } returns testResolvedMedia.copy(
+            videoNumber = 7,
+            isSeries = false,
+            hasNext = false,
+            hasPrevious = false,
+            seasonNumber = null,
+            episodeNumber = null,
+            episodeId = null,
+            episodeTitle = null,
+        )
+        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
+            isMovie = true,
+            hasNextEpisode = false,
+            hasPreviousEpisode = false,
+        )
+        val refreshFailure = IllegalStateException("refresh failed")
+        coEvery {
+            interactor.markCurrentAsWatched(id = 42, season = null, videoNumber = 7)
+        } throws WatchedDetailsRefreshException(refreshFailure)
+        every { errorHandler.map(refreshFailure) } returns ErrorEntity(message = "Refresh failed", code = "test")
+        val vm = startedVM()
+
+        vm.onAction(PlayerAction.MarkCurrentWatched)
+        vm.onAction(PlayerAction.MarkCurrentWatched)
+
+        assertTrue(contentState(vm).isCurrentMediaWatched)
+        coVerify(exactly = 1) {
+            interactor.markCurrentAsWatched(id = 42, season = null, videoNumber = 7)
         }
     }
 
@@ -66,7 +154,7 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
     fun markCurrentWatched_episodePassesSeasonAndEpisodeAndUpdatesEpisodes() {
         val updated = testItem.copy(watched = 1)
         val updatedEpisodes = VideoGridUIState(emptyList())
-        coEvery { interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1) } returns updated
+        coEvery { interactor.markCurrentAsWatched(id = 42, season = 1, videoNumber = 1) } returns updated
         every { mapper.mapEpisodes(updated) } returns updatedEpisodes
         val vm = startedVM()
 
@@ -74,7 +162,9 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
 
         assertTrue(contentState(vm).isCurrentMediaWatched)
         assertEquals(updatedEpisodes, contentState(vm).episodes)
-        coVerify(exactly = 1) { interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1) }
+        coVerify(exactly = 1) {
+            interactor.markCurrentAsWatched(id = 42, season = 1, videoNumber = 1)
+        }
     }
 
     @Test
@@ -104,7 +194,7 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
     @Test
     fun markCurrentWatched_failurePreservesStateAndMapsError() {
         val failure = IllegalStateException("Failed")
-        coEvery { interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1) } throws failure
+        coEvery { interactor.markCurrentAsWatched(id = 42, season = 1, videoNumber = 1) } throws failure
         every { errorHandler.map(failure) } returns ErrorEntity(message = "Mapped", code = "test")
         val vm = startedVM()
 
@@ -138,7 +228,9 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
         vm.onAction(PlayerAction.MarkCurrentWatched)
 
         assertTrue(contentState(vm).isCurrentMediaWatched)
-        coVerify(exactly = 1) { interactor.markCurrentAsWatched(id = 42, season = 1, episode = 1) }
+        coVerify(exactly = 1) {
+            interactor.markCurrentAsWatched(id = 42, season = 1, videoNumber = 1)
+        }
     }
 
     @Test
@@ -190,7 +282,7 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
     @Test
     fun markCurrentWatched_staleCompletionDoesNotUpdateNextEpisode() {
         val releaseMark = CompletableDeferred<Unit>()
-        coEvery { interactor.resolveMedia(any(), any(), any()) } returns testResolvedMedia andThen
+        every { interactor.resolveMedia(any(), any(), any(), any()) } returns testResolvedMedia andThen
             testResolvedMedia.copy(
                 videoNumber = 2,
                 episodeId = 102,

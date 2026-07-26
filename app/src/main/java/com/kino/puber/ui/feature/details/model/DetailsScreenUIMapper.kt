@@ -23,14 +23,38 @@ internal class DetailsScreenUIMapper(
 ) {
 
     fun map(item: Item, isInWatchlist: Boolean = item.inWatchlist ?: false): DetailsScreenState.Content {
+        return mapContent(item = item, isInWatchlist = isInWatchlist)
+    }
+
+    fun map(
+        item: Item,
+        isInWatchlist: Boolean,
+        initialEpisode: DetailsEpisodeTarget,
+    ): DetailsScreenState.Content {
+        return mapContent(
+            item = item,
+            isInWatchlist = isInWatchlist,
+            initialEpisode = initialEpisode,
+        )
+    }
+
+    private fun mapContent(
+        item: Item,
+        isInWatchlist: Boolean,
+        initialEpisode: DetailsEpisodeTarget? = null,
+    ): DetailsScreenState.Content {
+        val episodes = if (item.type.isSeriesLike()) mapEpisodes(item) else null
+        val requestedEpisode = episodes?.findEpisode(initialEpisode)
         return DetailsScreenState.Content(
             details = itemMapper.mapDetailedItem(item),
             info = buildInfo(item),
             buttons = buildButtons(item),
             isInWatchlist = isInWatchlist,
             isWatched = itemMapper.isItemWatched(item),
-            episodes = if (item.type.isSeriesLike()) mapEpisodes(item) else null,
-            currentEpisode = if (item.type.isSeriesLike()) mapCurrentEpisode(item) else null,
+            episodes = episodes,
+            currentEpisode = requestedEpisode
+                ?: if (item.type.isSeriesLike()) mapCurrentEpisode(item) else null,
+            initialEpisodeFocusId = requestedEpisode?.id,
         )
     }
 
@@ -58,6 +82,18 @@ internal class DetailsScreenUIMapper(
     private fun mapCurrentEpisode(item: Item): VideoItemUIState? {
         val (seasonNumber, episodes, episode) = findFirstUnwatchedEpisode(item) ?: return null
         return mapEpisode(seasonNumber, episodes, episode)
+    }
+
+    private fun VideoGridUIState.findEpisode(target: DetailsEpisodeTarget?): VideoItemUIState? {
+        if (target == null) return null
+        return list
+            .filterIsInstance<VideoGridItemUIState.Items>()
+            .asSequence()
+            .flatMap { it.items.asSequence() }
+            .firstOrNull { item ->
+                item.seasonNumber == target.seasonNumber &&
+                    item.episodeNumber == target.episodeNumber
+            }
     }
 
     private fun mapEpisode(

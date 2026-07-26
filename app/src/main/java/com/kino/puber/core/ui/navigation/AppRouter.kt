@@ -5,8 +5,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicLong
 
 typealias OnResult<T> = (T?) -> (Unit)
 
@@ -15,12 +17,22 @@ class AppRouter(
     val coroutineScope: CoroutineScope,
     //val scopeName: String, // for debug info
 ) {
-    private val sharedFlow = MutableSharedFlow<Command>(extraBufferCapacity = 0, replay = 1)
+    private data class SessionCommand(
+        val sessionId: Long,
+        val command: Command,
+    )
+
+    private val sharedFlow = MutableSharedFlow<SessionCommand>(extraBufferCapacity = 0, replay = 1)
     private val onceListeners = HashMap<Int, ArrayDeque<OnResult<Any>>>()
     private val backDispatchersStack = ArrayDeque<BackButtonDispatcher>()
+    private val sessionId = AtomicLong()
 
     fun events(): Flow<Command> {
-        return sharedFlow.asSharedFlow()
+        return sharedFlow
+            .asSharedFlow()
+            .mapNotNull { event ->
+                event.command.takeIf { event.sessionId == sessionId.get() }
+            }
     }
 
     fun navigateTo(screen: PuberScreen) {
@@ -92,6 +104,13 @@ class AppRouter(
         sharedFlow.resetReplayCache()
     }
 
+    internal fun resetSession() {
+        sessionId.incrementAndGet()
+        clearPendingCommands()
+        onceListeners.clear()
+        backDispatchersStack.clear()
+    }
+
     private fun dispatchResult(resultCode: Int, result: Any?) {
         val resultListeners = onceListeners[resultCode] ?: return
         val resultListener = resultListeners.pollLast() ?: return
@@ -102,8 +121,16 @@ class AppRouter(
     }
 
     private fun runCommand(command: Command) {
+        val commandSessionId = sessionId.get()
         coroutineScope.launch(Dispatchers.Main.immediate) {
-            sharedFlow.emit(command)
+            if (commandSessionId == sessionId.get()) {
+                sharedFlow.emit(
+                    SessionCommand(
+                        sessionId = commandSessionId,
+                        command = command,
+                    )
+                )
+            }
         }
     }
 }
