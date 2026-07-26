@@ -148,10 +148,7 @@ internal fun TopTabMainContent(
                         .focusRequester(tabRowFocus),
                 )
 
-                CompositionLocalProvider(
-                    LocalAutoFocusOnLaunchEnabled provides false,
-                    LocalContentFocusActive provides isContentFocused,
-                ) {
+                TopTabContentFocusProvider(isContentFocused) {
                     TopTabContentBox(
                         contentFocus = contentFocus,
                         tabRowFocus = tabRowFocus,
@@ -179,6 +176,16 @@ internal fun TopTabMainContent(
         }
     }
 }
+
+@Composable
+private fun TopTabContentFocusProvider(
+    isContentFocused: Boolean,
+    content: @Composable () -> Unit,
+) = CompositionLocalProvider(
+    LocalAutoFocusOnLaunchEnabled provides false,
+    LocalContentFocusActive provides isContentFocused,
+    content = content,
+)
 
 @Composable
 private fun RefreshContentFocusEffect(
