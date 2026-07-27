@@ -25,7 +25,7 @@ Kent Desktop workflow graph
   plus independent global standards/spec reviews, direct Join/Gate,
   conditional TV Smoke, final Compliance Review, PR/CI/waiting, and
   conservative cleanup. It uses `ask-on-first-execution`. The full
-  managed-worktree canary `PUB-25` completed before default promotion.
+  managed-worktree canary completed before default promotion.
 - `Puber Feature Delivery` (legacy rollback): plan -> implement loop ->
   parallel read-only audit and deterministic compile verification -> join ->
   verification result -> fix loop or optional smoke -> compliance ->
@@ -59,15 +59,24 @@ The next generated candidate is prepared but not applied. Its profile routes:
 - PR preparation and Cleanup to `delivery-operator`;
 - CI and Waiting PR to `ci-monitor`.
 
-Before retiring Delivery v5, recreate Backlog tasks `PUB-27`, `PUB-28`, and
-`PUB-29` in the replacement graph with their title, body, source URL, labels,
-and relevant comments, then record the old-to-new short-ID mapping. `PUB-26`
-must finish or be explicitly canceled before deletion. Do not move task records
-between incompatible graphs.
+Before retiring any workflow, read current Kent-owned state instead of relying
+on task IDs or status captured in this repository:
+
+```bash
+kent workflow list --project /Users/rovkinmax/dev/android/Puber --json
+kent task list --project /Users/rovkinmax/dev/android/Puber --json
+```
+
+Group tasks by the current workflow ID. Recreate every current Backlog task in
+the replacement graph with its title, body, source URL, labels, and relevant
+comments, then record the old-to-new short-ID mapping. Running,
+approval-waiting, or otherwise active tasks must finish or be explicitly
+canceled before deletion. Completed and canceled history may be discarded.
+Do not move task records between incompatible graphs.
 
 ### Full Delivery v5 Canary Scope
 
-`PUB-25` completed Full Delivery v5 from source revision
+The Full Delivery v5 canary ran from source revision
 `29c5a6520636688027dba5dc66792db3040b73a7`. It passed Final Compliance Review through the global
 `compliance_reviewer`, PR preparation, CI monitoring only after the PR exists,
 and waiting for GitHub to report an actual merge. The workflow did not merge
