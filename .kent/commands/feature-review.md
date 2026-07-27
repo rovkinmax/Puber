@@ -34,7 +34,8 @@ Compares the current implementation with the cached design screens and spec. Rep
 - If screen-name given, only load files related to that screen
 
 **IDE static analysis** (skip if in worktree — path contains `.kent/worktrees/`):
-- Call `.kent/adapters/mcp/mcp-call.sh jetbrains.get_file_problems` on each loaded source file (with `errorsOnly: false`)
+- Call `~/.kent/bin/kent-mcp-call jetbrains.get_file_problems` on each loaded
+  source file with `errorsOnly=false`.
 - Collect results — include errors/warnings in the review report as a separate "IDE issues" section
 - If MCP unavailable → skip, note "IDE analysis skipped" in report
 

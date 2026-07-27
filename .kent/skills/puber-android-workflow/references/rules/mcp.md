@@ -1,42 +1,58 @@
 # MCP Bridge
 
-Kent sessions may not expose native MCP tool names. Use the project wrappers instead:
+Use the global Kent Engineering Kit adapter:
 
 ```bash
-.kent/adapters/mcp/mcp-list.sh <server> --schema
-.kent/adapters/mcp/mcp-call.sh <server.tool> [arguments] --raw-dir ".todo/<task>/mcp"
+~/.kent/bin/kent-mcp-list <server> --schema
+~/.kent/bin/kent-mcp-call <server.tool> [arguments]
 ```
 
-## Config Resolution
+Do not call raw `mcporter` or project-local wrapper copies.
 
-The wrapper resolves config in this order:
+## Config and Policy
 
-1. process environment `MCP_CONFIG_PATH`
-2. `~/.kent/mcp.<workspace-name>.env`, for example `~/.kent/mcp.Puber.env`
-3. `~/.kent/mcp.env`
-4. local `.mcp.json`
-5. `mcporter` default/global discovery
+Config resolution is worktree-aware: global, primary-project, optional
+worktree, and process environment settings take precedence over current or
+primary `.mcp.json` and mcporter default discovery. Env files are parsed as
+plain `KEY=VALUE`; never shell-source them.
 
-Env files are parsed as plain `KEY=VALUE`; they are not shell-sourced.
+The project-local `.kent/adapters/mcp/policy` classifies known Puber tools.
+Unknown operations inherit the global fail-closed mutation policy.
+The default `mobile` server is configured globally by the kit and must not be
+duplicated in project `.mcp.json`.
 
-For worktrees, point `~/.kent/mcp.Puber.env` at the main checkout MCP config when project-bound MCP access is needed.
+## Output Safety
 
-## Raw Output
+Normal command stdout remains in Kent's shell transcript. Use:
 
-Save raw source data under ignored local paths:
+- `--quiet` when only command success matters;
+- `--digest-output` for opaque liveness or bounded structural evidence;
+- assertions for known expected literals;
+- `--hash-matches` with `--marker-present` for opaque identity sets;
+- `--raw-dir <dir> >/dev/null` only for a known-safe scoped response that must
+  be read in full.
 
-```text
-.todo/<feature-or-task>/mcp/<server>/<tool>-<timestamp>.<ext>
-.todo/_mcp-raw/<server>/<tool>-<timestamp>.<ext>
-```
+For a persisted response, record `.todo/_mcp-log/mcporter-calls.jsonl` length
+before the call. Then resolve exactly one newly appended successful record for
+the expected server/tool and read its non-empty `rawOutputPath`. Do not guess
+timestamped filenames or continue before inspecting the exact artifact.
+
+Never persist unexpected authenticated UI, broad device logs, network payloads,
+credentials, or headers.
+
+## Mobile
+
+- Discover devices with `mobile.device action=list`.
+- Pass `platform=android` and the exact locked `deviceId` to every
+  target-specific call.
+- Do not use process-local `set`, `get_target`, `list_modules`, or
+  `enable_module`; every invocation uses an ephemeral server.
+- Every call other than device discovery requires a safe output mode.
+- If a target-specific tool lacks `deviceId`, use `adb -s` instead.
 
 ## Mutation
 
-Use read-only tools first. Require explicit user approval and `--allow-mutate` for:
-
-- mobile taps, text input, recorder playback, visual baseline writes, or generated tests;
-- JetBrains rename/reformat/run actions;
-- Firebase create/update/delete/deploy/auth/messaging actions;
-- any tool whose name or `action=` implies create/update/delete/write/send/publish/deploy/execute/run.
-
-Do not use `jetbrains.build_project`; use Gradle commands for builds.
+Use read-only tools first. Require explicit approval and `--allow-mutate` for
+device input, JetBrains rename/reformat/open actions, Serena edits, external
+writes, and any unknown operation. Do not use `jetbrains.build_project`; run
+Gradle directly.

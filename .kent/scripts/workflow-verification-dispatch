@@ -7,7 +7,7 @@ review_context="$(jq -er '.review_context | strings' <<<"$input")"
 
 canonical_directory() {
   (
-    cd -P "$1" 2>/dev/null
+    cd -P -- "$1" 2>/dev/null || exit 1
     pwd -P
   )
 }

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+target="${1-}"
+
+case "$target" in
+  figma.get_design_context|figma.get_screenshot)
+    echo "read-only"
+    ;;
+  package-version-check.*)
+    echo "read-only"
+    ;;
+  jetbrains.get_*|jetbrains.search_*|jetbrains.find_*|jetbrains.list_*)
+    echo "read-only"
+    ;;
+  jetbrains.rename_*|jetbrains.reformat_*|jetbrains.open_*)
+    echo "mutating"
+    ;;
+  notion.notion-fetch)
+    echo "read-only"
+    ;;
+  serena.get_*|serena.find_*|serena.search_*|serena.list_*|serena.read_*|serena.check_*)
+    echo "read-only"
+    ;;
+  serena.rename_*|serena.replace_*|serena.insert_*|serena.delete_*|serena.safe_delete_*)
+    echo "mutating"
+    ;;
+  *)
+    echo "inherit"
+    ;;
+esac

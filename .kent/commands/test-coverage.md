@@ -107,11 +107,13 @@ For each step:
 2. Read the source file being tested
 3. Write the test file following project patterns
 4. **Quick verify** (skip if in worktree — path contains `.kent/worktrees/`):
-   - Call `.kent/adapters/mcp/mcp-call.sh jetbrains.get_file_problems` on the created test file
+   - Call `~/.kent/bin/kent-mcp-call jetbrains.get_file_problems` on the
+     created test file.
    - If errors → fix them before running tests
    - If MCP unavailable → skip, proceed to Gradle
 5. **Reformat** (skip if in worktree): after explicit user approval,
-   `.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file path="<test-file>" --allow-mutate` on the created test file
+   `~/.kent/bin/kent-mcp-call jetbrains.reformat_file path="<test-file>"
+   --allow-mutate --quiet` on the created test file.
 6. Run the tests:
    ```bash
    if pwd | grep -q '/.kent/worktrees/'; then

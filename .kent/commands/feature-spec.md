@@ -48,7 +48,10 @@ Processes a specification document or enters interview mode to collect feature r
 
 1. Read the spec from source:
    - Local file → Read tool
-   - Notion URL → `.kent/adapters/mcp/mcp-call.sh notion.notion-fetch`
+   - Notion URL → call
+     `~/.kent/bin/kent-mcp-call notion.notion-fetch ... --raw-dir
+     ".todo/<feature>/mcp" >/dev/null`, then resolve and read the exact
+     successful `rawOutputPath` through the skill's persisted-response handoff.
    - Other URL → WebFetch
 2. Extract and structure key information into sections (see format below)
 3. Cross-reference with design screens: which screens are covered? which are missing?

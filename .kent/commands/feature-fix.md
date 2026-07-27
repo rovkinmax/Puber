@@ -51,7 +51,9 @@ For each unresolved issue:
    - **skip** → mark as `[skipped]`, move to next
    - **stop** → end the fix loop, keep remaining as unfixed
 3. After applying fix:
-   - **Quick verify** (not in worktree): call `.kent/adapters/mcp/mcp-call.sh jetbrains.get_file_problems` on modified file. If clean — skip Gradle. If MCP unavailable — use Gradle
+   - **Quick verify** (not in worktree): call
+     `~/.kent/bin/kent-mcp-call jetbrains.get_file_problems` on the modified
+     file. If clean — skip Gradle. If MCP is unavailable — use Gradle.
    - **Gradle fallback** (always use `./tools/agentw` in worktrees; use `./gradlew` in the main checkout):
      ```bash
      ./tools/agentw :app:compileDevDebugKotlin 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3

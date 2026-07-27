@@ -71,12 +71,19 @@ explicit `smoke_required` or `delivery_ready` decision.
 
 ## Agent Contract
 
-Workflow nodes should generally use the `default` assignee for Kent Desktop validation portability. Prompts may delegate
-to project-local capability roles:
+Generated Delivery nodes use direct profile roles:
+
+- Plan uses `default`; Gate uses global `workflow-gate`.
+- Implement and Fix use project-local `implementation-worker`.
+- Smoke uses global `runtime-smoke-tester` with the Puber Android TV procedure.
+- PR preparation and Cleanup use global `delivery-operator`.
+- CI and Waiting PR use global `ci-monitor`.
 
 - `.kent/config.toml` enables `[workflow] subagents = true`.
-- Canonical delegated roles are explicitly marked `agent_callable = true` and `workflow_subagent = true`; do not rely on
-  Kent defaults for workflow delegation eligibility.
+- That setting controls nested delegation only; direct workflow-node roles do
+  not depend on it.
+- Nested research and build-diagnosis roles remain explicitly marked
+  `agent_callable = true` and `workflow_subagent = true`.
 - Role prompts define behavior only. Model, reasoning, verbosity, tools, and delegation eligibility are owned by Kent
   configuration; role-prompt frontmatter must not declare `model` or `tools`.
 - Generated Delivery Standards, Specification, and Compliance nodes own final review. Implementation and Fix procedures
@@ -126,12 +133,12 @@ to project-local capability roles:
 - Smoke agents must build with `:app:assembleDevDebug` and install with explicit
   `adb -s "$DEVICE_SERIAL" install -r app/build/outputs/apk/dev/debug/app-dev-debug.apk`; Gradle `install*` tasks are
   forbidden for smoke tests because they may target a physical device.
-- Mobile MCP must select the acquired serial and receive the same explicit
-  `deviceId` on every target-specific UI/input/system call. Targeting failure
-  routes through `needs_user_action`.
-- Confirm Mobile MCP targeting from documented response fields: serial
-  discovery, exact selection acknowledgement, and the selected target query.
-  Do not require an undocumented display marker such as `ACTIVE`.
+- Mobile MCP must discover the acquired serial and receive
+  `platform=android` plus the same explicit `deviceId` on every target-specific
+  UI/input/system call. Do not use process-local target selection.
+- If the inventory does not contain the locked serial, or a required operation
+  cannot address it explicitly, route through `needs_user_action` or use the
+  exact `adb -s` operation when the smoke procedure defines one.
 - Device-side timestamp and log-boundary syntax is not portable. Validate the
   exact command before using it as an evidence gate. Command or parsing failure
   is a Smoke blocker until a verified alternative is used, never an empty
@@ -142,7 +149,16 @@ to project-local capability roles:
 
 ## Source Adapters
 
-- MCP access goes through `.kent/adapters/mcp/mcp-call.sh`.
+- MCP access goes through `~/.kent/bin/kent-mcp-call` and
+  `~/.kent/bin/kent-mcp-list`; do not call raw `mcporter`.
+- `.kent/adapters/mcp/policy` classifies Puber-specific tools. Unknown tools
+  inherit the global fail-closed mutation policy.
+- Mobile MCP is stateless. Discover devices with `mobile.device action=list`,
+  then pass `platform=android` and the exact locked `deviceId` to every
+  target-specific call. Do not use process-local target selection.
+- Known-safe persisted responses must redirect command stdout and be consumed
+  through the exact successful `rawOutputPath` from
+  `.todo/_mcp-log/mcporter-calls.jsonl`.
 - Figma, JetBrains, Serena, Firebase, and mobile MCP are optional and must degrade gracefully when unavailable.
 - Puber currently has no project-local Jira adapter. Workflow prompts must not assume Jira availability.
 

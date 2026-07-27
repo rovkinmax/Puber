@@ -23,7 +23,7 @@ update plan, and applies updates with build verification.
 ### Phase 1: Discover outdated dependencies
 
 1. Read `gradle/libs.versions.toml` for current versions
-2. Use `.kent/adapters/mcp/mcp-call.sh package-version-check.get_latest_package_versions`
+2. Use `~/.kent/bin/kent-mcp-call package-version-check.get_latest_package_versions`
    to check for updates (batch by group)
 3. If MCP unavailable, use web search as fallback
 4. Build update table:

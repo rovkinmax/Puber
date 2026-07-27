@@ -75,7 +75,9 @@ Load ONLY the relevant recipes — not all of them.
 If no triggers match → skip advanced recipes (core is sufficient for most steps).
 
 ### Step 3: Load feature context for this step
-- **Inspect existing APIs**: if the step extends or modifies an existing class (e.g., adds methods to an interactor), use `.kent/adapters/mcp/mcp-call.sh jetbrains.get_symbol_info` to get its current method signatures — faster than reading the full file
+- **Inspect existing APIs**: if the step extends or modifies an existing class,
+  use `~/.kent/bin/kent-mcp-call jetbrains.get_symbol_info` to inspect current
+  method signatures.
 - **Skip design/screenshots for non-UI steps**: if step type is `api`, `data`, or `di` → skip Design ref and Screenshots loading entirely (no visual reference needed for data layer)
 - For `screen`/`viewmodel` steps: Read the step's **Design ref** → load screen layout from `design/screens/` or `layouts.md`
 - **Load screenshots** (only for `screen` type) → read PNG files from `screenshots/` using Read tool (check layouts.md screenshots index for filenames). This gives visual reference while coding UI.
@@ -97,7 +99,9 @@ If no triggers match → skip advanced recipes (core is sufficient for most step
 ### Step 5: Verify
 
 **Quick check via JetBrains MCP** (skip if in worktree — path contains `.kent/worktrees/`):
-1. For each created/modified file, call `.kent/adapters/mcp/mcp-call.sh jetbrains.get_file_problems` with `errorsOnly: true`
+1. For each created/modified file, call
+   `~/.kent/bin/kent-mcp-call jetbrains.get_file_problems` with
+   `errorsOnly=true`.
 2. If errors found → fix them immediately
 3. If no errors → skip Gradle build (IDE index is sufficient for most cases)
 4. If JetBrains MCP is unavailable (connection refused) → fall through to Gradle
@@ -113,7 +117,8 @@ fi 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
 - Fix any compilation errors
 
 **After fixing errors**, ask before mutating IDE state. If approved and not in a worktree, call
-`.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file path="<file>" --allow-mutate --raw-dir ".todo/<feature>/mcp"`
+`~/.kent/bin/kent-mcp-call jetbrains.reformat_file path="<file>"
+--allow-mutate --quiet`
 on each created/modified file.
 
 ### Step 5b: Add/update previews (for `screen` type steps)
@@ -176,7 +181,9 @@ After previews are ready, compare implementation with the Figma design screensho
 - Update `plan.md`: change `[ ] Step N` → `[x] Step N`
 - Do not write lifecycle or step-progress mirrors to `meta.json`.
 - Report what was implemented and which files were created/modified
-- **Open key files** (skip if in worktree): call `.kent/adapters/mcp/mcp-call.sh jetbrains.open_file_in_editor` for each newly created file so user can immediately see them in the IDE
+- **Open key files** (skip if in worktree): after explicit approval, call
+  `~/.kent/bin/kent-mcp-call jetbrains.open_file_in_editor path="<file>"
+  --allow-mutate --quiet` for each newly created file.
 
 ### Step 6b: Legacy standalone smoke-test prompt
 

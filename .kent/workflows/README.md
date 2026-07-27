@@ -42,9 +42,28 @@ Kent Desktop workflow graph
   publication after the PR is merged -> optional automation monitor -> cleanup -> done. Patch/major releases require
   explicit task wording.
 `Puber Engineering Delivery v5` is the project default. Legacy Feature
-Delivery remains linked because it owns real task history and provides a
-rollback reference. Auxiliary workflows are linked only for explicit task
-creation when the work type is known.
+Delivery and obsolete generated versions remain linked only until the next
+direct-role candidate passes its canary and required Backlog tasks are
+recreated. Completed and canceled task history is not a retention requirement.
+Auxiliary workflows are linked only for explicit task creation when the work
+type is known.
+
+### Pending direct-role candidate
+
+The next generated candidate is prepared but not applied. Its profile routes:
+
+- Plan to `default`;
+- Gate to `workflow-gate`;
+- Implement and Fix to `implementation-worker`;
+- Smoke to `runtime-smoke-tester`;
+- PR preparation and Cleanup to `delivery-operator`;
+- CI and Waiting PR to `ci-monitor`.
+
+Before retiring Delivery v5, recreate Backlog tasks `PUB-27`, `PUB-28`, and
+`PUB-29` in the replacement graph with their title, body, source URL, labels,
+and relevant comments, then record the old-to-new short-ID mapping. `PUB-26`
+must finish or be explicitly canceled before deletion. Do not move task records
+between incompatible graphs.
 
 ### Full Delivery v5 Canary Scope
 
@@ -73,8 +92,10 @@ another branch or commit.
 
 ## Authoring Rules
 
-- Use `default` as node assignee unless Kent workflow validation can see project-local roles.
-- Delegate to project roles inside prompts, for example `kent run --agent implementation-worker ...`.
+- Assign operational nodes directly from `.kent/workflow-profile.toml`.
+  `default` is reserved for Plan orchestration.
+- `[workflow] subagents = true` controls nested delegation only. It does not
+  route direct workflow-node roles.
 - Keep workflow-level fan-out read-only. The feature verification workflow runs
   audit and deterministic compilation in parallel, joins both reports, and
   sends any required code changes through the existing single-writer Fix node.
@@ -147,3 +168,7 @@ Before making a workflow default for the project:
 - Reapply the same taskless experimental graph while iterating. Once tasks
   reference it, preserve that graph and use another experimental label for
   semantic changes.
+- Before deleting an obsolete workflow, preview deletion and classify attached
+  tasks. Recreate Backlog tasks under the replacement graph; completed and
+  canceled history may be discarded. Active or approval-waiting tasks must
+  finish or be explicitly canceled first.

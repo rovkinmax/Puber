@@ -84,36 +84,28 @@ Runs smoke test for a feature via MCP mobile.
      adb -s "$DEVICE_SERIAL" shell am force-stop com.kino.puber.stage
      adb -s "$DEVICE_SERIAL" shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
      ```
-4. **Binds Mobile MCP to the locked serial**
-   - List devices and confirm `DEVICE_SERIAL` is present:
+4. **Verifies Mobile MCP can see the locked serial**
+   - Refresh and inspect the schema after Mobile MCP upgrades:
      ```bash
-     .kent/adapters/mcp/mcp-call.sh mobile.device \
+     ~/.kent/bin/kent-mcp-list mobile --schema --refresh --timeout 30000
+     ```
+   - Use only tools present in that schema. Do not call `list_modules` or
+     `enable_module`; every invocation starts an ephemeral server, so
+     process-local module state cannot configure later calls.
+   - List devices:
+     ```bash
+     ~/.kent/bin/kent-mcp-call mobile.device \
        action=list \
-       --output json \
-       --raw-dir <raw-dir>
+       --output json
      ```
-   - Select the exact locked serial:
-     ```bash
-     .kent/adapters/mcp/mcp-call.sh mobile.device \
-       action=set \
-       platform=android \
-       deviceId="$DEVICE_SERIAL" \
-       --allow-mutate \
-       --output json \
-       --raw-dir <raw-dir>
-     .kent/adapters/mcp/mcp-call.sh mobile.device \
-       action=get_target \
-       --output json \
-       --raw-dir <raw-dir>
-     ```
-   - Confirm that the list contains `DEVICE_SERIAL`, `action=set` acknowledges
-     that exact serial, and `action=get_target` reports the same Android target.
-     Do not require an undocumented display marker such as `ACTIVE`; Mobile MCP
-     versions may omit it.
-   - Pass `deviceId="$DEVICE_SERIAL"` to every target-specific Mobile MCP call.
-   - If Mobile MCP cannot confirm the locked serial through those documented
-     responses, complete with `needs_user_action`; never switch to an implicit
-     target.
+   - Confirm that the inventory contains `DEVICE_SERIAL`. Do not use
+     process-local `action=set` or `action=get_target`.
+   - Pass `platform=android` and `deviceId="$DEVICE_SERIAL"` to every
+     target-specific Mobile MCP call.
+   - If the Mobile schema does not accept explicit `deviceId` for an operation,
+     use the exact platform adapter such as `adb -s` instead of implicit state.
+   - If Mobile MCP cannot see the locked serial, complete with
+     `needs_user_action`; never switch targets.
 5. **Launches app via adb**:
    ```bash
    test -n "$DEVICE_SERIAL"
@@ -128,30 +120,60 @@ Runs smoke test for a feature via MCP mobile.
 ## Testing Strategy
 
 ### Use assertions before full screen inspection:
-- Call Mobile MCP only through `.kent/adapters/mcp/mcp-call.sh` and pass the
-  locked `deviceId` to every target-specific call.
+- Call Mobile MCP only through `~/.kent/bin/kent-mcp-call`.
+- Pass `platform=android` and the locked `deviceId` to every target-specific
+  call.
+- Every Mobile call other than device discovery must use `--quiet`,
+  `--digest-output`, assertions, or bounded hash/marker extraction.
 - Use `assert_visible` to establish the expected non-sensitive state first.
-- **`get_ui`** — main tool for reading screen state, verifying content, and finding focus/tap targets
-- **`get_ui(showAll: true)`** — when you need to see non-interactive elements too
-- **`screenshot`** only for visual bug evidence or when user explicitly asks
-- **NEVER use `screenshot` to read screen state** — always use `get_ui` instead
+- Use `mobile.ui action=analyze --digest-output` only after the expected root
+  is established.
+- Use `--hash-matches '<bounded-regex>'` with required `--marker-present` when
+  the check needs only opaque semantic identity sets.
+- Use `mobile.screen action=capture maxWidth=800 maxHeight=1400` only for a
+  known-safe visual defect and only with a safe output mode.
+- Do not request or persist a broad raw UI tree.
 - If an unexpected authenticated/account state appears, do not persist its
   full UI tree or screenshot. Record a redacted blocker and use
   `needs_user_action`.
 
 ### Speed optimizations:
-- **`tap(hints: true)`** — get state change info without extra get_ui
-- **`wait_for_element`** instead of `wait(ms)` for loading/animations
-- **`find_and_tap`** for fuzzy element matching when exact text is unknown
-- **`get_logs(package: "com.kino.puber.stage", level: "E")`** for a
-  task-specific error signal; summarize and redact instead of persisting raw
-  output
+- Use `tap(hints: true)` with `--allow-mutate --quiet`.
+- Use `mobile.ui action=wait` with an explicit serial and safe output mode
+  instead of fixed sleeps.
+- Prefer exact expected text or semantic keys. Use fuzzy actions only when they
+  are present in the refreshed schema and bounded by the task scope.
+- Prefer package-scoped `adb -s` crash/ANR/liveness checks to broad MCP logs.
+
+Example expected-state assertion:
+
+```bash
+~/.kent/bin/kent-mcp-call mobile.ui \
+  action=assert_visible \
+  platform=android \
+  deviceId="$DEVICE_SERIAL" \
+  text="<expected-safe-element>" \
+  --quiet
+```
+
+Example input:
+
+```bash
+~/.kent/bin/kent-mcp-call mobile.input \
+  action=tap \
+  platform=android \
+  deviceId="$DEVICE_SERIAL" \
+  text="<target>" \
+  hints=true \
+  --allow-mutate \
+  --quiet
+```
 
 ### Screen verification checklist:
-- Loading → Content transition (use `wait_for_element`)
-- No "null", placeholder, or empty texts (use `get_ui`)
+- Loading → Content transition (use bounded `mobile.ui action=wait`)
+- No known placeholder or `null` text (use bounded assertions)
 - Expected elements present (use `assert_visible`)
-- No crash/exception in logs (use `get_logs` with error filter)
+- No package-scoped crash/ANR/liveness failure (use `adb -s`)
 - TV remote navigation works (D-pad focus movement)
 
 ### TV-specific checks:

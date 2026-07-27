@@ -1,16 +1,19 @@
 # Adapters
 
-Adapters are project-local wrappers around external tools. They give Kent agents stable commands, raw-output storage, and
-mutation safety without depending on native MCP tool namespaces being available in every session.
+Adapters contain project-specific policy and resource coordination used by the
+global Kent Engineering Kit adapters.
 
 Included:
 
-- `mcp/`: `mcporter` bridge for MCP servers such as Figma, Notion, mobile testing, Firebase, JetBrains, or Serena.
+- `mcp/policy`: project-specific MCP mutation classification. MCP calls use
+  `~/.kent/bin/kent-mcp-call` and `~/.kent/bin/kent-mcp-list`.
+- `mobile/`: shared device locks and evidence auditing for runtime Smoke.
 
 Rules:
 
 - Keep credentials outside the repository.
-- Save raw outputs under `.todo/` or another ignored path.
+- Keep known-safe persisted MCP responses under `.todo/` or another ignored
+  path and resolve them through the MCP call log.
 - Require explicit approval and `--allow-mutate` for external writes, device input, baseline updates, and other mutating
   actions.
 - Prefer small service-specific adapters when a direct REST/CLI integration is safer than MCP.

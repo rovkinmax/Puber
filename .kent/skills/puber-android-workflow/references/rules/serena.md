@@ -9,12 +9,22 @@ Serena is available through the Kent mcporter adapter, not as native `serena.*` 
 
 ```bash
 MCPORTER_CALL_TIMEOUT=180000 \
-  .kent/adapters/mcp/mcp-call.sh serena.<tool> [arguments] \
+  ~/.kent/bin/kent-mcp-call serena.<tool> [arguments] \
   --output json \
-  --raw-dir .todo/<feature-or-task>/mcp
+  --raw-dir .todo/<feature-or-task>/mcp \
+  >/dev/null
 ```
 
+Record the MCP call-log length immediately before the call, then resolve and
+read the exact successful `rawOutputPath` through the parent skill's persisted
+response handoff. Do not emit the raw Serena response into Kent's shell
+transcript or guess its timestamped filename.
+
 Use `MCPORTER_CALL_TIMEOUT=180000` for first or large-project calls. Kotlin LSP startup can take several minutes.
+
+The global adapter serializes Serena calls per checkout/worktree and cleans
+orphan Kotlin LSP processes for that root. Do not bypass it with parallel raw
+`mcporter` or direct Serena server processes.
 
 ## Useful Tools
 

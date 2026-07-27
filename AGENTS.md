@@ -202,7 +202,7 @@ Active Kent infrastructure lives under `.kent/`:
 - commands: `.kent/commands/`
 - skill: `.kent/skills/puber-android-workflow/`
 - subagents: `.kent/subagents/`
-- MCP bridge: `.kent/adapters/mcp/`
+- MCP policy: `.kent/adapters/mcp/policy`
 - worktree setup: `.kent/worktrees/setup.sh`
 
 Kent commands are invoked as `/prompt:<name>`, for example `/prompt:feature-start` or `/prompt:refactor-start`.
@@ -215,12 +215,19 @@ Kent commands are invoked as `/prompt:<name>`, for example `/prompt:feature-star
   `local.properties` containing only `sdk.dir`; they must not copy `PUBER_CLIENT_SECRET`, `TMDB_READ_ACCESS_TOKEN`, or
   other project secrets into task worktrees.
 
-MCP access is through wrapper scripts, not native `mcp__...` tool names:
+MCP access is through the global Kent Engineering Kit adapter, not native
+`mcp__...` tool names or raw `mcporter`:
 
 ```bash
-.kent/adapters/mcp/mcp-list.sh <server> --schema
-.kent/adapters/mcp/mcp-call.sh <server.tool> [arguments] --raw-dir ".todo/<task>/mcp"
+~/.kent/bin/kent-mcp-list <server> --schema
+~/.kent/bin/kent-mcp-call <server.tool> [arguments]
 ```
+
+The project keeps only `.kent/adapters/mcp/policy` locally. Credentials and
+server definitions remain outside the global adapter. Persist a raw MCP
+response only when its bounded source is known safe, redirect command stdout,
+and resolve the exact successful `rawOutputPath` from
+`.todo/_mcp-log/mcporter-calls.jsonl`.
 
 ## Feature Workflow
 
@@ -293,23 +300,29 @@ second emulator only when the task/user explicitly allows parallel device usage 
 available; use a distinct lock name for that emulator. Use a physical device only with explicit user permission and an
 explicit serial.
 
-Bind Mobile MCP to the same serial with
-`.kent/adapters/mcp/mcp-call.sh mobile.device action=set
-deviceId="$DEVICE_SERIAL" platform=android --allow-mutate`. Pass the same
-explicit `deviceId` to every target-specific Mobile MCP call. Confirm the
-target through documented serial presence, exact selection acknowledgement,
-and the selected-target query; do not require an undocumented `ACTIVE` label.
+Mobile MCP is stateless. Confirm `DEVICE_SERIAL` appears in
+`mobile.device action=list`, then pass `platform=android` and the same explicit
+`deviceId` to every target-specific Mobile MCP call. Do not use process-local
+`action=set`, `action=get_target`, or an undocumented `ACTIVE` label as proof.
+Every Mobile call other than device discovery must use `--quiet`,
+`--digest-output`, assertions, or bounded hash/marker extraction. If a
+target-specific tool does not accept `deviceId`, use the exact platform adapter
+such as `adb -s` instead of implicit MCP state.
 If a runtime test needs a device-side timestamp or log boundary, validate the
 exact command syntax before using it as evidence. If the bridge cannot confirm
 the locked serial, block instead of switching targets.
 
 **Tool priority (cheap → expensive):**
-1. `assert_visible` / `assert_not_exists` — check element presence
-2. `analyze_screen` — screen structure without screenshot
-3. `get_ui` — full UI tree for navigation
-4. `screenshot` — visual bugs only. Always `maxWidth: 800, maxHeight: 1400`
+1. `mobile.ui action=assert_visible` / `action=assert_gone`
+2. `mobile.ui action=wait` for bounded state transitions
+3. `mobile.ui action=analyze --digest-output`
+4. bounded `--hash-matches` plus `--marker-present`
+5. `mobile.screen action=capture` only for a known-safe visual defect, with
+   `maxWidth=800`, `maxHeight=1400`, and a safe output mode
 
-**Key tips:** `tap(hints: true)` saves a separate get_ui call, `wait_for_element` instead of `wait(ms)`, `get_logs(package: "com.kino.puber.stage")` for filtering.
+Use `mobile.input ... hints=true --allow-mutate --quiet` for focused input.
+Use package-scoped `adb -s` checks for crash, ANR, foreground, and liveness
+signals instead of broad Mobile logs.
 
 Runtime evidence must be least-privilege. Never persist full device logs,
 network payloads, authentication headers, or an unexpected authenticated UI

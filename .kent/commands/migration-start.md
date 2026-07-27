@@ -112,9 +112,15 @@ Before executing, present the plan to the user and wait for confirmation:
 **Sequential execution** (order matters for migrations):
 
 **JetBrains MCP helpers** (skip if in worktree — path contains `.kent/worktrees/`):
-- **Renames**: after explicit user approval, use `.kent/adapters/mcp/mcp-call.sh jetbrains.rename_refactoring ... --allow-mutate` for class/method renames — IDE updates all references automatically
-- **Quick verify**: `.kent/adapters/mcp/mcp-call.sh jetbrains.get_file_problems` on modified files before Gradle
-- **Reformat**: after explicit user approval, `.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file path="<file>" --allow-mutate` on created/modified files
+- **Renames**: after explicit user approval, use
+  `~/.kent/bin/kent-mcp-call jetbrains.rename_refactoring ...
+  --allow-mutate`.
+- **Quick verify**: use
+  `~/.kent/bin/kent-mcp-call jetbrains.get_file_problems` on modified files
+  before Gradle.
+- **Reformat**: after explicit user approval, use
+  `~/.kent/bin/kent-mcp-call jetbrains.reformat_file path="<file>"
+  --allow-mutate --quiet`.
 - If JetBrains MCP unavailable → use manual edit + Gradle
 
 For each step:

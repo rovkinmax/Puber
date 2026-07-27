@@ -42,8 +42,10 @@ efficiently without polluting the main context. For simple file searches, use di
 starting an agent.
 
 **JetBrains MCP shortcuts** (use directly, without subagent, for quick lookups):
-- `.kent/adapters/mcp/mcp-call.sh jetbrains.get_symbol_info` — inspect an existing class/method signature (e.g., check current interactor interface before planning new methods)
-- `.kent/adapters/mcp/mcp-call.sh jetbrains.search_in_files_by_text` — quick text search across the project (faster than Grep for known string patterns)
+- `~/.kent/bin/kent-mcp-call jetbrains.get_symbol_info` — inspect an
+  existing class or method signature.
+- `~/.kent/bin/kent-mcp-call jetbrains.search_in_files_by_text` — search the
+  project for a known string pattern.
 
 **Pass specific paths to the subagent** (from AGENTS.md) to avoid open-ended exploration:
 - Package path (e.g., `app/src/main/java/com/kino/puber/ui/feature/<name>/`) — for existing code

@@ -114,9 +114,15 @@ Before executing, present the plan to the user and wait for confirmation:
 **Code comment rule:** When replacing a pattern with a non-obvious alternative (e.g., `Set` instead of previous tracking approach), add a short comment (1-2 lines) explaining WHY the new approach is used. Do not add comments for self-evident changes.
 
 **JetBrains MCP helpers** (skip if in worktree — path contains `.kent/worktrees/`):
-- **Renames**: after explicit user approval, use `.kent/adapters/mcp/mcp-call.sh jetbrains.rename_refactoring ... --allow-mutate` instead of manual find-and-replace — IDE updates all references (imports, type hints, configs) in one call
-- **Quick verify**: after each change, call `.kent/adapters/mcp/mcp-call.sh jetbrains.get_file_problems` on modified files before running Gradle
-- **Reformat**: after explicit user approval, call `.kent/adapters/mcp/mcp-call.sh jetbrains.reformat_file path="<file>" --allow-mutate` on created/modified files
+- **Renames**: after explicit user approval, use
+  `~/.kent/bin/kent-mcp-call jetbrains.rename_refactoring ...
+  --allow-mutate`.
+- **Quick verify**: after each change, call
+  `~/.kent/bin/kent-mcp-call jetbrains.get_file_problems` on modified files
+  before Gradle.
+- **Reformat**: after explicit user approval, call
+  `~/.kent/bin/kent-mcp-call jetbrains.reformat_file path="<file>"
+  --allow-mutate --quiet`.
 - If JetBrains MCP unavailable → use manual edit + Gradle as before
 
 For each step:

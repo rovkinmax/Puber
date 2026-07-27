@@ -85,7 +85,20 @@ If HTTP code is not 200 → warn user, switch to MCP-only mode (same as NO_TOKEN
 
 **If REST API succeeded** (local PNGs exist): use the `Read` tool to view them — faster and avoids MCP overhead.
 
-**If MCP-only mode** (no token or REST failed): use `.kent/adapters/mcp/mcp-call.sh figma.get_screenshot nodeId="<node-id>" --raw-dir ".todo/<feature>/mcp"` for each node. Note: these are visual-only (bytes not extractable), sufficient for analysis but no local files saved.
+**If MCP-only mode** (no token or REST failed): call one node at a time:
+
+```bash
+~/.kent/bin/kent-mcp-call figma.get_screenshot \
+  nodeId="<node-id>" \
+  --output json \
+  --raw-dir ".todo/<feature>/mcp" \
+  >/dev/null
+```
+
+Before each call, record the MCP call-log length. Resolve and inspect the exact
+successful `figma/get_screenshot` `rawOutputPath` through the skill's
+persisted-response handoff before making the next call. These responses are
+visual-only source data; do not infer unreturned structure.
 
 Read images in parallel batches (up to 4 at a time).
 
@@ -107,8 +120,11 @@ Read images in parallel batches (up to 4 at a time).
        if c.get('type') in ('FRAME','COMPONENT','INSTANCE'):
          print(f\"{c['id']} {c.get('name','')}\")"
      ```
-  3. **Fallback**: If REST API fails → use `.kent/adapters/mcp/mcp-call.sh figma.get_design_context nodeId="<node-id>" --raw-dir ".todo/<feature>/mcp"` for the section node
-  4. Parse child node IDs from the response
+  3. **Fallback**: If REST API fails, call
+     `~/.kent/bin/kent-mcp-call figma.get_design_context
+     nodeId="<node-id>" --output markdown --raw-dir
+     ".todo/<feature>/mcp" >/dev/null` for the section node.
+  4. Resolve and read that exact persisted response, then parse child node IDs.
   5. Add only **new** child node IDs to the processing queue (skip IDs already in the list)
   6. Re-run Step 4 for the new nodes if needed
 
@@ -122,7 +138,21 @@ This tool wastes significant context on generated React/Tailwind code (~80% of r
 - A second call only if another screen uses visually different tokens/spacing
 - **Skip** for simple screens (lists, empty states, dialogs) — screenshots are sufficient
 
-For selected nodes, attempt `.kent/adapters/mcp/mcp-call.sh figma.get_design_context nodeId="<node-id>" clientLanguages=kotlin clientFrameworks=compose artifactType=WEB_PAGE_OR_APP_SCREEN --raw-dir ".todo/<feature>/mcp"`:
+For selected nodes, attempt:
+
+```bash
+~/.kent/bin/kent-mcp-call figma.get_design_context \
+  nodeId="<node-id>" \
+  clientLanguages=kotlin \
+  clientFrameworks=compose \
+  artifactType=WEB_PAGE_OR_APP_SCREEN \
+  --output markdown \
+  --raw-dir ".todo/<feature>/mcp" \
+  >/dev/null
+```
+
+Resolve and read the exact `figma/get_design_context` `rawOutputPath` through
+the skill's persisted-response handoff before extracting a compact summary:
 - `clientLanguages: "kotlin"`, `clientFrameworks: "compose"`, `artifactType: "WEB_PAGE_OR_APP_SCREEN"`
 - **If response mentions Code Connect** → this is normal, not an error. Ignore Code Connect mappings and continue extracting layout data
 - **From each response, extract ONLY:**
