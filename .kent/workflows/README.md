@@ -50,7 +50,8 @@ type is known.
 
 ### Pending direct-role candidate
 
-The next generated candidate is prepared but not applied. Its profile routes:
+`Puber Engineering Delivery v8` is linked as a non-default candidate. Its
+canary is pending. Its profile routes:
 
 - Plan to `default`;
 - Gate to `workflow-gate`;
