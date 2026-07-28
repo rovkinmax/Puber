@@ -1,6 +1,6 @@
 {
   "workflow": {
-    "id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+    "id": "42287243-1486-45e6-8f8d-3ecddba896be",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
     "version": 160,
@@ -11,14 +11,14 @@
   "nodes": [
     {
       "id": "node-65fd1e69-daa8-451d-ad29-52273db1db13",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "backlog",
       "kind": "start",
       "display_name": "Backlog"
     },
     {
       "id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "prepare",
       "kind": "agent",
       "display_name": "Prepare Release",
@@ -27,7 +27,7 @@
     },
     {
       "id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "compliance",
       "kind": "agent",
       "display_name": "Compliance Review",
@@ -36,7 +36,7 @@
     },
     {
       "id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "ship_pr",
       "kind": "agent",
       "display_name": "Create PR",
@@ -45,7 +45,7 @@
     },
     {
       "id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "ci_monitor",
       "kind": "agent",
       "display_name": "Monitor CI",
@@ -54,7 +54,7 @@
     },
     {
       "id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "publish",
       "kind": "agent",
       "display_name": "Publish Tag",
@@ -63,7 +63,7 @@
     },
     {
       "id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "monitor",
       "kind": "agent",
       "display_name": "Monitor Release",
@@ -72,7 +72,7 @@
     },
     {
       "id": "node-a0bedfe2-b399-456f-a0be-61ca70704811",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "cleanup",
       "kind": "agent",
       "display_name": "Cleanup",
@@ -81,14 +81,14 @@
     },
     {
       "id": "node-a19c6feb-2c82-4c67-960a-31ee75b785d2",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "wont_do",
       "kind": "terminal",
       "display_name": "Won't Do"
     },
     {
       "id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "waiting_pr",
       "kind": "agent",
       "display_name": "Waiting PR",
@@ -97,7 +97,7 @@
     },
     {
       "id": "node-0ebf8742-e371-440f-97e2-fc3834a09906",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "key": "done",
       "kind": "terminal",
       "display_name": "Done"
@@ -106,7 +106,7 @@
   "transition_groups": [
     {
       "id": "group-a0bcdc84-f048-4eda-8d71-46e9b735c837",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-65fd1e69-daa8-451d-ad29-52273db1db13",
       "transition_id": "start",
       "display_name": "Start",
@@ -114,7 +114,7 @@
     },
     {
       "id": "group-61fd5cf0-ff6c-4a82-b185-008cde8615d1",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
       "transition_id": "compliance",
       "display_name": "Compliance",
@@ -122,7 +122,7 @@
     },
     {
       "id": "group-56664f3b-6775-49a3-ae9e-add3a2147898",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
@@ -130,7 +130,7 @@
     },
     {
       "id": "group-5dbd9798-10f9-431c-9e7b-24d3f3beb4f5",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
       "transition_id": "ship_pr",
       "display_name": "Ship PR",
@@ -138,7 +138,7 @@
     },
     {
       "id": "group-59b9cc45-ff33-41ef-8b2f-16aaa02c6316",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
@@ -146,7 +146,7 @@
     },
     {
       "id": "group-17cc1920-c194-4013-bfd8-0eaaa8df78f7",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
@@ -154,7 +154,7 @@
     },
     {
       "id": "group-924268b7-ec8c-4dfc-8c41-9a2030ad9fd2",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
       "transition_id": "monitor_ci",
       "display_name": "Monitor Ci",
@@ -162,7 +162,7 @@
     },
     {
       "id": "group-986d01ca-05b8-473d-bf17-9bfa81b5669a",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
@@ -170,7 +170,7 @@
     },
     {
       "id": "group-0583145f-ec64-45d3-a77f-3fbcb06990d6",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
       "transition_id": "waiting_pr",
       "display_name": "Waiting PR",
@@ -178,7 +178,7 @@
     },
     {
       "id": "group-c9c24869-2449-482e-b2aa-fe13a359295f",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
@@ -186,7 +186,7 @@
     },
     {
       "id": "group-a16f76de-f9fb-4dda-b276-120863bf1005",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
@@ -194,7 +194,7 @@
     },
     {
       "id": "group-2d2a3e16-2d20-4774-81c4-1f116cd43f40",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
       "transition_id": "monitor",
       "display_name": "Monitor",
@@ -202,7 +202,7 @@
     },
     {
       "id": "group-e3ddd61b-3b97-4e7e-ad1a-4b1b47d4e3e1",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
@@ -210,7 +210,7 @@
     },
     {
       "id": "group-901a4611-3b31-4a54-804e-6294786e30e2",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
       "transition_id": "release_published",
       "display_name": "Release Published",
@@ -218,7 +218,7 @@
     },
     {
       "id": "group-008b5b03-50eb-4276-a01a-f34c75ce4be6",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
@@ -226,7 +226,7 @@
     },
     {
       "id": "group-79b1b062-9b8f-4598-8a9f-2ff1b3fdf1ec",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-a0bedfe2-b399-456f-a0be-61ca70704811",
       "transition_id": "done",
       "display_name": "Done",
@@ -234,7 +234,7 @@
     },
     {
       "id": "group-e21a073b-10f2-402b-94e5-8b1239288c6a",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
@@ -242,7 +242,7 @@
     },
     {
       "id": "group-a7e0dff6-2d65-45b5-a937-fa2ae9db916c",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
       "transition_id": "pr_merged",
       "display_name": "Pr Merged",
@@ -250,7 +250,7 @@
     },
     {
       "id": "group-def5967b-a961-4139-b2ac-fea582269726",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
@@ -258,7 +258,7 @@
     },
     {
       "id": "group-668bcce6-ceef-498a-a66f-c0bcbb9b9f0e",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
@@ -266,7 +266,7 @@
     },
     {
       "id": "group-eeb67e0b-9098-4591-acf4-f5bd1d23fa30",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
       "transition_id": "close_without_merge",
       "display_name": "Close Without Merge",
@@ -274,7 +274,7 @@
     },
     {
       "id": "group-c2158ca7-1390-49c6-b7be-149f04b70e56",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "source_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
       "transition_id": "wont_do",
       "display_name": "Wont Do",
@@ -284,7 +284,7 @@
   "edges": [
     {
       "id": "edge-e9686552-fb8a-4c41-9b72-5e1a1262fdb5",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-a0bcdc84-f048-4eda-8d71-46e9b735c837",
       "key": "start_prepare",
       "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
@@ -297,7 +297,7 @@
     },
     {
       "id": "edge-94356a5f-0d82-4353-a5bd-cf00d8c420fb",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-61fd5cf0-ff6c-4a82-b185-008cde8615d1",
       "key": "prepare_done",
       "target_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
@@ -340,7 +340,7 @@
     },
     {
       "id": "edge-9fd4165c-01fa-4291-b134-eb11981b5896",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-56664f3b-6775-49a3-ae9e-add3a2147898",
       "key": "prepare_needs_user_action",
       "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
@@ -359,7 +359,7 @@
     },
     {
       "id": "edge-05335457-6fbd-4556-9bc8-1a0ddfa17f52",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-5dbd9798-10f9-431c-9e7b-24d3f3beb4f5",
       "key": "compliance_ship_pr",
       "target_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
@@ -378,7 +378,7 @@
     },
     {
       "id": "edge-434049c1-a5bd-4713-aed5-278651deb0df",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-59b9cc45-ff33-41ef-8b2f-16aaa02c6316",
       "key": "compliance_fix",
       "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
@@ -401,7 +401,7 @@
     },
     {
       "id": "edge-97bb2c4a-612b-4884-b9c4-e9693cfa6f18",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-17cc1920-c194-4013-bfd8-0eaaa8df78f7",
       "key": "compliance_needs_user_action",
       "target_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
@@ -420,7 +420,7 @@
     },
     {
       "id": "edge-ceb78622-eaa4-453f-bc8d-7c0ecc14c75c",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-924268b7-ec8c-4dfc-8c41-9a2030ad9fd2",
       "key": "monitor_ci",
       "target_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
@@ -455,7 +455,7 @@
     },
     {
       "id": "edge-c7370c49-63ec-4d62-9b7c-36f1cd0e4ed1",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-986d01ca-05b8-473d-bf17-9bfa81b5669a",
       "key": "ship_pr_needs_user_action",
       "target_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
@@ -474,7 +474,7 @@
     },
     {
       "id": "edge-6c5fd08a-c3b0-49d6-824c-7f4289599b53",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-0583145f-ec64-45d3-a77f-3fbcb06990d6",
       "key": "ci_waiting_pr",
       "target_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
@@ -513,7 +513,7 @@
     },
     {
       "id": "edge-16569b09-ecdc-4de4-bbcf-3e35ea9fcce7",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-c9c24869-2449-482e-b2aa-fe13a359295f",
       "key": "ci_fix",
       "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
@@ -536,7 +536,7 @@
     },
     {
       "id": "edge-e02a752c-4e67-4b1c-b06b-37995e9816f8",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-a16f76de-f9fb-4dda-b276-120863bf1005",
       "key": "ci_monitor_needs_user_action",
       "target_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
@@ -555,7 +555,7 @@
     },
     {
       "id": "edge-28829c7b-a235-41a9-a5cf-7cd07fce81ea",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-2d2a3e16-2d20-4774-81c4-1f116cd43f40",
       "key": "monitor_release",
       "target_node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
@@ -590,7 +590,7 @@
     },
     {
       "id": "edge-76cb7cc9-afdb-471b-9c30-0575d769d0fa",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-e3ddd61b-3b97-4e7e-ad1a-4b1b47d4e3e1",
       "key": "publish_needs_user_action",
       "target_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
@@ -609,7 +609,7 @@
     },
     {
       "id": "edge-f6e61b45-54eb-4c42-86e7-6d28ef4f7a4b",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-901a4611-3b31-4a54-804e-6294786e30e2",
       "key": "release_release_published",
       "target_node_id": "node-a0bedfe2-b399-456f-a0be-61ca70704811",
@@ -628,7 +628,7 @@
     },
     {
       "id": "edge-2a57cb62-d880-4e73-a460-bf834dcb2b64",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-008b5b03-50eb-4276-a01a-f34c75ce4be6",
       "key": "monitor_needs_user_action",
       "target_node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
@@ -647,7 +647,7 @@
     },
     {
       "id": "edge-6be87558-0c31-4fe9-a28c-724d76c263d9",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-79b1b062-9b8f-4598-8a9f-2ff1b3fdf1ec",
       "key": "cleanup_done",
       "target_node_id": "node-0ebf8742-e371-440f-97e2-fc3834a09906",
@@ -665,7 +665,7 @@
     },
     {
       "id": "edge-6018e22d-2198-45ed-a4b3-bdfe93775e78",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-e21a073b-10f2-402b-94e5-8b1239288c6a",
       "key": "pr_fix",
       "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
@@ -704,7 +704,7 @@
     },
     {
       "id": "edge-b4ae17cc-edc6-47e2-b9ea-c4b00cd07600",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-a7e0dff6-2d65-45b5-a937-fa2ae9db916c",
       "key": "publish_after_merge",
       "target_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
@@ -743,7 +743,7 @@
     },
     {
       "id": "edge-dcac956d-47aa-4a43-87e4-ccae167e11e3",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-def5967b-a961-4139-b2ac-fea582269726",
       "key": "pr_feedback",
       "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
@@ -774,7 +774,7 @@
     },
     {
       "id": "edge-37f43543-3ab7-4f60-bcf1-5ae7e8a2bcac",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-668bcce6-ceef-498a-a66f-c0bcbb9b9f0e",
       "key": "waiting_pr_needs_user_action",
       "target_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
@@ -813,7 +813,7 @@
     },
     {
       "id": "edge-bd3ab2d8-ced1-43b2-b740-ada232876991",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-eeb67e0b-9098-4591-acf4-f5bd1d23fa30",
       "key": "release_cancel_cleanup",
       "target_node_id": "node-a0bedfe2-b399-456f-a0be-61ca70704811",
@@ -844,7 +844,7 @@
     },
     {
       "id": "edge-9228ca82-9ab5-4dfe-b073-21ebe5d0b65f",
-      "workflow_id": "workflow-42287243-1486-45e6-8f8d-3ecddba896be",
+      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
       "transition_group_id": "group-c2158ca7-1390-49c6-b7be-149f04b70e56",
       "key": "prepare_wont_do",
       "target_node_id": "node-a19c6feb-2c82-4c67-960a-31ee75b785d2",

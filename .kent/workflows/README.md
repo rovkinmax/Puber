@@ -41,11 +41,10 @@ Kent Desktop workflow graph
   publication after the PR is merged -> optional automation monitor -> cleanup -> done. Patch/major releases require
   explicit task wording.
 `Puber Engineering Delivery v8` is the project default. Generated v5-v7
-instances remain linked only until their non-Backlog tasks finish or are
-explicitly canceled. Required Backlog work has already been recreated on v8.
-Completed and canceled task history is not a retention requirement. Auxiliary
-workflows are linked only for explicit task creation when the work type is
-known.
+instances were retired after their active work finished or was explicitly
+canceled and required Backlog work was recreated on v8. Completed and canceled
+task history is not a retention requirement. Auxiliary workflows are linked
+only for explicit task creation when the work type is known.
 
 Before retiring any workflow, read current Kent-owned state instead of relying
 on task IDs or status captured in this repository:
