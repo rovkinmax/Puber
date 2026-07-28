@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -46,6 +47,11 @@ private const val LONG_SELECT_REPEAT_THRESHOLD = 1
 
 private val ContextMenuWidth = 520.dp
 
+internal val LocalTvContextMenuLongSelectState =
+    compositionLocalOf<TvContextMenuLongSelectState> {
+        error("TvContextMenuLongSelectState must be provided by PuberTheme")
+    }
+
 @Composable
 internal fun TvContextMenuDialog(
     title: String,
@@ -80,7 +86,11 @@ internal fun TvContextMenuDialog(
         }
     }
 
-    TvDialogOverlay(onDismiss = onDismiss) { dismiss ->
+    val longSelectState = LocalTvContextMenuLongSelectState.current
+    TvDialogOverlay(
+        onDismiss = onDismiss,
+        modifier = Modifier.consumeContextMenuLongSelectGesture(longSelectState),
+    ) { dismiss ->
         Card(
             modifier = modifier.width(ContextMenuWidth),
         ) {
@@ -289,7 +299,7 @@ internal fun Modifier.onTvContextMenuKey(
     enabled: Boolean = true,
     onOpen: () -> Unit,
 ): Modifier {
-    val longSelectState = remember { TvContextMenuLongSelectState() }
+    val longSelectState = LocalTvContextMenuLongSelectState.current
     val focusRestorer = LocalTvDialogFocusRestorer.current
     val openWithFocusSave = {
         focusRestorer?.onDialogOpening()
@@ -324,6 +334,22 @@ internal fun Modifier.onTvContextMenuKey(
     }
 }
 
+private fun Modifier.consumeContextMenuLongSelectGesture(
+    longSelectState: TvContextMenuLongSelectState,
+): Modifier {
+    return onPreviewKeyEvent { event ->
+        if (!event.key.isSelectKey()) {
+            return@onPreviewKeyEvent false
+        }
+        when (event.type) {
+            KeyEventType.KeyDown ->
+                longSelectState.consumeSelectRepeatIfTracking(event.nativeKeyEvent.repeatCount)
+            KeyEventType.KeyUp -> longSelectState.consumeSelectKeyUpIfTracking()
+            else -> false
+        }
+    }
+}
+
 internal class TvContextMenuLongSelectState(
     private val repeatThreshold: Int = LONG_SELECT_REPEAT_THRESHOLD,
 ) {
@@ -349,6 +375,14 @@ internal class TvContextMenuLongSelectState(
         } else {
             false
         }
+    }
+
+    fun consumeSelectRepeatIfTracking(repeatCount: Int): Boolean {
+        return suppressSelectUp && repeatCount >= repeatThreshold
+    }
+
+    fun consumeSelectKeyUpIfTracking(): Boolean {
+        return suppressSelectUp && onSelectKeyUp()
     }
 }
 
