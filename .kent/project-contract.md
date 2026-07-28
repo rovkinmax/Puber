@@ -8,13 +8,13 @@ project internals from another repository.
 
 Puber workflow commands must use explicit task artifacts. Do not infer a feature from `.todo/.current`.
 
-- Planning produces `workspace_path` and `plan_path`. `workspace_path` is
+- Planning produces `workspace_path`, `plan_path`, and `work_kind`. `workspace_path` is
   always the repository or managed-worktree root; `.todo/<feature>` is an
   artifact directory and belongs in `plan_path` or another explicit artifact
   field.
-- Implementation preserves and re-emits `workspace_path` and `plan_path` until all steps are complete.
+- Implementation preserves and re-emits `workspace_path`, `plan_path`, and `work_kind` until all steps are complete.
 - Audit/review produces `audit_report` or `review_report`.
-- Current Delivery v5 and future generated workflows use `standards_status`
+- Generated Delivery workflows use `standards_status`
   and `standards_report` for early Standards Review.
 - Verification produces `verification_report` or a concise verification summary.
 - Final Compliance Review produces `compliance_report`.
@@ -47,6 +47,8 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - `feature_fix_command`: `.kent/commands/feature-fix.md`
 - `refactor_start_command`: `.kent/commands/refactor-start.md`
 - `migration_start_command`: `.kent/commands/migration-start.md`
+- `bugfix_start_command`: `.kent/commands/bugfix-start.md`
+- `bugfix_implement_command`: `.kent/commands/bugfix-implement.md`
 - `smoke_command`: `.kent/commands/smoke-test.md`
 - `mobile_resource_lock_adapter`:
   `.kent/adapters/mobile/emulator-resource-lock.sh`
@@ -61,11 +63,11 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 Commands that operate on feature artifacts accept an explicit feature name, `.todo/<feature>` path, or workflow-provided
 workspace path.
 
-The Feature Delivery `plan` node owns bootstrap, optional design ingestion, spec creation, and implementation planning in
-one Kent session. `feature-start.md` may load `feature-design.md`, `feature-spec.md`, and `feature-plan.md` as procedure
-modules, but must not invoke nested `/prompt:*` flows or start child sessions for those phases.
-The generated `Puber Engineering Delivery v5` Plan node follows the same
-single-session procedure through `.kent/workflow-profile.toml`. Its
+The generated Engineering Delivery Plan node selects one profile-owned
+`work_kind` and performs planning in one Kent session. Feature planning may
+load `feature-design.md`, `feature-spec.md`, and `feature-plan.md` as procedure
+modules, but must not invoke nested `/prompt:*` flows or start child sessions.
+Its
 post-verification Gate follows `.kent/commands/smoke-policy.md` and records an
 explicit `smoke_required` or `delivery_ready` decision.
 
@@ -245,11 +247,10 @@ Use `Puber Release` for human-facing release tasks.
 
 Use generic workflow graph keys and project-prefixed live workflow names:
 
-- Current generated default: `Puber Engineering Delivery v5`.
+- Generated default: `Puber Engineering Delivery v9`.
 - Temporary Canary and Smoke Lab names are reserved for bounded future
   experiments and should be removed after their evidence is incorporated.
-- Live workflow names: `Puber Feature Delivery`, `Puber Refactor With Audit`, `Puber Bugfix Investigation`,
-  `Puber Dependency Update`, `Puber Test Coverage`, `Puber Release`.
+- Live workflow names: `Puber Engineering Delivery v9` and `Puber Release`.
 - Node keys include `plan`, `implement`, `verification_dispatch`,
   `deterministic_verify`, `standards_review`, `spec_review`,
   `verification_join`, `verification_gate`, `fix`, `smoke`, `compliance`,
@@ -259,10 +260,10 @@ Use generic workflow graph keys and project-prefixed live workflow names:
   `needs_user_action`, `smoke_required`, `delivery_ready`, `ship_pr`,
   `monitor_ci`, `waiting_pr`, `pr_merged`, `close_without_merge`, `no_pr`,
   `done`, and `wont_do`.
-- Portable params: `workspace_path`, `plan_path`, `review_context`,
+- Portable params: `workspace_path`, `plan_path`, `work_kind`, `review_context`,
   `fix_context`, `verification_status`, `verification_report`,
   `standards_status`, `standards_report`, `spec_status`, `review_report`,
   `compliance_report`, `smoke_rationale`, `smoke_scope`, `blocker_reason`,
   `pr_url`, `branch_name`, `pr_report`, `ci_report`, `merge_report`,
-  `closure_reason`, and `cleanup_report`. Legacy workflow families also use
-  `audit_report`, `cleanup_reason`, and the release-specific parameters.
+  `closure_reason`, and `cleanup_report`. Release uses its dedicated
+  parameters.

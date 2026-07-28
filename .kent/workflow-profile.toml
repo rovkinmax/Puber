@@ -37,8 +37,6 @@ verify = ".kent/scripts/workflow-verify-report"
 smoke = ""
 
 [procedures]
-plan = ".kent/commands/feature-start.md"
-implement = ".kent/commands/feature-implement.md"
 fix = ""
 compliance = ".kent/commands/compliance-review.md"
 smoke_decision = ".kent/commands/smoke-policy.md"
@@ -47,6 +45,36 @@ ship = ".kent/commands/ship-pr.md"
 ci = ""
 waiting_pr = ""
 cleanup = ".kent/commands/cleanup-task.md"
+
+[work_kinds.feature]
+description = "User-facing behavior, screens, flows, or business capabilities."
+plan = ".kent/commands/feature-start.md"
+implement = ".kent/commands/feature-implement.md"
+
+[work_kinds.bugfix]
+description = "Restore intended behavior for a reproducible defect."
+plan = ".kent/commands/bugfix-start.md"
+implement = ".kent/commands/bugfix-implement.md"
+
+[work_kinds.refactor]
+description = "Improve code structure without intended behavior changes."
+plan = ".kent/commands/refactor-start.md"
+implement = ".kent/commands/refactor-start.md"
+
+[work_kinds.migration]
+description = "Move contracts, frameworks, modules, or data in dependency order."
+plan = ".kent/commands/migration-start.md"
+implement = ".kent/commands/migration-start.md"
+
+[work_kinds.dependency]
+description = "Audit or update dependency versions and build-tool artifacts."
+plan = ".kent/commands/dependency-update.md"
+implement = ".kent/commands/dependency-update.md"
+
+[work_kinds.test]
+description = "Add or improve automated test coverage without product scope."
+plan = ".kent/commands/test-coverage.md"
+implement = ".kent/commands/test-coverage.md"
 
 [adapters]
 mcp_policy = ".kent/adapters/mcp/policy"

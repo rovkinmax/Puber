@@ -19,32 +19,17 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Engineering Delivery v8` (default): the current profile-schema-3
-  delivery workflow. It uses one Plan session, direct operational roles,
-  deterministic compile plus independent standards/spec reviews, Join/Gate,
-  conditional TV Smoke, final Compliance Review, PR/CI/waiting, and
-  conservative cleanup. Its managed-worktree canary started on July 27, 2026
-  and completed on July 28, 2026.
-- `Puber Feature Delivery` (legacy rollback): plan -> implement loop ->
-  parallel read-only audit and deterministic compile verification -> join ->
-  verification result -> fix loop or optional smoke -> compliance ->
-  create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
-- `Puber Refactor With Audit`: plan/audit -> implement loop -> read-only review -> fix loop -> compliance ->
-  create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
-- `Puber Bugfix Investigation`: reproduce/diagnose -> fix or report-only -> verify/fix loop -> compliance ->
-  create/update PR when changes exist -> monitor CI -> waiting PR -> cleanup -> done.
-- `Puber Dependency Update`: update Gradle versions/tooling -> fallout verification -> fixes -> compliance ->
-  create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
-- `Puber Test Coverage`: coverage gap plan -> test implementation loop -> review/fix loop -> compliance ->
-  create/update PR -> monitor CI -> waiting PR -> cleanup -> done.
-- `Puber Release`: default next minor release from `origin/master` -> version bump branch/PR -> CI -> approved tag
-  publication after the PR is merged -> optional automation monitor -> cleanup -> done. Patch/major releases require
-  explicit task wording.
-`Puber Engineering Delivery v8` is the project default. Generated v5-v7
-instances were retired after their active work finished or was explicitly
-canceled and required Backlog work was recreated on v8. Completed and canceled
-task history is not a retention requirement. Auxiliary workflows are linked
-only for explicit task creation when the work type is known.
+- `Puber Engineering Delivery v9` (default): common delivery for
+  `feature`, `bugfix`, `refactor`, `migration`, `dependency`, and `test`.
+  Plan selects one `work_kind`, Implement preserves it across bounded slices,
+  and the common verification, Smoke, compliance, PR/CI, waiting, and cleanup
+  tail handles delivery.
+- `Puber Release`: default next minor release from `origin/master` through
+  version-bump PR, CI, approved tag publication, optional automation
+  monitoring, and cleanup. Patch/major releases require explicit wording.
+
+Covered specialized workflows and earlier Delivery versions are retired.
+Completed and canceled task history is not a retention requirement.
 
 Before retiring any workflow, read current Kent-owned state instead of relying
 on task IDs or status captured in this repository:
@@ -124,7 +109,8 @@ another branch or commit.
   are forbidden for smoke tests.
 - Every successful terminal path should pass through `cleanup`, but cleanup is conservative by default. Cleanup after a PR
   path must verify the PR through GitHub state rather than git ancestry alone because squash merges are allowed.
-- Pass explicit `workspace_path` and `plan_path`; never rely on `.todo/.current`.
+- Pass explicit `workspace_path`, `plan_path`, and `work_kind`; never rely on
+  `.todo/.current`.
 - Keep prompts project-neutral where possible: "run the project feature planning command" rather than naming another
   repository's skill path, Jira project, module graph, or release process.
 
