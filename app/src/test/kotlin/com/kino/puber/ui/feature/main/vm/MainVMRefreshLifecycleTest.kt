@@ -3,19 +3,27 @@ package com.kino.puber.ui.feature.main.vm
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Duotone
 import com.adamglin.phosphoricons.duotone.House
+import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberTab
 import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.core.ui.navigation.TabRouter
+import com.kino.puber.core.ui.uikit.model.CommonAction
+import com.kino.puber.data.preferences.ContentPreferences
+import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.ui.feature.main.model.MainAction
 import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.MainUIMapper
+import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.model.TabType
 import com.kino.puber.util.MainDispatcherExtension
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
@@ -58,7 +66,12 @@ internal class MainVMRefreshLifecycleTest {
             )
         }
         every { mapper.updateSelectedTab(any(), any()) } answers { firstArg() }
-        val vm = MainVM(router, mapper, tabRouter)
+        val vm = MainVM(
+            router = router,
+            mainUIMapper = mapper,
+            tabRouter = tabRouter,
+            navigationPreferencesRepository = mockk(relaxed = true),
+        )
         val historyTab = MainTab(
             type = TabType.History,
             label = "History",
@@ -85,6 +98,130 @@ internal class MainVMRefreshLifecycleTest {
                 key = openedTabs.last().key,
                 initialContentInstanceKey = openedTabs.last().contentInstanceKey,
             ),
+        )
+    }
+
+    @Test
+    fun disablingSelectedOptionalTab_fallsBackAndOpensModeStartTab() = runTest(dispatcher) {
+        val preferences = MutableStateFlow(
+            ContentPreferences(
+                showCartoonsTab = false,
+                showAnimeTab = true,
+                showAnime = true,
+            )
+        )
+        val repository = mockk<NavigationPreferencesRepository>()
+        every { repository.contentPreferences } returns preferences
+        val screens = mockk<Screens>(relaxed = true)
+        val router = mockk<AppRouter>(relaxed = true)
+        every { router.screens } returns screens
+        val mapper = mockk<MainUIMapper>()
+        every { mapper.buildViewState(null) } returns mainState(TabType.Anime)
+        every { mapper.buildViewState(TabType.Anime) } returns mainState(TabType.Home)
+        every { mapper.buildTabContent(any(), any(), any()) } answers {
+            puberTab(firstArg())
+        }
+        val tabRouter = mockk<TabRouter>(relaxed = true)
+        val openedTabs = mutableListOf<PuberTab>()
+        every { tabRouter.openTab(capture(openedTabs)) } returns Unit
+        val vm = MainVM(router, mapper, tabRouter, repository)
+
+        vm.testOnStart()
+        runCurrent()
+        preferences.value = preferences.value.copy(showAnimeTab = false)
+        runCurrent()
+
+        assertEquals(TabType.Home, vm.testStateValue.selectedTab)
+        assertEquals(listOf(TabType.Anime, TabType.Home), openedTabs.map(PuberTab::tag))
+        vm.testCancelScope()
+    }
+
+    @Test
+    fun showAnimeChange_advancesAffectedTabGenerationsAndRefreshesSelectedTab() = runTest(dispatcher) {
+        val preferences = MutableStateFlow(
+            ContentPreferences(
+                showCartoonsTab = true,
+                showAnimeTab = true,
+                showAnime = true,
+            )
+        )
+        val repository = mockk<NavigationPreferencesRepository>()
+        every { repository.contentPreferences } returns preferences
+        val screens = mockk<Screens>(relaxed = true)
+        val router = mockk<AppRouter>(relaxed = true)
+        every { router.screens } returns screens
+        val mapper = mockk<MainUIMapper>()
+        val initialState = mainState(TabType.Home)
+        every { mapper.buildViewState(null) } returns initialState
+        every { mapper.buildViewState(TabType.Home) } returns initialState
+        every { mapper.updateSelectedTab(any(), any()) } answers {
+            val state = firstArg<MainViewState>()
+            val tab = secondArg<MainTab>()
+            state.copy(selectedTab = tab.type)
+        }
+        every { mapper.buildTabContent(any(), any(), any()) } answers {
+            puberTab(firstArg(), thirdArg())
+        }
+        val tabRouter = mockk<TabRouter>(relaxed = true)
+        val vm = MainVM(router, mapper, tabRouter, repository)
+
+        vm.testOnStart()
+        runCurrent()
+        preferences.value = preferences.value.copy(showAnime = false)
+        runCurrent()
+        listOf(TabType.Movies, TabType.Series, TabType.Cartoons).forEach { type ->
+            vm.onAction(CommonAction.ItemSelected(mainTab(type)))
+        }
+
+        listOf(TabType.Home, TabType.Movies, TabType.Series, TabType.Cartoons).forEach { type ->
+            verify(exactly = 1) {
+                mapper.buildTabContent(
+                    type = type,
+                    navigationMode = NavigationMode.TopTabs,
+                    refreshVersion = 1,
+                )
+            }
+        }
+        verify(exactly = 0) {
+            mapper.buildTabContent(
+                type = TabType.Anime,
+                navigationMode = any(),
+                refreshVersion = 1,
+            )
+        }
+        vm.testCancelScope()
+    }
+
+    private fun mainState(selectedTab: TabType): MainViewState {
+        return MainViewState(
+            tabs = listOf(mainTab(selectedTab, isSelected = true)),
+            selectedTab = selectedTab,
+            navigationMode = NavigationMode.TopTabs,
+        )
+    }
+
+    private fun mainTab(
+        type: TabType,
+        isSelected: Boolean = false,
+    ): MainTab {
+        return MainTab(
+            type = type,
+            label = type.name,
+            icon = PhosphorIcons.Duotone.House,
+            isSelected = isSelected,
+        )
+    }
+
+    private fun puberTab(
+        type: TabType,
+        refreshVersion: Int = 0,
+    ): PuberTab {
+        val screen = mockk<PuberScreen>()
+        every { screen.key } returns "${type.name}Screen"
+        return PuberTab(
+            screen = screen,
+            tag = type,
+            instanceKey = refreshVersion.takeIf { it > 0 }?.let { "refresh_$it" }.orEmpty(),
         )
     }
 }

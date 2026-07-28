@@ -62,6 +62,7 @@ internal class DeviceSettingsVM(
             deviceSettingInteractor.getCurrentDeviceSettings().collect { currentDevice ->
                 if (currentDevice.isSuccess) {
                     val device = currentDevice.getOrThrow()
+                    val contentPreferences = navigationPreferencesRepository.contentPreferences.value
                     updateViewState(
                         stateValue.copy(
                             state = DeviceSettingsState.Success(
@@ -77,6 +78,9 @@ internal class DeviceSettingsVM(
                                 preferSurroundAudio = playerPreferencesRepository.preferSurroundAudio,
                                 watchedIndicatorsEnabled = playerPreferencesRepository.watchedIndicatorsEnabled,
                                 navigationMode = navigationPreferencesRepository.getNavigationMode(),
+                                showCartoonsTab = contentPreferences.showCartoonsTab,
+                                showAnimeTab = contentPreferences.showAnimeTab,
+                                showAnime = contentPreferences.showAnime,
                                 autoUpdateCheckEnabled = appUpdateInteractor.isAutoCheckEnabled(),
                             )
                         )
@@ -103,6 +107,9 @@ internal class DeviceSettingsVM(
             DeviceSettingsActions.ToggleSurroundAudio -> toggleSurroundAudio()
             DeviceSettingsActions.ToggleWatchedIndicators -> toggleWatchedIndicators()
             is DeviceSettingsActions.ChangeNavigationMode -> onChangeNavigationMode(action.mode)
+            DeviceSettingsActions.ToggleCartoonsTab -> toggleCartoonsTab()
+            DeviceSettingsActions.ToggleAnimeTab -> toggleAnimeTab()
+            DeviceSettingsActions.ToggleShowAnime -> toggleShowAnime()
             DeviceSettingsActions.ToggleAutoUpdateCheck -> toggleAutoUpdateCheck()
             DeviceSettingsActions.OpenApiDomainDialog -> openApiDomainDialog()
             DeviceSettingsActions.CloseApiDomainDialog -> closeApiDomainDialog()
@@ -276,6 +283,30 @@ internal class DeviceSettingsVM(
         if (currentState.navigationMode == mode) return
         navigationPreferencesRepository.setNavigationMode(mode)
         showMessage(resources.getString(R.string.device_settings_restart_required))
+    }
+
+    private fun toggleCartoonsTab() {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        val newValue = !currentState.showCartoonsTab
+        navigationPreferencesRepository.setShowCartoonsTab(newValue)
+        updateViewState(stateValue.copy(state = currentState.copy(showCartoonsTab = newValue)))
+    }
+
+    private fun toggleAnimeTab() {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        val newValue = !currentState.showAnimeTab
+        navigationPreferencesRepository.setShowAnimeTab(newValue)
+        updateViewState(stateValue.copy(state = currentState.copy(showAnimeTab = newValue)))
+    }
+
+    private fun toggleShowAnime() {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        val newValue = !currentState.showAnime
+        navigationPreferencesRepository.setShowAnime(newValue)
+        updateViewState(stateValue.copy(state = currentState.copy(showAnime = newValue)))
     }
 
     private fun toggleAutoUpdateCheck() {

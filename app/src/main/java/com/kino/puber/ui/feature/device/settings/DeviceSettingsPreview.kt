@@ -89,6 +89,11 @@ internal class DeviceSettingsStateProvider : PreviewParameterProvider<DeviceSett
         DeviceSettingsState.Success(
             settings = previewAllSettings,
             device = previewDevice,
+            showAnime = false,
+        ),
+        DeviceSettingsState.Success(
+            settings = previewAllSettings,
+            device = previewDevice,
             expandedType = DeviceSettingType.STREAMING_TYPE,
         ),
         DeviceSettingsState.Success(
@@ -122,6 +127,33 @@ private fun SuccessCollapsedPreview() = PuberTheme {
         state = DeviceSettingsState.Success(
             settings = previewAllSettings,
             device = previewDevice,
+        ),
+        apiDomain = previewApiDomain,
+    )
+}
+
+@Preview(name = "Success — content defaults", device = TV_1080p)
+@Composable
+private fun SuccessContentDefaultsPreview() = PuberTheme {
+    DeviceSettingsContent(
+        state = DeviceSettingsState.Success(
+            settings = DeviceSettingsListUi(emptyList()),
+            device = previewDevice,
+        ),
+        apiDomain = previewApiDomain,
+    )
+}
+
+@Preview(name = "Success — anime hidden", device = TV_1080p)
+@Composable
+private fun SuccessAnimeHiddenPreview() = PuberTheme {
+    DeviceSettingsContent(
+        state = DeviceSettingsState.Success(
+            settings = DeviceSettingsListUi(emptyList()),
+            device = previewDevice,
+            showCartoonsTab = true,
+            showAnimeTab = true,
+            showAnime = false,
         ),
         apiDomain = previewApiDomain,
     )

@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.LaunchedEffect
@@ -199,20 +200,7 @@ private fun DeviceSettingsList(
                 )
             }
         }
-        item {
-            LocalToggleItem(
-                label = stringResource(R.string.settings_prefer_surround_audio),
-                checked = state.preferSurroundAudio,
-                onToggle = { onAction(DeviceSettingsActions.ToggleSurroundAudio) },
-            )
-        }
-        item {
-            LocalToggleItem(
-                label = stringResource(R.string.settings_watched_indicators),
-                checked = state.watchedIndicatorsEnabled,
-                onToggle = { onAction(DeviceSettingsActions.ToggleWatchedIndicators) },
-            )
-        }
+        localPreferencesItems(state, onAction)
 
         // Skip segments section (local-only preferences)
         item {
@@ -321,6 +309,58 @@ private fun DeviceSettingsList(
                 onToggle = { onAction(DeviceSettingsActions.ToggleDebugOverlay) },
             )
         }
+    }
+}
+
+private fun LazyListScope.localPreferencesItems(
+    state: DeviceSettingsState.Success,
+    onAction: (UIAction) -> Unit,
+) {
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_prefer_surround_audio),
+            checked = state.preferSurroundAudio,
+            onToggle = { onAction(DeviceSettingsActions.ToggleSurroundAudio) },
+        )
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_watched_indicators),
+            checked = state.watchedIndicatorsEnabled,
+            onToggle = { onAction(DeviceSettingsActions.ToggleWatchedIndicators) },
+        )
+    }
+    item {
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+    item {
+        Text(
+            text = stringResource(R.string.settings_content_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_show_cartoons_tab),
+            checked = state.showCartoonsTab,
+            onToggle = { onAction(DeviceSettingsActions.ToggleCartoonsTab) },
+        )
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_show_anime_tab),
+            checked = state.showAnimeTab,
+            onToggle = { onAction(DeviceSettingsActions.ToggleAnimeTab) },
+        )
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_show_anime),
+            description = stringResource(R.string.settings_show_anime_description),
+            checked = state.showAnime,
+            onToggle = { onAction(DeviceSettingsActions.ToggleShowAnime) },
+        )
     }
 }
 

@@ -4,6 +4,7 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Duotone
 import com.adamglin.phosphoricons.duotone.House
 import com.kino.puber.core.model.NavigationMode
+import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberTab
 import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
@@ -101,6 +102,63 @@ internal class MainUIMapperTest {
         verify(exactly = 1) {
             screens.history(HistoryPresentation.SideDrawer)
         }
+    }
+
+    @Test
+    fun animeTab_resolvesToContentListScreen() {
+        val screens = mockk<Screens>()
+        val animeScreen = mockk<PuberScreen>()
+        every { animeScreen.key } returns "AnimeContentList"
+        every { screens.contentList(TabType.Anime) } returns animeScreen
+        val animeMapper = createMapper(
+            navPrefs = mockk(relaxed = true),
+            screens = screens,
+        )
+
+        val tab = animeMapper.buildTabContent(
+            type = TabType.Anime,
+            navigationMode = NavigationMode.TopTabs,
+        )
+
+        assertEquals(TabType.Anime, tab.tag)
+        assertEquals("Tab:AnimeContentList", tab.key)
+        verify(exactly = 1) { screens.contentList(TabType.Anime) }
+    }
+
+    @Test
+    fun buildViewState_preservesSelectedTabWhenItRemainsVisible() {
+        val navPrefs = mockk<NavigationPreferencesRepository>()
+        every { navPrefs.getNavigationMode() } returns NavigationMode.TopTabs
+        every {
+            navPrefs.getVisibleTabs(NavigationMode.TopTabs)
+        } returns listOf(TabType.Home, TabType.Movies, TabType.Anime)
+        val stateMapper = createMapper(navPrefs)
+
+        val state = stateMapper.buildViewState(previousSelectedTab = TabType.Anime)
+
+        assertEquals(TabType.Anime, state.selectedTab)
+        assertEquals(
+            listOf(false, false, true),
+            state.tabs.map(MainTab::isSelected),
+        )
+    }
+
+    @Test
+    fun buildViewState_fallsBackToModeStartWhenSelectedTabDisappears() {
+        val navPrefs = mockk<NavigationPreferencesRepository>()
+        every { navPrefs.getNavigationMode() } returns NavigationMode.SideDrawer
+        every {
+            navPrefs.getVisibleTabs(NavigationMode.SideDrawer)
+        } returns listOf(TabType.Favourites, TabType.Movies, TabType.Settings)
+        val stateMapper = createMapper(navPrefs)
+
+        val state = stateMapper.buildViewState(previousSelectedTab = TabType.Anime)
+
+        assertEquals(TabType.Favourites, state.selectedTab)
+        assertEquals(
+            listOf(true, false, false),
+            state.tabs.map(MainTab::isSelected),
+        )
     }
 
     @Test

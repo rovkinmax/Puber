@@ -6,14 +6,20 @@ import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
+import com.kino.puber.data.api.models.ANIME_GENRE_ID
+import com.kino.puber.data.api.models.Genre
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.data.api.models.Pagination
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
+import com.kino.puber.ui.feature.contentlist.model.AnimeFilterMode
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
+import com.kino.puber.ui.feature.contentlist.model.SectionState
 import com.kino.puber.util.MainDispatcherExtension
 import io.mockk.coEvery
+import io.mockk.coVerifyOrder
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -120,6 +126,121 @@ class SectionVMTest {
         siblingPaginator.close()
     }
 
+    @Test
+    fun firstPage_publishesInteractorItemsWithoutAdditionalFiltering() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val paginator = paginator(dispatcher)
+        val interactor = mockk<ContentListInteractor>()
+        val mapper = mockk<VideoItemUIMapper>()
+        val coordinator = ContentListRefreshCoordinator()
+        val item = Item(
+            id = 25,
+            title = "Interactor result",
+            type = ItemType.MOVIE,
+            genres = listOf(Genre(ANIME_GENRE_ID, "Anime")),
+        )
+        val mappedItem = videoItem(25)
+        coEvery { interactor.loadPage(any(), page = 1) } returns page(item)
+        every { mapper.mapShortItemList(listOf(item)) } returns listOf(mappedItem)
+        val vm = createVM(
+            paginator = paginator,
+            config = config("anime"),
+            interactor = interactor,
+            coordinator = coordinator,
+            pagingCoroutineContext = dispatcher,
+            mapper = mapper,
+        )
+
+        vm.testOnStart()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(SectionState.Content(listOf(mappedItem)), vm.testStateValue)
+        verify(exactly = 1) { mapper.mapShortItemList(listOf(item)) }
+        vm.testCancelScope()
+        paginator.close()
+    }
+
+    @Test
+    fun firstPage_continuesAfterFilteredScanCapFromLastConsumedServerPage() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val paginator = paginator(dispatcher)
+        val interactor = mockk<ContentListInteractor>()
+        val mapper = mockk<VideoItemUIMapper>()
+        val coordinator = ContentListRefreshCoordinator()
+        val config = config("cartoons", AnimeFilterMode.Exclude)
+        val visibleItem = Item(
+            id = 6,
+            title = "Visible after cap",
+            type = ItemType.MOVIE,
+        )
+        val mappedItem = videoItem(6)
+        coEvery { interactor.loadPage(config, page = 1) } returns emptyPage(
+            current = 5,
+            total = 10,
+        )
+        coEvery { interactor.loadPage(config, page = 6) } returns page(
+            visibleItem,
+            current = 6,
+            total = 10,
+        )
+        every { interactor.hasActiveAnimeFilter(config) } returns true
+        every { mapper.mapShortItemList(listOf(visibleItem)) } returns listOf(mappedItem)
+        val vm = createVM(
+            paginator = paginator,
+            config = config,
+            interactor = interactor,
+            coordinator = coordinator,
+            pagingCoroutineContext = dispatcher,
+            mapper = mapper,
+        )
+
+        vm.testOnStart()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(SectionState.Content(listOf(mappedItem)), vm.testStateValue)
+        coVerify(exactly = 2) { interactor.loadPage(config, any()) }
+        coVerifyOrder {
+            interactor.loadPage(config, page = 1)
+            interactor.loadPage(config, page = 6)
+        }
+        vm.testCancelScope()
+        paginator.close()
+    }
+
+    @Test
+    fun firstPage_unfilteredModesDoNotChainEmptyNonTerminalResponse() = runTest {
+        listOf(
+            AnimeFilterMode.None,
+            AnimeFilterMode.FollowPreference,
+        ).forEach { filterMode ->
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val paginator = paginator(dispatcher)
+            val interactor = mockk<ContentListInteractor>()
+            val config = config("unfiltered_${filterMode.name}", filterMode)
+            coEvery { interactor.loadPage(config, page = 1) } returns emptyPage(
+                current = 5,
+                total = 10,
+            )
+            every { interactor.hasActiveAnimeFilter(config) } returns false
+            val vm = createVM(
+                paginator = paginator,
+                config = config,
+                interactor = interactor,
+                coordinator = ContentListRefreshCoordinator(),
+                pagingCoroutineContext = dispatcher,
+            )
+
+            vm.testOnStart()
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(SectionState.Empty, vm.testStateValue)
+            coVerify(exactly = 1) { interactor.loadPage(config, page = 1) }
+            coVerify(exactly = 0) { interactor.loadPage(config, page = 6) }
+            vm.testCancelScope()
+            paginator.close()
+        }
+    }
+
     private fun createVM(
         paginator: Paginator.Store<Item>,
         config: SectionConfig,
@@ -127,12 +248,13 @@ class SectionVMTest {
         coordinator: ContentListRefreshCoordinator,
         pagingCoroutineContext: CoroutineContext,
         savedItemInteractor: SavedItemInteractor = mockk(relaxed = true),
+        mapper: VideoItemUIMapper = mockk(relaxed = true),
     ) = SectionVM(
         paginator = paginator,
         config = config,
         interactor = interactor,
         savedItemInteractor = savedItemInteractor,
-        mapper = mockk<VideoItemUIMapper>(relaxed = true),
+        mapper = mapper,
         router = mockk<AppRouter>(relaxed = true),
         errorHandler = mockk<ErrorHandler> { every { proceed(any()) } returns { } },
         contentListRefreshCoordinator = coordinator,
@@ -144,12 +266,31 @@ class SectionVMTest {
         coroutineContext = coroutineContext,
     )
 
-    private fun config(id: String) = SectionConfig(id = id, title = id)
+    private fun config(
+        id: String,
+        animeFilterMode: AnimeFilterMode = AnimeFilterMode.None,
+    ) = SectionConfig(
+        id = id,
+        title = id,
+        animeFilterMode = animeFilterMode,
+    )
 
     private fun videoItem(id: Int) = VideoItemUIState(id, "Item $id", "", "")
 
-    private fun emptyPage() = PaginatedResponse<Item>(
+    private fun emptyPage(
+        current: Int = 1,
+        total: Int = 1,
+    ) = PaginatedResponse<Item>(
         items = emptyList(),
-        pagination = Pagination(current = 1, perpage = 50, total = 1),
+        pagination = Pagination(current = current, perpage = 50, total = total),
+    )
+
+    private fun page(
+        item: Item,
+        current: Int = 1,
+        total: Int = 1,
+    ) = PaginatedResponse(
+        items = listOf(item),
+        pagination = Pagination(current = current, perpage = 50, total = total),
     )
 }

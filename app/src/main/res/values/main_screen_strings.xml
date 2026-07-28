@@ -5,7 +5,8 @@
     <string name="main_tabs_history">История</string>
     <string name="main_tabs_movies">Фильмы</string>
     <string name="main_tabs_series">Сериалы</string>
-    <string name="main_tabs_cartoons">Мультфильмы</string>
+    <string name="main_tabs_cartoons">Мультики</string>
+    <string name="main_tabs_anime">Аниме</string>
     <string name="main_tabs_f4k">4К</string>
     <string name="main_tabs_concerts">Концерты</string>
     <string name="main_tabs_docmovies">Док. Фильмы</string>
@@ -31,4 +32,9 @@
     <string name="settings_navigation_top_tabs">Верхние табы</string>
     <string name="settings_navigation_restart_hint">Изменение вступит в силу после перезапуска</string>
     <string name="settings_tab_config">Настройка табов</string>
+    <string name="settings_content_title">Контент</string>
+    <string name="settings_show_cartoons_tab">Показывать вкладку «Мультики»</string>
+    <string name="settings_show_anime_tab">Показывать вкладку «Аниме»</string>
+    <string name="settings_show_anime">Показывать аниме</string>
+    <string name="settings_show_anime_description">Не влияет на личные списки и вкладку «Аниме»</string>
 </resources>
