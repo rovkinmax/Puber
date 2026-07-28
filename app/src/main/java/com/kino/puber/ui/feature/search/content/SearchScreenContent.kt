@@ -33,6 +33,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -69,6 +74,10 @@ internal fun SearchScreenContent(
     val textFieldFocusRequester = remember { FocusRequester() }
     val gridFocusRequester = remember { FocusRequester() }
     var focusTarget by rememberSaveable { mutableStateOf(FOCUS_TARGET_TEXT_FIELD) }
+    val focusResults: () -> Unit = {
+        focusTarget = FOCUS_TARGET_GRID
+        gridFocusRequester.requestFocus()
+    }
 
     // Restore focus on (re-)composition: text field on first launch, grid on return from details
     LaunchedEffect(Unit) {
@@ -98,8 +107,8 @@ internal fun SearchScreenContent(
         SearchInputField(
             query = query,
             textFieldFocusRequester = textFieldFocusRequester,
-            gridFocusRequester = gridFocusRequester,
             hasResults = state is SearchViewState.Content,
+            onFocusResults = focusResults,
             onQueryChanged = { text ->
                 query = text
                 onAction(CommonAction.TextChanged(text, SEARCH_TAG))
@@ -121,8 +130,8 @@ internal fun SearchScreenContent(
 private fun SearchInputField(
     query: String,
     textFieldFocusRequester: FocusRequester,
-    gridFocusRequester: FocusRequester,
     hasResults: Boolean,
+    onFocusResults: () -> Unit,
     onQueryChanged: (String) -> Unit,
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -142,7 +151,11 @@ private fun SearchInputField(
             onValueChange = onQueryChanged,
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(textFieldFocusRequester),
+                .focusRequester(textFieldFocusRequester)
+                .onDpadDown(hasResults = hasResults) {
+                    keyboardController?.hide()
+                    onFocusResults()
+                },
             textStyle = MaterialTheme.typography.bodyLarge.copy(
                 color = MaterialTheme.colorScheme.onSurface,
             ),
@@ -152,7 +165,7 @@ private fun SearchInputField(
             keyboardActions = KeyboardActions(
                 onSearch = {
                     keyboardController?.hide()
-                    if (hasResults) gridFocusRequester.requestFocus()
+                    if (hasResults) onFocusResults()
                 },
             ),
             decorationBox = { innerTextField ->
@@ -173,6 +186,23 @@ private fun SearchInputField(
                 }
             },
         )
+    }
+}
+
+private fun Modifier.onDpadDown(
+    hasResults: Boolean,
+    onKeyDown: () -> Unit,
+): Modifier = onPreviewKeyEvent { event ->
+    if (!hasResults || event.key != Key.DirectionDown) {
+        return@onPreviewKeyEvent false
+    }
+    when (event.type) {
+        KeyEventType.KeyDown -> {
+            onKeyDown()
+            true
+        }
+        KeyEventType.KeyUp -> true
+        else -> false
     }
 }
 
