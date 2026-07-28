@@ -1,9 +1,13 @@
 package com.kino.puber.core.ui.uikit.theme
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
+import com.kino.puber.core.ui.uikit.component.LocalTvContextMenuLongSelectState
+import com.kino.puber.core.ui.uikit.component.TvContextMenuLongSelectState
 
 data object PuberTheme {
     data object Defaults {
@@ -20,6 +24,7 @@ data object PuberTheme {
 fun PuberTheme(
     content: @Composable () -> Unit,
 ) {
+    val contextMenuLongSelectState = remember { TvContextMenuLongSelectState() }
     val colorSchemeTv = darkColorScheme(
         primary = Purple80,
         secondary = PurpleGrey80,
@@ -35,14 +40,18 @@ fun PuberTheme(
         error = Error60,
         errorContainer = Error60,
     )
-    androidx.compose.material3.MaterialTheme(
-        colorScheme = colorScheme,
-        content = {
-            MaterialTheme(
-                colorScheme = colorSchemeTv,
-                typography = Typography,
-                content = content
-            )
-        }
-    )
+    CompositionLocalProvider(
+        LocalTvContextMenuLongSelectState provides contextMenuLongSelectState,
+    ) {
+        androidx.compose.material3.MaterialTheme(
+            colorScheme = colorScheme,
+            content = {
+                MaterialTheme(
+                    colorScheme = colorSchemeTv,
+                    typography = Typography,
+                    content = content
+                )
+            }
+        )
+    }
 }
