@@ -19,13 +19,12 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Engineering Delivery v5` (default): the current profile-schema-3
-  delivery workflow,
-  one Plan session, default operational orchestration, deterministic compile
-  plus independent global standards/spec reviews, direct Join/Gate,
+- `Puber Engineering Delivery v8` (default): the current profile-schema-3
+  delivery workflow. It uses one Plan session, direct operational roles,
+  deterministic compile plus independent standards/spec reviews, Join/Gate,
   conditional TV Smoke, final Compliance Review, PR/CI/waiting, and
-  conservative cleanup. It uses `ask-on-first-execution`. The full
-  managed-worktree canary completed before default promotion.
+  conservative cleanup. Its managed-worktree canary completed before default
+  promotion.
 - `Puber Feature Delivery` (legacy rollback): plan -> implement loop ->
   parallel read-only audit and deterministic compile verification -> join ->
   verification result -> fix loop or optional smoke -> compliance ->
@@ -41,23 +40,12 @@ Kent Desktop workflow graph
 - `Puber Release`: default next minor release from `origin/master` -> version bump branch/PR -> CI -> approved tag
   publication after the PR is merged -> optional automation monitor -> cleanup -> done. Patch/major releases require
   explicit task wording.
-`Puber Engineering Delivery v5` is the project default. Legacy Feature
-Delivery and obsolete generated versions remain linked only until the next
-direct-role candidate passes its canary and required Backlog tasks are
-recreated. Completed and canceled task history is not a retention requirement.
-Auxiliary workflows are linked only for explicit task creation when the work
-type is known.
-
-### Pending direct-role candidate
-
-The next generated candidate is prepared but not applied. Its profile routes:
-
-- Plan to `default`;
-- Gate to `workflow-gate`;
-- Implement and Fix to `implementation-worker`;
-- Smoke to `runtime-smoke-tester`;
-- PR preparation and Cleanup to `delivery-operator`;
-- CI and Waiting PR to `ci-monitor`.
+`Puber Engineering Delivery v8` is the project default. Generated v5-v7
+instances remain linked only until their non-Backlog tasks finish or are
+explicitly canceled. Required Backlog work has already been recreated on v8.
+Completed and canceled task history is not a retention requirement. Auxiliary
+workflows are linked only for explicit task creation when the work type is
+known.
 
 Before retiring any workflow, read current Kent-owned state instead of relying
 on task IDs or status captured in this repository:
@@ -74,26 +62,15 @@ approval-waiting, or otherwise active tasks must finish or be explicitly
 canceled before deletion. Completed and canceled history may be discarded.
 Do not move task records between incompatible graphs.
 
-### Full Delivery v5 Canary Scope
-
-The Full Delivery v5 canary ran from source revision
-`29c5a6520636688027dba5dc66792db3040b73a7`. It passed Final Compliance Review through the global
-`compliance_reviewer`, PR preparation, CI monitoring only after the PR exists,
-and waiting for GitHub to report an actual merge. The workflow did not merge
-the PR itself. The resulting audited master baseline is
-`b885f45e66fa6595bd94cdfd3f2f986c5f3905be`.
-
 ## Revision Preflight
 
-Before starting a default Delivery v5 task from a selected revision, verify
-that it descends from the audited project adapter baseline and still carries
-the same workflow profile contract:
+Before starting a task from a selected revision, verify that the revision
+contains a complete and valid project adapter:
 
 ```bash
 ~/.kent/bin/kent-preflight-revision \
   --project /Users/rovkinmax/dev/android/Puber \
-  --ref origin/master \
-  --baseline-ref b885f45e66fa6595bd94cdfd3f2f986c5f3905be
+  --ref origin/master
 ```
 
 Use the exact selected task ref in place of `origin/master` when starting from
