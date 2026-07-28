@@ -23,8 +23,8 @@ Kent Desktop workflow graph
   delivery workflow. It uses one Plan session, direct operational roles,
   deterministic compile plus independent standards/spec reviews, Join/Gate,
   conditional TV Smoke, final Compliance Review, PR/CI/waiting, and
-  conservative cleanup. Its managed-worktree canary completed before default
-  promotion.
+  conservative cleanup. Its managed-worktree canary started on July 27, 2026
+  and completed on July 28, 2026.
 - `Puber Feature Delivery` (legacy rollback): plan -> implement loop ->
   parallel read-only audit and deterministic compile verification -> join ->
   verification result -> fix loop or optional smoke -> compliance ->
