@@ -12,4 +12,13 @@ internal data class SectionConfig(
     val sort: String? = null,
     val quality: String? = null,
     val genre: String? = null,
+    val animeFilterMode: AnimeFilterMode = AnimeFilterMode.None,
 ) : Parcelable
+
+@Parcelize
+internal enum class AnimeFilterMode : Parcelable {
+    None,
+    FollowPreference,
+    Exclude,
+    Only,
+}

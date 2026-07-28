@@ -12,6 +12,7 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
@@ -45,7 +46,7 @@ internal class ShowAllVM(
     override fun onLoadFirstPage() {
         currentPage = 0
         pagingLaunch(errorHandlerGeneral) {
-            val response = interactor.loadPage(config, page = 1)
+            val response = loadVisiblePage(startPage = 1)
             currentPage = response.pagination.current
             isFullDataNext = currentPage >= response.pagination.total
             replace(response.items)
@@ -54,11 +55,26 @@ internal class ShowAllVM(
 
     override fun onLoadNextPage(key: Item?) {
         pagingLaunch(errorHandlerPaging) {
-            val response = interactor.loadPage(config, page = currentPage + 1)
+            val response = loadVisiblePage(startPage = currentPage + 1)
             currentPage = response.pagination.current
             isFullDataNext = currentPage >= response.pagination.total
             setNextPage(response.items)
         }
+    }
+
+    private suspend fun loadVisiblePage(startPage: Int): PaginatedResponse<Item> {
+        var response = interactor.loadPage(config, page = startPage)
+        while (
+            response.items.isEmpty() &&
+            response.pagination.current < response.pagination.total &&
+            interactor.hasActiveAnimeFilter(config)
+        ) {
+            response = interactor.loadPage(
+                config = config,
+                page = response.pagination.current + 1,
+            )
+        }
+        return response
     }
 
     override fun onAction(action: UIAction) {

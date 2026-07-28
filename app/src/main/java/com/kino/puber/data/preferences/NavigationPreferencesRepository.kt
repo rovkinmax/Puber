@@ -3,10 +3,28 @@ package com.kino.puber.data.preferences
 import android.content.Context
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.ui.feature.main.model.TabType
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+
+data class ContentPreferences(
+    val showCartoonsTab: Boolean,
+    val showAnimeTab: Boolean,
+    val showAnime: Boolean,
+)
 
 class NavigationPreferencesRepository(context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val _contentPreferences = MutableStateFlow(
+        ContentPreferences(
+            showCartoonsTab = prefs.getBoolean(KEY_SHOW_CARTOONS_TAB, false),
+            showAnimeTab = prefs.getBoolean(KEY_SHOW_ANIME_TAB, false),
+            showAnime = prefs.getBoolean(KEY_SHOW_ANIME, true),
+        )
+    )
+    val contentPreferences: StateFlow<ContentPreferences> = _contentPreferences.asStateFlow()
 
     fun getNavigationMode(): NavigationMode {
         val name = prefs.getString(KEY_NAVIGATION_MODE, NavigationMode.TopTabs.name)
@@ -23,10 +41,8 @@ class NavigationPreferencesRepository(context: Context) {
         }
         val key = tabsKeyForMode(mode)
         val stored = prefs.getString(key, null)
-        if (stored != null) {
-            return deserializeTabs(stored)
-        }
-        return defaultTabsForMode(mode)
+        val baseTabs = stored?.let(::deserializeTabs) ?: defaultTabsForMode(mode)
+        return insertOptionalTabs(baseTabs)
     }
 
     private fun migrateTopTabsIfNeeded() {
@@ -59,8 +75,23 @@ class NavigationPreferencesRepository(context: Context) {
 
     fun setVisibleTabs(mode: NavigationMode, tabs: List<TabType>) {
         val key = tabsKeyForMode(mode)
-        val withSettings = ensureRequiredTabs(mode, tabs)
+        val withSettings = ensureRequiredTabs(mode, tabs).filterNot { it.isOptionalContentTab() }
         prefs.edit().putString(key, serializeTabs(withSettings)).apply()
+    }
+
+    fun setShowCartoonsTab(show: Boolean) {
+        prefs.edit().putBoolean(KEY_SHOW_CARTOONS_TAB, show).apply()
+        _contentPreferences.update { it.copy(showCartoonsTab = show) }
+    }
+
+    fun setShowAnimeTab(show: Boolean) {
+        prefs.edit().putBoolean(KEY_SHOW_ANIME_TAB, show).apply()
+        _contentPreferences.update { it.copy(showAnimeTab = show) }
+    }
+
+    fun setShowAnime(show: Boolean) {
+        prefs.edit().putBoolean(KEY_SHOW_ANIME, show).apply()
+        _contentPreferences.update { it.copy(showAnime = show) }
     }
 
     private fun defaultTabsForMode(mode: NavigationMode): List<TabType> {
@@ -91,6 +122,32 @@ class NavigationPreferencesRepository(context: Context) {
         return result
     }
 
+    private fun insertOptionalTabs(tabs: List<TabType>): List<TabType> {
+        val normalized = tabs.filterNot { it.isOptionalContentTab() }.toMutableList()
+        val preferences = contentPreferences.value
+        val optionalTabs = buildList {
+            if (preferences.showCartoonsTab) add(TabType.Cartoons)
+            if (preferences.showAnimeTab) add(TabType.Anime)
+        }
+        if (optionalTabs.isEmpty()) return normalized
+
+        val anchorIndex = normalized.indexOf(TabType.Series)
+            .takeIf { it >= 0 }
+            ?: normalized.indexOf(TabType.Movies).takeIf { it >= 0 }
+        val insertionIndex = anchorIndex
+            ?.plus(1)
+            ?: normalized.indexOfFirst {
+                it == TabType.Collections || it == TabType.History || it == TabType.Settings
+            }.takeIf { it >= 0 }
+            ?: normalized.size
+        normalized.addAll(insertionIndex, optionalTabs)
+        return normalized
+    }
+
+    private fun TabType.isOptionalContentTab(): Boolean {
+        return this == TabType.Cartoons || this == TabType.Anime
+    }
+
     private fun tabsKeyForMode(mode: NavigationMode): String {
         return when (mode) {
             NavigationMode.SideDrawer -> KEY_DRAWER_TABS
@@ -115,6 +172,9 @@ class NavigationPreferencesRepository(context: Context) {
         const val KEY_DRAWER_TABS = "drawer_tabs_visible"
         const val KEY_TOP_TABS = "toptabs_tabs_visible"
         const val KEY_TOP_TABS_SCHEMA_VERSION = "toptabs_schema_version"
+        const val KEY_SHOW_CARTOONS_TAB = "show_cartoons_tab"
+        const val KEY_SHOW_ANIME_TAB = "show_anime_tab"
+        const val KEY_SHOW_ANIME = "show_anime"
         const val TOP_TABS_SCHEMA_VERSION_HISTORY = 1
         const val SEPARATOR = ","
 

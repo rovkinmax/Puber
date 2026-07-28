@@ -4,15 +4,19 @@ import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.KCollection
+import com.kino.puber.data.api.models.PaginatedResponse
+import com.kino.puber.data.api.models.isAnime
+import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 
 class HomeInteractor(
     private val api: KinoPubApiClient,
     private val watchLaterBookmarkInteractor: WatchLaterBookmarkInteractor,
+    private val navigationPreferencesRepository: NavigationPreferencesRepository,
 ) {
 
     suspend fun getHotItems(type: String = "movie", limit: Int = 10): Result<List<Item>> {
-        return api.getItemsByShortcut("hot", type = type).map { it.items.take(limit) }
+        return getDiscoveryItems(shortcut = "hot", type = type, limit = limit)
     }
 
     suspend fun getWatchingItems(): Result<List<Item>> {
@@ -20,11 +24,11 @@ class HomeInteractor(
     }
 
     suspend fun getFreshItems(type: String): Result<List<Item>> {
-        return api.getItemsByShortcut("fresh", type = type).map { it.items }
+        return getDiscoveryItems(shortcut = "fresh", type = type)
     }
 
     suspend fun getPopularByType(type: String): Result<List<Item>> {
-        return api.getItemsByShortcut("popular", type = type).map { it.items }
+        return getDiscoveryItems(shortcut = "popular", type = type)
     }
 
     suspend fun getBookmarkFolders(): Result<List<Bookmark>> {
@@ -49,5 +53,53 @@ class HomeInteractor(
 
     suspend fun getCollections(): Result<List<KCollection>> {
         return api.getCollections(page = 1).map { it.items }
+    }
+
+    private suspend fun getDiscoveryItems(
+        shortcut: String,
+        type: String,
+        limit: Int? = null,
+    ): Result<List<Item>> {
+        val firstPageResult = api.getItemsByShortcut(shortcut, type = type)
+        if (navigationPreferencesRepository.contentPreferences.value.showAnime) {
+            return firstPageResult.map { response ->
+                response.items.limitTo(limit)
+            }
+        }
+
+        return firstPageResult.mapCatching { firstPage ->
+            val targetSize = limit ?: firstPage.items.size
+            val visibleItems = firstPage.items.filterNot(Item::isAnime).toMutableList()
+            var lastPage = firstPage
+            var consumedPages = 1
+
+            while (
+                visibleItems.size < targetSize &&
+                consumedPages < MAX_CONSECUTIVE_PAGES &&
+                lastPage.hasNextPage()
+            ) {
+                lastPage = api.getItemsByShortcut(
+                    shortcut = shortcut,
+                    type = type,
+                    page = lastPage.pagination.current + 1,
+                ).getOrThrow()
+                visibleItems += lastPage.items.filterNot(Item::isAnime)
+                consumedPages += 1
+            }
+
+            visibleItems.limitTo(targetSize)
+        }
+    }
+
+    private fun PaginatedResponse<Item>.hasNextPage(): Boolean {
+        return pagination.current < pagination.total
+    }
+
+    private fun List<Item>.limitTo(limit: Int?): List<Item> {
+        return limit?.let(::take) ?: this
+    }
+
+    companion object {
+        private const val MAX_CONSECUTIVE_PAGES = 5
     }
 }

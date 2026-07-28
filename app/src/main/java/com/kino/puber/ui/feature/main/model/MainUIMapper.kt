@@ -33,10 +33,12 @@ internal class MainUIMapper(
     private val navPrefs: NavigationPreferencesRepository,
 ) {
 
-    fun buildViewState(): MainViewState {
+    fun buildViewState(previousSelectedTab: TabType? = null): MainViewState {
         val mode = navPrefs.getNavigationMode()
         val tabs = navPrefs.getVisibleTabs(mode)
-        val defaultSelected = getDefaultSelectedTab(mode)
+        val selectedTab = previousSelectedTab
+            ?.takeIf(tabs::contains)
+            ?: getDefaultSelectedTab(mode)
         return MainViewState(
             navigationMode = mode,
             tabs = tabs.map { type ->
@@ -44,11 +46,11 @@ internal class MainUIMapper(
                     type = type,
                     label = resources.getString(type.title),
                     icon = type.icon,
-                    isSelected = type == defaultSelected,
+                    isSelected = type == selectedTab,
                     badge = if (type == TabType.Favourites) 20 else 0 // TODO добавить счетчик
                 )
             },
-            selectedTab = defaultSelected,
+            selectedTab = selectedTab,
         )
     }
 
@@ -66,7 +68,8 @@ internal class MainUIMapper(
                 TabType.History -> PhosphorIcons.Duotone.ClockCounterClockwise
                 TabType.Movies -> PhosphorIcons.Duotone.FilmSlate
                 TabType.Series -> PhosphorIcons.Duotone.TelevisionSimple
-                TabType.Cartoons -> PhosphorIcons.Duotone.Ghost
+                TabType.Cartoons,
+                TabType.Anime -> PhosphorIcons.Duotone.Ghost
                 TabType.For4k -> resources.getImageVector(R.drawable.for_4k)
                 TabType.Concerts -> PhosphorIcons.Duotone.MicrophoneStage
                 TabType.DocMovies -> PhosphorIcons.Duotone.FilmReel
@@ -105,6 +108,7 @@ internal class MainUIMapper(
             TabType.Movies,
             TabType.Series,
             TabType.Cartoons,
+            TabType.Anime,
             TabType.For4k,
             TabType.Concerts,
             TabType.DocMovies,
