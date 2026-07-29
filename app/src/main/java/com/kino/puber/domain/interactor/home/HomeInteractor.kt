@@ -69,25 +69,23 @@ class HomeInteractor(
 
         return firstPageResult.mapCatching { firstPage ->
             val targetSize = limit ?: firstPage.items.size
-            val visibleItems = firstPage.items.filterNot(Item::isAnime).toMutableList()
+            val visibleItems = linkedMapOf<Int, Item>()
             var lastPage = firstPage
-            var consumedPages = 1
 
-            while (
-                visibleItems.size < targetSize &&
-                consumedPages < MAX_CONSECUTIVE_PAGES &&
-                lastPage.hasNextPage()
-            ) {
+            while (true) {
+                lastPage.items
+                    .asSequence()
+                    .filterNot(Item::isAnime)
+                    .forEach { item -> visibleItems.putIfAbsent(item.id, item) }
+                if (visibleItems.size >= targetSize || !lastPage.hasNextPage()) break
                 lastPage = api.getItemsByShortcut(
                     shortcut = shortcut,
                     type = type,
                     page = lastPage.pagination.current + 1,
                 ).getOrThrow()
-                visibleItems += lastPage.items.filterNot(Item::isAnime)
-                consumedPages += 1
             }
 
-            visibleItems.limitTo(targetSize)
+            visibleItems.values.toList().limitTo(targetSize)
         }
     }
 
@@ -97,9 +95,5 @@ class HomeInteractor(
 
     private fun List<Item>.limitTo(limit: Int?): List<Item> {
         return limit?.let(::take) ?: this
-    }
-
-    companion object {
-        private const val MAX_CONSECUTIVE_PAGES = 5
     }
 }

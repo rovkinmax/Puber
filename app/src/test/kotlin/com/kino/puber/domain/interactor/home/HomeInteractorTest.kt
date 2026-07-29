@@ -114,31 +114,32 @@ class HomeInteractorTest {
     }
 
     @Test
-    fun discovery_stopsAfterFivePages_whenAnimeFillsEveryPage() = runTest {
+    fun discovery_continuesBeyondFivePagesUntilVisibleBatchIsRefilled() = runTest {
         contentPreferences.value = defaultContentPreferences().copy(showAnime = false)
         val anime = item(id = 1, genreIds = intArrayOf(ANIME_GENRE_ID))
         coEvery {
             api.getItemsByShortcut("fresh", type = "movie", page = null, genre = null)
-        } returns Result.success(page(anime, current = 1, total = 10))
-        (2..5).forEach { pageNumber ->
+        } returns Result.success(page(anime, current = 1, total = 7))
+        (2..6).forEach { pageNumber ->
             coEvery {
                 api.getItemsByShortcut("fresh", type = "movie", page = pageNumber, genre = null)
-            } returns Result.success(page(anime.copy(id = pageNumber), current = pageNumber, total = 10))
+            } returns Result.success(page(anime.copy(id = pageNumber), current = pageNumber, total = 7))
         }
+        val visible = item(id = 7)
+        coEvery {
+            api.getItemsByShortcut("fresh", type = "movie", page = 7, genre = null)
+        } returns Result.success(page(visible, current = 7, total = 7))
 
         val result = interactor.getFreshItems("movie")
 
-        assertEquals(emptyList<Item>(), result.getOrThrow())
-        coVerify(exactly = 5) {
+        assertEquals(listOf(visible), result.getOrThrow())
+        coVerify(exactly = 7) {
             api.getItemsByShortcut("fresh", type = "movie", page = any(), genre = null)
-        }
-        coVerify(exactly = 0) {
-            api.getItemsByShortcut("fresh", type = "movie", page = 6, genre = null)
         }
     }
 
     @Test
-    fun discovery_stopsAtServerEnd_whenVisibleItemsDoNotRefillFirstPageSize() = runTest {
+    fun discovery_stopsAtServerEndAndSuppressesDuplicateIds() = runTest {
         contentPreferences.value = defaultContentPreferences().copy(showAnime = false)
         val anime = item(id = 1, genreIds = intArrayOf(ANIME_GENRE_ID))
         val visible = item(id = 2)
@@ -147,7 +148,7 @@ class HomeInteractorTest {
         } returns Result.success(page(anime, visible, anime.copy(id = 3), current = 1, total = 2))
         coEvery {
             api.getItemsByShortcut("popular", type = "movie", page = 2, genre = null)
-        } returns Result.success(page(anime.copy(id = 4), current = 2, total = 2))
+        } returns Result.success(page(visible, anime.copy(id = 4), current = 2, total = 2))
 
         val result = interactor.getPopularByType("movie")
 

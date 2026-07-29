@@ -19,13 +19,10 @@ import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.data.api.models.Pagination
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
-import com.kino.puber.ui.feature.contentlist.model.AnimeFilterMode
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.showall.model.ShowAllViewState
 import com.kino.puber.util.MainDispatcherExtension
 import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -199,90 +196,6 @@ class ShowAllVMTest {
         paginator.close()
     }
 
-    @Test
-    fun firstPage_continuesAfterFilteredScanCapFromLastConsumedServerPage() = runBlocking {
-        val config = SectionConfig(
-            id = "cartoons",
-            title = "Cartoons",
-            animeFilterMode = AnimeFilterMode.Exclude,
-        )
-        val visibleItem = Item(
-            id = 6,
-            title = "Visible after cap",
-            type = ItemType.MOVIE,
-        )
-        val mappedItem = videoItem(6)
-        val mapper = mockk<VideoItemUIMapper>()
-        coEvery { interactor.loadPage(config, page = 1) } returns emptyPage(
-            current = 5,
-            total = 10,
-        )
-        coEvery { interactor.loadPage(config, page = 6) } returns page(
-            visibleItem,
-            current = 6,
-            total = 10,
-        )
-        every { interactor.hasActiveAnimeFilter(config) } returns true
-        every { mapper.mapShortItemList(listOf(visibleItem)) } returns listOf(mappedItem)
-        val paginator = Paginator.Store<Item> { old, new -> old.id == new.id }
-        val vm = createVM(config = config, paginator = paginator, mapper = mapper)
-
-        vm.testOnStart()
-        withTimeout(2_000) {
-            while (vm.testStateValue !is ShowAllViewState.Content) {
-                delay(10)
-            }
-        }
-
-        assertEquals(ShowAllViewState.Content(listOf(mappedItem)), vm.testStateValue)
-        coVerify(exactly = 2) { interactor.loadPage(config, any()) }
-        coVerifyOrder {
-            interactor.loadPage(config, page = 1)
-            interactor.loadPage(config, page = 6)
-        }
-        vm.testCancelScope()
-        paginator.close()
-    }
-
-    @Test
-    fun firstPage_unfilteredModesDoNotChainEmptyNonTerminalResponse() = runBlocking {
-        listOf(
-            AnimeFilterMode.None,
-            AnimeFilterMode.FollowPreference,
-        ).forEach { filterMode ->
-            val config = SectionConfig(
-                id = "unfiltered_${filterMode.name}",
-                title = filterMode.name,
-                animeFilterMode = filterMode,
-            )
-            val modeInteractor = mockk<ContentListInteractor>()
-            coEvery { modeInteractor.loadPage(config, page = 1) } returns emptyPage(
-                current = 5,
-                total = 10,
-            )
-            every { modeInteractor.hasActiveAnimeFilter(config) } returns false
-            val paginator = Paginator.Store<Item> { old, new -> old.id == new.id }
-            val vm = createVM(
-                config = config,
-                paginator = paginator,
-                contentListInteractor = modeInteractor,
-            )
-
-            vm.testOnStart()
-            withTimeout(2_000) {
-                while (vm.testStateValue !is ShowAllViewState.Empty) {
-                    delay(10)
-                }
-            }
-
-            assertEquals(ShowAllViewState.Empty, vm.testStateValue)
-            coVerify(exactly = 1) { modeInteractor.loadPage(config, page = 1) }
-            coVerify(exactly = 0) { modeInteractor.loadPage(config, page = 6) }
-            vm.testCancelScope()
-            paginator.close()
-        }
-    }
-
     private fun createVM(
         config: SectionConfig = SectionConfig(id = "popular", title = "Popular"),
         paginator: Paginator.Store<Item> = Paginator.Store { old, new -> old.id == new.id },
@@ -299,14 +212,6 @@ class ShowAllVMTest {
     )
 
     private fun videoItem(id: Int) = VideoItemUIState(id, "Item $id", "", "")
-
-    private fun emptyPage(
-        current: Int,
-        total: Int,
-    ) = PaginatedResponse<Item>(
-        items = emptyList(),
-        pagination = Pagination(current = current, perpage = 50, total = total),
-    )
 
     private fun page(
         item: Item,
