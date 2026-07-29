@@ -18,10 +18,32 @@ Runs smoke test for a feature via MCP mobile.
 ## Evidence Safety
 
 - Store only the minimum evidence required for the Smoke decision.
+- On the locked test emulator, bounded semantic or visual inspection and safe
+  navigation of the already-authenticated app UI are allowed without another
+  user question. Authentication alone is not a blocker.
+- Focus movement, scrolling, Back, and opening or closing screens, dialogs,
+  drawers, and menus are local navigation, not external side effects.
 - Never persist full `adb logcat`, network payloads, authentication headers, or
-  a raw UI dump/screenshot from an unexpected authenticated or sensitive state.
-- Establish the expected non-sensitive screen with assertions before
-  requesting a full UI tree.
+  a broad/raw UI dump. Scoped screenshots from the dev/stage package may be
+  retained in the ignored evidence directory without another user question.
+  Do not perform account-, server-, playback-progress-, or otherwise externally
+  observable state changes unless the task body or a durable task comment
+  explicitly authorizes them.
+- Credentials, MFA, physical devices, and additional emulator startup always
+  require the applicable explicit authorization.
+- Allocate evidence before device work: runtime proves rendering,
+  focus/navigation, integration, restoration, and liveness; deterministic tests
+  prove non-observable defaults, classification, filtering, paging, and state
+  transitions. Do not clear profiles, require fixtures, or add test-only
+  semantics merely to duplicate passing deterministic proof.
+- Required Smoke summary, report, and checklist artifacts must be non-empty.
+- If the user grants a scoped exception during Smoke, record its exact boundary
+  in a durable task comment before continuing. Recovery and compacted sessions
+  must reuse that authorization instead of asking again.
+- Mark a Smoke checklist item complete and report Smoke as passed only when
+  returning the workflow's passing transition. Keep it unchecked when
+  returning `needs_user_action`, `needs_changes`, or any other blocker/finding.
+  Kent task state is authoritative over checklist text.
 - Run `.kent/adapters/mobile/mobile-evidence-audit.sh
   <evidence-dir> <package-name>` before reporting success or a blocker.
 
@@ -119,23 +141,29 @@ Runs smoke test for a feature via MCP mobile.
 
 ## Testing Strategy
 
-### Use assertions before full screen inspection:
+### Use bounded inspection:
 - Call Mobile MCP only through `~/.kent/bin/kent-mcp-call`.
 - Pass `platform=android` and the locked `deviceId` to every target-specific
   call.
 - Every Mobile call other than device discovery must use `--quiet`,
   `--digest-output`, assertions, or bounded hash/marker extraction.
-- Use `assert_visible` to establish the expected non-sensitive state first.
-- Use `mobile.ui action=analyze --digest-output` only after the expected root
-  is established.
+- Prefer `assert_visible` when the expected target is already known.
+- When focus or the exact target is unknown, inspect only enough of the current
+  authenticated screen to locate the task-scoped control. Do not ask merely
+  because the UI is authenticated.
+- Use `mobile.ui action=analyze --digest-output` for bounded structure checks.
 - Use `--hash-matches '<bounded-regex>'` with required `--marker-present` when
   the check needs only opaque semantic identity sets.
-- Use `mobile.screen action=capture maxWidth=800 maxHeight=1400` only for a
-  known-safe visual defect and only with a safe output mode.
-- Do not request or persist a broad raw UI tree.
-- If an unexpected authenticated/account state appears, do not persist its
-  full UI tree or screenshot. Record a redacted blocker and use
-  `needs_user_action`.
+- Use `mobile.screen action=capture maxWidth=800 maxHeight=1400` for
+  task-scoped visual inspection when semantics are insufficient. Dev/stage
+  captures may be retained as audited evidence; never retain a broad raw UI
+  tree or production/unknown-environment screenshot.
+- Derive directional routes from current focus and UI source/semantic order,
+  execute the bounded route in one call, and verify the destination once.
+  Replan on mismatch instead of spending one model turn per key.
+- Use `needs_user_action` only when the required test would cross a prohibited
+  side-effect/evidence boundary or a required external prerequisite is
+  unavailable.
 
 ### Speed optimizations:
 - Use `tap(hints: true)` with `--allow-mutate --quiet`.
@@ -183,7 +211,11 @@ Example input:
 - Back button navigates back properly
 
 ## On Issues
-- Asks if unclear where to navigate
+- Uses bounded inspection to locate an unclear target before asking.
+- Asks only when the required test would cross an explicit-authorization
+  boundary or no safe task-scoped target can be established.
+- Does not ask again when the task body or a durable task comment already
+  authorizes the required boundary.
 - Takes a screenshot only for a visual bug on a known non-sensitive screen
 - Saves artifacts to build/test-artifacts/ on errors
 - Keeps only package-scoped crash/ANR/liveness summaries

@@ -317,7 +317,7 @@ the locked serial, block instead of switching targets.
 2. `mobile.ui action=wait` for bounded state transitions
 3. `mobile.ui action=analyze --digest-output`
 4. bounded `--hash-matches` plus `--marker-present`
-5. `mobile.screen action=capture` only for a known-safe visual defect, with
+5. `mobile.screen action=capture` for a scoped dev/stage visual assertion, with
    `maxWidth=800`, `maxHeight=1400`, and a safe output mode
 
 Use `mobile.input ... hints=true --allow-mutate --quiet` for focused input.
@@ -325,8 +325,17 @@ Use package-scoped `adb -s` checks for crash, ANR, foreground, and liveness
 signals instead of broad Mobile logs.
 
 Runtime evidence must be least-privilege. Never persist full device logs,
-network payloads, authentication headers, or an unexpected authenticated UI
-tree/screenshot. Keep only scoped crash/ANR/liveness summaries and run
+network payloads, authentication headers, or a broad/raw UI tree. Scoped
+screenshots from the dev/stage package may be retained in the ignored evidence
+directory without another user question. On the
+locked test emulator, bounded inspection and safe navigation of an
+already-authenticated app UI are allowed without another user question.
+Focus movement, scrolling, Back, and opening or closing screens, dialogs,
+drawers, and menus are local navigation. Account-, server-, playback-progress-,
+or otherwise externally observable actions remain forbidden unless the task
+body or a durable task comment explicitly authorizes them. Keep only scoped
+evidence, allocate runtime versus deterministic acceptance before device work,
+require non-empty summaries/checklists, and run
 `.kent/adapters/mobile/mobile-evidence-audit.sh <evidence-dir> <package-name>`
 before reporting Smoke.
 

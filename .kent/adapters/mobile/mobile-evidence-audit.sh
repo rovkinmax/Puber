@@ -105,6 +105,7 @@ signal_pattern+='|Force finishing activity|has died|am_crash|am_anr'
 
 unsafe=0
 files_scanned=0
+max_image_bytes=$((10 * 1024 * 1024))
 
 report_unsafe() {
   local relative_path="$1"
@@ -150,6 +151,49 @@ while IFS= read -r -d '' path; do
       report_unsafe "$relative_path" "broad_log_filename"
       ;;
   esac
+
+  case "$basename_lower" in
+    fatal-anr-summary.txt|crash-anr-summary.txt)
+      ;;
+    *summary*.txt|*summary*.md|*report*.txt|*report*.md|*checklist*.md)
+      if [[ ! -s "$path" ]]; then
+        report_unsafe "$relative_path" "empty_required_evidence"
+        continue
+      fi
+      ;;
+  esac
+
+  expected_image_mime=""
+  case "$basename_lower" in
+    *.png)
+      expected_image_mime="image/png"
+      ;;
+    *.jpg|*.jpeg)
+      expected_image_mime="image/jpeg"
+      ;;
+    *.webp)
+      expected_image_mime="image/webp"
+      ;;
+  esac
+
+  if [[ -n "$expected_image_mime" ]]; then
+    set +e
+    actual_image_mime="$(file -b --mime-type "$path" 2>/dev/null)"
+    mime_status=$?
+    image_bytes="$(wc -c <"$path" 2>/dev/null | tr -d '[:space:]')"
+    size_status=$?
+    set -e
+
+    if [[ "$mime_status" -ne 0 || "$size_status" -ne 0 ||
+      ! "$image_bytes" =~ ^[0-9]+$ ]]; then
+      report_unsafe "$relative_path" "image_scan_error"
+    elif [[ "$actual_image_mime" != "$expected_image_mime" ]]; then
+      report_unsafe "$relative_path" "invalid_image_content"
+    elif ((image_bytes > max_image_bytes)); then
+      report_unsafe "$relative_path" "image_too_large"
+    fi
+    continue
+  fi
 
   set +e
   LC_ALL=C grep -a -E -i -q -- "$sensitive_pattern" "$path"

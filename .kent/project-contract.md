@@ -146,7 +146,19 @@ Generated Delivery nodes use direct profile roles:
   is a Smoke blocker until a verified alternative is used, never an empty
   passing signal result.
 - Runtime evidence must be scoped and sanitized. Full device logs, network
-  payloads, auth headers, and unexpected authenticated UI dumps are forbidden.
+  payloads, auth headers, and broad/raw UI dumps are forbidden. Scoped
+  screenshots from the dev/stage package may be retained in the ignored
+  evidence directory without another user question.
+  Bounded inspection and safe navigation of an already-authenticated app UI on
+  the locked test emulator are allowed without another user question.
+  Runtime covers rendering, focus/navigation, integration, restoration, and
+  liveness. Passing deterministic tests may cover non-observable defaults,
+  classification, filtering, paging, and state transitions unless explicit
+  end-to-end acceptance requires otherwise. Required evidence summaries,
+  reports, and checklists must be non-empty.
+  Account-, server-, playback-progress-, or otherwise externally observable
+  actions remain forbidden unless the task body or a durable task comment
+  explicitly authorizes them.
   `.kent/adapters/mobile/mobile-evidence-audit.sh` must pass before completion.
 
 ## Source Adapters
