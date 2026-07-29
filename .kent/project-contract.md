@@ -70,6 +70,9 @@ modules, but must not invoke nested `/prompt:*` flows or start child sessions.
 Its
 post-verification Gate follows `.kent/commands/smoke-policy.md` and records an
 explicit `smoke_required` or `delivery_ready` decision.
+Plan checkboxes track writer-owned implementation and deterministic checks
+only. Runtime Smoke and other workflow-owned stages are recorded separately as
+downstream scope and do not block Implement from advancing to verification.
 
 ## Agent Contract
 
