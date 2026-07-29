@@ -23,8 +23,6 @@ import io.mockk.unmockkObject
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -96,18 +94,6 @@ class ContentListInteractorTest {
     }
 
     @Test
-    fun activeAnimeFilter_matchesSectionModeAndPreference() {
-        assertFalse(interactor.hasActiveAnimeFilter(config(AnimeFilterMode.None)))
-        assertFalse(interactor.hasActiveAnimeFilter(config(AnimeFilterMode.FollowPreference)))
-        assertTrue(interactor.hasActiveAnimeFilter(config(AnimeFilterMode.Exclude)))
-        assertTrue(interactor.hasActiveAnimeFilter(config(AnimeFilterMode.Only)))
-
-        contentPreferences.value = defaultContentPreferences().copy(showAnime = false)
-
-        assertTrue(interactor.hasActiveAnimeFilter(config(AnimeFilterMode.FollowPreference)))
-    }
-
-    @Test
     fun followPreference_whenAnimeIsHidden_excludesAnimeAndRetainsMissingGenres() = runTest {
         contentPreferences.value = defaultContentPreferences().copy(showAnime = false)
         val config = config(AnimeFilterMode.FollowPreference)
@@ -158,77 +144,96 @@ class ContentListInteractorTest {
     }
 
     @Test
-    fun emptyFilteredPage_advancesUntilVisibleItemsAndReturnsLastConsumedPagination() = runTest {
+    fun filteredPage_refillsBatchAcrossServerPagesAndReturnsLastConsumedPagination() = runTest {
         contentPreferences.value = defaultContentPreferences().copy(showAnime = false)
         val config = config(AnimeFilterMode.FollowPreference)
-        val visible = item(id = 2, title = "Movie")
+        val firstVisible = item(id = 2, title = "Movie 1")
+        val secondVisible = item(id = 3, title = "Movie 2")
         coEvery { api.getItems("movie", "updated", 1, null, null) } returns Result.success(
             page(
                 item(id = 1, title = "Anime", ANIME_GENRE_ID),
+                firstVisible,
                 current = 1,
-                total = 4,
+                total = 3,
+                perpage = 2,
             )
         )
         coEvery { api.getItems("movie", "updated", 2, null, null) } returns Result.success(
-            page(visible, current = 2, total = 4)
+            page(
+                item(id = 4, title = "Anime 2", ANIME_GENRE_ID),
+                secondVisible,
+                current = 2,
+                total = 3,
+                perpage = 2,
+            )
         )
 
         val result = interactor.loadPage(config, page = 1)
 
-        assertEquals(listOf(visible), result.items)
+        assertEquals(listOf(firstVisible, secondVisible), result.items)
         assertEquals(2, result.pagination.current)
         coVerify(exactly = 1) { api.getItems("movie", "updated", 1, null, null) }
         coVerify(exactly = 1) { api.getItems("movie", "updated", 2, null, null) }
+        coVerify(exactly = 0) { api.getItems("movie", "updated", 3, null, null) }
     }
 
     @Test
-    fun emptyFilteredPages_stopAfterFiveConsecutiveServerPages() = runTest {
+    fun filteredPages_continueBeyondFivePagesUntilVisibleBatchIsRefilled() = runTest {
         val config = config(AnimeFilterMode.Exclude)
-        (1..5).forEach { pageNumber ->
+        (1..6).forEach { pageNumber ->
             coEvery {
                 api.getItems("movie", "updated", pageNumber, null, null)
             } returns Result.success(
                 page(
                     item(id = pageNumber, title = "Anime $pageNumber", ANIME_GENRE_ID),
                     current = pageNumber,
-                    total = 10,
+                    total = 7,
+                    perpage = 1,
                 )
             )
         }
+        val visible = item(id = 7, title = "Cartoon", CARTOON_GENRE_ID)
+        coEvery { api.getItems("movie", "updated", 7, null, null) } returns Result.success(
+            page(visible, current = 7, total = 7, perpage = 1)
+        )
 
         val result = interactor.loadPage(config, page = 1)
 
-        assertEquals(emptyList<Item>(), result.items)
-        assertEquals(5, result.pagination.current)
-        (1..5).forEach { pageNumber ->
+        assertEquals(listOf(visible), result.items)
+        assertEquals(7, result.pagination.current)
+        (1..7).forEach { pageNumber ->
             coVerify(exactly = 1) {
                 api.getItems("movie", "updated", pageNumber, null, null)
             }
         }
-        coVerify(exactly = 0) { api.getItems("movie", "updated", 6, null, null) }
     }
 
     @Test
-    fun emptyFilteredPages_stopAtServerEnd() = runTest {
+    fun filteredPages_stopAtServerEndAndSuppressDuplicateIds() = runTest {
         val config = config(AnimeFilterMode.Exclude)
+        val visible = item(id = 10, title = "Cartoon", CARTOON_GENRE_ID)
         coEvery { api.getItems("movie", "updated", 1, null, null) } returns Result.success(
             page(
                 item(id = 1, title = "Anime 1", ANIME_GENRE_ID),
+                visible,
                 current = 1,
                 total = 2,
+                perpage = 3,
             )
         )
         coEvery { api.getItems("movie", "updated", 2, null, null) } returns Result.success(
             page(
+                visible.copy(title = "Duplicate"),
                 item(id = 2, title = "Anime 2", ANIME_GENRE_ID),
                 current = 2,
                 total = 2,
+                perpage = 3,
             )
         )
 
         val result = interactor.loadPage(config, page = 1)
 
-        assertEquals(emptyList<Item>(), result.items)
+        assertEquals(listOf(visible), result.items)
         assertEquals(2, result.pagination.current)
         coVerify(exactly = 2) { api.getItems("movie", "updated", any(), null, null) }
     }
@@ -279,9 +284,10 @@ class ContentListInteractorTest {
         vararg items: Item,
         current: Int = 1,
         total: Int = 1,
+        perpage: Int = items.size,
     ) = PaginatedResponse(
         items = items.toList(),
-        pagination = Pagination(current = current, perpage = 50, total = total),
+        pagination = Pagination(current = current, perpage = perpage, total = total),
     )
 
     private fun item(

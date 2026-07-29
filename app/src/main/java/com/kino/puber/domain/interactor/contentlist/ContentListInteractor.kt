@@ -40,16 +40,6 @@ internal class ContentListInteractor(
         return fetchFilteredPage(config, page, showAnime)
     }
 
-    fun hasActiveAnimeFilter(config: SectionConfig): Boolean {
-        val showAnime = navigationPreferencesRepository.contentPreferences.value.showAnime
-        return when (config.animeFilterMode) {
-            AnimeFilterMode.None -> false
-            AnimeFilterMode.FollowPreference -> showAnime.not()
-            AnimeFilterMode.Exclude,
-            AnimeFilterMode.Only -> true
-        }
-    }
-
     private suspend fun fetchFilteredPage(
         config: SectionConfig,
         requestedPage: Int,
@@ -62,27 +52,31 @@ internal class ContentListInteractor(
             return fetchPage(config, requestedPage)
         }
 
-        var currentPage = requestedPage
-        var consumedPages = 0
+        var response = fetchPage(config, requestedPage)
+        val targetSize = response.pagination.perpage.coerceAtLeast(response.items.size)
+        val visibleItems = linkedMapOf<Int, Item>()
         while (true) {
-            val response = fetchPage(config, currentPage)
-            val filteredItems = response.items.filter { item ->
-                when (filterMode) {
-                    AnimeFilterMode.None -> true
-                    AnimeFilterMode.FollowPreference,
-                    AnimeFilterMode.Exclude -> item.isAnime().not()
-                    AnimeFilterMode.Only -> item.isAnime()
+            response.items
+                .asSequence()
+                .filter { item ->
+                    when (filterMode) {
+                        AnimeFilterMode.None -> true
+                        AnimeFilterMode.FollowPreference,
+                        AnimeFilterMode.Exclude -> item.isAnime().not()
+                        AnimeFilterMode.Only -> item.isAnime()
+                    }
                 }
-            }
-            val filteredResponse = response.copy(items = filteredItems)
-            consumedPages += 1
-            if (filteredItems.isNotEmpty() ||
+                .forEach { item ->
+                    visibleItems.putIfAbsent(item.id, item)
+                }
+
+            if (visibleItems.size >= targetSize ||
                 response.pagination.current >= response.pagination.total ||
-                consumedPages >= MAX_CONSECUTIVE_PAGES
+                targetSize == 0
             ) {
-                return filteredResponse
+                return response.copy(items = visibleItems.values.take(targetSize))
             }
-            currentPage = response.pagination.current + 1
+            response = fetchPage(config, response.pagination.current + 1)
         }
     }
 
@@ -115,8 +109,6 @@ internal class ContentListInteractor(
     }
 
     companion object {
-        private const val MAX_CONSECUTIVE_PAGES = 5
-
         private val firstPageCache = TypedTtlCacheImpl<String, PaginatedResponse<Item>>(
             defaultTtl = 3.minutes,
         )
