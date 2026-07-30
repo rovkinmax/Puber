@@ -139,6 +139,34 @@ class HomeInteractorTest {
     }
 
     @Test
+    fun discovery_failsBoundedly_whenFollowUpCurrentDoesNotAdvanceToRequestedPage() = runTest {
+        contentPreferences.value = defaultContentPreferences().copy(showAnime = false)
+        val anime = item(id = 1, genreIds = intArrayOf(ANIME_GENRE_ID))
+        coEvery {
+            api.getItemsByShortcut("fresh", type = "movie", page = null, genre = null)
+        } returns Result.success(page(anime, current = 1, total = 3))
+        coEvery {
+            api.getItemsByShortcut("fresh", type = "movie", page = 2, genre = null)
+        } returns Result.success(page(anime.copy(id = 2), current = 1, total = 3))
+
+        val result = interactor.getFreshItems("movie")
+
+        assertEquals(
+            "Home discovery pagination current 1 did not match requested page 2",
+            result.exceptionOrNull()?.message,
+        )
+        coVerify(exactly = 1) {
+            api.getItemsByShortcut("fresh", type = "movie", page = null, genre = null)
+        }
+        coVerify(exactly = 1) {
+            api.getItemsByShortcut("fresh", type = "movie", page = 2, genre = null)
+        }
+        coVerify(exactly = 0) {
+            api.getItemsByShortcut("fresh", type = "movie", page = 3, genre = null)
+        }
+    }
+
+    @Test
     fun discovery_stopsAtServerEndAndSuppressesDuplicateIds() = runTest {
         contentPreferences.value = defaultContentPreferences().copy(showAnime = false)
         val anime = item(id = 1, genreIds = intArrayOf(ANIME_GENRE_ID))

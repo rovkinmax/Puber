@@ -70,18 +70,24 @@ class HomeInteractor(
         return firstPageResult.mapCatching { firstPage ->
             val targetSize = limit ?: firstPage.items.size
             val visibleItems = linkedMapOf<Int, Item>()
+            var currentRequestedPage = FIRST_PAGE
             var lastPage = firstPage
 
             while (true) {
+                check(lastPage.pagination.current == currentRequestedPage) {
+                    "Home discovery pagination current ${lastPage.pagination.current} " +
+                        "did not match requested page $currentRequestedPage"
+                }
                 lastPage.items
                     .asSequence()
                     .filterNot(Item::isAnime)
                     .forEach { item -> visibleItems.putIfAbsent(item.id, item) }
                 if (visibleItems.size >= targetSize || !lastPage.hasNextPage()) break
+                currentRequestedPage = lastPage.pagination.current + 1
                 lastPage = api.getItemsByShortcut(
                     shortcut = shortcut,
                     type = type,
-                    page = lastPage.pagination.current + 1,
+                    page = currentRequestedPage,
                 ).getOrThrow()
             }
 
@@ -95,5 +101,9 @@ class HomeInteractor(
 
     private fun List<Item>.limitTo(limit: Int?): List<Item> {
         return limit?.let(::take) ?: this
+    }
+
+    companion object {
+        private const val FIRST_PAGE = 1
     }
 }
