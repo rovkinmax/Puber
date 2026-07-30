@@ -52,10 +52,15 @@ internal class ContentListInteractor(
             return fetchPage(config, requestedPage)
         }
 
-        var response = fetchPage(config, requestedPage)
+        var currentRequestedPage = requestedPage
+        var response = fetchPage(config, currentRequestedPage)
         val targetSize = response.pagination.perpage.coerceAtLeast(response.items.size)
         val visibleItems = linkedMapOf<Int, Item>()
         while (true) {
+            check(response.pagination.current == currentRequestedPage) {
+                "Content pagination current ${response.pagination.current} " +
+                    "did not match requested page $currentRequestedPage"
+            }
             response.items
                 .asSequence()
                 .filter { item ->
@@ -74,9 +79,10 @@ internal class ContentListInteractor(
                 response.pagination.current >= response.pagination.total ||
                 targetSize == 0
             ) {
-                return response.copy(items = visibleItems.values.take(targetSize))
+                return response.copy(items = visibleItems.values.toList())
             }
-            response = fetchPage(config, response.pagination.current + 1)
+            currentRequestedPage = response.pagination.current + 1
+            response = fetchPage(config, currentRequestedPage)
         }
     }
 

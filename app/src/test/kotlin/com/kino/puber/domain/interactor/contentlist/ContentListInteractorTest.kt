@@ -178,6 +178,101 @@ class ContentListInteractorTest {
     }
 
     @Test
+    fun filteredPage_failsBoundedly_whenCurrentDoesNotAdvanceToRequestedPage() = runTest {
+        val config = config(AnimeFilterMode.Exclude)
+        coEvery { api.getItems("movie", "updated", 1, null, null) } returns Result.success(
+            page(
+                item(id = 1, title = "Anime", ANIME_GENRE_ID),
+                current = 0,
+                total = 3,
+                perpage = 1,
+            )
+        )
+
+        val error = try {
+            interactor.loadPage(config, page = 1)
+            null
+        } catch (error: IllegalStateException) {
+            error
+        }
+
+        assertEquals(
+            "Content pagination current 0 did not match requested page 1",
+            error?.message,
+        )
+        coVerify(exactly = 1) { api.getItems("movie", "updated", 1, null, null) }
+        coVerify(exactly = 0) { api.getItems("movie", "updated", 2, null, null) }
+    }
+
+    @Test
+    fun filteredPage_failsBoundedly_whenFollowUpCurrentDoesNotAdvanceToRequestedPage() = runTest {
+        val config = config(AnimeFilterMode.Exclude)
+        coEvery { api.getItems("movie", "updated", 1, null, null) } returns Result.success(
+            page(
+                item(id = 1, title = "Anime", ANIME_GENRE_ID),
+                current = 1,
+                total = 3,
+                perpage = 1,
+            )
+        )
+        coEvery { api.getItems("movie", "updated", 2, null, null) } returns Result.success(
+            page(
+                item(id = 2, title = "Anime 2", ANIME_GENRE_ID),
+                current = 1,
+                total = 3,
+                perpage = 1,
+            )
+        )
+
+        val error = try {
+            interactor.loadPage(config, page = 1)
+            null
+        } catch (error: IllegalStateException) {
+            error
+        }
+
+        assertEquals(
+            "Content pagination current 1 did not match requested page 2",
+            error?.message,
+        )
+        coVerify(exactly = 1) { api.getItems("movie", "updated", 1, null, null) }
+        coVerify(exactly = 1) { api.getItems("movie", "updated", 2, null, null) }
+        coVerify(exactly = 0) { api.getItems("movie", "updated", 3, null, null) }
+    }
+
+    @Test
+    fun filteredPage_preservesFinalConsumedPageOverflow() = runTest {
+        val config = config(AnimeFilterMode.Exclude)
+        val firstVisible = item(id = 1, title = "Cartoon 1", CARTOON_GENRE_ID)
+        val secondVisible = item(id = 2, title = "Cartoon 2", CARTOON_GENRE_ID)
+        val overflowVisible = item(id = 3, title = "Cartoon 3", CARTOON_GENRE_ID)
+        coEvery { api.getItems("movie", "updated", 1, null, null) } returns Result.success(
+            page(
+                firstVisible,
+                item(id = 4, title = "Anime", ANIME_GENRE_ID),
+                current = 1,
+                total = 2,
+                perpage = 2,
+            )
+        )
+        coEvery { api.getItems("movie", "updated", 2, null, null) } returns Result.success(
+            page(
+                secondVisible,
+                overflowVisible,
+                current = 2,
+                total = 2,
+                perpage = 2,
+            )
+        )
+
+        val result = interactor.loadPage(config, page = 1)
+
+        assertEquals(listOf(firstVisible, secondVisible, overflowVisible), result.items)
+        assertEquals(2, result.pagination.current)
+        coVerify(exactly = 1) { api.getItems("movie", "updated", 2, null, null) }
+    }
+
+    @Test
     fun filteredPages_continueBeyondFivePagesUntilVisibleBatchIsRefilled() = runTest {
         val config = config(AnimeFilterMode.Exclude)
         (1..6).forEach { pageNumber ->
