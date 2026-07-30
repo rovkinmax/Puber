@@ -192,7 +192,8 @@ After previews are ready, compare implementation with the Figma design screensho
   `.kent/commands/smoke-policy.md`, and its Smoke node owns resource handling.
 - For legacy standalone execution only, if the implemented screen is now
   reachable (navigation wired):
-  1. First check if an emulator is connected: call `.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators`.
+  1. First check if a TV emulator is connected: call
+     `.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators tv`.
   2. If no emulator is found → skip smoke-test silently (don't ask the user). Physical devices are not eligible unless the
      user explicitly provided permission and an explicit physical serial.
   3. If an emulator is available → ask user: "Screen is reachable. Run smoke-test on emulator? (y/n)"

@@ -18,7 +18,7 @@ Usage:
   emulator-resource-lock.sh acquire-any <resource>... -- [wait_seconds] [ttl_seconds]
   emulator-resource-lock.sh release <resource> <token>
   emulator-resource-lock.sh status [resource]
-  emulator-resource-lock.sh adb-emulators
+  emulator-resource-lock.sh adb-emulators [any|phone|tv]
   emulator-resource-lock.sh adb-physical-devices
 
 Coordinates Android emulator usage across Kent sessions on this machine.
@@ -316,12 +316,69 @@ acquire_any() {
 }
 
 adb_emulators() {
+  local form_factor="${1:-any}"
+  local serial characteristics model product_name identity
+
   if ! command -v adb >/dev/null 2>&1; then
     printf 'adb_unavailable\n' >&2
     return 69
   fi
 
-  adb devices | awk 'NR > 1 && $2 == "device" && $1 ~ /^emulator-/ { print $1 }'
+  case "$form_factor" in
+    any|phone|tv)
+      ;;
+    *)
+      printf 'invalid_emulator_form_factor value=%s\n' "$form_factor" >&2
+      return 64
+      ;;
+  esac
+
+  while IFS= read -r serial; do
+    if [[ "$form_factor" == "any" ]]; then
+      printf '%s\n' "$serial"
+      continue
+    fi
+
+    if ! characteristics="$(
+      adb -s "$serial" shell getprop ro.build.characteristics \
+        </dev/null 2>/dev/null |
+        tr -d '\r[:space:]'
+    )" ||
+      ! model="$(
+        adb -s "$serial" shell getprop ro.product.model \
+          </dev/null 2>/dev/null |
+          tr -d '\r[:space:]' |
+          tr '[:upper:]' '[:lower:]'
+      )" ||
+      ! product_name="$(
+        adb -s "$serial" shell getprop ro.product.name \
+          </dev/null 2>/dev/null |
+          tr -d '\r[:space:]' |
+          tr '[:upper:]' '[:lower:]'
+      )"; then
+      printf 'emulator_form_factor_probe_failed serial=%s\n' "$serial" >&2
+      return 69
+    fi
+
+    identity=",$characteristics,$model,$product_name,"
+    case "$identity" in
+      *,tv,*|*atv*|*google-tv*|*google_tv*|*television*)
+        if [[ "$form_factor" == "tv" ]]; then
+          printf '%s\n' "$serial"
+        fi
+        ;;
+      *,watch,*|*,automotive,*)
+        ;;
+      *)
+        if [[ "$form_factor" == "phone" ]]; then
+          printf '%s\n' "$serial"
+        fi
+        ;;
+    esac
+  done < <(
+    adb devices |
+      awk 'NR > 1 && $2 == "device" && $1 ~ /^emulator-/ { print $1 }'
+  )
 }
 
 adb_physical_devices() {
@@ -365,7 +422,8 @@ case "$cmd" in
     fi
     ;;
   adb-emulators)
-    adb_emulators
+    [[ $# -le 2 ]] || { usage; exit 64; }
+    adb_emulators "${2:-any}"
     ;;
   adb-physical-devices)
     adb_physical_devices

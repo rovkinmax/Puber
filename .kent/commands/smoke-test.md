@@ -55,7 +55,7 @@ Runs smoke test for a feature via MCP mobile.
      explicit serial for that physical device. Never rely on adb's default target selection.
    - Prefer already-running healthy emulators. Discover them with:
      ```bash
-     EMULATORS=($(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators))
+     EMULATORS=($(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators tv))
      ```
    - If one or more emulators are already running, acquire any free emulator-specific lock:
      ```bash

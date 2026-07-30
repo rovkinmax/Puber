@@ -105,8 +105,14 @@ Generated Delivery nodes use direct profile roles:
 
 - Main compile check: `./gradlew :app:compileDevDebugKotlin`.
 - Kent worktree compile check: `./tools/agentw :app:compileDevDebugKotlin`.
-- Detekt findings are task-scoped only when comparison with the pinned
-  `origin/master` baseline proves a new or worsened violation. A failing full
+- The task fixed point or Kent-resolved execution commit is the immutable
+  task-delta baseline. Current `origin/master` is a separate moving integration
+  target. Target-only commits added after task start are not PUB task
+  regressions unless merge/rebase evidence proves a conflict or delivered-tree
+  loss. Do not copy unrelated target files into Fix merely to update an old
+  worktree.
+- Detekt findings are task-scoped only when comparison with that pinned task
+  baseline proves a new or worsened violation. A failing full
   repository Detekt run and a touched path are not sufficient evidence.
   For metric rules, worsening means the same rule, path, and declaration has a
   larger measured value. For non-metric rules, it means a new normalized

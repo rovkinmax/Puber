@@ -271,7 +271,7 @@ fight for focus. Physical devices, including a real TV, are forbidden unless the
 and an explicit serial for that physical device. Never rely on adb's default target selection.
 
 ```bash
-EMULATORS=($(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators))
+EMULATORS=($(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators tv))
 
 if ((${#EMULATORS[@]} > 0)); then
   LOCK_OUTPUT="$(.kent/adapters/mobile/emulator-resource-lock.sh acquire-any "${EMULATORS[@]}" -- 900 7200)"
