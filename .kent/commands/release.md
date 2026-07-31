@@ -29,10 +29,33 @@ Human-facing Puber release command. Use this for backlog tasks such as "make nex
 8. Run Compliance Review.
 9. Create or update a PR for `release/<version>`.
 10. Monitor CI/checks.
-11. After approval, verify the PR is merged into `origin/master`, create tag `v<version>` on the master commit, and push
-    the tag.
-12. Monitor release automation when available.
-13. Cleanup conservatively.
+11. After approval, verify the PR is merged into `origin/master`.
+12. Resolve the previous release tag and final target commit, then prepare
+    concise user-facing release notes in Russian from the delivered changes.
+    Save them under the ignored task workspace, for example
+    `.todo/<task>/release-notes-ru.md`. Exclude release-only chores and rewrite
+    technical commit/PR titles as user-visible changes.
+13. Create tag `v<version>` on the master commit and push the tag.
+14. Monitor release automation until terminal state.
+15. After successful publication, apply the prepared Russian notes to the
+    GitHub Release with `gh release edit <tag> --notes-file <path>` and verify
+    the resulting release body before cleanup.
+16. Cleanup conservatively.
+
+## CI And Release Monitoring
+
+- Pending, queued, or in-progress checks are not a blocker and never justify
+  `needs_user_action`.
+- Resolve the exact PR or Actions run once. Use
+  `gh pr checks <pr> --watch --interval 30` for PR checks or
+  `gh run watch <run-id> --exit-status --interval 30` for release automation.
+- Let the blocking watcher wait until terminal state, then re-read authoritative
+  status and classify green, failed, or canceled.
+- A green release run is not complete until the GitHub Release exists and its
+  final body contains the prepared Russian release notes.
+- Ask the user only for authentication/access, ambiguous run identity,
+  contradictory policy, or another actual decision. Do not ask the user to
+  wait or approve another poll.
 
 ## Safety Rules
 

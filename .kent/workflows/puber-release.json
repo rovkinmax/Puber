@@ -3,7 +3,7 @@
     "id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
-    "version": 82,
+    "version": 85,
     "execution_target_policy": {
       "mode": "head"
     }
@@ -429,7 +429,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor the Puber release PR checks.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, and .kent/commands/release-tag.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Inspect PR {{.Params.pr_url}} for release {{.Params.release_version}} / tag {{.Params.release_tag}} on branch {{.Params.branch_name}}. Use GitHub CLI when available. Do not merge the PR. Do not push new commits from this node.\n\nComplete with publish when checks pass or are intentionally absent; this transition requires user approval before tag publication. Provide pr_url, release_version, release_tag, branch_name, workspace_path, and ci_report. Complete with needs_changes if checks failed due to release changes and provide workspace_path plus ci_report. Complete with needs_user_action for temporary external waits; provide blocker_reason. Complete with needs_user_action only if checks cannot be inspected and retrying would be unsafe or misleading; provide blocker_reason.",
+      "prompt_template": "Monitor the Puber release PR checks.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md,\n.kent/commands/release-tag.md, and .kent/commands/release.md first. Inspect PR\n{{.Params.pr_url}} for release {{.Params.release_version}} / tag\n{{.Params.release_tag}} on branch {{.Params.branch_name}}. Do not merge the PR\nand do not push commits from this node.\n\nResolve the exact PR once. Pending, queued, and in-progress checks are not a\nworkflow transition and never require user approval. Wait in one shell command:\n\n`gh pr checks {{.Params.pr_url}} --watch --interval 30`\n\nAfter the watcher exits, re-read authoritative PR/check state. Complete with\n`waiting_pr` only when required checks are green or intentionally absent;\nprovide pr_url, release_version, release_tag, branch_name, workspace_path, and\nci_report. Complete with `needs_changes` only for a task-scoped release failure\nand provide workspace_path plus ci_report. Use `needs_user_action` only for\nauthentication/access, ambiguous PR identity, contradictory policy, or another\nactual human decision. Never use it merely because checks are still running.",
       "parameters": [
         {
           "key": "pr_url",
@@ -564,7 +564,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor Puber release automation after tag publication.\n\nRead .kent/project-contract.md and .kent/commands/release-tag.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Check available GitHub/CI/release automation for {{.Params.release_tag}} when configured. If no automation is configured, report that monitoring is skipped. Complete with release_published if green or intentionally skipped. Complete with needs_user_action for temporary external waits; provide blocker_reason. Complete with needs_user_action only if automation fails or cannot be inspected after retry would be misleading; provide blocker_reason.",
+      "prompt_template": "Monitor Puber release automation after tag publication.\n\nRead .kent/project-contract.md, .kent/commands/release.md, and\n.kent/commands/release-tag.md first. Release: {{.Params.release_tag}} at\n{{.Params.target_commit}}. Prepared Russian notes:\n{{.Params.release_notes_path}}.\n\nResolve the exact GitHub Actions run from the tag and target commit. Pending,\nqueued, and in-progress state is not a workflow transition and never requires\nuser approval. Wait in one shell command:\n\n`gh run watch <run-id> --exit-status --interval 30`\n\nAfter the watcher exits, re-read authoritative run/job state. On success,\nverify that the GitHub Release exists, apply the prepared notes with\n`gh release edit {{.Params.release_tag}} --notes-file\n{{.Params.release_notes_path}}`, then read the release back and verify its body\nis non-empty Russian text. Complete with `release_published` only after both\nautomation and release-notes verification pass; provide release_report with the\nrun, jobs, release URL, and notes evidence.\n\nUse `needs_user_action` only for terminal automation failure,\nauthentication/access, ambiguous run identity, missing release/notes artifact,\nor contradictory policy. Never use it merely because automation is still\nrunning.",
       "parameters": [
         {
           "key": "release_version",
@@ -585,6 +585,10 @@
         {
           "key": "tag_push_status",
           "description": "Result of local/remote tag creation and push."
+        },
+        {
+          "key": "release_notes_path",
+          "description": "Task-local path to the prepared non-empty Russian release notes file."
         }
       ]
     },
@@ -713,7 +717,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Publish the approved Puber release tag after the release PR was confirmed merged.\n\nRead AGENTS.md, .kent/project-contract.md, latest task comments, release version {{.Params.release_version}}, release tag {{.Params.release_tag}}, PR {{.Params.pr_url}}, and merge report {{.Params.merge_report}}. This transition is intentionally approval-gated. Before tagging, verify the PR state is still MERGED and the tag does not already point to a conflicting commit. Do not change the release scope. Complete with monitor when the tag is published or already correct and provide release_version, release_tag, target_commit, pr_url, and tag_push_status. Complete with needs_user_action for temporary external waits; provide blocker_reason. Complete with needs_user_action if explicit user input or permission is required.",
+      "prompt_template": "Publish the approved Puber release after the release PR was confirmed merged.\n\nRead AGENTS.md, .kent/project-contract.md, .kent/commands/release.md,\n.kent/commands/release-tag.md, latest task comments, release version\n{{.Params.release_version}}, release tag {{.Params.release_tag}}, PR\n{{.Params.pr_url}}, workspace {{.Params.workspace_path}}, and merge report\n{{.Params.merge_report}}. This transition is intentionally approval-gated.\n\nBefore tagging, verify the PR is still MERGED and resolve the immutable target\ncommit plus previous release tag. Summarize the delivered range as concise\nuser-facing release notes in Russian. Exclude the version-bump PR and internal\nrelease chores; rewrite technical titles as user-visible changes. Save the\nnon-empty notes under the ignored task workspace at\n`.todo/{{.TaskShortId}}/release-notes-ru.md`.\n\nVerify the release tag does not point to a conflicting commit, then create and\npush it. Complete with `monitor` and provide release_version, release_tag,\ntarget_commit, pr_url, tag_push_status, and release_notes_path. Use\n`needs_user_action` only for conflicting tag/target evidence, missing\nauthorization, authentication/access, or another actual human decision.",
       "parameters": [
         {
           "key": "pr_url",
@@ -1018,6 +1022,10 @@
             "description": "Result of local/remote tag creation and push."
           },
           {
+            "name": "release_notes_path",
+            "description": "Task-local path to the prepared non-empty Russian release notes file."
+          },
+          {
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
@@ -1277,6 +1285,10 @@
           {
             "name": "tag_push_status",
             "description": "Result of local/remote tag creation and push."
+          },
+          {
+            "name": "release_notes_path",
+            "description": "Task-local path to the prepared non-empty Russian release notes file."
           }
         ]
       },
@@ -1799,6 +1811,11 @@
             "name": "tag_push_status",
             "source": "transition_output",
             "field": "tag_push_status"
+          },
+          {
+            "name": "release_notes_path",
+            "source": "transition_output",
+            "field": "release_notes_path"
           }
         ],
         "required_provision_fields": [
@@ -1821,6 +1838,10 @@
           {
             "name": "tag_push_status",
             "description": "Result of local/remote tag creation and push."
+          },
+          {
+            "name": "release_notes_path",
+            "description": "Task-local path to the prepared non-empty Russian release notes file."
           }
         ]
       },

@@ -243,6 +243,10 @@ recoverable blocker.
   branch with a forced replay onto fresh `origin/master`; do not mutate the
   task branch while investigating.
 - `ci_monitor` routes successful or intentionally skipped checks to `waiting_pr`.
+- Pending, queued, and in-progress checks remain inside `ci_monitor`. Resolve
+  the exact PR/run and wait with a blocking first-party watcher such as
+  `gh pr checks --watch` or `gh run watch`; never request user approval merely
+  because CI or release automation is still running.
 - `waiting_pr` checks the pull request through GitHub. It must not merge, push, tag, or clean up.
 - If the PR is still open, `waiting_pr` writes a task comment with the current PR status and takes the approval-gated
   `needs_user_action` self-loop.
@@ -254,6 +258,10 @@ recoverable blocker.
   to the expected remote head. Any mismatch returns `needs_user_action`.
 - If GitHub reports `state=MERGED`, `waiting_pr` advances to cleanup for normal workflows.
 - Release workflows route `waiting_pr -> pr_merged -> publish` with human approval before tag publication.
+- Release `publish` prepares final user-facing release notes in Russian after
+  merge proof and before tag push. Release monitoring waits for terminal
+  automation, applies those notes to the GitHub Release, verifies the resulting
+  body, and only then advances to cleanup.
 - `close_without_merge` is approval-gated and valid only when the latest user comment explicitly says to close, cancel, or
   skip the PR.
 - `no_pr` is approval-gated and valid only when the PR step produced a clear `pr_report` explaining why no PR is
