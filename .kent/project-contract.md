@@ -79,7 +79,8 @@ downstream scope and do not block Implement from advancing to verification.
 Generated Delivery nodes use direct profile roles:
 
 - Plan uses `default`; Gate uses global `workflow-gate`.
-- Implement and Fix use project-local `implementation-worker`.
+- Implement uses project-local `implementation-worker`; Fix uses
+  project-local `fix-worker`.
 - Smoke uses global `runtime-smoke-tester` with the Puber Android TV procedure.
 - PR preparation and Cleanup use global `delivery-operator`.
 - CI and Waiting PR use global `ci-monitor`.
@@ -96,6 +97,7 @@ Generated Delivery nodes use direct profile roles:
 
 - `project-researcher`: Puber codebase research, alias for `android-codebase-analyst`.
 - `implementation-worker`: bounded feature step implementation.
+- `fix-worker`: bounded repair of verified task-scoped findings.
 - `quality-reviewer`: read-only quality audit.
 - `build-doctor`: Gradle diagnostics, alias for `gradle-build-doctor`.
 - `compose-reviewer`: Compose-specific review.

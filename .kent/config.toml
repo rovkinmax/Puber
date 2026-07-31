@@ -55,8 +55,15 @@ agent_callable = true
 workflow_subagent = true
 
 [subagents."implementation-worker"]
-model = "gpt-5.6-sol"
+model = "gpt-5.6-luna"
 system_prompt_file = "subagents/implementation-worker.md"
+thinking_level = "high"
+agent_callable = true
+workflow_subagent = true
+
+[subagents."fix-worker"]
+model = "gpt-5.6-sol"
+system_prompt_file = "subagents/fix-worker.md"
 thinking_level = "medium"
 agent_callable = true
 workflow_subagent = true
