@@ -3,42 +3,14 @@ package com.kino.puber.ui.feature.home.model
 import com.kino.puber.R
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.model.VideoItemUIMapper
-import com.kino.puber.core.ui.uikit.component.HeroItemState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
-import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.KCollection
-import com.kino.puber.data.api.models.isSeriesLike
+import com.kino.puber.data.api.models.Item
 
 internal class HomeUIMapper(
     private val videoItemMapper: VideoItemUIMapper,
     private val resources: ResourceProvider,
 ) {
-
-    fun mapHeroItems(items: List<Item>): List<HeroItemState> {
-        return items.map { item ->
-            val widePosterUrls = videoItemMapper.mapPosterUrls(item.posters?.wide)
-            val bigPosterUrls = videoItemMapper.mapPosterUrls(item.posters?.big)
-            val heroPosterUrls = (widePosterUrls + bigPosterUrls).distinct()
-            HeroItemState(
-                id = item.id,
-                title = item.title,
-                wideImageUrl = heroPosterUrls.firstOrNull().orEmpty(),
-                fallbackImageUrl = heroPosterUrls.drop(1).firstOrNull().orEmpty(),
-                fallbackImageUrls = heroPosterUrls.drop(2),
-                year = item.year?.toString().orEmpty(),
-                ratings = videoItemMapper.buildRatings(item),
-                genres = item.genres?.joinToString(", ") { it.title }.orEmpty(),
-                country = item.countries?.joinToString(", ") { it.title }.orEmpty(),
-                duration = if (item.type.isSeriesLike()) {
-                    item.seasons?.size?.let {
-                        resources.getString(R.string.video_details_label_seasons, it)
-                    }.orEmpty()
-                } else {
-                    videoItemMapper.buildDuration(item)
-                },
-            )
-        }
-    }
 
     fun mapItemSection(items: List<Item>, type: HomeSectionType): HomeSectionState? {
         if (items.isEmpty()) return null

@@ -54,6 +54,54 @@ class TabTypeConfigTest {
     }
 
     @Test
+    fun heroConfigs_useHotShortcutAndDistinctGenreFilters() {
+        val cartoons = TabTypeConfig.heroConfigsFor(TabType.Cartoons)
+        val anime = TabTypeConfig.heroConfigsFor(TabType.Anime)
+
+        assertEquals(listOf("movie", "serial"), cartoons.map(SectionConfig::type))
+        cartoons.forEach { config ->
+            assertEquals("hot", config.shortcut)
+            assertEquals(CARTOON_GENRE_ID.toString(), config.genre)
+            assertEquals(AnimeFilterMode.Exclude, config.animeFilterMode)
+        }
+        assertEquals(
+            listOf("hero_hot_cartoon_movie", "hero_hot_cartoon_serial"),
+            cartoons.map(SectionConfig::id),
+        )
+
+        assertEquals(listOf("movie", "serial"), anime.map(SectionConfig::type))
+        anime.forEach { config ->
+            assertEquals("hot", config.shortcut)
+            assertEquals(ANIME_GENRE_ID.toString(), config.genre)
+            assertEquals(AnimeFilterMode.Only, config.animeFilterMode)
+        }
+        assertEquals(
+            listOf("hero_hot_anime_movie", "hero_hot_anime_serial"),
+            anime.map(SectionConfig::id),
+        )
+
+        assertTrue(
+            cartoons.none { it.id in TabTypeConfig.sectionsFor(TabType.Cartoons).map(SectionConfig::id) },
+        )
+        assertTrue(
+            anime.none { it.id in TabTypeConfig.sectionsFor(TabType.Anime).map(SectionConfig::id) },
+        )
+    }
+
+    @Test
+    fun heroConfig_isAbsentForUnrelatedTabs() {
+        TabType.entries
+            .filterNot { it == TabType.Cartoons || it == TabType.Anime }
+            .forEach { tabType ->
+                assertEquals(
+                    emptyList<SectionConfig>(),
+                    TabTypeConfig.heroConfigsFor(tabType),
+                    "$tabType unexpectedly generated a hero config",
+                )
+            }
+    }
+
+    @Test
     fun unrelatedCatalogTabs_doNotFilterAnime() {
         val unfilteredTabs = listOf(
             TabType.For4k,

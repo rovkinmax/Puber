@@ -52,6 +52,7 @@ internal class ContentListScreen(
                     navPrefs = get(),
                     contentListRefreshCoordinator = get(),
                     contentType = sections.firstOrNull()?.type,
+                    heroConfigs = TabTypeConfig.heroConfigsFor(tabType),
                 )
             }
 
