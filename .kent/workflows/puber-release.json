@@ -1,33 +1,33 @@
 {
   "workflow": {
-    "id": "42287243-1486-45e6-8f8d-3ecddba896be",
+    "id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
-    "version": 160,
+    "version": 82,
     "execution_target_policy": {
       "mode": "head"
     }
   },
   "nodes": [
     {
-      "id": "node-65fd1e69-daa8-451d-ad29-52273db1db13",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-73976fdb-cbc3-4df6-9733-3413e362105d",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "backlog",
       "kind": "start",
       "display_name": "Backlog"
     },
     {
-      "id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "prepare",
       "kind": "agent",
       "display_name": "Prepare Release",
-      "subagent_role": "default",
+      "subagent_role": "release-manager",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "compliance",
       "kind": "agent",
       "display_name": "Compliance Review",
@@ -35,69 +35,69 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "ship_pr",
       "kind": "agent",
       "display_name": "Create PR",
-      "subagent_role": "default",
+      "subagent_role": "delivery-operator",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "ci_monitor",
       "kind": "agent",
       "display_name": "Monitor CI",
-      "subagent_role": "default",
+      "subagent_role": "ci-monitor",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "publish",
       "kind": "agent",
       "display_name": "Publish Tag",
-      "subagent_role": "default",
+      "subagent_role": "release-manager",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "monitor",
       "kind": "agent",
       "display_name": "Monitor Release",
-      "subagent_role": "default",
+      "subagent_role": "ci-monitor",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-a0bedfe2-b399-456f-a0be-61ca70704811",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "cleanup",
       "kind": "agent",
       "display_name": "Cleanup",
-      "subagent_role": "default",
+      "subagent_role": "delivery-operator",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-a19c6feb-2c82-4c67-960a-31ee75b785d2",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-bf653ac7-5910-4077-8e01-84002a436d03",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "wont_do",
       "kind": "terminal",
       "display_name": "Won't Do"
     },
     {
-      "id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "waiting_pr",
       "kind": "agent",
       "display_name": "Waiting PR",
-      "subagent_role": "default",
+      "subagent_role": "ci-monitor",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-0ebf8742-e371-440f-97e2-fc3834a09906",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
+      "id": "node-6d3acc49-d5b3-42ee-b829-fa0d5c0ad1e3",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "done",
       "kind": "terminal",
       "display_name": "Done"
@@ -105,177 +105,177 @@
   ],
   "transition_groups": [
     {
-      "id": "group-a0bcdc84-f048-4eda-8d71-46e9b735c837",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-65fd1e69-daa8-451d-ad29-52273db1db13",
+      "id": "group-6b4e20b0-0ba0-426f-b92e-d46db3a3feb6",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-73976fdb-cbc3-4df6-9733-3413e362105d",
       "transition_id": "start",
       "display_name": "Start",
       "description": "Start one-flow release preparation from the task body."
     },
     {
-      "id": "group-61fd5cf0-ff6c-4a82-b185-008cde8615d1",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+      "id": "group-25e690fa-41ae-458c-9e23-1790dc7bcfe2",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
       "transition_id": "compliance",
       "display_name": "Compliance",
       "description": "Release version bump is prepared; run mandatory compliance review before PR."
     },
     {
-      "id": "group-56664f3b-6775-49a3-ae9e-add3a2147898",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+      "id": "group-254f0452-3cae-4ec6-a7a3-23d2131f6bd6",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
       "description": "prepare cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-5dbd9798-10f9-431c-9e7b-24d3f3beb4f5",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
+      "id": "group-40f94378-7c2e-4638-94d8-4f0e596581ac",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
       "transition_id": "ship_pr",
       "display_name": "Ship PR",
       "description": "Compliance passed; create or update the task PR before any terminal completion."
     },
     {
-      "id": "group-59b9cc45-ff33-41ef-8b2f-16aaa02c6316",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
+      "id": "group-0c5a2849-8183-427c-8fb1-636ae725e7c3",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
       "description": "Compliance found release-preparation violations; continue to fixes without manual approval."
     },
     {
-      "id": "group-17cc1920-c194-4013-bfd8-0eaaa8df78f7",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
+      "id": "group-bda095a6-2a1a-4c75-9eb9-1921e021a1a9",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
       "description": "compliance cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-924268b7-ec8c-4dfc-8c41-9a2030ad9fd2",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
+      "id": "group-31b6f0a4-f78a-4778-ad48-f0fa131f1e37",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
       "transition_id": "monitor_ci",
       "display_name": "Monitor Ci",
       "description": "Release PR exists; monitor checks."
     },
     {
-      "id": "group-986d01ca-05b8-473d-bf17-9bfa81b5669a",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
+      "id": "group-2a42e3f4-ca4f-4aac-a8bf-951c440fcd3a",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
       "description": "ship_pr cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-0583145f-ec64-45d3-a77f-3fbcb06990d6",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
+      "id": "group-ff962732-bc93-4152-8fbd-e4f4f599e298",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
       "transition_id": "waiting_pr",
       "display_name": "Waiting PR",
       "description": "Release PR CI passed or was intentionally skipped; wait until the PR is merged before tag publication."
     },
     {
-      "id": "group-c9c24869-2449-482e-b2aa-fe13a359295f",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
+      "id": "group-9a377344-c009-4447-b4c7-c291f4b20a86",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
       "description": "Release PR checks failed; continue to fixes without manual approval."
     },
     {
-      "id": "group-a16f76de-f9fb-4dda-b276-120863bf1005",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
+      "id": "group-05159cae-6e2c-469e-a432-a7065d774792",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
       "description": "ci_monitor cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-2d2a3e16-2d20-4774-81c4-1f116cd43f40",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
+      "id": "group-f2ec6527-7b65-49a1-8d95-0f404ffa94eb",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
       "transition_id": "monitor",
       "display_name": "Monitor",
       "description": "Release tag was pushed; monitor release automation when available."
     },
     {
-      "id": "group-e3ddd61b-3b97-4e7e-ad1a-4b1b47d4e3e1",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
+      "id": "group-7ffd37d5-6e2e-4860-9eb5-cf2dbd037975",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
       "description": "publish cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-901a4611-3b31-4a54-804e-6294786e30e2",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
+      "id": "group-cba3a377-df16-44ff-aee8-671b5cbf7d95",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
       "transition_id": "release_published",
       "display_name": "Release Published",
       "description": "Release tag/publication was completed and monitored; cleanup can finish the task."
     },
     {
-      "id": "group-008b5b03-50eb-4276-a01a-f34c75ce4be6",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
+      "id": "group-42b09abf-62a0-442a-b26d-ed64524f97a0",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
       "description": "monitor cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-79b1b062-9b8f-4598-8a9f-2ff1b3fdf1ec",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-a0bedfe2-b399-456f-a0be-61ca70704811",
+      "id": "group-c2dae728-5f18-4901-a3c0-3bc6af4fca03",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
       "transition_id": "done",
       "display_name": "Done",
       "description": "Cleanup report is ready; finish the release task."
     },
     {
-      "id": "group-e21a073b-10f2-402b-94e5-8b1239288c6a",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
+      "id": "group-7d5870e1-7ee1-4f94-9d2b-7709f28be05d",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
       "description": "Release PR creation/update hit a recoverable branch, rebase, conflict, push, or metadata issue; user approval required before recovery work."
     },
     {
-      "id": "group-a7e0dff6-2d65-45b5-a937-fa2ae9db916c",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
+      "id": "group-fedc6be8-56f2-4c04-a147-3e3727ff4146",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
       "transition_id": "pr_merged",
       "display_name": "Pr Merged",
       "description": "Release PR is merged; publish the approved tag after human approval."
     },
     {
-      "id": "group-def5967b-a961-4139-b2ac-fea582269726",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
+      "id": "group-b36e18d1-e437-4053-be6e-11be463e6aa4",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
       "transition_id": "needs_changes",
       "display_name": "Needs Changes",
       "description": "Release PR needs task-scoped changes before it can be merged."
     },
     {
-      "id": "group-668bcce6-ceef-498a-a66f-c0bcbb9b9f0e",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
+      "id": "group-87b5a742-40cd-462f-8962-6b395a8eef7f",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
       "transition_id": "needs_user_action",
       "display_name": "Needs User Action",
       "description": "Release PR is still waiting on a human or external process; remain in Waiting PR."
     },
     {
-      "id": "group-eeb67e0b-9098-4591-acf4-f5bd1d23fa30",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
+      "id": "group-2ca80118-bc7d-4a36-bb97-becb5afb662d",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
       "transition_id": "close_without_merge",
       "display_name": "Close Without Merge",
       "description": "User explicitly canceled the release PR without merge; cleanup can finish."
     },
     {
-      "id": "group-c2158ca7-1390-49c6-b7be-149f04b70e56",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "source_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+      "id": "group-6b4c5dce-d0c1-43e4-8843-a2c8ec17270d",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
       "transition_id": "wont_do",
       "display_name": "Wont Do",
       "description": "Latest user comment explicitly cancels this task or declares it not planned; finish without treating it as a recoverable blocker."
@@ -283,11 +283,11 @@
   ],
   "edges": [
     {
-      "id": "edge-e9686552-fb8a-4c41-9b72-5e1a1262fdb5",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-a0bcdc84-f048-4eda-8d71-46e9b735c837",
+      "id": "edge-f30cd67a-03f9-42b4-bf08-14e39ec7f1da",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-6b4e20b0-0ba0-426f-b92e-d46db3a3feb6",
       "key": "start_prepare",
-      "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -296,11 +296,11 @@
       "prompt_template": "Run the Puber one-flow release process.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. Treat the task body as release intent. Default to next minor release from origin/master. Use patch only when explicitly requested; use major only when explicitly requested. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent.\n\nFetch origin/master and tags, compute the target version, create or reuse release/<version>, update app/build.gradle.kts currentVersion, commit the bump, and verify with focused compile checks. If local release signing secrets are unavailable, record that production packaging could not be locally proven, but do not block the version-bump PR solely for missing local signing secrets. Do not create or push a release tag in this node.\n\nComplete with compliance when the version bump branch is ready and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, and verification_summary. Complete with needs_user_action and provide blocker_reason if the release cannot be prepared safely."
     },
     {
-      "id": "edge-94356a5f-0d82-4353-a5bd-cf00d8c420fb",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-61fd5cf0-ff6c-4a82-b185-008cde8615d1",
+      "id": "edge-bf4f1e98-5236-4f6d-9ff7-1297ac0f2d46",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-25e690fa-41ae-458c-9e23-1790dc7bcfe2",
       "key": "prepare_done",
-      "target_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
+      "target_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -339,11 +339,11 @@
       ]
     },
     {
-      "id": "edge-9fd4165c-01fa-4291-b134-eb11981b5896",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-56664f3b-6775-49a3-ae9e-add3a2147898",
+      "id": "edge-1e655c4e-5f7f-4748-acd7-282d011f81c1",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-254f0452-3cae-4ec6-a7a3-23d2131f6bd6",
       "key": "prepare_needs_user_action",
-      "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -358,11 +358,11 @@
       ]
     },
     {
-      "id": "edge-05335457-6fbd-4556-9bc8-1a0ddfa17f52",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-5dbd9798-10f9-431c-9e7b-24d3f3beb4f5",
+      "id": "edge-a1d1516a-bb3c-4e76-9878-dafa7ab151b3",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-40f94378-7c2e-4638-94d8-4f0e596581ac",
       "key": "compliance_ship_pr",
-      "target_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
+      "target_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -377,11 +377,11 @@
       ]
     },
     {
-      "id": "edge-434049c1-a5bd-4713-aed5-278651deb0df",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-59b9cc45-ff33-41ef-8b2f-16aaa02c6316",
+      "id": "edge-f42f7da6-822d-4e09-8685-9c9d5a6127a8",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-0c5a2849-8183-427c-8fb1-636ae725e7c3",
       "key": "compliance_fix",
-      "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -400,11 +400,11 @@
       ]
     },
     {
-      "id": "edge-97bb2c4a-612b-4884-b9c4-e9693cfa6f18",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-17cc1920-c194-4013-bfd8-0eaaa8df78f7",
+      "id": "edge-469e82b6-de84-4ec1-82ef-4a0ea5a2a876",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-bda095a6-2a1a-4c75-9eb9-1921e021a1a9",
       "key": "compliance_needs_user_action",
-      "target_node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
+      "target_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -419,11 +419,11 @@
       ]
     },
     {
-      "id": "edge-ceb78622-eaa4-453f-bc8d-7c0ecc14c75c",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-924268b7-ec8c-4dfc-8c41-9a2030ad9fd2",
+      "id": "edge-fa6b5dd5-fc96-4cfe-ba27-34c0e6ebe0b3",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-31b6f0a4-f78a-4778-ad48-f0fa131f1e37",
       "key": "monitor_ci",
-      "target_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
+      "target_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -454,11 +454,11 @@
       ]
     },
     {
-      "id": "edge-c7370c49-63ec-4d62-9b7c-36f1cd0e4ed1",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-986d01ca-05b8-473d-bf17-9bfa81b5669a",
+      "id": "edge-db7e99b9-b502-454a-b1d9-d3a9c4d2e0ba",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-2a42e3f4-ca4f-4aac-a8bf-951c440fcd3a",
       "key": "ship_pr_needs_user_action",
-      "target_node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
+      "target_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -473,11 +473,11 @@
       ]
     },
     {
-      "id": "edge-6c5fd08a-c3b0-49d6-824c-7f4289599b53",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-0583145f-ec64-45d3-a77f-3fbcb06990d6",
+      "id": "edge-98597989-2b6e-4f8b-9624-7a77e72321bf",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-ff962732-bc93-4152-8fbd-e4f4f599e298",
       "key": "ci_waiting_pr",
-      "target_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
+      "target_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -512,11 +512,11 @@
       ]
     },
     {
-      "id": "edge-16569b09-ecdc-4de4-bbcf-3e35ea9fcce7",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-c9c24869-2449-482e-b2aa-fe13a359295f",
+      "id": "edge-789f485a-f295-4512-95f2-f397308c5812",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-9a377344-c009-4447-b4c7-c291f4b20a86",
       "key": "ci_fix",
-      "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -535,11 +535,11 @@
       ]
     },
     {
-      "id": "edge-e02a752c-4e67-4b1c-b06b-37995e9816f8",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-a16f76de-f9fb-4dda-b276-120863bf1005",
+      "id": "edge-28ea1c8d-1c54-4bc6-8bb4-2136d446c214",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-05159cae-6e2c-469e-a432-a7065d774792",
       "key": "ci_monitor_needs_user_action",
-      "target_node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
+      "target_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -554,11 +554,11 @@
       ]
     },
     {
-      "id": "edge-28829c7b-a235-41a9-a5cf-7cd07fce81ea",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-2d2a3e16-2d20-4774-81c4-1f116cd43f40",
+      "id": "edge-dce08ef7-233e-4221-92fe-a130e07eda10",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-f2ec6527-7b65-49a1-8d95-0f404ffa94eb",
       "key": "monitor_release",
-      "target_node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
+      "target_node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -589,11 +589,11 @@
       ]
     },
     {
-      "id": "edge-76cb7cc9-afdb-471b-9c30-0575d769d0fa",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-e3ddd61b-3b97-4e7e-ad1a-4b1b47d4e3e1",
+      "id": "edge-be46bffb-ad0d-42e1-965d-806f9ca2c229",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-7ffd37d5-6e2e-4860-9eb5-cf2dbd037975",
       "key": "publish_needs_user_action",
-      "target_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
+      "target_node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -608,11 +608,11 @@
       ]
     },
     {
-      "id": "edge-f6e61b45-54eb-4c42-86e7-6d28ef4f7a4b",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-901a4611-3b31-4a54-804e-6294786e30e2",
+      "id": "edge-a6b801c6-244b-422c-ad98-d9bbb9271f62",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-cba3a377-df16-44ff-aee8-671b5cbf7d95",
       "key": "release_release_published",
-      "target_node_id": "node-a0bedfe2-b399-456f-a0be-61ca70704811",
+      "target_node_id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -627,11 +627,11 @@
       ]
     },
     {
-      "id": "edge-2a57cb62-d880-4e73-a460-bf834dcb2b64",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-008b5b03-50eb-4276-a01a-f34c75ce4be6",
+      "id": "edge-26077f26-6c57-41ab-8245-9e1446d2c8b8",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-42b09abf-62a0-442a-b26d-ed64524f97a0",
       "key": "monitor_needs_user_action",
-      "target_node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
+      "target_node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -646,11 +646,11 @@
       ]
     },
     {
-      "id": "edge-6be87558-0c31-4fe9-a28c-724d76c263d9",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-79b1b062-9b8f-4598-8a9f-2ff1b3fdf1ec",
+      "id": "edge-0c0c4eb5-c271-49dd-bb06-034973638b15",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-c2dae728-5f18-4901-a3c0-3bc6af4fca03",
       "key": "cleanup_done",
-      "target_node_id": "node-0ebf8742-e371-440f-97e2-fc3834a09906",
+      "target_node_id": "node-6d3acc49-d5b3-42ee-b829-fa0d5c0ad1e3",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -664,11 +664,11 @@
       ]
     },
     {
-      "id": "edge-6018e22d-2198-45ed-a4b3-bdfe93775e78",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-e21a073b-10f2-402b-94e5-8b1239288c6a",
+      "id": "edge-b3efc5c1-2623-40db-afa1-81e28f4de91f",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-7d5870e1-7ee1-4f94-9d2b-7709f28be05d",
       "key": "pr_fix",
-      "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -703,11 +703,11 @@
       ]
     },
     {
-      "id": "edge-b4ae17cc-edc6-47e2-b9ea-c4b00cd07600",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-a7e0dff6-2d65-45b5-a937-fa2ae9db916c",
+      "id": "edge-c4271bd5-8edb-465b-b633-5d0d8e428d33",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-fedc6be8-56f2-4c04-a147-3e3727ff4146",
       "key": "publish_after_merge",
-      "target_node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
+      "target_node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -742,11 +742,11 @@
       ]
     },
     {
-      "id": "edge-dcac956d-47aa-4a43-87e4-ccae167e11e3",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-def5967b-a961-4139-b2ac-fea582269726",
+      "id": "edge-85f82683-3a4f-4e61-909e-431df6e16be8",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-b36e18d1-e437-4053-be6e-11be463e6aa4",
       "key": "pr_feedback",
-      "target_node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -773,11 +773,11 @@
       ]
     },
     {
-      "id": "edge-37f43543-3ab7-4f60-bcf1-5ae7e8a2bcac",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-668bcce6-ceef-498a-a66f-c0bcbb9b9f0e",
+      "id": "edge-a6a386ca-7963-4090-b245-07187998eff1",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-87b5a742-40cd-462f-8962-6b395a8eef7f",
       "key": "waiting_pr_needs_user_action",
-      "target_node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
+      "target_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -812,11 +812,11 @@
       ]
     },
     {
-      "id": "edge-bd3ab2d8-ced1-43b2-b740-ada232876991",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-eeb67e0b-9098-4591-acf4-f5bd1d23fa30",
+      "id": "edge-dba0a07e-9787-4523-ade6-b96fffefaa83",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-2ca80118-bc7d-4a36-bb97-becb5afb662d",
       "key": "release_cancel_cleanup",
-      "target_node_id": "node-a0bedfe2-b399-456f-a0be-61ca70704811",
+      "target_node_id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -843,11 +843,11 @@
       ]
     },
     {
-      "id": "edge-9228ca82-9ab5-4dfe-b073-21ebe5d0b65f",
-      "workflow_id": "42287243-1486-45e6-8f8d-3ecddba896be",
-      "transition_group_id": "group-c2158ca7-1390-49c6-b7be-149f04b70e56",
+      "id": "edge-e7a68b89-f65b-48d5-8470-63ce1cbc2ead",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "group-6b4c5dce-d0c1-43e4-8843-a2c8ec17270d",
       "key": "prepare_wont_do",
-      "target_node_id": "node-a19c6feb-2c82-4c67-960a-31ee75b785d2",
+      "target_node_id": "node-bf653ac7-5910-4077-8e01-84002a436d03",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -864,10 +864,10 @@
   "derived_wiring": {
     "nodes": [
       {
-        "node_id": "node-65fd1e69-daa8-451d-ad29-52273db1db13"
+        "node_id": "node-73976fdb-cbc3-4df6-9733-3413e362105d"
       },
       {
-        "node_id": "node-86293208-dd6b-4ff6-89d4-d6567a8b4e55",
+        "node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
         "possible_provision_fields": [
           {
             "name": "release_version",
@@ -908,7 +908,7 @@
         ]
       },
       {
-        "node_id": "node-77c2b3c6-04e4-4e03-a964-2aa5c47259c8",
+        "node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
         "possible_provision_fields": [
           {
             "name": "compliance_report",
@@ -925,7 +925,7 @@
         ]
       },
       {
-        "node_id": "node-b72f177e-2ffe-4bf9-a018-ba65361119fa",
+        "node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
         "possible_provision_fields": [
           {
             "name": "pr_url",
@@ -962,7 +962,7 @@
         ]
       },
       {
-        "node_id": "node-8497fa66-4fc6-457d-8c0b-7e1da150bd26",
+        "node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
         "possible_provision_fields": [
           {
             "name": "pr_url",
@@ -995,7 +995,7 @@
         ]
       },
       {
-        "node_id": "node-feeb41cd-253b-401b-add9-888b0237abe9",
+        "node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
         "possible_provision_fields": [
           {
             "name": "release_version",
@@ -1024,7 +1024,7 @@
         ]
       },
       {
-        "node_id": "node-f5349410-9178-4fb1-a909-0b5dad73cfe4",
+        "node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
         "possible_provision_fields": [
           {
             "name": "release_report",
@@ -1037,7 +1037,7 @@
         ]
       },
       {
-        "node_id": "node-a0bedfe2-b399-456f-a0be-61ca70704811",
+        "node_id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
         "possible_provision_fields": [
           {
             "name": "cleanup_report",
@@ -1046,10 +1046,10 @@
         ]
       },
       {
-        "node_id": "node-a19c6feb-2c82-4c67-960a-31ee75b785d2"
+        "node_id": "node-bf653ac7-5910-4077-8e01-84002a436d03"
       },
       {
-        "node_id": "node-c0d75fb3-8a2c-4109-b0b0-89afb43ace0a",
+        "node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
         "possible_provision_fields": [
           {
             "name": "pr_url",
@@ -1090,15 +1090,15 @@
         ]
       },
       {
-        "node_id": "node-0ebf8742-e371-440f-97e2-fc3834a09906"
+        "node_id": "node-6d3acc49-d5b3-42ee-b829-fa0d5c0ad1e3"
       }
     ],
     "transition_groups": [
       {
-        "transition_group_id": "group-a0bcdc84-f048-4eda-8d71-46e9b735c837"
+        "transition_group_id": "group-6b4e20b0-0ba0-426f-b92e-d46db3a3feb6"
       },
       {
-        "transition_group_id": "group-61fd5cf0-ff6c-4a82-b185-008cde8615d1",
+        "transition_group_id": "group-25e690fa-41ae-458c-9e23-1790dc7bcfe2",
         "required_provision_fields": [
           {
             "name": "release_version",
@@ -1131,7 +1131,7 @@
         ]
       },
       {
-        "transition_group_id": "group-56664f3b-6775-49a3-ae9e-add3a2147898",
+        "transition_group_id": "group-254f0452-3cae-4ec6-a7a3-23d2131f6bd6",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1140,7 +1140,7 @@
         ]
       },
       {
-        "transition_group_id": "group-5dbd9798-10f9-431c-9e7b-24d3f3beb4f5",
+        "transition_group_id": "group-40f94378-7c2e-4638-94d8-4f0e596581ac",
         "required_provision_fields": [
           {
             "name": "compliance_report",
@@ -1149,7 +1149,7 @@
         ]
       },
       {
-        "transition_group_id": "group-59b9cc45-ff33-41ef-8b2f-16aaa02c6316",
+        "transition_group_id": "group-0c5a2849-8183-427c-8fb1-636ae725e7c3",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -1162,7 +1162,7 @@
         ]
       },
       {
-        "transition_group_id": "group-17cc1920-c194-4013-bfd8-0eaaa8df78f7",
+        "transition_group_id": "group-bda095a6-2a1a-4c75-9eb9-1921e021a1a9",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1171,7 +1171,7 @@
         ]
       },
       {
-        "transition_group_id": "group-924268b7-ec8c-4dfc-8c41-9a2030ad9fd2",
+        "transition_group_id": "group-31b6f0a4-f78a-4778-ad48-f0fa131f1e37",
         "required_provision_fields": [
           {
             "name": "pr_url",
@@ -1196,7 +1196,7 @@
         ]
       },
       {
-        "transition_group_id": "group-986d01ca-05b8-473d-bf17-9bfa81b5669a",
+        "transition_group_id": "group-2a42e3f4-ca4f-4aac-a8bf-951c440fcd3a",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1205,7 +1205,7 @@
         ]
       },
       {
-        "transition_group_id": "group-0583145f-ec64-45d3-a77f-3fbcb06990d6",
+        "transition_group_id": "group-ff962732-bc93-4152-8fbd-e4f4f599e298",
         "required_provision_fields": [
           {
             "name": "pr_url",
@@ -1234,7 +1234,7 @@
         ]
       },
       {
-        "transition_group_id": "group-c9c24869-2449-482e-b2aa-fe13a359295f",
+        "transition_group_id": "group-9a377344-c009-4447-b4c7-c291f4b20a86",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -1247,7 +1247,7 @@
         ]
       },
       {
-        "transition_group_id": "group-a16f76de-f9fb-4dda-b276-120863bf1005",
+        "transition_group_id": "group-05159cae-6e2c-469e-a432-a7065d774792",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1256,7 +1256,7 @@
         ]
       },
       {
-        "transition_group_id": "group-2d2a3e16-2d20-4774-81c4-1f116cd43f40",
+        "transition_group_id": "group-f2ec6527-7b65-49a1-8d95-0f404ffa94eb",
         "required_provision_fields": [
           {
             "name": "release_version",
@@ -1281,7 +1281,7 @@
         ]
       },
       {
-        "transition_group_id": "group-e3ddd61b-3b97-4e7e-ad1a-4b1b47d4e3e1",
+        "transition_group_id": "group-7ffd37d5-6e2e-4860-9eb5-cf2dbd037975",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1290,7 +1290,7 @@
         ]
       },
       {
-        "transition_group_id": "group-901a4611-3b31-4a54-804e-6294786e30e2",
+        "transition_group_id": "group-cba3a377-df16-44ff-aee8-671b5cbf7d95",
         "required_provision_fields": [
           {
             "name": "release_report",
@@ -1299,7 +1299,7 @@
         ]
       },
       {
-        "transition_group_id": "group-008b5b03-50eb-4276-a01a-f34c75ce4be6",
+        "transition_group_id": "group-42b09abf-62a0-442a-b26d-ed64524f97a0",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1308,7 +1308,7 @@
         ]
       },
       {
-        "transition_group_id": "group-79b1b062-9b8f-4598-8a9f-2ff1b3fdf1ec",
+        "transition_group_id": "group-c2dae728-5f18-4901-a3c0-3bc6af4fca03",
         "required_provision_fields": [
           {
             "name": "cleanup_report",
@@ -1317,7 +1317,7 @@
         ]
       },
       {
-        "transition_group_id": "group-e21a073b-10f2-402b-94e5-8b1239288c6a",
+        "transition_group_id": "group-7d5870e1-7ee1-4f94-9d2b-7709f28be05d",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -1346,7 +1346,7 @@
         ]
       },
       {
-        "transition_group_id": "group-a7e0dff6-2d65-45b5-a937-fa2ae9db916c",
+        "transition_group_id": "group-fedc6be8-56f2-4c04-a147-3e3727ff4146",
         "required_provision_fields": [
           {
             "name": "pr_url",
@@ -1375,7 +1375,7 @@
         ]
       },
       {
-        "transition_group_id": "group-def5967b-a961-4139-b2ac-fea582269726",
+        "transition_group_id": "group-b36e18d1-e437-4053-be6e-11be463e6aa4",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -1396,7 +1396,7 @@
         ]
       },
       {
-        "transition_group_id": "group-668bcce6-ceef-498a-a66f-c0bcbb9b9f0e",
+        "transition_group_id": "group-87b5a742-40cd-462f-8962-6b395a8eef7f",
         "required_provision_fields": [
           {
             "name": "pr_url",
@@ -1425,7 +1425,7 @@
         ]
       },
       {
-        "transition_group_id": "group-eeb67e0b-9098-4591-acf4-f5bd1d23fa30",
+        "transition_group_id": "group-2ca80118-bc7d-4a36-bb97-becb5afb662d",
         "required_provision_fields": [
           {
             "name": "pr_url",
@@ -1446,7 +1446,7 @@
         ]
       },
       {
-        "transition_group_id": "group-c2158ca7-1390-49c6-b7be-149f04b70e56",
+        "transition_group_id": "group-6b4c5dce-d0c1-43e4-8843-a2c8ec17270d",
         "required_provision_fields": [
           {
             "name": "closure_reason",
@@ -1457,10 +1457,10 @@
     ],
     "edges": [
       {
-        "edge_id": "edge-e9686552-fb8a-4c41-9b72-5e1a1262fdb5"
+        "edge_id": "edge-f30cd67a-03f9-42b4-bf08-14e39ec7f1da"
       },
       {
-        "edge_id": "edge-94356a5f-0d82-4353-a5bd-cf00d8c420fb",
+        "edge_id": "edge-bf4f1e98-5236-4f6d-9ff7-1297ac0f2d46",
         "input_bindings": [
           {
             "name": "release_version",
@@ -1530,7 +1530,7 @@
         ]
       },
       {
-        "edge_id": "edge-9fd4165c-01fa-4291-b134-eb11981b5896",
+        "edge_id": "edge-1e655c4e-5f7f-4748-acd7-282d011f81c1",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1546,7 +1546,7 @@
         ]
       },
       {
-        "edge_id": "edge-05335457-6fbd-4556-9bc8-1a0ddfa17f52",
+        "edge_id": "edge-a1d1516a-bb3c-4e76-9878-dafa7ab151b3",
         "input_bindings": [
           {
             "name": "compliance_report",
@@ -1562,7 +1562,7 @@
         ]
       },
       {
-        "edge_id": "edge-434049c1-a5bd-4713-aed5-278651deb0df",
+        "edge_id": "edge-f42f7da6-822d-4e09-8685-9c9d5a6127a8",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -1587,7 +1587,7 @@
         ]
       },
       {
-        "edge_id": "edge-97bb2c4a-612b-4884-b9c4-e9693cfa6f18",
+        "edge_id": "edge-469e82b6-de84-4ec1-82ef-4a0ea5a2a876",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1603,7 +1603,7 @@
         ]
       },
       {
-        "edge_id": "edge-ceb78622-eaa4-453f-bc8d-7c0ecc14c75c",
+        "edge_id": "edge-fa6b5dd5-fc96-4cfe-ba27-34c0e6ebe0b3",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -1655,7 +1655,7 @@
         ]
       },
       {
-        "edge_id": "edge-c7370c49-63ec-4d62-9b7c-36f1cd0e4ed1",
+        "edge_id": "edge-db7e99b9-b502-454a-b1d9-d3a9c4d2e0ba",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1671,7 +1671,7 @@
         ]
       },
       {
-        "edge_id": "edge-6c5fd08a-c3b0-49d6-824c-7f4289599b53",
+        "edge_id": "edge-98597989-2b6e-4f8b-9624-7a77e72321bf",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -1732,7 +1732,7 @@
         ]
       },
       {
-        "edge_id": "edge-16569b09-ecdc-4de4-bbcf-3e35ea9fcce7",
+        "edge_id": "edge-789f485a-f295-4512-95f2-f397308c5812",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -1757,7 +1757,7 @@
         ]
       },
       {
-        "edge_id": "edge-e02a752c-4e67-4b1c-b06b-37995e9816f8",
+        "edge_id": "edge-28ea1c8d-1c54-4bc6-8bb4-2136d446c214",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1773,7 +1773,7 @@
         ]
       },
       {
-        "edge_id": "edge-28829c7b-a235-41a9-a5cf-7cd07fce81ea",
+        "edge_id": "edge-dce08ef7-233e-4221-92fe-a130e07eda10",
         "input_bindings": [
           {
             "name": "release_version",
@@ -1825,7 +1825,7 @@
         ]
       },
       {
-        "edge_id": "edge-76cb7cc9-afdb-471b-9c30-0575d769d0fa",
+        "edge_id": "edge-be46bffb-ad0d-42e1-965d-806f9ca2c229",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1841,7 +1841,7 @@
         ]
       },
       {
-        "edge_id": "edge-f6e61b45-54eb-4c42-86e7-6d28ef4f7a4b",
+        "edge_id": "edge-a6b801c6-244b-422c-ad98-d9bbb9271f62",
         "input_bindings": [
           {
             "name": "release_report",
@@ -1857,7 +1857,7 @@
         ]
       },
       {
-        "edge_id": "edge-2a57cb62-d880-4e73-a460-bf834dcb2b64",
+        "edge_id": "edge-26077f26-6c57-41ab-8245-9e1446d2c8b8",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1873,7 +1873,7 @@
         ]
       },
       {
-        "edge_id": "edge-6be87558-0c31-4fe9-a28c-724d76c263d9",
+        "edge_id": "edge-0c0c4eb5-c271-49dd-bb06-034973638b15",
         "input_bindings": [
           {
             "name": "cleanup_report",
@@ -1889,7 +1889,7 @@
         ]
       },
       {
-        "edge_id": "edge-6018e22d-2198-45ed-a4b3-bdfe93775e78",
+        "edge_id": "edge-b3efc5c1-2623-40db-afa1-81e28f4de91f",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -1950,7 +1950,7 @@
         ]
       },
       {
-        "edge_id": "edge-b4ae17cc-edc6-47e2-b9ea-c4b00cd07600",
+        "edge_id": "edge-c4271bd5-8edb-465b-b633-5d0d8e428d33",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -2011,7 +2011,7 @@
         ]
       },
       {
-        "edge_id": "edge-dcac956d-47aa-4a43-87e4-ccae167e11e3",
+        "edge_id": "edge-85f82683-3a4f-4e61-909e-431df6e16be8",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -2054,7 +2054,7 @@
         ]
       },
       {
-        "edge_id": "edge-37f43543-3ab7-4f60-bcf1-5ae7e8a2bcac",
+        "edge_id": "edge-a6a386ca-7963-4090-b245-07187998eff1",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -2115,7 +2115,7 @@
         ]
       },
       {
-        "edge_id": "edge-bd3ab2d8-ced1-43b2-b740-ada232876991",
+        "edge_id": "edge-dba0a07e-9787-4523-ade6-b96fffefaa83",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -2158,7 +2158,7 @@
         ]
       },
       {
-        "edge_id": "edge-9228ca82-9ab5-4dfe-b073-21ebe5d0b65f",
+        "edge_id": "edge-e7a68b89-f65b-48d5-8470-63ce1cbc2ead",
         "input_bindings": [
           {
             "name": "closure_reason",

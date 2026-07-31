@@ -84,6 +84,10 @@ Generated Delivery nodes use direct profile roles:
 - Smoke uses global `runtime-smoke-tester` with the Puber Android TV procedure.
 - PR preparation and Cleanup use global `delivery-operator`.
 - CI and Waiting PR use global `ci-monitor`.
+- The release workflow uses project `release-manager` directly for version and
+  tag lifecycle stages, global `delivery-operator` for PR/Cleanup, and global
+  `ci-monitor` for CI, merge-state, and release automation. These nodes must
+  not wrap the same specialist in a `default` session.
 
 - `.kent/config.toml` enables `[workflow] subagents = true`.
 - That setting controls nested delegation only; direct workflow-node roles do

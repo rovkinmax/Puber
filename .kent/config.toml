@@ -97,3 +97,16 @@ workflow_subagent = true
 
 [subagents."quality-reviewer".tools]
 patch = false
+
+[subagents."release-manager"]
+model = "gpt-5.6-terra"
+system_prompt_file = "subagents/release-manager.md"
+thinking_level = "medium"
+model_verbosity = "low"
+agent_callable = false
+workflow_subagent = false
+
+[subagents."release-manager".tools]
+shell = true
+patch = true
+edit = false

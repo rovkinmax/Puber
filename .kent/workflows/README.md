@@ -19,14 +19,18 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Engineering Delivery v9` (default): common delivery for
+- `Puber Engineering Delivery v11` (default): common delivery for
   `feature`, `bugfix`, `refactor`, `migration`, `dependency`, and `test`.
   Plan selects one `work_kind`, Implement preserves it across bounded slices,
   and the common verification, Smoke, compliance, PR/CI, waiting, and cleanup
   tail handles delivery.
-- `Puber Release`: default next minor release from `origin/master` through
+- `Puber Release`: next minor release from `origin/master` through
   version-bump PR, CI, approved tag publication, optional automation
   monitoring, and cleanup. Patch/major releases require explicit wording.
+
+`Puber Release` assigns operational ownership directly: `release-manager` owns
+version/tag lifecycle, `delivery-operator` owns PR/Cleanup, and `ci-monitor`
+owns CI, merge-state, and release automation.
 
 Covered specialized workflows and earlier Delivery versions are retired.
 Completed and canceled task history is not a retention requirement.
