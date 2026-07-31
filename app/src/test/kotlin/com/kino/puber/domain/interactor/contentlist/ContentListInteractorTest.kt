@@ -14,6 +14,8 @@ import com.kino.puber.data.preferences.ContentPreferences
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.ui.feature.contentlist.model.AnimeFilterMode
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
+import com.kino.puber.ui.feature.contentlist.model.TabTypeConfig
+import com.kino.puber.ui.feature.main.model.TabType
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -141,6 +143,71 @@ class ContentListInteractorTest {
         )
 
         assertEquals(listOf(anime), interactor.loadPage(config, page = 1).items)
+    }
+
+    @Test
+    fun heroConfig_routesShortcutRequestWithGenreAndRetainsOnlyAnime() = runTest {
+        val config = TabTypeConfig.heroConfigsFor(TabType.Anime)
+            .single { it.type == "serial" }
+        val anime = item(id = 1, title = "Anime", ANIME_GENRE_ID)
+        coEvery {
+            api.getItemsByShortcut("hot", "serial", 1, ANIME_GENRE_ID.toString())
+        } returns Result.success(
+            page(
+                anime,
+                item(id = 2, title = "Movie"),
+            )
+        )
+
+        val result = interactor.loadPage(config, page = 1)
+
+        assertEquals(listOf(anime), result.items)
+        coVerify(exactly = 1) {
+            api.getItemsByShortcut("hot", "serial", 1, ANIME_GENRE_ID.toString())
+        }
+        coVerify(exactly = 0) { api.getItems(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun cartoonHeroConfig_refillsAcrossShortcutPagesAndSuppressesDuplicateIds() = runTest {
+        val config = TabTypeConfig.heroConfigsFor(TabType.Cartoons)
+            .single { it.type == "movie" }
+        val firstCartoon = item(id = 2, title = "Cartoon 1", CARTOON_GENRE_ID)
+        val secondCartoon = item(id = 3, title = "Cartoon 2", CARTOON_GENRE_ID)
+        coEvery {
+            api.getItemsByShortcut("hot", "movie", 1, CARTOON_GENRE_ID.toString())
+        } returns Result.success(
+            page(
+                item(id = 1, title = "Anime", ANIME_GENRE_ID),
+                firstCartoon,
+                current = 1,
+                total = 2,
+                perpage = 2,
+            )
+        )
+        coEvery {
+            api.getItemsByShortcut("hot", "movie", 2, CARTOON_GENRE_ID.toString())
+        } returns Result.success(
+            page(
+                firstCartoon.copy(title = "Duplicate"),
+                secondCartoon,
+                current = 2,
+                total = 2,
+                perpage = 2,
+            )
+        )
+
+        val result = interactor.loadPage(config, page = 1)
+
+        assertEquals(listOf(firstCartoon, secondCartoon), result.items)
+        assertEquals(2, result.pagination.current)
+        coVerify(exactly = 1) {
+            api.getItemsByShortcut("hot", "movie", 1, CARTOON_GENRE_ID.toString())
+        }
+        coVerify(exactly = 1) {
+            api.getItemsByShortcut("hot", "movie", 2, CARTOON_GENRE_ID.toString())
+        }
+        coVerify(exactly = 0) { api.getItems(any(), any(), any(), any(), any()) }
     }
 
     @Test

@@ -6,6 +6,20 @@ import com.kino.puber.ui.feature.main.model.TabType
 
 internal object TabTypeConfig {
 
+    fun heroConfigsFor(tabType: TabType): List<SectionConfig> = when (tabType) {
+        TabType.Cartoons -> heroConfigs(
+            idSuffix = "cartoon",
+            genre = CARTOON_GENRE_ID,
+            animeFilterMode = AnimeFilterMode.Exclude,
+        )
+        TabType.Anime -> heroConfigs(
+            idSuffix = "anime",
+            genre = ANIME_GENRE_ID,
+            animeFilterMode = AnimeFilterMode.Only,
+        )
+        else -> emptyList()
+    }
+
     fun sectionsFor(tabType: TabType): List<SectionConfig> = when (tabType) {
         TabType.Movies -> standardSections(
             type = "movie",
@@ -66,6 +80,21 @@ internal object TabTypeConfig {
             animeFilterMode = animeFilterMode,
         ),
     )
+
+    private fun heroConfigs(
+        idSuffix: String,
+        genre: Int,
+        animeFilterMode: AnimeFilterMode,
+    ): List<SectionConfig> = listOf("movie", "serial").map { type ->
+        SectionConfig(
+            id = "hero_hot_${idSuffix}_$type",
+            title = "",
+            type = type,
+            shortcut = "hot",
+            genre = genre.toString(),
+            animeFilterMode = animeFilterMode,
+        )
+    }
 
     private fun sectionsWithout4k(type: String): List<SectionConfig> = listOf(
         SectionConfig(

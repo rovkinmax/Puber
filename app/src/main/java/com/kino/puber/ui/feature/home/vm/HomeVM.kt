@@ -10,6 +10,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.supervisorScope
 import com.kino.puber.R
 import com.kino.puber.core.ui.PuberVM
+import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
@@ -34,6 +35,7 @@ internal class HomeVM(
     router: AppRouter,
     private val interactor: HomeInteractor,
     private val mapper: HomeUIMapper,
+    private val videoItemMapper: VideoItemUIMapper,
     private val apiDomainInteractor: ApiDomainInteractor,
     private val savedItemInteractor: SavedItemInteractor,
     private val resources: ResourceProvider,
@@ -189,7 +191,7 @@ internal class HomeVM(
 
         updateViewState(
             HomeViewState.Content(
-                heroItems = mapper.mapHeroItems(hotItems.take(HERO_ITEMS_COUNT)),
+                heroItems = videoItemMapper.mapHeroItems(hotItems.take(HERO_ITEMS_COUNT)),
                 sections = sections,
                 apiDomainDialog = currentDialogState(),
             )

@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.home.vm
 import com.kino.puber.core.content.ContentChangeSet
 import com.kino.puber.core.content.ContentChangeType
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
@@ -43,6 +44,7 @@ class HomeVMTest {
     private lateinit var screens: Screens
     private lateinit var interactor: HomeInteractor
     private lateinit var mapper: HomeUIMapper
+    private lateinit var videoItemMapper: VideoItemUIMapper
     private lateinit var apiDomainInteractor: ApiDomainInteractor
     private lateinit var savedItemInteractor: SavedItemInteractor
     private lateinit var errorHandler: ErrorHandler
@@ -54,6 +56,7 @@ class HomeVMTest {
         every { router.screens } returns screens
         interactor = mockk(relaxed = true)
         mapper = mockk(relaxed = true)
+        videoItemMapper = mockk(relaxed = true)
         apiDomainInteractor = mockk(relaxed = true)
         savedItemInteractor = mockk(relaxed = true)
         errorHandler = mockk { every { proceed(any()) } returns { } }
@@ -71,7 +74,7 @@ class HomeVMTest {
         coEvery { interactor.getCollections() } returns Result.success(emptyList())
         every { mapper.mapItemSection(any(), any()) } returns null
         every { mapper.mapCollectionSection(any()) } returns null
-        every { mapper.mapHeroItems(any()) } returns emptyList()
+        every { videoItemMapper.mapHeroItems(any()) } returns emptyList()
     }
 
     @Test
@@ -150,7 +153,7 @@ class HomeVMTest {
         vm.testOnStart()
         mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
 
-        verify { mapper.mapHeroItems(listOf(filteredHotItem)) }
+        verify { videoItemMapper.mapHeroItems(listOf(filteredHotItem)) }
         verify { mapper.mapItemSection(listOf(filteredHotItem), HomeSectionType.Hot) }
         verify { mapper.mapItemSection(listOf(personalWatchingItem), HomeSectionType.ContinueWatching) }
     }
@@ -159,6 +162,7 @@ class HomeVMTest {
         router = router,
         interactor = interactor,
         mapper = mapper,
+        videoItemMapper = videoItemMapper,
         apiDomainInteractor = apiDomainInteractor,
         savedItemInteractor = savedItemInteractor,
         resources = FakeResourceProvider(),

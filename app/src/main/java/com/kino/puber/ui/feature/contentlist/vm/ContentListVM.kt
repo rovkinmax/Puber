@@ -1,6 +1,7 @@
 package com.kino.puber.ui.feature.contentlist.vm
 
 import com.kino.puber.core.content.ContentChangeSet
+import com.kino.puber.core.logger.log
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.model.VideoItemUIMapper
@@ -17,8 +18,11 @@ import com.kino.puber.ui.feature.contentlist.model.ContentListAction
 import com.kino.puber.ui.feature.contentlist.model.ContentListViewState
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.showall.ShowAllScreen
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.supervisorScope
 
 internal class ContentListVM(
     router: AppRouter,
@@ -28,10 +32,14 @@ internal class ContentListVM(
     private val navPrefs: NavigationPreferencesRepository,
     private val contentListRefreshCoordinator: ContentListRefreshCoordinator,
     private val contentType: String? = null,
+    private val heroConfigs: List<SectionConfig> = emptyList(),
 ) : PuberVM<ContentListViewState>(router) {
 
-    override val initialViewState = ContentListViewState()
+    override val initialViewState = ContentListViewState(
+        isHeroLoading = heroConfigs.isNotEmpty(),
+    )
     private var focusedItemJob: Job? = null
+    private var heroLoadJob: Job? = null
 
     override fun onStart() {
         val isTopTabs = navPrefs.getNavigationMode() == NavigationMode.TopTabs
@@ -44,6 +52,7 @@ internal class ContentListVM(
         if (isTopTabs) {
             loadGenres()
         }
+        loadHero()
     }
 
     override fun onAction(action: UIAction) {
@@ -53,6 +62,7 @@ internal class ContentListVM(
             is CommonAction.ItemPlayed<*> -> onItemPlayed(action.item as VideoItemUIState)
             is ContentListAction.ShowAll -> openShowAll(action.config)
             is ContentListAction.GenreSelected -> onGenreSelected(action.genreId)
+            is ContentListAction.HeroSelected -> openDetails(action.itemId)
         }
     }
 
@@ -80,8 +90,12 @@ internal class ContentListVM(
     }
 
     private fun onItemSelected(item: VideoItemUIState) {
+        openDetails(item.id)
+    }
+
+    private fun openDetails(itemId: Int) {
         router.navigateForResult<ContentChangeSet>(
-            screen = router.screens.details(item.id),
+            screen = router.screens.details(itemId),
             requestCode = RESULT_CONTENT_CHANGED,
             listener = ::onReturnedContentChanges,
         )
@@ -117,6 +131,7 @@ internal class ContentListVM(
         changes.itemIds.forEach(interactor::invalidateItemDetails)
         interactor.invalidateFirstPageCache()
         contentListRefreshCoordinator.requestRefresh()
+        loadHero()
         val selectedItemId = stateValue.selectedItem.id
         if (selectedItemId > 0 && changes.affectsItem(selectedItemId)) {
             focusedItemJob?.cancel()
@@ -129,7 +144,55 @@ internal class ContentListVM(
         }
     }
 
+    private fun loadHero() {
+        if (heroConfigs.isEmpty()) return
+        heroLoadJob?.cancel()
+        updateViewState<ContentListViewState> {
+            copy(isHeroLoading = true)
+        }
+        heroLoadJob = launch {
+            try {
+                val items = supervisorScope {
+                    heroConfigs
+                        .map { config ->
+                            async { loadHeroItems(config) }
+                        }
+                        .flatMap { it.await() }
+                }
+                    .distinctBy { it.id }
+                    .sortedByDescending { it.ratingPercentage ?: 0 }
+                    .take(HERO_ITEMS_COUNT)
+                updateViewState<ContentListViewState> {
+                    copy(
+                        heroItems = mapper.mapHeroItems(items),
+                        isHeroLoading = false,
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                log(error, "Failed to load content-list hero")
+                updateViewState<ContentListViewState> {
+                    copy(
+                        heroItems = emptyList(),
+                        isHeroLoading = false,
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun loadHeroItems(config: SectionConfig) = try {
+        interactor.loadPage(config, page = 1).items
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        log(error, "Failed to load content-list hero ${config.type}")
+        emptyList()
+    }
+
     private companion object {
         const val FOCUS_DETAILS_DEBOUNCE_MS = 150L
+        const val HERO_ITEMS_COUNT = 10
     }
 }
