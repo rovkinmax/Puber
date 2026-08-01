@@ -19,7 +19,7 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Engineering Delivery v11` (default): common delivery for
+- `Puber Engineering Delivery v12` (default): common delivery for
   `feature`, `bugfix`, `refactor`, `migration`, `dependency`, and `test`.
   Plan selects one `work_kind`, Implement preserves it across bounded slices,
   and the common verification, Smoke, compliance, PR/CI, waiting, and cleanup
