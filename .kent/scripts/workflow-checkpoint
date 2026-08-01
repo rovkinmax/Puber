@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import stat
+import subprocess
+import sys
+
+
+TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+STAGES = ("fix", "smoke")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Write and validate ignored task-local workflow checkpoints."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    for command in ("write", "read", "validate", "clear"):
+        subparser = subparsers.add_parser(command)
+        subparser.add_argument("--stage", required=True, choices=STAGES)
+        subparser.add_argument("--task", required=True)
+        subparser.add_argument("--workspace", type=Path, default=Path.cwd())
+    return parser.parse_args()
+
+
+def run_git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if check and result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise ValueError(f"git {' '.join(args)} failed: {detail}")
+    return result
+
+
+def repository_root(workspace: Path) -> Path:
+    resolved = workspace.expanduser().resolve()
+    result = run_git(resolved, "rev-parse", "--show-toplevel")
+    root = Path(result.stdout.strip()).resolve()
+    if root != resolved:
+        raise ValueError(
+            f"workspace must be the repository root: {resolved}; found {root}"
+        )
+    return root
+
+
+def checkpoint_path(root: Path, task: str, stage: str) -> Path:
+    if not TASK_KEY.fullmatch(task):
+        raise ValueError(f"invalid task key: {task!r}")
+    return root / ".kent" / "runtime" / task / f"{stage}-checkpoint.json"
+
+
+def open_child_directory(
+    parent_fd: int,
+    name: str,
+    *,
+    create: bool,
+) -> int:
+    if create:
+        try:
+            os.mkdir(name, mode=0o700, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+    flags = os.O_RDONLY | os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(name, flags, dir_fd=parent_fd)
+    except FileNotFoundError as error:
+        raise ValueError(f"checkpoint directory does not exist: {name}") from error
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISDIR(metadata.st_mode):
+        os.close(descriptor)
+        raise ValueError(f"checkpoint path component is not a directory: {name}")
+    return descriptor
+
+
+def open_runtime_directories(
+    root: Path,
+    task: str,
+    *,
+    create: bool,
+) -> tuple[int, int, int, int]:
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    descriptors = [root_fd]
+    try:
+        kent_fd = open_child_directory(root_fd, ".kent", create=False)
+        descriptors.append(kent_fd)
+        runtime_fd = open_child_directory(kent_fd, "runtime", create=create)
+        descriptors.append(runtime_fd)
+        task_fd = open_child_directory(runtime_fd, task, create=create)
+        descriptors.append(task_fd)
+    except Exception:
+        close_descriptors(*descriptors)
+        raise
+    return root_fd, kent_fd, runtime_fd, task_fd
+
+
+def close_descriptors(*descriptors: int) -> None:
+    for descriptor in reversed(descriptors):
+        os.close(descriptor)
+
+
+def read_checkpoint_file(task_fd: int, filename: str) -> str:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(filename, flags, dir_fd=task_fd)
+    except FileNotFoundError as error:
+        raise ValueError(f"checkpoint does not exist: {filename}") from error
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISREG(metadata.st_mode):
+        os.close(descriptor)
+        raise ValueError(f"checkpoint is not a regular file: {filename}")
+    with os.fdopen(descriptor) as checkpoint:
+        return checkpoint.read()
+
+
+def require_ignored(root: Path, path: Path) -> None:
+    relative = path.relative_to(root)
+    result = run_git(root, "check-ignore", "-q", "--", str(relative), check=False)
+    if result.returncode != 0:
+        raise ValueError(
+            f"checkpoint path is not ignored by Git: {relative}; "
+            "add /.kent/runtime/ to .gitignore"
+        )
+
+
+def decode_payload(raw: str) -> dict[str, object]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"checkpoint input is not valid JSON: {error}") from error
+    if not isinstance(payload, dict):
+        raise ValueError("checkpoint input must be one JSON object")
+    return payload
+
+
+def validate_payload(payload: dict[str, object], *, task: str, stage: str) -> None:
+    if payload.get("schema_version") != 1:
+        raise ValueError("checkpoint schema_version must be 1")
+    if payload.get("task_short_id") != task:
+        raise ValueError("checkpoint task_short_id does not match --task")
+    if payload.get("stage") != stage:
+        raise ValueError("checkpoint stage does not match --stage")
+    if not isinstance(payload.get("workspace_path"), str):
+        raise ValueError("checkpoint workspace_path must be a string")
+    for key in ("completed", "remaining", "mutation_ledger"):
+        value = payload.get(key)
+        if not isinstance(value, list):
+            raise ValueError(f"checkpoint {key} must be an array")
+    next_action = payload.get("next_action")
+    if not isinstance(next_action, str) or not next_action.strip():
+        raise ValueError("checkpoint next_action must be a non-empty string")
+    updated_at = payload.get("updated_at")
+    if not isinstance(updated_at, str) or not updated_at.strip():
+        raise ValueError("checkpoint updated_at must be a non-empty string")
+
+
+def load_checkpoint(root: Path, *, task: str, stage: str) -> dict[str, object]:
+    descriptors = open_runtime_directories(root, task, create=False)
+    try:
+        payload = decode_payload(
+            read_checkpoint_file(descriptors[-1], f"{stage}-checkpoint.json")
+        )
+    finally:
+        close_descriptors(*descriptors)
+    validate_payload(payload, task=task, stage=stage)
+    return payload
+
+
+def write_checkpoint(
+    root: Path,
+    path: Path,
+    *,
+    task: str,
+    stage: str,
+) -> dict[str, object]:
+    payload = decode_payload(sys.stdin.read())
+    payload.update(
+        {
+            "schema_version": 1,
+            "task_short_id": task,
+            "stage": stage,
+            "workspace_path": str(root),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    validate_payload(payload, task=task, stage=stage)
+    require_ignored(root, path)
+    descriptors = open_runtime_directories(root, task, create=True)
+    task_fd = descriptors[-1]
+    filename = f"{stage}-checkpoint.json"
+    temporary_name = f".{filename}.{os.getpid()}.{secrets.token_hex(8)}"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(temporary_name, flags, 0o600, dir_fd=task_fd)
+        with os.fdopen(descriptor, "w") as temporary:
+            descriptor = None
+            json.dump(payload, temporary, indent=2, ensure_ascii=False)
+            temporary.write("\n")
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(
+            temporary_name,
+            filename,
+            src_dir_fd=task_fd,
+            dst_dir_fd=task_fd,
+        )
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary_name, dir_fd=task_fd)
+        except FileNotFoundError:
+            pass
+        close_descriptors(*descriptors)
+    return payload
+
+
+def main() -> int:
+    args = parse_args()
+    root = repository_root(args.workspace)
+    path = checkpoint_path(root, args.task, args.stage)
+
+    if args.command == "write":
+        payload = write_checkpoint(
+            root,
+            path,
+            task=args.task,
+            stage=args.stage,
+        )
+        print(
+            json.dumps(
+                {
+                    "checkpoint_path": str(path),
+                    "updated_at": payload["updated_at"],
+                }
+            )
+        )
+        return 0
+    if args.command == "read":
+        print(
+            json.dumps(
+                load_checkpoint(root, task=args.task, stage=args.stage),
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    if args.command == "validate":
+        load_checkpoint(root, task=args.task, stage=args.stage)
+        print(json.dumps({"valid": True, "checkpoint_path": str(path)}))
+        return 0
+    if args.command == "clear":
+        require_ignored(root, path)
+        descriptors = open_runtime_directories(root, args.task, create=False)
+        runtime_fd = descriptors[-2]
+        task_fd = descriptors[-1]
+        try:
+            metadata = os.stat(
+                path.name,
+                dir_fd=task_fd,
+                follow_symlinks=False,
+            )
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError(f"checkpoint is not a regular file: {path}")
+            os.unlink(path.name, dir_fd=task_fd)
+        except FileNotFoundError:
+            pass
+        finally:
+            os.close(task_fd)
+            try:
+                os.rmdir(args.task, dir_fd=runtime_fd)
+            except OSError:
+                pass
+            close_descriptors(*descriptors[:-1])
+        print(json.dumps({"cleared": True, "checkpoint_path": str(path)}))
+        return 0
+    raise AssertionError(f"unsupported command: {args.command}")
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (OSError, ValueError) as error:
+        print(f"workflow-checkpoint: {error}", file=sys.stderr)
+        raise SystemExit(1)

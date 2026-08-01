@@ -15,11 +15,9 @@ Produces a conservative cleanup report for completed Kent workflow tasks.
 
 ## Policy
 
-Default behavior is report-only. Do not remove Kent-managed task worktrees or local branches unless the user explicitly
-approves destructive cleanup and the project contract enables it.
-
-Reason: deleting managed task worktrees can leave old Kent sessions bound to stale worktree metadata. Until Kent rebind
-fully clears stale managed worktree bindings, cleanup must be conservative by default.
+The Cleanup agent is report-first and never removes its own Kent-managed
+worktree. The generated Task Janitor runs after this session exits and owns
+deterministic deletion.
 
 ## What It Does
 
@@ -27,18 +25,12 @@ fully clears stale managed worktree bindings, cleanup must be conservative by de
    ```bash
    git worktree list --porcelain
    ```
-2. Inspect worktrees under recognized agent roots only:
-   - `.kent/worktrees/`
-   - `~/.kent/worktrees/` (report-only; never remove from this Puber command)
-3. For each candidate, report:
-   - worktree path;
-   - branch name;
-   - whether the worktree is clean;
-   - whether `HEAD` is recoverable from remote refs or a merged PR;
-   - whether it is safe to remove manually.
-4. If explicitly approved for destructive cleanup, remove only worktrees that are clean, under the project-local
-   `.kent/worktrees/` root, and have recoverable commits. External/global worktree roots are always report-only.
-5. Emit `cleanup_report` with removed, skipped, and blocked items.
+2. Inspect only the current task workspace and branch.
+3. Report clean/dirty state, authoritative merged/no-PR proof, remote branch
+   state, and any unique content.
+4. Do not invoke `git worktree remove` or `kent worktree delete` for the managed
+   task worktree.
+5. Emit the complete `run_janitor` contract required by the workflow prompt.
 
 ## Output
 
@@ -46,8 +38,7 @@ Return a short human-readable `cleanup_report`:
 
 ```markdown
 Cleanup report:
-- Removed: none
-- Safe to remove manually: .kent/worktrees/task-abc123 (clean, branch pushed)
-- Skipped: .kent/worktrees/task-def456 (dirty worktree)
-- Note: managed task worktree deletion is disabled by default in this project.
+- Preflight: exact task worktree and merged PR verified
+- Preserved: none
+- Handoff: Task Janitor may remove the clean managed worktree and task branch
 ```

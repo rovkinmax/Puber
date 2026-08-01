@@ -21,9 +21,9 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - PR creation produces `pr_url`, `branch_name`, `workspace_path`, and the
   resolved `merge_strategy`; no-diff/report-only PR skips produce `pr_report`.
 - PR/CI monitoring produces `ci_report`.
-- Waiting PR produces `blocker_reason` while the PR is open,
-  `merge_report` after GitHub reports `state=MERGED`, or `pr_report` when PR
-  review/conflict/post-CI feedback must be fixed.
+- Waiting PR sends an open green feasible PR to the deterministic watcher with
+  `pr_head_oid`; it produces `merge_report` after GitHub reports
+  `state=MERGED`, or `pr_report` when material state changes.
 - Release preparation produces `release_version`, `release_type`, `release_branch`, `release_tag`, `workspace_path`,
   `version_bump_commit`, and `verification_summary`.
 - Release publication produces `target_commit`, `tag_push_status`, and `release_report`.
@@ -193,18 +193,20 @@ Generated Delivery nodes use direct profile roles:
 
 ## Cleanup Policy
 
-Default cleanup is conservative because deleting Kent-managed task worktrees can leave old sessions bound to stale
-worktree metadata until Kent rebind behavior is fixed.
+Cleanup is two-phase and conservative.
 
-- `cleanup_managed_task_worktrees`: `false` by default.
 - Code-producing workflow cleanup must happen after `waiting_pr` confirms the PR is merged through GitHub state, or after
   the user approves an explicit no-diff/report-only `pr_report` through the `no_pr` transition.
 - Release cleanup must happen after tag publication is monitored, or after explicit user cancellation.
 - Cleanup after a PR path must verify `gh pr view --json state,mergedAt,mergeCommit,headRefName,baseRefName,url` when
   GitHub CLI is available. Do not rely only on git ancestry because squash merges are allowed.
-- Cleanup nodes should report safe-to-remove worktrees and branches unless explicit project/user policy enables removal.
-- Destructive cleanup requires proof that worktrees are clean and branch commits are recoverable from remote refs or a
-  merged PR.
+- The Cleanup agent reports and exits before Task Janitor runs.
+- Task Janitor may remove an exact clean task-owned managed worktree and local
+  branch through Kent after recoverability is proven. For a merged PR it may
+  delete the same-repository remote task branch only when its current OID still
+  equals the merged PR head.
+- Dirty, primary, ambiguous, closed-without-merge, or unique state is preserved
+  and reported rather than deleted.
 - Cleanup always emits `cleanup_report`; skipped cleanup is a valid result and must be visible.
 
 ## Recoverable Blocking Policy
@@ -248,8 +250,11 @@ recoverable blocker.
   `gh pr checks --watch` or `gh run watch`; never request user approval merely
   because CI or release automation is still running.
 - `waiting_pr` checks the pull request through GitHub. It must not merge, push, tag, or clean up.
-- If the PR is still open, `waiting_pr` writes a task comment with the current PR status and takes the approval-gated
-  `needs_user_action` self-loop.
+- If the PR is still open, green, and method-feasible, `waiting_pr` emits the
+  exact head OID to the deterministic merge watcher. Unchanged state consumes
+  no approval or model turn.
+- `needs_user_action` is reserved for authentication/access, contradictory
+  merge policy, or another actual human decision.
 - If the PR has review comments, conflicts, or post-CI regressions that fit the task scope, `waiting_pr` takes
   `needs_changes` back to `fix` or `prepare`.
 - History rewriting or force-pushing requires exact user authorization naming
@@ -257,6 +262,11 @@ recoverable blocker.
   verify the authorized final-tree invariant, and use force-with-lease pinned
   to the expected remote head. Any mismatch returns `needs_user_action`.
 - If GitHub reports `state=MERGED`, `waiting_pr` advances to cleanup for normal workflows.
+- Fix and Smoke persist atomic ignored checkpoints under
+  `.kent/runtime/<TASK-ID>/` through `.kent/scripts/workflow-checkpoint` and
+  reconcile them before repeating work.
+- Packaging-only Compliance defects use Evidence Repair and return directly to
+  Compliance without source verification, rebuild, install, or device work.
 - Release workflows route `waiting_pr -> pr_merged -> publish` with human approval before tag publication.
 - Release `publish` prepares final user-facing release notes in Russian after
   merge proof and before tag push. Release monitoring waits for terminal

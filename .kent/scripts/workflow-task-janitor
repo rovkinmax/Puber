@@ -1,0 +1,435 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+from urllib.parse import urlparse
+
+
+TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def run(
+    args: list[str],
+    *,
+    cwd: Path,
+    timeout: int = 60,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        args,
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+        check=False,
+    )
+    if check and result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise RuntimeError(f"{' '.join(args)} failed: {detail}")
+    return result
+
+
+def require_string(payload: dict[str, object], key: str, *, empty: bool = False) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a string")
+    value = value.strip()
+    if not empty and not value:
+        raise ValueError(f"{key} must be a non-empty string")
+    return value
+
+
+def primary_root(workspace: Path) -> Path:
+    result = run(["git", "worktree", "list", "--porcelain"], cwd=workspace)
+    for line in result.stdout.splitlines():
+        if line.startswith("worktree "):
+            return Path(line.removeprefix("worktree ")).resolve()
+    raise RuntimeError("cannot determine the primary Git worktree")
+
+
+def github_pr(workspace: Path, pr_url: str) -> dict[str, object]:
+    parsed = urlparse(pr_url)
+    if parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"}:
+        raise ValueError("pr_url must be an https://github.com URL")
+    result = run(
+        [
+            os.environ.get("KENT_GH_BIN", "gh"),
+            "pr",
+            "view",
+            pr_url,
+            "--json",
+            "state,mergedAt,headRefName,headRefOid,isCrossRepository,url",
+        ],
+        cwd=workspace,
+    )
+    payload = json.loads(result.stdout)
+    if not isinstance(payload, dict):
+        raise RuntimeError("gh returned a non-object PR payload")
+    return payload
+
+
+def remote_branch_oid(primary: Path, branch: str) -> str:
+    result = run(
+        ["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"],
+        cwd=primary,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ""
+    line = result.stdout.strip().splitlines()
+    return line[0].split()[0] if line else ""
+
+
+def head_matches_current_remote(primary: Path, head: str) -> bool:
+    result = run(
+        ["git", "ls-remote", "--heads", "origin"],
+        cwd=primary,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False
+    return any(
+        fields and fields[0] == head
+        for fields in (
+            line.split()
+            for line in result.stdout.splitlines()
+        )
+    )
+
+
+def open_child_directory(parent_fd: int, name: str) -> int:
+    flags = os.O_RDONLY | os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(name, flags, dir_fd=parent_fd)
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISDIR(metadata.st_mode):
+        os.close(descriptor)
+        raise ValueError(f"runtime component is not a directory: {name}")
+    return descriptor
+
+
+def close_descriptors(*descriptors: int) -> None:
+    for descriptor in reversed(descriptors):
+        os.close(descriptor)
+
+
+def remove_runtime_state(workspace: Path, task_short_id: str) -> tuple[bool, str]:
+    if not TASK_KEY.fullmatch(task_short_id):
+        return False, "invalid task short ID"
+
+    descriptors: list[int] = []
+    try:
+        root_fd = os.open(workspace, os.O_RDONLY | os.O_DIRECTORY)
+        descriptors.append(root_fd)
+        kent_fd = open_child_directory(root_fd, ".kent")
+        descriptors.append(kent_fd)
+        try:
+            runtime_fd = open_child_directory(kent_fd, "runtime")
+        except FileNotFoundError:
+            return True, "no task-local runtime state"
+        descriptors.append(runtime_fd)
+        try:
+            task_fd = open_child_directory(runtime_fd, task_short_id)
+        except FileNotFoundError:
+            return True, "no task-local runtime state"
+        descriptors.append(task_fd)
+
+        allowed = {"fix-checkpoint.json", "smoke-checkpoint.json"}
+        entries = os.listdir(task_fd)
+        unexpected = sorted(set(entries) - allowed)
+        if unexpected:
+            return False, f"unexpected runtime entries: {unexpected}"
+        for entry in entries:
+            metadata = os.stat(entry, dir_fd=task_fd, follow_symlinks=False)
+            if not stat.S_ISREG(metadata.st_mode):
+                return False, f"runtime entry is not a regular file: {entry}"
+            relative = f".kent/runtime/{task_short_id}/{entry}"
+            ignored = run(
+                ["git", "check-ignore", "-q", "--", relative],
+                cwd=workspace,
+                check=False,
+            ).returncode == 0
+            tracked = run(
+                ["git", "ls-files", "--error-unmatch", "--", relative],
+                cwd=workspace,
+                check=False,
+            ).returncode == 0
+            if not ignored or tracked:
+                return (
+                    False,
+                    f"runtime entry is tracked or not ignored: {relative}",
+                )
+        for entry in entries:
+            os.unlink(entry, dir_fd=task_fd)
+        os.close(task_fd)
+        descriptors.pop()
+        os.rmdir(task_short_id, dir_fd=runtime_fd)
+        return True, "removed task-local runtime checkpoints"
+    except (NotADirectoryError, OSError, ValueError) as error:
+        return False, str(error)
+    finally:
+        close_descriptors(*descriptors)
+
+
+def complete(transition: str, report: str, blocker: str = "") -> None:
+    payload = {"transition": transition, "cleanup_report": report}
+    if blocker:
+        payload["blocker_reason"] = blocker
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"stdin is not valid JSON: {error}") from error
+    if not isinstance(payload, dict):
+        raise ValueError("stdin must be one JSON object")
+
+    workspace = Path(require_string(payload, "workspace_path")).expanduser().resolve()
+    branch = require_string(payload, "branch_name", empty=True)
+    pr_url = require_string(payload, "pr_url", empty=True)
+    cleanup_mode = require_string(payload, "cleanup_mode")
+    cleanup_session_id = require_string(payload, "cleanup_session_id")
+    previous_report = require_string(payload, "cleanup_report")
+    task_short_id = require_string(payload, "task_short_id")
+
+    if not workspace.is_dir():
+        complete(
+            "done",
+            f"{previous_report}\nJanitor preserved missing workspace: {workspace}",
+        )
+        return 0
+
+    git_root = Path(
+        run(["git", "rev-parse", "--show-toplevel"], cwd=workspace).stdout.strip()
+    ).resolve()
+    if git_root != workspace:
+        complete(
+            "done",
+            f"{previous_report}\nJanitor preserved non-root workspace: {workspace}",
+        )
+        return 0
+    primary = primary_root(workspace)
+    head = run(["git", "rev-parse", "HEAD"], cwd=workspace).stdout.strip()
+    actual_branch = run(
+        ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+        cwd=workspace,
+        check=False,
+    ).stdout.strip()
+    if branch and actual_branch and branch != actual_branch:
+        complete(
+            "done",
+            f"{previous_report}\nJanitor preserved branch mismatch: "
+            f"expected {branch}, found {actual_branch}.",
+        )
+        return 0
+    branch = branch or actual_branch
+
+    if workspace == primary:
+        runtime_removed, runtime_report = remove_runtime_state(
+            workspace,
+            task_short_id,
+        )
+        runtime_action = "removed" if runtime_removed else "preserved"
+        complete(
+            "done",
+            f"{previous_report}\nJanitor kept the primary checkout and "
+            f"{runtime_action} runtime state: {runtime_report}.",
+        )
+        return 0
+
+    allowed_roots = (
+        (Path.home() / ".kent" / "worktrees").resolve(),
+        (primary / ".kent" / "worktrees").resolve(),
+    )
+    if not any(workspace.is_relative_to(root) for root in allowed_roots):
+        complete(
+            "done",
+            f"{previous_report}\nJanitor preserved worktree outside managed roots: "
+            f"{workspace}",
+        )
+        return 0
+
+    dirty = run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=workspace,
+    ).stdout.strip()
+    if dirty:
+        complete(
+            "done",
+            f"{previous_report}\nJanitor preserved dirty worktree {workspace}. "
+            f"Dirty entries: {dirty[:1000]}",
+        )
+        return 0
+
+    merged_pr: dict[str, object] | None = None
+    recoverable = False
+    if cleanup_mode == "merged" and pr_url:
+        try:
+            merged_pr = github_pr(primary, pr_url)
+            recoverable = (
+                str(merged_pr.get("state") or "").upper() == "MERGED"
+                and str(merged_pr.get("headRefName") or "") == branch
+                and str(merged_pr.get("headRefOid") or "") == head
+                and merged_pr.get("isCrossRepository") is False
+            )
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
+            recoverable = False
+    elif cleanup_mode in {"no_pr", "report_only"}:
+        recoverable = head_matches_current_remote(primary, head)
+
+    if not recoverable:
+        complete(
+            "done",
+            f"{previous_report}\nJanitor preserved {workspace}: HEAD {head} is "
+            f"not conclusively recoverable for cleanup mode {cleanup_mode}.",
+        )
+        return 0
+
+    remote_oid = remote_branch_oid(primary, branch) if branch else ""
+
+    wrapper = os.environ.get(
+        "KENT_WORKTREE_WRAPPER",
+        str(Path.home() / ".kent" / "bin" / "kent-worktree"),
+    )
+    os.chdir(primary)
+    deletion = run(
+        [
+            wrapper,
+            "delete",
+            "--session",
+            cleanup_session_id,
+            "--delete-branch",
+            "--json",
+            str(workspace),
+        ],
+        cwd=primary,
+        timeout=120,
+        check=False,
+    )
+    if deletion.returncode != 0:
+        detail = deletion.stderr.strip() or deletion.stdout.strip() or "no output"
+        complete(
+            "blocked",
+            f"{previous_report}\nJanitor could not remove {workspace}: {detail}",
+            "Kent-managed worktree deletion failed after safety checks.",
+        )
+        return 0
+
+    local_deleted = False
+    local_note = ""
+    if branch:
+        exists = run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+            cwd=primary,
+            check=False,
+        ).returncode == 0
+        if exists and cleanup_mode == "merged":
+            current_local_oid = run(
+                ["git", "rev-parse", f"refs/heads/{branch}"],
+                cwd=primary,
+            ).stdout.strip()
+            worktree_path = run(
+                ["git", "branch", "--format=%(worktreepath)", "--list", branch],
+                cwd=primary,
+            ).stdout.strip()
+            if worktree_path:
+                local_note = (
+                    " Kent retained or scheduled removal of the checked-out "
+                    f"local branch at {worktree_path}."
+                )
+            elif current_local_oid == head:
+                branch_delete = run(
+                    [
+                        "git",
+                        "update-ref",
+                        "-d",
+                        f"refs/heads/{branch}",
+                        current_local_oid,
+                    ],
+                    cwd=primary,
+                    check=False,
+                )
+                local_deleted = branch_delete.returncode == 0
+                if not local_deleted:
+                    detail = (
+                        branch_delete.stderr.strip()
+                        or branch_delete.stdout.strip()
+                        or "no output"
+                    )
+                    local_note = f" Local branch deletion failed: {detail}"
+            else:
+                local_note = (
+                    " Local branch was preserved because its OID changed "
+                    "after cleanup preflight."
+                )
+        else:
+            local_deleted = not exists
+
+    remote_deleted = False
+    remote_note = ""
+    if merged_pr is not None and branch and remote_oid:
+        current_remote_oid = remote_branch_oid(primary, branch)
+        if not current_remote_oid:
+            remote_deleted = True
+            remote_note = " Remote branch was already absent after cleanup."
+        elif current_remote_oid != remote_oid or current_remote_oid != head:
+            remote_note = (
+                f" Remote branch {branch} was preserved because its head "
+                "changed after cleanup preflight."
+            )
+        else:
+            remote_delete = run(
+                [
+                    "git",
+                    "push",
+                    f"--force-with-lease=refs/heads/{branch}:{remote_oid}",
+                    "origin",
+                    f":refs/heads/{branch}",
+                ],
+                cwd=primary,
+                timeout=120,
+                check=False,
+            )
+            remote_deleted = remote_delete.returncode == 0
+            if not remote_deleted:
+                detail = (
+                    remote_delete.stderr.strip()
+                    or remote_delete.stdout.strip()
+                    or "no output"
+                )
+                remote_note = (
+                    " Remote branch deletion failed safely and was preserved: "
+                    f"{detail}"
+                )
+
+    complete(
+        "done",
+        (
+            f"{previous_report}\nJanitor removed managed worktree {workspace}. "
+            f"Local branch removed: {str(local_deleted).lower()}. "
+            f"Remote branch removed: {str(remote_deleted).lower()}."
+            f"{local_note}{remote_note}"
+        ),
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+        complete(
+            "blocked",
+            f"Janitor failed safely: {error}",
+            "Task cleanup infrastructure failed; the worktree was preserved.",
+        )

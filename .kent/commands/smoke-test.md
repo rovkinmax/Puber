@@ -17,6 +17,10 @@ Runs smoke test for a feature via MCP mobile.
 
 ## Evidence Safety
 
+- Use `.kent/scripts/workflow-checkpoint` to maintain the canonical ignored
+  `.kent/runtime/<TASK-ID>/smoke-checkpoint.json`. Reconcile it before repeating
+  build, install, launch, navigation, mutation, or evidence work, and persist it
+  before every workflow transition.
 - Store only the minimum evidence required for the Smoke decision.
 - On the locked test emulator, bounded semantic or visual inspection and safe
   navigation of the already-authenticated app UI are allowed without another

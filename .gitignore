@@ -16,4 +16,5 @@
 /credentials/publisher.json
 /artifacts/dummy.pdf
 .todo/
+/.kent/runtime/
 .serena/
