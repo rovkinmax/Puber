@@ -22,6 +22,11 @@ internal class ReconciledItemFocusState(
     val onItemFocused: (Int) -> Unit,
 )
 
+private data class PendingItemFocus(
+    val itemId: Int? = null,
+    val canRestoreInactiveContent: Boolean = false,
+)
+
 @Composable
 internal fun rememberReconciledItemFocus(
     rowKey: String,
@@ -35,10 +40,13 @@ internal fun rememberReconciledItemFocus(
         mutableStateOf(initialFocusedItemId ?: items.firstOrNull()?.id)
     }
     val previousItems = remember(rowKey) { mutableStateOf(items) }
-    val pendingFocusItemId = remember(rowKey) { mutableStateOf<Int?>(null) }
+    val pendingFocus = remember(rowKey) { mutableStateOf(PendingItemFocus()) }
     val focusRequester = remember { FocusRequester() }
     val rowHasFocusRef = remember { booleanArrayOf(false) }
     val contentFocusActive = LocalContentFocusActive.current
+    if (!contentFocusActive || !isTargetRow) {
+        rowHasFocusRef[0] = false
+    }
     val onRootFocusRestored = LocalRootAnchorFocusRestored.current
     val rootAnchorRestoreCompletion = LocalRootAnchorRestoreCompletion.current
     val screenKey = LocalScreenKey.current
@@ -47,19 +55,25 @@ internal fun rememberReconciledItemFocus(
         updatedItems = items,
         focusedItemId = focusedItemId.value,
     )
+    val canRestoreInactiveContent =
+        targetItemId != null &&
+            targetItemId != focusedItemId.value &&
+            contentFocusActive &&
+            rowHasFocusRef[0]
 
     ReconcileInitialItemFocusEffect(
         initialFocusedItemId = initialFocusedItemId,
         items = items,
         focusedItemId = focusedItemId,
-        pendingFocusItemId = pendingFocusItemId,
+        pendingFocus = pendingFocus,
     )
     ReconcilePublishedItemsEffect(
         items = items,
         isTargetRow = isTargetRow,
         focusedItemId = focusedItemId,
         previousItems = previousItems,
-        pendingFocusItemId = pendingFocusItemId,
+        canRestoreInactiveContent = canRestoreInactiveContent,
+        pendingFocus = pendingFocus,
         onRowEmpty = onRowEmpty,
     )
     RequestReconciledItemFocusEffects(
@@ -67,32 +81,44 @@ internal fun rememberReconciledItemFocus(
         targetItemId = targetItemId,
         focusRequester = focusRequester,
         rowHasFocusRef = rowHasFocusRef,
-        pendingFocusItemId = pendingFocusItemId,
+        pendingFocus = pendingFocus,
         requestAfterFrame = requestAfterFrame,
         contentFocusActive = contentFocusActive,
         rootAnchorRestoreCompletion = rootAnchorRestoreCompletion,
         screenKey = screenKey,
     )
 
-    return ReconciledItemFocusState(
-        targetItemId = targetItemId,
-        focusRequester = focusRequester,
-        rowHasFocusRef = rowHasFocusRef,
-        onItemFocused = { itemId ->
-            focusedItemId.value = itemId
-            if (isTargetRow && itemId == targetItemId) {
-                onRootFocusRestored()
-            }
-        },
+    return reconciledItemFocusState(
+        targetItemId, focusRequester, rowHasFocusRef, focusedItemId, isTargetRow, onRootFocusRestored,
     )
 }
+
+private fun reconciledItemFocusState(
+    targetItemId: Int?,
+    focusRequester: FocusRequester,
+    rowHasFocusRef: BooleanArray,
+    focusedItemId: MutableState<Int?>,
+    isTargetRow: Boolean,
+    onRootFocusRestored: () -> Unit,
+) = ReconciledItemFocusState(
+    targetItemId = targetItemId,
+    focusRequester = focusRequester,
+    rowHasFocusRef = rowHasFocusRef,
+    onItemFocused = { itemId ->
+        rowHasFocusRef[0] = true
+        focusedItemId.value = itemId
+        if (isTargetRow && itemId == targetItemId) {
+            onRootFocusRestored()
+        }
+    },
+)
 
 @Composable
 private fun ReconcileInitialItemFocusEffect(
     initialFocusedItemId: Int?,
     items: List<VideoItemUIState>,
     focusedItemId: MutableState<Int?>,
-    pendingFocusItemId: MutableState<Int?>,
+    pendingFocus: MutableState<PendingItemFocus>,
 ) {
     LaunchedEffect(initialFocusedItemId) {
         if (
@@ -101,7 +127,7 @@ private fun ReconcileInitialItemFocusEffect(
             items.any { it.id == initialFocusedItemId }
         ) {
             focusedItemId.value = initialFocusedItemId
-            pendingFocusItemId.value = initialFocusedItemId
+            pendingFocus.value = PendingItemFocus(itemId = initialFocusedItemId)
         }
     }
 }
@@ -112,7 +138,8 @@ private fun ReconcilePublishedItemsEffect(
     isTargetRow: Boolean,
     focusedItemId: MutableState<Int?>,
     previousItems: MutableState<List<VideoItemUIState>>,
-    pendingFocusItemId: MutableState<Int?>,
+    canRestoreInactiveContent: Boolean,
+    pendingFocus: MutableState<PendingItemFocus>,
     onRowEmpty: () -> Unit,
 ) {
     LaunchedEffect(items) {
@@ -123,7 +150,10 @@ private fun ReconcilePublishedItemsEffect(
         )
         if (nextFocusedItemId != focusedItemId.value) {
             focusedItemId.value = nextFocusedItemId
-            pendingFocusItemId.value = nextFocusedItemId
+            pendingFocus.value = PendingItemFocus(
+                itemId = nextFocusedItemId,
+                canRestoreInactiveContent = canRestoreInactiveContent,
+            )
         }
         previousItems.value = items
         if (items.isEmpty() && isTargetRow) {
@@ -138,7 +168,7 @@ private fun RequestReconciledItemFocusEffects(
     targetItemId: Int?,
     focusRequester: FocusRequester,
     rowHasFocusRef: BooleanArray,
-    pendingFocusItemId: MutableState<Int?>,
+    pendingFocus: MutableState<PendingItemFocus>,
     requestAfterFrame: Boolean,
     contentFocusActive: Boolean,
     rootAnchorRestoreCompletion: RootAnchorRestoreCompletion,
@@ -150,10 +180,12 @@ private fun RequestReconciledItemFocusEffects(
             focusRequester.requestAfterComposition(requestAfterFrame)
         }
     }
-    LaunchedEffect(pendingFocusItemId.value, contentFocusActive) {
-        if (isTargetRow && contentFocusActive && pendingFocusItemId.value != null) {
+    LaunchedEffect(pendingFocus.value, contentFocusActive) {
+        val request = pendingFocus.value
+        val canRequestFocus = contentFocusActive || request.canRestoreInactiveContent
+        if (isTargetRow && canRequestFocus && request.itemId != null) {
             focusRequester.requestAfterComposition(requestAfterFrame)
-            pendingFocusItemId.value = null
+            pendingFocus.value = PendingItemFocus()
         }
     }
     LaunchedEffect(rootAnchorRestoreCompletion.version) {

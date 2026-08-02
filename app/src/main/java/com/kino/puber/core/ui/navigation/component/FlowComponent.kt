@@ -92,6 +92,23 @@ fun FlowComponent(
     scopeName = scopeName,
 ) {
     val router by LocalPuberKoinScope.current!!.inject<AppRouter>()
+
+    FlowNavigator(
+        scopeName = scopeName,
+        screen = screen,
+        router = router,
+        remoteKeyHandler = remoteKeyHandler,
+    )
+    content()
+}
+
+@Composable
+private fun FlowNavigator(
+    scopeName: String,
+    screen: PuberScreen,
+    router: AppRouter,
+    remoteKeyHandler: ((android.view.KeyEvent, AppRouter, PuberScreen) -> Boolean)?,
+) {
     val contentFocusRequester = remember { FocusRequester() }
     val rootAnchorCaptureRegistry = remember { RootAnchorCaptureRegistry() }
     var rootFocusRestoreVersion by remember { mutableIntStateOf(0) }
@@ -142,7 +159,6 @@ fun FlowComponent(
             onReturned = { rootFocusRestoreVersion++ },
         )
     }
-    content()
 }
 
 private fun onBackPressed(router: AppRouter): Boolean {
@@ -280,12 +296,11 @@ internal data class LazyAnchor(
 
 internal class RootAnchorCaptureRegistry {
     private val captures = mutableMapOf<String, AnchorCapture>()
-    private val savedAnchors = mutableMapOf<String, LazyAnchor>()
-    private var pendingRestoreKey: String? = null
-    var restorePending by mutableStateOf(false)
-        private set
-    var focusRestored by mutableStateOf(false)
-        private set
+    private var pendingRestoreFrames by mutableStateOf<List<PendingRestoreFrame>>(emptyList())
+    val restorePending: Boolean
+        get() = pendingRestoreFrames.isNotEmpty()
+    val focusRestored: Boolean
+        get() = pendingRestoreFrames.lastOrNull()?.focusRestored == true
     var restoreCompletion by mutableStateOf(RootAnchorRestoreCompletion())
         private set
 
@@ -301,35 +316,40 @@ internal class RootAnchorCaptureRegistry {
 
     fun capture(key: String): Boolean {
         val anchor = captures[key]?.capture?.invoke() ?: return false
-        savedAnchors[key] = anchor
-        pendingRestoreKey = key
-        restorePending = true
-        focusRestored = false
+        pendingRestoreFrames += PendingRestoreFrame(
+            screenKey = key,
+            anchor = anchor,
+        )
         return true
     }
 
-    fun savedAnchor(key: String): LazyAnchor? = savedAnchors[key]
+    fun savedAnchor(key: String): LazyAnchor? =
+        pendingRestoreFrames.lastOrNull { it.screenKey == key }?.anchor
 
     fun markFocusRestored() {
-        if (restorePending) {
-            focusRestored = true
-        }
+        val frame = pendingRestoreFrames.lastOrNull() ?: return
+        if (frame.focusRestored) return
+        pendingRestoreFrames = pendingRestoreFrames.dropLast(1) +
+            frame.copy(focusRestored = true)
     }
 
     fun completeRestore(key: String) {
-        if (pendingRestoreKey == key) {
-            pendingRestoreKey = null
-            restorePending = false
-            focusRestored = false
-            restoreCompletion = RootAnchorRestoreCompletion(
-                screenKey = key,
-                version = restoreCompletion.version + 1,
-            )
-        }
+        if (pendingRestoreFrames.lastOrNull()?.screenKey != key) return
+        pendingRestoreFrames = pendingRestoreFrames.dropLast(1)
+        restoreCompletion = RootAnchorRestoreCompletion(
+            screenKey = key,
+            version = restoreCompletion.version + 1,
+        )
     }
 
     private class AnchorCapture(
         val capture: () -> LazyAnchor,
+    )
+
+    private data class PendingRestoreFrame(
+        val screenKey: String,
+        val anchor: LazyAnchor,
+        val focusRestored: Boolean = false,
     )
 }
 
@@ -357,7 +377,7 @@ internal fun PreserveLazyListAnchorOnRootReturn(lazyListState: LazyListState) {
     LaunchedEffect(restoreVersion, focusRestored) {
         if (restoreVersion == 0 || !focusRestored) return@LaunchedEffect
 
-        val registry = captureRegistry ?: return@LaunchedEffect
+        val registry = captureRegistry
         val savedAnchor = screenKey?.let(registry::savedAnchor)
             ?: return@LaunchedEffect
         lazyListState.awaitRestoredFocusScrollSettled()
