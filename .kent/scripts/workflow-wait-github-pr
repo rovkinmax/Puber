@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -23,6 +24,10 @@ FAILED_CHECK_STATES = {
     "STARTUP_FAILURE",
     "TIMED_OUT",
 }
+DEFAULT_GH_PATHS = (
+    "/opt/homebrew/bin/gh",
+    "/usr/local/bin/gh",
+)
 
 
 def workflow_result(transition: str, **values: str) -> None:
@@ -45,16 +50,32 @@ def validate_pr_url(url: str) -> None:
         raise ValueError("pr_url must identify one GitHub pull request")
 
 
+def resolve_gh_bin() -> str:
+    configured = os.environ.get("KENT_GH_BIN")
+    candidates = (configured,) if configured else ("gh", *DEFAULT_GH_PATHS)
+    for candidate in candidates:
+        if candidate and (resolved := shutil.which(candidate)):
+            return resolved
+    if configured:
+        raise RuntimeError(
+            f"configured GitHub CLI is not executable: {configured}"
+        )
+    raise RuntimeError(
+        "GitHub CLI was not found; set KENT_GH_BIN to its absolute path"
+    )
+
+
 def read_state(
     workspace: Path,
     pr_url: str,
+    gh_bin: str,
     *,
     timeout: int,
 ) -> dict[str, object]:
     try:
         result = subprocess.run(
             [
-                os.environ.get("KENT_GH_BIN", "gh"),
+                gh_bin,
                 "pr",
                 "view",
                 pr_url,
@@ -159,6 +180,7 @@ def main() -> int:
         1,
         int(os.environ.get("KENT_PR_WATCH_MAX_ERRORS", "5")),
     )
+    gh_bin = resolve_gh_bin()
     consecutive_errors = 0
     poll = 0
 
@@ -168,6 +190,7 @@ def main() -> int:
             state = read_state(
                 workspace,
                 pr_url,
+                gh_bin,
                 timeout=query_timeout,
             )
             consecutive_errors = 0
