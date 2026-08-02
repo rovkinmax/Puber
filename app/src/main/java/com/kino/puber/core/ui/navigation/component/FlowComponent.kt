@@ -124,7 +124,7 @@ private fun FlowNavigator(
         CompositionLocalProvider(
             LocalRootFocusRestoreVersion provides rootFocusRestoreVersion,
             LocalRootAnchorCaptureRegistry provides rootAnchorCaptureRegistry,
-            LocalRootAnchorFocusRestored provides rootAnchorCaptureRegistry::markFocusRestored,
+            LocalRootAnchorFocusRestored provides { rootAnchorCaptureRegistry.markFocusRestored(currentScreenKey) },
             LocalRootAnchorRestoreCompletion provides rootAnchorCaptureRegistry.restoreCompletion,
             LocalRootAnchorRestorePending provides rootAnchorCaptureRegistry.restorePending,
         ) {
@@ -153,9 +153,12 @@ private fun FlowNavigator(
             router = router,
             contentFocusRequester = contentFocusRequester,
             onBeforeNavigate = { rootAnchorCaptureRegistry.capture(currentScreenKey) },
+            rootAnchorCaptureRegistry = rootAnchorCaptureRegistry,
         )
         RootFlowReturnEffect(
             stackSize = navigator.items.size,
+            currentScreenKey = currentScreenKey,
+            rootAnchorCaptureRegistry = rootAnchorCaptureRegistry,
             onReturned = { rootFocusRestoreVersion++ },
         )
     }
@@ -174,6 +177,7 @@ private fun FlowCommandRunner(
     router: AppRouter,
     contentFocusRequester: FocusRequester,
     onBeforeNavigate: () -> Unit,
+    rootAnchorCaptureRegistry: RootAnchorCaptureRegistry,
 ) {
     val navigator = LocalNavigator.currentOrThrow
     val context = LocalContext.current
@@ -201,8 +205,18 @@ private fun FlowCommandRunner(
                     }
 
                     is Command.Replace -> navigator.puberReplace(event.screen)
-                    is Command.NewRoot -> navigator.puberReplaceAll(*event.screens.toTypedArray())
-                    is Command.BackTo -> onBackTo(navigator, event)
+                    is Command.NewRoot -> {
+                        navigator.puberReplaceAll(*event.screens.toTypedArray())
+                        rootAnchorCaptureRegistry.reconcilePendingRestore(
+                            rootScreenCompositionKey(scopeName, event.screen?.key),
+                        )
+                    }
+                    is Command.BackTo -> {
+                        onBackTo(navigator, event)
+                        rootAnchorCaptureRegistry.reconcilePendingRestore(
+                            rootScreenCompositionKey(scopeName, event.screen.key),
+                        )
+                    }
                     Command.FinishFlow -> navigator.parent?.let { parentNavigator ->
                         onBackEventNavigator(
                             navigator = parentNavigator,
@@ -223,6 +237,8 @@ private fun FlowCommandRunner(
 @Composable
 private fun RootFlowReturnEffect(
     stackSize: Int,
+    currentScreenKey: String,
+    rootAnchorCaptureRegistry: RootAnchorCaptureRegistry,
     onReturned: () -> Unit,
 ) {
     var lastStackSize by remember { mutableIntStateOf(stackSize) }
@@ -231,6 +247,7 @@ private fun RootFlowReturnEffect(
         lastStackSize = stackSize
         if (returned) {
             withFrameNanos { }
+            rootAnchorCaptureRegistry.reconcilePendingRestore(currentScreenKey)
             onReturned()
         }
     }
@@ -323,12 +340,25 @@ internal class RootAnchorCaptureRegistry {
         return true
     }
 
-    fun savedAnchor(key: String): LazyAnchor? =
-        pendingRestoreFrames.lastOrNull { it.screenKey == key }?.anchor
+    fun reconcilePendingRestore(currentScreenKey: String?) {
+        val matchingFrameIndex = currentScreenKey?.let { screenKey ->
+            pendingRestoreFrames.indexOfLast { it.screenKey == screenKey }
+        } ?: -1
+        pendingRestoreFrames = if (matchingFrameIndex >= 0) {
+            pendingRestoreFrames.take(matchingFrameIndex + 1)
+        } else {
+            emptyList()
+        }
+    }
 
-    fun markFocusRestored() {
+    fun savedAnchor(key: String): LazyAnchor? =
+        pendingRestoreFrames.lastOrNull()
+            ?.takeIf { it.screenKey == key }
+            ?.anchor
+
+    fun markFocusRestored(key: String) {
         val frame = pendingRestoreFrames.lastOrNull() ?: return
-        if (frame.focusRestored) return
+        if (frame.screenKey != key || frame.focusRestored) return
         pendingRestoreFrames = pendingRestoreFrames.dropLast(1) +
             frame.copy(focusRestored = true)
     }
@@ -425,6 +455,14 @@ private fun CurrentScreen(key: String) {
 }
 
 private fun screenCompositionKey(prefix: String, screenKey: ScreenKey): String = prefix + screenKey
+
+private fun rootScreenCompositionKey(scopeName: String, screenKey: ScreenKey?): String? =
+    screenKey?.let {
+        screenCompositionKey(
+            prefix = "currentScreen$scopeName",
+            screenKey = it,
+        )
+    }
 
 @Parcelize
 object LoadingScreen : PuberScreen {

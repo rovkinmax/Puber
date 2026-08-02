@@ -23,7 +23,7 @@ internal class RootAnchorCaptureRegistryTest {
         assertTrue(registry.restorePending)
         assertEquals(RootAnchorRestoreCompletion(), registry.restoreCompletion)
 
-        registry.markFocusRestored()
+        registry.markFocusRestored("screen-a")
         assertTrue(registry.focusRestored)
 
         registry.completeRestore("screen-a")
@@ -63,7 +63,7 @@ internal class RootAnchorCaptureRegistryTest {
         assertTrue(registry.restorePending)
         assertFalse(registry.focusRestored)
 
-        registry.markFocusRestored()
+        registry.markFocusRestored("screen-b")
         assertTrue(registry.focusRestored)
 
         registry.completeRestore("screen-a")
@@ -81,7 +81,7 @@ internal class RootAnchorCaptureRegistryTest {
             registry.restoreCompletion,
         )
 
-        registry.markFocusRestored()
+        registry.markFocusRestored("screen-a")
         assertTrue(registry.focusRestored)
 
         registry.completeRestore("screen-a")
@@ -105,16 +105,64 @@ internal class RootAnchorCaptureRegistryTest {
         assertTrue(registry.capture("screen"))
         assertEquals(LazyAnchor(index = 3, offset = 30), registry.savedAnchor("screen"))
 
-        registry.markFocusRestored()
+        registry.markFocusRestored("screen")
         registry.completeRestore("screen")
 
         assertTrue(registry.restorePending)
         assertEquals(LazyAnchor(index = 1, offset = 10), registry.savedAnchor("screen"))
 
-        registry.markFocusRestored()
+        registry.markFocusRestored("screen")
         registry.completeRestore("screen")
 
         assertFalse(registry.restorePending)
         assertEquals(null, registry.savedAnchor("screen"))
+    }
+
+    @Test
+    fun multiPopBackToDiscardsSkippedFramesBeforeRestoringTheReturnedScreen() {
+        val registry = RootAnchorCaptureRegistry()
+        registry.register("screen-a") { LazyAnchor(index = 1, offset = 10) }
+        registry.register("screen-b") { LazyAnchor(index = 2, offset = 20) }
+
+        assertTrue(registry.capture("screen-a"))
+        assertTrue(registry.capture("screen-b"))
+
+        registry.reconcilePendingRestore("screen-a")
+
+        assertTrue(registry.restorePending)
+        assertEquals(LazyAnchor(index = 1, offset = 10), registry.savedAnchor("screen-a"))
+        assertEquals(null, registry.savedAnchor("screen-b"))
+
+        registry.markFocusRestored("screen-b")
+        assertFalse(registry.focusRestored)
+
+        registry.markFocusRestored("screen-a")
+        assertTrue(registry.focusRestored)
+        registry.completeRestore("screen-a")
+
+        assertFalse(registry.restorePending)
+        assertEquals(
+            RootAnchorRestoreCompletion(screenKey = "screen-a", version = 1),
+            registry.restoreCompletion,
+        )
+    }
+
+    @Test
+    fun unrelatedNewRootReplacementClearsObsoletePendingFrames() {
+        val registry = RootAnchorCaptureRegistry()
+        registry.register("screen-a") { LazyAnchor(index = 1, offset = 10) }
+
+        assertTrue(registry.capture("screen-a"))
+
+        registry.reconcilePendingRestore("unrelated-screen")
+
+        assertFalse(registry.restorePending)
+        assertFalse(registry.focusRestored)
+        assertEquals(null, registry.savedAnchor("screen-a"))
+
+        registry.markFocusRestored("screen-a")
+        registry.completeRestore("screen-a")
+
+        assertEquals(RootAnchorRestoreCompletion(), registry.restoreCompletion)
     }
 }
