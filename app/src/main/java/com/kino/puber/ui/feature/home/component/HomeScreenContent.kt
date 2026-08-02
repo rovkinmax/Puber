@@ -11,19 +11,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
@@ -49,7 +48,12 @@ import com.kino.puber.core.ui.uikit.component.VideoItemContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.dpadScrollOptimization
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.FocusableRow
+import com.kino.puber.core.ui.uikit.component.moviesList.ReconciledRowFocusState
 import com.kino.puber.core.ui.uikit.component.onTvContextMenuKey
+import com.kino.puber.core.ui.uikit.component.moviesList.rememberReconciledItemFocus
+import com.kino.puber.core.ui.uikit.component.moviesList.rememberReconciledRowFocus
+import com.kino.puber.core.ui.navigation.component.PreserveLazyListAnchorOnRootReturn
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.home.model.HomeAction
@@ -62,6 +66,7 @@ internal fun HomeScreenContent(
     onAction: (UIAction) -> Unit,
     onHeroClick: (Int) -> Unit,
     onCollectionClick: (Int, String) -> Unit,
+    lazyListState: LazyListState = rememberLazyListState(),
 ) {
     Box(Modifier.fillMaxSize()) {
         when (state) {
@@ -83,6 +88,7 @@ internal fun HomeScreenContent(
                     onAction = onAction,
                     onHeroClick = onHeroClick,
                     onCollectionClick = onCollectionClick,
+                    lazyListState = lazyListState,
                 )
             }
         }
@@ -152,16 +158,24 @@ private fun HomeContent(
     onAction: (UIAction) -> Unit,
     onHeroClick: (Int) -> Unit,
     onCollectionClick: (Int, String) -> Unit,
+    lazyListState: LazyListState,
 ) {
-    var focusedSectionIndex by rememberSaveable { mutableIntStateOf(0) }
     var focusedTarget by remember(state.heroItems, state.sections) {
         mutableStateOf(state.defaultFocusedTarget())
     }
     var contextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
+    val rows = remember(state.sections) {
+        state.sections.map { row ->
+            FocusableRow(row.type.name, row.items.size)
+        }
+    }
+    val rowFocus = rememberReconciledRowFocus(rows)
+    PreserveLazyListAnchorOnRootReturn(lazyListState)
 
-    PositionFocusedItemInLazyLayout {
+    PositionFocusedItemInLazyLayout(keepFullyVisibleItemInPlace = true) {
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
+                state = lazyListState,
                 modifier = Modifier
                     .fillMaxSize()
                     .focusRestorer()
@@ -197,44 +211,14 @@ private fun HomeContent(
                         )
                     }
                 }
-
-                state.sections.forEachIndexed { index, section ->
-                    item(key = "section_${section.type.name}") {
-                        Column {
-                            Text(
-                                text = section.title,
-                                style = MaterialTheme.typography.titleLarge,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                            )
-                            HomeSectionRow(
-                                items = section.items,
-                                isTargetRow = index == focusedSectionIndex,
-                                onSectionFocused = { focusedSectionIndex = index },
-                                onItemClick = { item ->
-                                    if (section.type == HomeSectionType.Collections) {
-                                        onCollectionClick(item.id, item.title)
-                                    } else {
-                                        onAction(CommonAction.ItemSelected(item))
-                                    }
-                                },
-                                onItemContextMenu = if (section.type == HomeSectionType.Collections) {
-                                    null
-                                } else {
-                                    { item -> contextMenuItem = item }
-                                },
-                                onItemFocused = { item ->
-                                    focusedTarget = if (section.type == HomeSectionType.Collections) {
-                                        HomeFocusedTarget.Collection(id = item.id, title = item.title)
-                                    } else {
-                                        HomeFocusedTarget.Video(item)
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
+                homeSections(
+                    state = state,
+                    rowFocus = rowFocus,
+                    onAction = onAction,
+                    onCollectionClick = onCollectionClick,
+                    onFocusedTarget = { focusedTarget = it },
+                    onContextMenuItem = { contextMenuItem = it },
+                )
             }
             VideoItemContextMenuDialog(
                 item = contextMenuItem,
@@ -245,40 +229,97 @@ private fun HomeContent(
     }
 }
 
+private fun LazyListScope.homeSections(
+    state: HomeViewState.Content,
+    rowFocus: ReconciledRowFocusState,
+    onAction: (UIAction) -> Unit,
+    onCollectionClick: (Int, String) -> Unit,
+    onFocusedTarget: (HomeFocusedTarget) -> Unit,
+    onContextMenuItem: (VideoItemUIState) -> Unit,
+) {
+    state.sections.forEachIndexed { index, section ->
+        item(key = "section_${section.type.name}") {
+            Column {
+                Text(
+                    text = section.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                HomeSectionRow(
+                    rowKey = section.type.name,
+                    items = section.items,
+                    isTargetRow = section.type.name == rowFocus.focusedRowKey,
+                    onSectionFocused = { rowFocus.onRowFocused(section.type.name) },
+                    onItemClick = { item ->
+                        if (section.type == HomeSectionType.Collections) {
+                            onCollectionClick(item.id, item.title)
+                        } else {
+                            onAction(CommonAction.ItemSelected(item))
+                        }
+                    },
+                    onItemContextMenu = if (section.type == HomeSectionType.Collections) {
+                        null
+                    } else {
+                        onContextMenuItem
+                    },
+                    onItemFocused = { item ->
+                        onFocusedTarget(
+                            if (section.type == HomeSectionType.Collections) {
+                                HomeFocusedTarget.Collection(id = item.id, title = item.title)
+                            } else {
+                                HomeFocusedTarget.Video(item)
+                            }
+                        )
+                    },
+                    onRowEmpty = { rowFocus.onRowEmpty(index) },
+                )
+            }
+        }
+    }
+}
+
 @Composable
-private fun HomeSectionRow(
+internal fun HomeSectionRow(
+    rowKey: String,
     items: List<VideoItemUIState>,
     isTargetRow: Boolean,
     onSectionFocused: () -> Unit,
     onItemClick: (VideoItemUIState) -> Unit,
     onItemContextMenu: ((VideoItemUIState) -> Unit)?,
     onItemFocused: (VideoItemUIState) -> Unit,
+    onRowEmpty: () -> Unit,
 ) {
     val listState = rememberLazyListState()
-    val savedItemFocusRequester = remember { FocusRequester() }
-    var focusedItemIndex by rememberSaveable { mutableIntStateOf(0) }
+    val itemFocus = rememberReconciledItemFocus(
+        rowKey = rowKey,
+        items = items,
+        isTargetRow = isTargetRow,
+        onRowEmpty = onRowEmpty,
+    )
 
     LazyRow(
         state = listState,
         modifier = Modifier
             .graphicsLayer { clip = false }
             .dpadScrollOptimization(axis = DpadScrollAxis.Horizontal)
-            .focusRestorer(savedItemFocusRequester),
+            .focusRestorer(itemFocus.focusRequester),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(horizontal = 16.dp),
     ) {
         itemsIndexed(items = items, key = { _, item -> item.id }) { index, item ->
-            val isFocusTarget = if (isTargetRow) index == focusedItemIndex else index == 0
+            val isFocusTarget = item.id == itemFocus.targetItemId
             VideoItemHorizontal(
                 modifier = Modifier
                     .then(
-                        if (isFocusTarget) Modifier.focusRequester(savedItemFocusRequester)
+                        if (isFocusTarget) Modifier.focusRequester(itemFocus.focusRequester)
                         else Modifier
                     )
                     .onFocusChanged {
                         if (it.isFocused) {
-                            focusedItemIndex = index
                             onSectionFocused()
+                            itemFocus.onItemFocused(item.id)
                             onItemFocused(item)
                         }
                     },

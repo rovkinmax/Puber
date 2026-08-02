@@ -74,7 +74,12 @@ internal class DetailsScreenUIMapper(
                 )
             )
             val items = episodes.map { episode -> mapEpisode(season.number, episodes, episode) }
-            gridItems.add(VideoGridItemUIState.Items(items))
+            gridItems.add(
+                VideoGridItemUIState.Items(
+                    items = items,
+                    rowKey = "season_${season.number}",
+                )
+            )
         }
         return VideoGridUIState(list = gridItems)
     }

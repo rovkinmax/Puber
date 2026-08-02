@@ -157,7 +157,7 @@ internal class DetailsScreenContentTest {
                 listOf(
                     VideoGridItemUIState.Title("Season $seasonNumber"),
                     VideoGridItemUIState.Items(
-                        listOf(
+                        items = listOf(
                             episode(
                                 id = seasonNumber * 100 + 1,
                                 seasonNumber = seasonNumber,
@@ -178,6 +178,7 @@ internal class DetailsScreenContentTest {
                                 )
                             },
                         ),
+                        rowKey = "season_$seasonNumber",
                     ),
                 )
             },

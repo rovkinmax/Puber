@@ -9,7 +9,9 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -27,11 +29,14 @@ import androidx.tv.material3.Text
 import com.kino.puber.core.ui.uikit.component.VideoItemContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.GenreChipBar
 import com.kino.puber.core.ui.uikit.component.HeroCarousel
+import com.kino.puber.core.ui.uikit.component.PositionFocusedItemInLazyLayout
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.FocusableRow
+import com.kino.puber.core.ui.uikit.component.moviesList.nearestNonEmptyRowKey
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.contentlist.model.ContentListAction
 import com.kino.puber.ui.feature.contentlist.model.ContentListViewState
@@ -39,6 +44,7 @@ import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.contentlist.model.SectionState
 import com.kino.puber.ui.feature.contentlist.vm.SectionVM
 import com.kino.puber.core.di.LocalPuberKoinScope
+import com.kino.puber.core.ui.navigation.component.PreserveLazyListAnchorOnRootReturn
 import org.koin.core.qualifier.named
 
 @Composable
@@ -106,6 +112,8 @@ private fun ContentListLayout(
     onAction: (UIAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val lazyListState = rememberLazyListState()
+    PreserveLazyListAnchorOnRootReturn(lazyListState)
     Column(modifier = modifier) {
         if (state.showDetailPanel) {
             VideoItemGridDetails(
@@ -124,24 +132,27 @@ private fun ContentListLayout(
             )
         }
 
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(if (state.showDetailPanel) PuberTheme.Defaults.ContentWeight else 1f)
-                .focusRestorer()
-                .focusGroup(),
-            contentPadding = PaddingValues(bottom = PuberTheme.Defaults.HorizontalVideoItemHeight),
-        ) {
-            heroItem(state, onAction)
-            sectionItems(
-                sections = sections,
-                sectionVms = sectionVms,
-                sectionStates = sectionStates,
-                focusedSectionIndex = focusedSectionIndex,
-                onSectionFocused = onSectionFocused,
-                onContextMenu = onContextMenu,
-                onAction = onAction,
-            )
+        PositionFocusedItemInLazyLayout(keepFullyVisibleItemInPlace = true) {
+            LazyColumn(
+                state = lazyListState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(if (state.showDetailPanel) PuberTheme.Defaults.ContentWeight else 1f)
+                    .focusRestorer()
+                    .focusGroup(),
+                contentPadding = PaddingValues(bottom = PuberTheme.Defaults.HorizontalVideoItemHeight),
+            ) {
+                heroItem(state, onAction)
+                sectionItems(
+                    sections = sections,
+                    sectionVms = sectionVms,
+                    sectionStates = sectionStates,
+                    focusedSectionIndex = focusedSectionIndex,
+                    onSectionFocused = onSectionFocused,
+                    onContextMenu = onContextMenu,
+                    onAction = onAction,
+                )
+            }
         }
     }
 }
@@ -191,6 +202,22 @@ private fun LazyListScope.sectionItems(
             onSectionFocused = onSectionFocused,
             onContextMenu = onContextMenu,
             onAction = onAction,
+            onRowEmpty = {
+                val rows = sections.mapIndexed { rowIndex, section ->
+                    val itemCount = (sectionStates[rowIndex] as? SectionState.Content)
+                        ?.items
+                        ?.size
+                        ?: 0
+                    FocusableRow(section.id, itemCount)
+                }
+                val targetKey = nearestNonEmptyRowKey(
+                    rows = rows,
+                    emptyRowIndex = index,
+                )
+                if (targetKey != null) {
+                    onSectionFocused(sections.indexOfFirst { it.id == targetKey })
+                }
+            },
         )
     }
 }
@@ -205,6 +232,7 @@ private fun LazyListScope.sectionItem(
     onSectionFocused: (Int) -> Unit,
     onContextMenu: (VideoItemUIState, SectionVM) -> Unit,
     onAction: (UIAction) -> Unit,
+    onRowEmpty: () -> Unit,
 ) {
     item(key = "title_${config.id}", contentType = "section_title") {
         Text(
@@ -244,6 +272,7 @@ private fun LazyListScope.sectionItem(
             onRetry = { sectionVm.onAction(CommonAction.RetryClicked) },
             onLoadMore = { sectionVm.onAction(CommonAction.LoadMore) },
             onShowAll = rememberedOnShowAll,
+            onRowEmpty = onRowEmpty,
         )
     }
 }
