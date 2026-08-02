@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.kino.puber.R
 import com.kino.puber.core.di.DIScope
 import com.kino.puber.core.di.puberViewModel
+import com.kino.puber.core.ui.navigation.GlobalRemoteHotkeyBlockedScreen
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.ui.feature.root.vm.LauncherVM
 import kotlinx.parcelize.Parcelize
@@ -32,7 +33,7 @@ import org.koin.dsl.module
 private val SplashBackground = Color(0xFF1A0E2E)
 
 @Parcelize
-internal class LauncherScreen : PuberScreen {
+internal class LauncherScreen : PuberScreen, GlobalRemoteHotkeyBlockedScreen {
 
     @Suppress("unused")
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {

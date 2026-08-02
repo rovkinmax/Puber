@@ -18,6 +18,7 @@ import com.kino.puber.core.ui.model.VideoItemTypeMapper
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppLauncher
 import com.kino.puber.core.ui.navigation.AppLauncherImpl
+import com.kino.puber.core.ui.navigation.AppRemoteHotkeyHandler
 import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.core.ui.navigation.component.FlowComponent
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
@@ -90,6 +91,7 @@ fun App() {
             FlowComponent(
                 scopeName = ScopeRoot,
                 screen = LauncherScreen(),
+                remoteKeyHandler = AppRemoteHotkeyHandler::handle,
                 moduleFactory = { scopeId, parentScope ->
                     buildFlowModule(
                         scopeId,

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import cafe.adriel.voyager.core.screen.ScreenKey
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -72,6 +74,7 @@ fun FlowComponent(
     screen: PuberScreen = LoadingScreen,
     composableScope: CoroutineScope = rememberCoroutineScope(),
     moduleFactory: (scopeId: ScopeID, parentScope: Scope) -> Module = { _, _ -> module {} },
+    remoteKeyHandler: ((android.view.KeyEvent, AppRouter, PuberScreen) -> Boolean)? = null,
     content: @Composable () -> Unit = {},
 ) = DIScope(
     moduleFactory = { scopeId, parentScope ->
@@ -90,7 +93,20 @@ fun FlowComponent(
         screen = screen,
         onBackPressed = { onBackPressed(router) },
     ) {
-        CurrentScreen("currentScreen$scopeName")
+        val navigator = LocalNavigator.currentOrThrow
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onKeyEvent { event ->
+                    remoteKeyHandler?.invoke(
+                        event.nativeKeyEvent,
+                        router,
+                        navigator.lastItem as PuberScreen,
+                    ) ?: false
+                },
+        ) {
+            CurrentScreen("currentScreen$scopeName")
+        }
         FlowCommandRunner(router)
     }
     content()
