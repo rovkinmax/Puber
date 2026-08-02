@@ -1,6 +1,8 @@
 package com.kino.puber.core.ui.uikit.component
 
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -8,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -91,29 +94,59 @@ internal class TvContextMenuLongPressTest {
         }
     }
 
-    private fun setContextMenuContent(onAction: () -> Unit) {
+    @Test
+    fun settingsKey_consumedByFocusedContextMenu_doesNotReachRootFallback() {
+        var rootFallbackInvocations = 0
+        setContextMenuContent(
+            onAction = {},
+            onRootKeyEvent = { rootFallbackInvocations += 1 },
+        )
+
+        composeRule.onNodeWithTag(SOURCE_TAG).performKeyInput {
+            keyDown(Key.Settings)
+        }
+
+        composeRule.onNodeWithText(MENU_TITLE).assertExists()
+        composeRule.runOnIdle {
+            assertEquals(0, rootFallbackInvocations)
+        }
+    }
+
+    private fun setContextMenuContent(
+        onAction: () -> Unit,
+        onRootKeyEvent: () -> Unit = {},
+    ) {
         composeRule.setContent {
             PuberTheme {
                 var menuVisible by remember { mutableStateOf(false) }
-                BasicText(
-                    text = "Open menu",
+                Box(
                     modifier = Modifier
-                        .testTag(SOURCE_TAG)
-                        .onTvContextMenuKey { menuVisible = true }
-                        .focusable(),
-                )
-                if (menuVisible) {
-                    TvContextMenuDialog(
-                        title = MENU_TITLE,
-                        actions = listOf(
-                            TvContextMenuAction(
-                                id = "first",
-                                title = FIRST_ACTION,
-                            ),
-                        ),
-                        onAction = { onAction() },
-                        onDismiss = { menuVisible = false },
+                        .fillMaxSize()
+                        .onKeyEvent {
+                            onRootKeyEvent()
+                            false
+                        },
+                ) {
+                    BasicText(
+                        text = "Open menu",
+                        modifier = Modifier
+                            .testTag(SOURCE_TAG)
+                            .onTvContextMenuKey { menuVisible = true }
+                            .focusable(),
                     )
+                    if (menuVisible) {
+                        TvContextMenuDialog(
+                            title = MENU_TITLE,
+                            actions = listOf(
+                                TvContextMenuAction(
+                                    id = "first",
+                                    title = FIRST_ACTION,
+                                ),
+                            ),
+                            onAction = { onAction() },
+                            onDismiss = { menuVisible = false },
+                        )
+                    }
                 }
             }
         }
