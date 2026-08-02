@@ -67,21 +67,23 @@ private val previewEpisodes = VideoGridUIState(
     list = listOf(
         VideoGridItemUIState.Title("1 сезон, 10 серий"),
         VideoGridItemUIState.Items(
-            listOf(
+            items = listOf(
                 VideoItemUIState(1, "1. Привет фром Марс", "", "", showTitle = true),
                 VideoItemUIState(2, "2. Как мы поезд пропустили", "", "", showTitle = true),
                 VideoItemUIState(3, "3. Не шутите с плутонцами!", "", "", showTitle = true),
                 VideoItemUIState(4, "4. Как не надо спасать мир", "", "", showTitle = true),
-            )
+            ),
+            rowKey = "season_1",
         ),
         VideoGridItemUIState.Title("2 сезон, 10 серий"),
         VideoGridItemUIState.Items(
-            listOf(
+            items = listOf(
                 VideoItemUIState(11, "1. Венеровский централ", "", "", showTitle = true),
                 VideoItemUIState(12, "2. Космический мусор", "", "", showTitle = true),
                 VideoItemUIState(13, "3. Извинигород", "", "", showTitle = true),
                 VideoItemUIState(14, "4. Дед-Код", "", "", showTitle = true),
-            )
+            ),
+            rowKey = "season_2",
         ),
     )
 )

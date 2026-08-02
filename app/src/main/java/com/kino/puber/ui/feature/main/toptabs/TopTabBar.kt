@@ -35,15 +35,16 @@ import com.adamglin.phosphoricons.duotone.GearSix
 import com.adamglin.phosphoricons.duotone.MagnifyingGlass
 import com.kino.puber.core.ui.uikit.component.onTvContextMenuKey
 import com.kino.puber.ui.feature.main.model.MainTab
+import com.kino.puber.ui.feature.main.model.TabType
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun TopTabBar(
     tabs: List<MainTab>,
     selectedIndex: Int,
-    tabFocusRequesters: List<FocusRequester>,
+    tabFocusRequesters: Map<TabType, FocusRequester>,
     onContentFocusRequested: () -> Unit,
-    onTabFocused: (Int) -> Unit,
+    onTabFocused: (TabType) -> Unit,
     onTabClick: () -> Unit,
     onTabContextMenu: (Int) -> Unit,
     onSearchClick: () -> Unit,
@@ -68,9 +69,9 @@ internal fun TopTabBar(
             selectedTabIndex = selectedIndex,
             modifier = tabRowModifier
                 .focusRestorer {
-                    tabFocusRequesters.getOrElse(selectedIndex) {
-                        tabFocusRequesters.firstOrNull() ?: FocusRequester.Default
-                    }
+                    val selectedTabType = tabs.getOrNull(selectedIndex)?.type
+                    tabFocusRequesters[selectedTabType] ?: tabFocusRequesters.values.firstOrNull()
+                        ?: FocusRequester.Default
                 }
                 .weight(1f),
         ) {
@@ -78,10 +79,10 @@ internal fun TopTabBar(
                 key(tab.type) {
                     Tab(
                         selected = index == selectedIndex,
-                        onFocus = { onTabFocused(index) },
+                        onFocus = { onTabFocused(tab.type) },
                         onClick = onTabClick,
                         modifier = Modifier
-                            .focusRequester(tabFocusRequesters[index])
+                            .focusRequester(tabFocusRequesters[tab.type] ?: FocusRequester.Default)
                             .onTvContextMenuKey { onTabContextMenu(index) }
                             .onDownKey(onContentFocusRequested),
                     ) {

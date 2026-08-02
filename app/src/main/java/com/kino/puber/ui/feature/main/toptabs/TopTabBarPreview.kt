@@ -27,7 +27,9 @@ private val previewTabs = listOf(
 @Preview(name = "TopTabBar — Home selected", device = TV_1080p)
 @Composable
 private fun TopTabBarHomePreview() = PuberTheme {
-    val tabFocusRequesters = remember { List(previewTabs.size) { FocusRequester() } }
+    val tabFocusRequesters = remember {
+        previewTabs.associate { it.type to FocusRequester() }
+    }
     TopTabBar(
         tabs = previewTabs,
         selectedIndex = 0,
@@ -44,7 +46,9 @@ private fun TopTabBarHomePreview() = PuberTheme {
 @Preview(name = "TopTabBar — History selected", device = TV_1080p)
 @Composable
 private fun TopTabBarHistoryPreview() = PuberTheme {
-    val tabFocusRequesters = remember { List(previewTabs.size) { FocusRequester() } }
+    val tabFocusRequesters = remember {
+        previewTabs.associate { it.type to FocusRequester() }
+    }
     TopTabBar(
         tabs = previewTabs,
         selectedIndex = previewTabs.lastIndex,

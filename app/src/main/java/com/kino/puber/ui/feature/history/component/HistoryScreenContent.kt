@@ -485,7 +485,9 @@ private fun HistoryTopTabsPreviewHost(state: HistoryViewState) {
             isSelected = true,
         ),
     )
-    val tabFocusRequesters = remember { List(tabs.size) { FocusRequester() } }
+    val tabFocusRequesters = remember {
+        tabs.associate { it.type to FocusRequester() }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopTabBar(

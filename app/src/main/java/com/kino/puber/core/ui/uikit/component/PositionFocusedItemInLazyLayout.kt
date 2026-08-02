@@ -25,17 +25,24 @@ enum class DpadScrollAxis {
 fun PositionFocusedItemInLazyLayout(
     parentFraction: Float = 0.3f,
     childFraction: Float = 0f,
+    keepFullyVisibleItemInPlace: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val rapidScrollActive = remember { mutableStateOf(false) }
-    val bringIntoViewSpec = remember(parentFraction, childFraction) {
+    val bringIntoViewSpec = remember(
+        parentFraction,
+        childFraction,
+        keepFullyVisibleItemInPlace,
+    ) {
         object : BringIntoViewSpec {
             override fun calculateScrollDistance(
                 offset: Float,
                 size: Float,
                 containerSize: Float,
             ): Float {
-                if (rapidScrollActive.value && offset >= 0 && offset + size <= containerSize) {
+                val keepCurrentPosition = keepFullyVisibleItemInPlace || rapidScrollActive.value
+                val itemIsFullyVisible = offset >= 0 && offset + size <= containerSize
+                if (keepCurrentPosition && itemIsFullyVisible) {
                     return 0f
                 }
                 val initialTargetForLeadingEdge =

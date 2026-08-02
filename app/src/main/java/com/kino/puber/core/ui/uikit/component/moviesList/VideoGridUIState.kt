@@ -18,12 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -49,7 +44,10 @@ data class VideoGridUIState(
 @Immutable
 sealed class VideoGridItemUIState {
     data class Title(val title: String) : VideoGridItemUIState()
-    data class Items(val items: List<VideoItemUIState>) : VideoGridItemUIState()
+    data class Items(
+        val items: List<VideoItemUIState>,
+        val rowKey: String,
+    ) : VideoGridItemUIState()
 }
 
 @Composable
@@ -63,64 +61,61 @@ fun VideoGrid(
     initialFocusedItemId: Int? = null,
 ) {
     val lazyListState = rememberLazyListState()
-    val initialColumnIndex = remember(state, initialFocusedItemId) {
-        state.list.indexOfFirst { gridItem ->
-            gridItem is VideoGridItemUIState.Items &&
-                gridItem.items.any { it.id == initialFocusedItemId }
-        }
-    }
-    var focusedColumnIndex by rememberSaveable(initialFocusedItemId) {
-        mutableIntStateOf(initialColumnIndex)
-    }
-    LaunchedEffect(initialColumnIndex) {
-        if (initialColumnIndex >= 0) {
-            lazyListState.scrollToItem(initialColumnIndex)
-        }
-    }
+    val gridFocus = rememberVideoGridFocusState(
+        list = state.list,
+        initialFocusedItemId = initialFocusedItemId,
+        lazyListState = lazyListState,
+    )
 
     val showTopGradient by remember { derivedStateOf { lazyListState.firstVisibleItemScrollOffset > 0 } }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        LazyColumn(
-            state = lazyListState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = PuberTheme.Defaults.VideoItemHeight),
-        ) {
-            itemsIndexed(state.list, key = { _, item ->
-                when (item) {
-                    is VideoGridItemUIState.Title -> "title_${item.title}"
-                    is VideoGridItemUIState.Items -> "items_${item.items.first().id}"
-                }
-            }) { indexC, columnItem ->
-                when (columnItem) {
+    PositionFocusedItemInLazyLayout {
+        Box(modifier = modifier.fillMaxSize()) {
+            LazyColumn(
+                state = lazyListState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = PuberTheme.Defaults.VideoItemHeight),
+            ) {
+                itemsIndexed(state.list, key = { _, item ->
+                    when (item) {
+                        is VideoGridItemUIState.Title -> "title_${item.title}"
+                        is VideoGridItemUIState.Items -> "items_${item.rowKey}"
+                    }
+                }) { _, columnItem ->
+                    when (columnItem) {
 
-                    is VideoGridItemUIState.Title -> Text(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        text = columnItem.title,
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                        is VideoGridItemUIState.Title -> Text(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            text = columnItem.title,
+                            style = MaterialTheme.typography.titleLarge,
+                        )
 
-                    is VideoGridItemUIState.Items -> VideoGridItems(
-                        items = columnItem,
-                        columnIndex = indexC,
-                        isTargetRow = indexC == focusedColumnIndex,
-                        initialFocusedItemId = initialFocusedItemId?.takeIf { itemId ->
-                            columnItem.items.any { it.id == itemId }
-                        },
-                        onItemClick = onItemClick,
-                        onItemContextMenu = onItemContextMenu,
-                        onItemFocused = { item ->
-                            focusedColumnIndex = indexC
-                            onItemFocused(item)
-                        },
-                    )
+                        is VideoGridItemUIState.Items -> VideoGridItems(
+                            items = columnItem,
+                            isTargetRow = columnItem.rowKey == gridFocus.rowFocus.focusedRowKey,
+                            initialFocusedItemId = initialFocusedItemId?.takeIf { itemId ->
+                                columnItem.items.any { it.id == itemId }
+                            },
+                            onItemClick = onItemClick,
+                            onItemContextMenu = onItemContextMenu,
+                            onItemFocused = { item ->
+                                gridFocus.rowFocus.onRowFocused(columnItem.rowKey)
+                                onItemFocused(item)
+                            },
+                            onRowEmpty = {
+                                gridFocus.rowFocus.onRowEmpty(
+                                    gridFocus.rows.indexOfFirst { it.key == columnItem.rowKey }
+                                )
+                            },
+                        )
+                    }
                 }
             }
-        }
 
-        VideoGridTopGradient(visible = enableTopSideGradient && showTopGradient)
+            VideoGridTopGradient(visible = enableTopSideGradient && showTopGradient)
+        }
     }
 }
 
@@ -148,68 +143,57 @@ private fun BoxScope.VideoGridTopGradient(visible: Boolean) {
 @Composable
 private fun VideoGridItems(
     items: VideoGridItemUIState.Items,
-    columnIndex: Int,
     isTargetRow: Boolean,
     initialFocusedItemId: Int?,
     onItemClick: (VideoItemUIState) -> Unit,
     onItemContextMenu: ((VideoItemUIState) -> Unit)?,
     onItemFocused: (VideoItemUIState) -> Unit,
+    onRowEmpty: () -> Unit,
 ) {
+    val itemFocus = rememberReconciledItemFocus(
+        rowKey = items.rowKey,
+        items = items.items,
+        isTargetRow = isTargetRow,
+        initialFocusedItemId = initialFocusedItemId,
+        requestAfterFrame = true,
+        onRowEmpty = onRowEmpty,
+    )
     Box(
         modifier = Modifier
             .wrapContentHeight()
             .fillMaxWidth(),
     ) {
         val listState = rememberLazyListState()
-        val initialItemIndex = remember(items, initialFocusedItemId) {
-            items.items.indexOfFirst { it.id == initialFocusedItemId }
-        }
-        var focusedItemIndex by rememberSaveable(columnIndex, initialFocusedItemId) {
-            mutableIntStateOf(initialItemIndex.coerceAtLeast(0))
-        }
-
         val rowFocusRequester = remember { FocusRequester() }
-        val savedItemFocusRequester = remember { FocusRequester() }
-        LaunchedEffect(initialFocusedItemId, initialItemIndex) {
-            if (initialItemIndex >= 0) {
-                withFrameNanos { }
-                savedItemFocusRequester.requestFocus()
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(rowFocusRequester)
+                .dpadScrollOptimization(axis = DpadScrollAxis.Horizontal)
+                .focusRestorer(itemFocus.focusRequester)
+                .onFocusChanged { itemFocus.rowHasFocusRef[0] = it.hasFocus },
+            state = listState,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(16.dp),
+        ) {
+            itemsIndexed(items.items, key = { _, item -> item.id }) { indexR, item ->
+                val isFallbackTarget = item.id == itemFocus.targetItemId
+                VideoGridRowItem(
+                    item = item,
+                    itemIndex = indexR,
+                    isFallbackTarget = isFallbackTarget,
+                    rowFocusRequester = rowFocusRequester,
+                    savedItemFocusRequester = itemFocus.focusRequester,
+                    onItemClick = onItemClick,
+                    onItemContextMenu = onItemContextMenu,
+                    onItemFocused = { _, focusedItem ->
+                        itemFocus.onItemFocused(focusedItem.id)
+                        onItemFocused(focusedItem)
+                    },
+                )
             }
         }
-        PositionFocusedItemInLazyLayout {
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(rowFocusRequester)
-                    .dpadScrollOptimization(axis = DpadScrollAxis.Horizontal)
-                    .focusRestorer(savedItemFocusRequester),
-                state = listState,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(16.dp),
-            ) {
-                itemsIndexed(items.items, key = { _, item -> item.id }) { indexR, item ->
-                    val isFallbackTarget = if (isTargetRow) {
-                        indexR == focusedItemIndex
-                    } else {
-                        indexR == 0
-                    }
-                    VideoGridRowItem(
-                        item = item,
-                        itemIndex = indexR,
-                        isFallbackTarget = isFallbackTarget,
-                        rowFocusRequester = rowFocusRequester,
-                        savedItemFocusRequester = savedItemFocusRequester,
-                        onItemClick = onItemClick,
-                        onItemContextMenu = onItemContextMenu,
-                        onItemFocused = { focusedIndex, focusedItem ->
-                            focusedItemIndex = focusedIndex
-                            onItemFocused(focusedItem)
-                        },
-                    )
-                }
-            }
-            FadeGradient(listState)
-        }
+        FadeGradient(listState)
     }
 }
 

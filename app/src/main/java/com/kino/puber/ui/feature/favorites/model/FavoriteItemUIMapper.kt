@@ -33,7 +33,12 @@ internal class FavoriteItemUIMapper(
                     if (groupedItems.size > 1) {
                         add(VideoGridItemUIState.Title(typeMapper.map(type)))
                     }
-                    add(VideoGridItemUIState.Items(videoItemUIMapper.mapShortItemList(items).mapSaved()))
+                    add(
+                        VideoGridItemUIState.Items(
+                            items = videoItemUIMapper.mapShortItemList(items).mapSaved(),
+                            rowKey = "favorites_${type.name}",
+                        )
+                    )
                 }
             },
         )

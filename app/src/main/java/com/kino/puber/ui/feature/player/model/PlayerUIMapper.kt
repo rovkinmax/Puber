@@ -137,7 +137,12 @@ internal class PlayerUIMapper(
                     isSeasonWatched = isSeasonWatched,
                 )
             } ?: emptyList()
-            gridItems.add(VideoGridItemUIState.Items(items))
+            gridItems.add(
+                VideoGridItemUIState.Items(
+                    items = items,
+                    rowKey = "season_${season.number}",
+                )
+            )
         }
         return VideoGridUIState(list = gridItems)
     }
