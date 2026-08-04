@@ -198,7 +198,7 @@ def main() -> int:
             consecutive_errors += 1
             if consecutive_errors >= max_errors:
                 workflow_result(
-                    "state_changed",
+                    "merge_watch_state_changed",
                     workspace_path=str(workspace),
                     pr_url=pr_url,
                     branch_name=branch_name,
@@ -245,7 +245,7 @@ def main() -> int:
 
         if state_name == "MERGED":
             workflow_result(
-                "pr_merged",
+                "merge_watch_pr_merged",
                 workspace_path=str(workspace),
                 pr_url=pr_url,
                 branch_name=branch_name,
@@ -282,7 +282,7 @@ def main() -> int:
 
         if reason:
             workflow_result(
-                "state_changed",
+                "merge_watch_state_changed",
                 workspace_path=str(workspace),
                 pr_url=pr_url,
                 branch_name=branch_name,
@@ -293,7 +293,7 @@ def main() -> int:
 
         if max_polls and poll >= max_polls:
             workflow_result(
-                "still_waiting",
+                "merge_watch_still_waiting",
                 workspace_path=str(workspace),
                 pr_url=pr_url,
                 branch_name=branch_name,

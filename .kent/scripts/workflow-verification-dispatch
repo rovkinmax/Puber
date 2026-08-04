@@ -28,7 +28,7 @@ if [[ -z "$reported_root" ||
   "$reported_root" != "$reported_git_root" ||
   "$reported_root" != "$execution_root" ]]; then
   jq -nc \
-    --arg transition "invalid_workspace" \
+    --arg transition "verification_dispatch_invalid_workspace" \
     --arg commentary "Rejected a non-root or foreign workspace path." \
     --arg reported_workspace_path "$workspace_path" \
     --arg fix_context \
@@ -43,7 +43,7 @@ if [[ -z "$reported_root" ||
 fi
 
 jq -nc \
-  --arg transition "fanout_verify" \
+  --arg transition "verification_dispatch_fanout_verify" \
   --arg commentary "Starting deterministic and independent read-only verification." \
   --arg workspace_path "$execution_root" \
   --arg review_context "$review_context" \

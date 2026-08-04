@@ -3,7 +3,7 @@
     "id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
-    "version": 85,
+    "version": 86,
     "execution_target_policy": {
       "mode": "head"
     }
@@ -108,7 +108,7 @@
       "id": "group-6b4e20b0-0ba0-426f-b92e-d46db3a3feb6",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-73976fdb-cbc3-4df6-9733-3413e362105d",
-      "transition_id": "start",
+      "transition_id": "backlog_start",
       "display_name": "Start",
       "description": "Start one-flow release preparation from the task body."
     },
@@ -116,7 +116,7 @@
       "id": "group-25e690fa-41ae-458c-9e23-1790dc7bcfe2",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
-      "transition_id": "compliance",
+      "transition_id": "prepare_compliance",
       "display_name": "Compliance",
       "description": "Release version bump is prepared; run mandatory compliance review before PR."
     },
@@ -124,7 +124,7 @@
       "id": "group-254f0452-3cae-4ec6-a7a3-23d2131f6bd6",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
-      "transition_id": "needs_user_action",
+      "transition_id": "prepare_needs_user_action",
       "display_name": "Needs User Action",
       "description": "prepare cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
@@ -132,7 +132,7 @@
       "id": "group-40f94378-7c2e-4638-94d8-4f0e596581ac",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
-      "transition_id": "ship_pr",
+      "transition_id": "compliance_ship_pr",
       "display_name": "Ship PR",
       "description": "Compliance passed; create or update the task PR before any terminal completion."
     },
@@ -140,7 +140,7 @@
       "id": "group-0c5a2849-8183-427c-8fb1-636ae725e7c3",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
-      "transition_id": "needs_changes",
+      "transition_id": "compliance_needs_changes",
       "display_name": "Needs Changes",
       "description": "Compliance found release-preparation violations; continue to fixes without manual approval."
     },
@@ -148,7 +148,7 @@
       "id": "group-bda095a6-2a1a-4c75-9eb9-1921e021a1a9",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
-      "transition_id": "needs_user_action",
+      "transition_id": "compliance_needs_user_action",
       "display_name": "Needs User Action",
       "description": "compliance cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
@@ -156,7 +156,7 @@
       "id": "group-31b6f0a4-f78a-4778-ad48-f0fa131f1e37",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
-      "transition_id": "monitor_ci",
+      "transition_id": "ship_pr_monitor_ci",
       "display_name": "Monitor Ci",
       "description": "Release PR exists; monitor checks."
     },
@@ -164,7 +164,7 @@
       "id": "group-2a42e3f4-ca4f-4aac-a8bf-951c440fcd3a",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
-      "transition_id": "needs_user_action",
+      "transition_id": "ship_pr_needs_user_action",
       "display_name": "Needs User Action",
       "description": "ship_pr cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
@@ -172,7 +172,7 @@
       "id": "group-ff962732-bc93-4152-8fbd-e4f4f599e298",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
-      "transition_id": "waiting_pr",
+      "transition_id": "ci_monitor_waiting_pr",
       "display_name": "Waiting PR",
       "description": "Release PR CI passed or was intentionally skipped; wait until the PR is merged before tag publication."
     },
@@ -180,7 +180,7 @@
       "id": "group-9a377344-c009-4447-b4c7-c291f4b20a86",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
-      "transition_id": "needs_changes",
+      "transition_id": "ci_monitor_needs_changes",
       "display_name": "Needs Changes",
       "description": "Release PR checks failed; continue to fixes without manual approval."
     },
@@ -188,7 +188,7 @@
       "id": "group-05159cae-6e2c-469e-a432-a7065d774792",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
-      "transition_id": "needs_user_action",
+      "transition_id": "ci_monitor_needs_user_action",
       "display_name": "Needs User Action",
       "description": "ci_monitor cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
@@ -196,7 +196,7 @@
       "id": "group-f2ec6527-7b65-49a1-8d95-0f404ffa94eb",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
-      "transition_id": "monitor",
+      "transition_id": "publish_monitor",
       "display_name": "Monitor",
       "description": "Release tag was pushed; monitor release automation when available."
     },
@@ -204,7 +204,7 @@
       "id": "group-7ffd37d5-6e2e-4860-9eb5-cf2dbd037975",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
-      "transition_id": "needs_user_action",
+      "transition_id": "publish_needs_user_action",
       "display_name": "Needs User Action",
       "description": "publish cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
@@ -212,7 +212,7 @@
       "id": "group-cba3a377-df16-44ff-aee8-671b5cbf7d95",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
-      "transition_id": "release_published",
+      "transition_id": "monitor_release_published",
       "display_name": "Release Published",
       "description": "Release tag/publication was completed and monitored; cleanup can finish the task."
     },
@@ -220,7 +220,7 @@
       "id": "group-42b09abf-62a0-442a-b26d-ed64524f97a0",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
-      "transition_id": "needs_user_action",
+      "transition_id": "monitor_needs_user_action",
       "display_name": "Needs User Action",
       "description": "monitor cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
@@ -228,7 +228,7 @@
       "id": "group-c2dae728-5f18-4901-a3c0-3bc6af4fca03",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
-      "transition_id": "done",
+      "transition_id": "cleanup_done",
       "display_name": "Done",
       "description": "Cleanup report is ready; finish the release task."
     },
@@ -236,7 +236,7 @@
       "id": "group-7d5870e1-7ee1-4f94-9d2b-7709f28be05d",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
-      "transition_id": "needs_changes",
+      "transition_id": "ship_pr_needs_changes",
       "display_name": "Needs Changes",
       "description": "Release PR creation/update hit a recoverable branch, rebase, conflict, push, or metadata issue; user approval required before recovery work."
     },
@@ -244,7 +244,7 @@
       "id": "group-fedc6be8-56f2-4c04-a147-3e3727ff4146",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
-      "transition_id": "pr_merged",
+      "transition_id": "waiting_pr_pr_merged",
       "display_name": "Pr Merged",
       "description": "Release PR is merged; publish the approved tag after human approval."
     },
@@ -252,7 +252,7 @@
       "id": "group-b36e18d1-e437-4053-be6e-11be463e6aa4",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
-      "transition_id": "needs_changes",
+      "transition_id": "waiting_pr_needs_changes",
       "display_name": "Needs Changes",
       "description": "Release PR needs task-scoped changes before it can be merged."
     },
@@ -260,7 +260,7 @@
       "id": "group-87b5a742-40cd-462f-8962-6b395a8eef7f",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
-      "transition_id": "needs_user_action",
+      "transition_id": "waiting_pr_needs_user_action",
       "display_name": "Needs User Action",
       "description": "Release PR is still waiting on a human or external process; remain in Waiting PR."
     },
@@ -268,7 +268,7 @@
       "id": "group-2ca80118-bc7d-4a36-bb97-becb5afb662d",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
-      "transition_id": "close_without_merge",
+      "transition_id": "waiting_pr_close_without_merge",
       "display_name": "Close Without Merge",
       "description": "User explicitly canceled the release PR without merge; cleanup can finish."
     },
@@ -276,7 +276,7 @@
       "id": "group-6b4c5dce-d0c1-43e4-8843-a2c8ec17270d",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
-      "transition_id": "wont_do",
+      "transition_id": "prepare_wont_do",
       "display_name": "Wont Do",
       "description": "Latest user comment explicitly cancels this task or declares it not planned; finish without treating it as a recoverable blocker."
     }
@@ -368,7 +368,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Create or update the Puber release version-bump PR.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Compliance result: {{.Params.compliance_report}}. Release context from preparation: version {{.Params.compliance.release_version}}, type {{.Params.compliance.release_type}}, branch {{.Params.compliance.release_branch}}, tag {{.Params.compliance.release_tag}}, workspace {{.Params.compliance.workspace_path}}.\n\nCommit only release-task changes if anything remains uncommitted, push {{.Params.compliance.release_branch}} to origin, and create or update a GitHub PR for the version bump. Do not merge the PR. Do not push directly to master. Do not create or push a release tag in this node.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, workspace_path, release_version, and release_tag. Complete with needs_changes when PR creation/update is needs_user_action by recoverable branch, rebase, conflict, push, or PR metadata state; provide workspace_path, release_version, release_type, release_branch, release_tag, and blocker_reason. Complete with needs_user_action only if PR creation/update cannot continue safely without changing release scope, credentials, or project policy; provide blocker_reason.",
+      "prompt_template": "Create or update the Puber release version-bump PR.\n\nRead .kent/project-contract.md, .kent/commands/ship-pr.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent. Compliance result: {{.Params.compliance_report}}. Release context from preparation: version {{.Params.prepare_compliance.release_version}}, type {{.Params.prepare_compliance.release_type}}, branch {{.Params.prepare_compliance.release_branch}}, tag {{.Params.prepare_compliance.release_tag}}, workspace {{.Params.prepare_compliance.workspace_path}}.\n\nCommit only release-task changes if anything remains uncommitted, push {{.Params.prepare_compliance.release_branch}} to origin, and create or update a GitHub PR for the version bump. Do not merge the PR. Do not push directly to master. Do not create or push a release tag in this node.\n\nComplete with monitor_ci when a PR exists and provide pr_url, branch_name, workspace_path, release_version, and release_tag. Complete with needs_changes when PR creation/update is needs_user_action by recoverable branch, rebase, conflict, push, or PR metadata state; provide workspace_path, release_version, release_type, release_branch, release_tag, and blocker_reason. Complete with needs_user_action only if PR creation/update cannot continue safely without changing release scope, credentials, or project policy; provide blocker_reason.",
       "parameters": [
         {
           "key": "compliance_report",
@@ -429,7 +429,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor the Puber release PR checks.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md,\n.kent/commands/release-tag.md, and .kent/commands/release.md first. Inspect PR\n{{.Params.pr_url}} for release {{.Params.release_version}} / tag\n{{.Params.release_tag}} on branch {{.Params.branch_name}}. Do not merge the PR\nand do not push commits from this node.\n\nResolve the exact PR once. Pending, queued, and in-progress checks are not a\nworkflow transition and never require user approval. Wait in one shell command:\n\n`gh pr checks {{.Params.pr_url}} --watch --interval 30`\n\nAfter the watcher exits, re-read authoritative PR/check state. Complete with\n`waiting_pr` only when required checks are green or intentionally absent;\nprovide pr_url, release_version, release_tag, branch_name, workspace_path, and\nci_report. Complete with `needs_changes` only for a task-scoped release failure\nand provide workspace_path plus ci_report. Use `needs_user_action` only for\nauthentication/access, ambiguous PR identity, contradictory policy, or another\nactual human decision. Never use it merely because checks are still running.",
+      "prompt_template": "Monitor the Puber release PR checks.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md,\n.kent/commands/release-tag.md, and .kent/commands/release.md first. Inspect PR\n{{.Params.pr_url}} for release {{.Params.release_version}} / tag\n{{.Params.release_tag}} on branch {{.Params.branch_name}}. Do not merge the PR\nand do not push commits from this node.\n\nResolve the exact PR once. Pending, queued, and in-progress checks are not a\nworkflow transition and never require user approval. Wait in one shell command:\n\n`gh pr checks {{.Params.pr_url}} --watch --interval 30`\n\nAfter the watcher exits, re-read authoritative PR/check state. Complete with\n`ci_monitor_waiting_pr` only when required checks are green or intentionally absent;\nprovide pr_url, release_version, release_tag, branch_name, workspace_path, and\nci_report. Complete with `ci_monitor_needs_changes` only for a task-scoped release failure\nand provide workspace_path plus ci_report. Use `ci_monitor_needs_user_action` only for\nauthentication/access, ambiguous PR identity, contradictory policy, or another\nactual human decision. Never use it merely because checks are still running.",
       "parameters": [
         {
           "key": "pr_url",
@@ -564,7 +564,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Monitor Puber release automation after tag publication.\n\nRead .kent/project-contract.md, .kent/commands/release.md, and\n.kent/commands/release-tag.md first. Release: {{.Params.release_tag}} at\n{{.Params.target_commit}}. Prepared Russian notes:\n{{.Params.release_notes_path}}.\n\nResolve the exact GitHub Actions run from the tag and target commit. Pending,\nqueued, and in-progress state is not a workflow transition and never requires\nuser approval. Wait in one shell command:\n\n`gh run watch <run-id> --exit-status --interval 30`\n\nAfter the watcher exits, re-read authoritative run/job state. On success,\nverify that the GitHub Release exists, apply the prepared notes with\n`gh release edit {{.Params.release_tag}} --notes-file\n{{.Params.release_notes_path}}`, then read the release back and verify its body\nis non-empty Russian text. Complete with `release_published` only after both\nautomation and release-notes verification pass; provide release_report with the\nrun, jobs, release URL, and notes evidence.\n\nUse `needs_user_action` only for terminal automation failure,\nauthentication/access, ambiguous run identity, missing release/notes artifact,\nor contradictory policy. Never use it merely because automation is still\nrunning.",
+      "prompt_template": "Monitor Puber release automation after tag publication.\n\nRead .kent/project-contract.md, .kent/commands/release.md, and\n.kent/commands/release-tag.md first. Release: {{.Params.release_tag}} at\n{{.Params.target_commit}}. Prepared Russian notes:\n{{.Params.release_notes_path}}.\n\nResolve the exact GitHub Actions run from the tag and target commit. Pending,\nqueued, and in-progress state is not a workflow transition and never requires\nuser approval. Wait in one shell command:\n\n`gh run watch <run-id> --exit-status --interval 30`\n\nAfter the watcher exits, re-read authoritative run/job state. On success,\nverify that the GitHub Release exists, apply the prepared notes with\n`gh release edit {{.Params.release_tag}} --notes-file\n{{.Params.release_notes_path}}`, then read the release back and verify its body\nis non-empty Russian text. Complete with `monitor_release_published` only after both\nautomation and release-notes verification pass; provide release_report with the\nrun, jobs, release URL, and notes evidence.\n\nUse `monitor_needs_user_action` only for terminal automation failure,\nauthentication/access, ambiguous run identity, missing release/notes artifact,\nor contradictory policy. Never use it merely because automation is still\nrunning.",
       "parameters": [
         {
           "key": "release_version",
@@ -717,7 +717,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Publish the approved Puber release after the release PR was confirmed merged.\n\nRead AGENTS.md, .kent/project-contract.md, .kent/commands/release.md,\n.kent/commands/release-tag.md, latest task comments, release version\n{{.Params.release_version}}, release tag {{.Params.release_tag}}, PR\n{{.Params.pr_url}}, workspace {{.Params.workspace_path}}, and merge report\n{{.Params.merge_report}}. This transition is intentionally approval-gated.\n\nBefore tagging, verify the PR is still MERGED and resolve the immutable target\ncommit plus previous release tag. Summarize the delivered range as concise\nuser-facing release notes in Russian. Exclude the version-bump PR and internal\nrelease chores; rewrite technical titles as user-visible changes. Save the\nnon-empty notes under the ignored task workspace at\n`.todo/{{.TaskShortId}}/release-notes-ru.md`.\n\nVerify the release tag does not point to a conflicting commit, then create and\npush it. Complete with `monitor` and provide release_version, release_tag,\ntarget_commit, pr_url, tag_push_status, and release_notes_path. Use\n`needs_user_action` only for conflicting tag/target evidence, missing\nauthorization, authentication/access, or another actual human decision.",
+      "prompt_template": "Publish the approved Puber release after the release PR was confirmed merged.\n\nRead AGENTS.md, .kent/project-contract.md, .kent/commands/release.md,\n.kent/commands/release-tag.md, latest task comments, release version\n{{.Params.release_version}}, release tag {{.Params.release_tag}}, PR\n{{.Params.pr_url}}, workspace {{.Params.workspace_path}}, and merge report\n{{.Params.merge_report}}. This transition is intentionally approval-gated.\n\nBefore tagging, verify the PR is still MERGED and resolve the immutable target\ncommit plus previous release tag. Summarize the delivered range as concise\nuser-facing release notes in Russian. Exclude the version-bump PR and internal\nrelease chores; rewrite technical titles as user-visible changes. Save the\nnon-empty notes under the ignored task workspace at\n`.todo/{{.TaskShortId}}/release-notes-ru.md`.\n\nVerify the release tag does not point to a conflicting commit, then create and\npush it. Complete with `publish_monitor` and provide release_version, release_tag,\ntarget_commit, pr_url, tag_push_status, and release_notes_path. Use\n`publish_needs_user_action` only for conflicting tag/target evidence, missing\nauthorization, authentication/access, or another actual human decision.",
       "parameters": [
         {
           "key": "pr_url",

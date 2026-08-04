@@ -204,7 +204,7 @@ def main() -> int:
 
     if not workspace.is_dir():
         complete(
-            "done",
+            "task_janitor_done",
             f"{previous_report}\nJanitor preserved missing workspace: {workspace}",
         )
         return 0
@@ -214,7 +214,7 @@ def main() -> int:
     ).resolve()
     if git_root != workspace:
         complete(
-            "done",
+            "task_janitor_done",
             f"{previous_report}\nJanitor preserved non-root workspace: {workspace}",
         )
         return 0
@@ -227,7 +227,7 @@ def main() -> int:
     ).stdout.strip()
     if branch and actual_branch and branch != actual_branch:
         complete(
-            "done",
+            "task_janitor_done",
             f"{previous_report}\nJanitor preserved branch mismatch: "
             f"expected {branch}, found {actual_branch}.",
         )
@@ -241,7 +241,7 @@ def main() -> int:
         )
         runtime_action = "removed" if runtime_removed else "preserved"
         complete(
-            "done",
+            "task_janitor_done",
             f"{previous_report}\nJanitor kept the primary checkout and "
             f"{runtime_action} runtime state: {runtime_report}.",
         )
@@ -253,7 +253,7 @@ def main() -> int:
     )
     if not any(workspace.is_relative_to(root) for root in allowed_roots):
         complete(
-            "done",
+            "task_janitor_done",
             f"{previous_report}\nJanitor preserved worktree outside managed roots: "
             f"{workspace}",
         )
@@ -265,7 +265,7 @@ def main() -> int:
     ).stdout.strip()
     if dirty:
         complete(
-            "done",
+            "task_janitor_done",
             f"{previous_report}\nJanitor preserved dirty worktree {workspace}. "
             f"Dirty entries: {dirty[:1000]}",
         )
@@ -289,7 +289,7 @@ def main() -> int:
 
     if not recoverable:
         complete(
-            "done",
+            "task_janitor_done",
             f"{previous_report}\nJanitor preserved {workspace}: HEAD {head} is "
             f"not conclusively recoverable for cleanup mode {cleanup_mode}.",
         )
@@ -319,7 +319,7 @@ def main() -> int:
     if deletion.returncode != 0:
         detail = deletion.stderr.strip() or deletion.stdout.strip() or "no output"
         complete(
-            "blocked",
+            "task_janitor_blocked",
             f"{previous_report}\nJanitor could not remove {workspace}: {detail}",
             "Kent-managed worktree deletion failed after safety checks.",
         )
@@ -413,7 +413,7 @@ def main() -> int:
                 )
 
     complete(
-        "done",
+        "task_janitor_done",
         (
             f"{previous_report}\nJanitor removed managed worktree {workspace}. "
             f"Local branch removed: {str(local_deleted).lower()}. "
@@ -429,7 +429,7 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
         complete(
-            "blocked",
+            "task_janitor_blocked",
             f"Janitor failed safely: {error}",
             "Task cleanup infrastructure failed; the worktree was preserved.",
         )

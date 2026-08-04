@@ -11,7 +11,7 @@ emit_report() {
   local report="$3"
 
   jq -nc \
-    --arg transition "reported" \
+    --arg transition "deterministic_verify_reported" \
     --arg commentary "$commentary" \
     --arg verification_status "$status" \
     --arg verification_report "$report" \
