@@ -54,10 +54,18 @@ def primary_root(workspace: Path) -> Path:
     raise RuntimeError("cannot determine the primary Git worktree")
 
 
-def github_pr(workspace: Path, pr_url: str) -> dict[str, object]:
+def github_pull_number(pr_url: str) -> str:
     parsed = urlparse(pr_url)
     if parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"}:
         raise ValueError("pr_url must be an https://github.com URL")
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) != 4 or parts[2] != "pull" or not parts[3].isdigit():
+        raise ValueError("pr_url must identify one GitHub pull request")
+    return parts[3]
+
+
+def github_pr(workspace: Path, pr_url: str) -> dict[str, object]:
+    github_pull_number(pr_url)
     result = run(
         [
             os.environ.get("KENT_GH_BIN", "gh"),
@@ -73,6 +81,54 @@ def github_pr(workspace: Path, pr_url: str) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise RuntimeError("gh returned a non-object PR payload")
     return payload
+
+
+def commit_available(repository: Path, oid: str) -> bool:
+    return (
+        run(
+            ["git", "cat-file", "-e", f"{oid}^{{commit}}"],
+            cwd=repository,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def merged_pr_contains_head(
+    primary: Path,
+    pr_url: str,
+    head: str,
+    pr_head: str,
+) -> bool:
+    if not pr_head:
+        return False
+    if head == pr_head:
+        return True
+    if not commit_available(primary, pr_head):
+        pr_number = github_pull_number(pr_url)
+        fetched = run(
+            [
+                "git",
+                "fetch",
+                "--no-tags",
+                "--quiet",
+                "origin",
+                f"refs/pull/{pr_number}/head",
+            ],
+            cwd=primary,
+            timeout=120,
+            check=False,
+        )
+        if fetched.returncode != 0 or not commit_available(primary, pr_head):
+            return False
+    return (
+        run(
+            ["git", "merge-base", "--is-ancestor", head, pr_head],
+            cwd=primary,
+            check=False,
+        ).returncode
+        == 0
+    )
 
 
 def remote_branch_oid(primary: Path, branch: str) -> str:
@@ -283,15 +339,22 @@ def main() -> int:
         return 0
 
     merged_pr: dict[str, object] | None = None
+    merged_head_oid = ""
     recoverable = False
     if cleanup_mode == "merged" and pr_url:
         try:
             merged_pr = github_pr(primary, pr_url)
+            merged_head_oid = str(merged_pr.get("headRefOid") or "")
             recoverable = (
                 str(merged_pr.get("state") or "").upper() == "MERGED"
                 and str(merged_pr.get("headRefName") or "") == branch
-                and str(merged_pr.get("headRefOid") or "") == head
                 and merged_pr.get("isCrossRepository") is False
+                and merged_pr_contains_head(
+                    primary,
+                    pr_url,
+                    head,
+                    merged_head_oid,
+                )
             )
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
             recoverable = False
@@ -393,7 +456,10 @@ def main() -> int:
         if not current_remote_oid:
             remote_deleted = True
             remote_note = " Remote branch was already absent after cleanup."
-        elif current_remote_oid != remote_oid or current_remote_oid != head:
+        elif (
+            current_remote_oid != remote_oid
+            or current_remote_oid != merged_head_oid
+        ):
             remote_note = (
                 f" Remote branch {branch} was preserved because its head "
                 "changed after cleanup preflight."
