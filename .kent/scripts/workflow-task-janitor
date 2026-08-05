@@ -225,11 +225,22 @@ def main() -> int:
         cwd=workspace,
         check=False,
     ).stdout.strip()
+    if branch.lower() in {"null", "none", "not-applicable"}:
+        complete(
+            "task_janitor_blocked",
+            f"{previous_report}\nJanitor rejected missing branch identity: "
+            f"received {branch!r}, found {actual_branch or '<detached>'}.",
+            "Cleanup must re-emit the exact current Git branch before Janitor "
+            "can remove task-owned resources.",
+        )
+        return 0
     if branch and actual_branch and branch != actual_branch:
         complete(
-            "task_janitor_done",
+            "task_janitor_blocked",
             f"{previous_report}\nJanitor preserved branch mismatch: "
             f"expected {branch}, found {actual_branch}.",
+            "Cleanup branch identity does not match the managed worktree; "
+            "reconcile it before retrying Janitor.",
         )
         return 0
     branch = branch or actual_branch
