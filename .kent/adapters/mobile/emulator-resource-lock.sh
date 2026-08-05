@@ -16,6 +16,7 @@ usage() {
 Usage:
   emulator-resource-lock.sh acquire <resource> [wait_seconds] [ttl_seconds]
   emulator-resource-lock.sh acquire-any <resource>... -- [wait_seconds] [ttl_seconds]
+  emulator-resource-lock.sh resume <resource> <token>
   emulator-resource-lock.sh release <resource> <token>
   emulator-resource-lock.sh status [resource]
   emulator-resource-lock.sh adb-emulators [any|phone|tv]
@@ -139,6 +140,36 @@ locked_release() {
   remove_known_lock_dir "$dir"
 }
 
+locked_resume() {
+  local resource="$1"
+  local token="$2"
+  local dir current
+
+  dir="$(lock_dir_for "$resource")"
+  if [[ -d "$dir" ]]; then
+    current="$(sed -n 's/^token=//p' "$dir/owner" 2>/dev/null || true)"
+    if [[ "$current" != "$token" ]]; then
+      printf 'resource_lock_token_mismatch resource=%s lock_dir=%s\n' \
+        "$resource" "$dir" >&2
+      return 75
+    fi
+  else
+    mkdir "$dir"
+  fi
+
+  {
+    printf 'token=%s\n' "$token"
+    printf 'resource=%s\n' "$resource"
+    printf 'pid=%s\n' "$PPID"
+    printf 'cwd=%s\n' "$PWD"
+    printf 'created_at=%s\n' "$(now_epoch)"
+    printf 'task_id=%s\n' "${KENT_TASK_ID:-unknown}"
+    printf 'session_id=%s\n' "${KENT_SESSION_ID:-unknown}"
+  } >"$dir/owner"
+  printf '%s\n' "$(now_epoch)" >"$dir/created_at"
+  printf '%s\n' "$token"
+}
+
 locked_dispatch() {
   local operation="$1"
   local resource="$2"
@@ -152,6 +183,10 @@ locked_dispatch() {
     release)
       [[ $# -eq 1 ]] || return 64
       locked_release "$resource" "$1"
+      ;;
+    resume)
+      [[ $# -eq 1 ]] || return 64
+      locked_resume "$resource" "$1"
       ;;
     status)
       [[ $# -eq 0 ]] || return 64
@@ -404,6 +439,10 @@ case "$cmd" in
   acquire-any)
     shift
     acquire_any "$@"
+    ;;
+  resume)
+    [[ $# -eq 3 ]] || { usage; exit 64; }
+    with_resource_guard "$2" resume "$3"
     ;;
   release)
     [[ $# -eq 3 ]] || { usage; exit 64; }

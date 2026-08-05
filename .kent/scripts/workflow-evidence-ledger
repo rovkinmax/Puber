@@ -1,0 +1,369 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+from typing import Any, Dict, List, Optional
+
+
+TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+NODE_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Append and validate task-local workflow evidence."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    for command in ("append", "read", "validate", "summary"):
+        subparser = subparsers.add_parser(command)
+        subparser.add_argument("--task", required=True)
+        subparser.add_argument("--workspace", type=Path, default=Path.cwd())
+    return parser.parse_args()
+
+
+def run_git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if check and result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise ValueError("git {} failed: {}".format(" ".join(args), detail))
+    return result
+
+
+def repository_root(workspace: Path) -> Path:
+    resolved = workspace.expanduser().resolve()
+    result = run_git(resolved, "rev-parse", "--show-toplevel")
+    root = Path(result.stdout.strip()).resolve()
+    if root != resolved:
+        raise ValueError(
+            "workspace must be the repository root: {}; found {}".format(
+                resolved,
+                root,
+            )
+        )
+    return root
+
+
+def ledger_path(root: Path, task: str) -> Path:
+    if not TASK_KEY.fullmatch(task):
+        raise ValueError("invalid task key: {!r}".format(task))
+    return root / ".kent" / "runtime" / task / "evidence-ledger.jsonl"
+
+
+def require_ignored(root: Path, path: Path) -> None:
+    relative = path.relative_to(root)
+    result = run_git(root, "check-ignore", "-q", "--", str(relative), check=False)
+    if result.returncode != 0:
+        raise ValueError(
+            "evidence ledger is not ignored by Git: {}; "
+            "add /.kent/runtime/ to .gitignore".format(relative)
+        )
+
+
+def require_string(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("{} must be a non-empty string".format(label))
+    return value.strip()
+
+
+def require_string_list(value: Any, label: str) -> List[str]:
+    if not isinstance(value, list):
+        raise ValueError("{} must be an array".format(label))
+    result = []
+    for item in value:
+        result.append(require_string(item, "{} item".format(label)))
+    return result
+
+
+def optional_count(value: Any, label: str) -> Optional[int]:
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError("{} must be null or a non-negative integer".format(label))
+    return value
+
+
+def resolve_instruction_file(root: Path, configured_path: str, label: str) -> Path:
+    relative = Path(configured_path)
+    if relative.is_absolute():
+        raise ValueError("{} must be project-relative".format(label))
+    candidate = root
+    for part in relative.parts:
+        if part in ("", "."):
+            continue
+        candidate /= part
+        if candidate.is_symlink():
+            raise ValueError("{} must not contain symlinks".format(label))
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError("{} escapes the workspace".format(label))
+    if not resolved.is_file():
+        raise ValueError("{} does not exist: {}".format(label, configured_path))
+    return resolved
+
+
+def context_metrics(root: Path, raw: Any) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError("context must be an object")
+    manifest_path = require_string(raw.get("manifest_path"), "context.manifest_path")
+    files_read = require_string_list(raw.get("files_read", []), "context.files_read")
+    ordered_paths = [manifest_path] + files_read
+    resolved_paths = []
+    instruction_bytes = 0
+    seen = set()
+    repeated = set()
+    for index, configured_path in enumerate(ordered_paths):
+        label = "context.manifest_path" if index == 0 else "context.files_read"
+        resolved = resolve_instruction_file(root, configured_path, label)
+        relative = str(resolved.relative_to(root))
+        resolved_paths.append(relative)
+        if relative in seen:
+            repeated.add(relative)
+            continue
+        seen.add(relative)
+        instruction_bytes += resolved.stat().st_size
+    return {
+        "manifest_path": resolved_paths[0],
+        "files_read": resolved_paths[1:],
+        "instruction_bytes": instruction_bytes,
+        "repeated_file_count": len(repeated),
+        "repeated_files": sorted(repeated),
+        "model_calls": optional_count(raw.get("model_calls"), "context.model_calls"),
+        "compaction_count": optional_count(
+            raw.get("compaction_count"),
+            "context.compaction_count",
+        ),
+        "repeated_questions": optional_count(
+            raw.get("repeated_questions", 0),
+            "context.repeated_questions",
+        ),
+        "verification_loops": optional_count(
+            raw.get("verification_loops", 0),
+            "context.verification_loops",
+        ),
+    }
+
+
+def canonical_bytes(payload: Dict[str, Any]) -> bytes:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def entry_hash(payload: Dict[str, Any]) -> str:
+    return hashlib.sha256(canonical_bytes(payload)).hexdigest()
+
+
+def validate_entry(
+    entry: Any,
+    *,
+    task: str,
+    sequence: int,
+    previous_hash: str,
+) -> str:
+    if not isinstance(entry, dict):
+        raise ValueError("ledger line {} is not an object".format(sequence))
+    if entry.get("schema_version") != 1:
+        raise ValueError("ledger line {} has unsupported schema".format(sequence))
+    if entry.get("sequence") != sequence:
+        raise ValueError("ledger line {} has invalid sequence".format(sequence))
+    if entry.get("task_short_id") != task:
+        raise ValueError("ledger line {} has a different task".format(sequence))
+    if entry.get("previous_hash") != previous_hash:
+        raise ValueError("ledger line {} breaks the hash chain".format(sequence))
+    supplied_hash = require_string(entry.get("event_hash"), "event_hash")
+    unsigned = dict(entry)
+    del unsigned["event_hash"]
+    calculated_hash = entry_hash(unsigned)
+    if supplied_hash != calculated_hash:
+        raise ValueError("ledger line {} has an invalid hash".format(sequence))
+    return supplied_hash
+
+
+def load_entries(stream: Any, *, task: str) -> List[Dict[str, Any]]:
+    stream.seek(0)
+    entries = []
+    previous_hash = ""
+    for line_number, line in enumerate(stream, start=1):
+        if not line.strip():
+            raise ValueError("ledger contains an empty line at {}".format(line_number))
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValueError(
+                "ledger line {} is invalid JSON: {}".format(line_number, error)
+            ) from error
+        previous_hash = validate_entry(
+            entry,
+            task=task,
+            sequence=line_number,
+            previous_hash=previous_hash,
+        )
+        entries.append(entry)
+    return entries
+
+
+def open_ledger(path: Path, *, create: bool) -> Any:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    flags = os.O_RDWR | os.O_APPEND
+    if create:
+        flags |= os.O_CREAT
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o600)
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISREG(metadata.st_mode):
+        os.close(descriptor)
+        raise ValueError("evidence ledger is not a regular file: {}".format(path))
+    return os.fdopen(descriptor, "r+", encoding="utf-8")
+
+
+def append_entry(root: Path, path: Path, *, task: str) -> Dict[str, Any]:
+    try:
+        raw = json.load(sys.stdin)
+    except json.JSONDecodeError as error:
+        raise ValueError("evidence input is invalid JSON: {}".format(error)) from error
+    if not isinstance(raw, dict):
+        raise ValueError("evidence input must be one JSON object")
+    node_key = require_string(raw.get("node_key"), "node_key")
+    if not NODE_KEY.fullmatch(node_key):
+        raise ValueError("node_key must be a stable lower-case model key")
+    evidence_type = require_string(raw.get("evidence_type"), "evidence_type")
+    summary = require_string(raw.get("summary"), "summary")
+    artifacts = require_string_list(raw.get("artifacts", []), "artifacts")
+    checks = require_string_list(raw.get("checks", []), "checks")
+    decisions = require_string_list(raw.get("decisions", []), "decisions")
+    metrics = context_metrics(root, raw.get("context"))
+    git_head = run_git(root, "rev-parse", "HEAD").stdout.strip()
+
+    with open_ledger(path, create=True) as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        entries = load_entries(stream, task=task)
+        previous_hash = entries[-1]["event_hash"] if entries else ""
+        entry = {
+            "schema_version": 1,
+            "sequence": len(entries) + 1,
+            "task_short_id": task,
+            "node_key": node_key,
+            "evidence_type": evidence_type,
+            "summary": summary,
+            "artifacts": artifacts,
+            "checks": checks,
+            "decisions": decisions,
+            "context": metrics,
+            "workspace_path": str(root),
+            "git_head": git_head,
+            "session_id": os.environ.get("KENT_SESSION_ID", "unknown"),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "previous_hash": previous_hash,
+        }
+        entry["event_hash"] = entry_hash(entry)
+        stream.seek(0, os.SEEK_END)
+        stream.write(json.dumps(entry, ensure_ascii=False, separators=(",", ":")))
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+        return entry
+
+
+def read_entries(path: Path, *, task: str) -> List[Dict[str, Any]]:
+    if not path.exists():
+        raise ValueError("evidence ledger does not exist: {}".format(path))
+    with open_ledger(path, create=False) as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_SH)
+        return load_entries(stream, task=task)
+
+
+def summarize(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {
+        "entry_count": len(entries),
+        "instruction_bytes": sum(
+            entry["context"]["instruction_bytes"] for entry in entries
+        ),
+        "repeated_file_count": sum(
+            entry["context"]["repeated_file_count"] for entry in entries
+        ),
+        "known_model_calls": sum(
+            entry["context"]["model_calls"] or 0 for entry in entries
+        ),
+        "unknown_model_call_entries": sum(
+            entry["context"]["model_calls"] is None for entry in entries
+        ),
+        "known_compactions": sum(
+            entry["context"]["compaction_count"] or 0 for entry in entries
+        ),
+        "unknown_compaction_entries": sum(
+            entry["context"]["compaction_count"] is None for entry in entries
+        ),
+        "repeated_questions": sum(
+            entry["context"]["repeated_questions"] for entry in entries
+        ),
+        "verification_loops": sum(
+            entry["context"]["verification_loops"] for entry in entries
+        ),
+        "last_event_hash": entries[-1]["event_hash"] if entries else "",
+    }
+
+
+def main() -> int:
+    args = parse_args()
+    root = repository_root(args.workspace)
+    path = ledger_path(root, args.task)
+    require_ignored(root, path)
+    if args.command == "append":
+        entry = append_entry(root, path, task=args.task)
+        print(
+            json.dumps(
+                {
+                    "ledger_path": str(path),
+                    "sequence": entry["sequence"],
+                    "event_hash": entry["event_hash"],
+                }
+            )
+        )
+        return 0
+    entries = read_entries(path, task=args.task)
+    if args.command == "read":
+        print(json.dumps(entries, indent=2, ensure_ascii=False))
+        return 0
+    if args.command == "validate":
+        print(
+            json.dumps(
+                {
+                    "valid": True,
+                    "ledger_path": str(path),
+                    "entry_count": len(entries),
+                }
+            )
+        )
+        return 0
+    if args.command == "summary":
+        print(json.dumps(summarize(entries), indent=2, ensure_ascii=False))
+        return 0
+    raise AssertionError("unsupported command: {}".format(args.command))
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (OSError, ValueError) as error:
+        print("workflow-evidence-ledger: {}".format(error), file=sys.stderr)
+        raise SystemExit(1)

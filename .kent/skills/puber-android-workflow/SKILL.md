@@ -6,6 +6,9 @@ description: Puber Android TV feature/refactor workflow. Use for feature plannin
 Use this skill for Puber Android work. Keep startup context compact: read only the reference files required by the active
 command, phase, or plan step.
 
+The active `.kent/context/<node>.md` manifest is the node-level read budget.
+Follow it before loading this skill's rules or recipes.
+
 ## State
 
 - Feature artifacts: `.todo/<feature>/meta.json`, `design.md`, `layouts.md`, `spec.md`, `plan.md`.
@@ -68,74 +71,14 @@ Use:
 
 ## MCP Bridge
 
-Kent does not expose MCP as first-class tools. Use the global Kent Engineering
-Kit adapter:
+Use `~/.kent/bin/kent-mcp-list` and `~/.kent/bin/kent-mcp-call`, never raw
+`mcporter`. Load `references/rules/mcp.md`, `serena.md`, or
+`web-access-policy.md` only when the active manifest/task triggers that source.
+Runtime Mobile details belong to `.kent/commands/smoke-test.md`.
 
-```bash
-~/.kent/bin/kent-mcp-list <server> --schema
-~/.kent/bin/kent-mcp-call <server.tool> [arguments]
-```
-
-Important rules:
-
-- Config resolution is worktree-aware. Credentials and project-specific server
-  definitions stay outside the global adapter.
-- The default `mobile` server is machine-global in
-  `~/.mcporter/mcporter.json`, managed by the kit's `configure-mcporter`
-  command. Do not duplicate it in project `.mcp.json`.
-- `.kent/adapters/mcp/policy` classifies known Puber operations. Unknown tools
-  inherit the global fail-closed mutation policy.
-- The adapter does not create a separate raw artifact by default, but normal
-  stdout remains in Kent's shell transcript.
-- Use `--quiet`, `--digest-output`, assertions, or bounded hash/marker
-  extraction for sensitive or large responses.
-- Use `--raw-dir <dir>` only for a known-safe scoped response. Redirect stdout
-  when the artifact, rather than transcript output, is the intended consumer.
-- When consuming a persisted response, record the MCP call-log length before
-  the call. Afterwards, inspect only newly appended records and require exactly
-  one successful record for the expected server/tool:
-
-  ```bash
-  MCP_CALL_LOG=".todo/_mcp-log/mcporter-calls.jsonl"
-  if [[ -f "$MCP_CALL_LOG" ]]; then
-    MCP_CALL_LOG_START="$(wc -l <"$MCP_CALL_LOG")"
-  else
-    MCP_CALL_LOG_START=0
-  fi
-
-  # Run exactly one persisted kent-mcp-call here.
-
-  RAW_OUTPUT_PATH="$(
-    tail -n "+$((MCP_CALL_LOG_START + 1))" "$MCP_CALL_LOG" |
-      jq -ser \
-        --arg server "<expected-server>" \
-        --arg tool "<expected-tool>" \
-        'map(select(
-          .server == $server and
-          .tool == $tool and
-          .exitCode == 0 and
-          .rawOutputPath != null
-        )) |
-        if length == 1 then
-          .[0].rawOutputPath
-        else
-          error("expected exactly one persisted MCP response")
-        end'
-  )"
-  test -s "$RAW_OUTPUT_PATH"
-  ```
-
-  Read that exact `RAW_OUTPUT_PATH` before the next MCP call. Never guess a
-  timestamped filename.
-- Mutating calls require `--allow-mutate` and explicit user approval.
-- Mobile MCP is stateless. Discover with `mobile.device action=list`, then pass
-  `platform=android` and the exact locked `deviceId` on every target-specific
-  call. Do not use `set`, `get_target`, `list_modules`, or `enable_module`.
-- Every Mobile call other than device discovery requires a safe output mode.
-  If a tool lacks explicit `deviceId`, use `adb -s` instead of implicit state.
-- Do not use `jetbrains.build_project`; use Gradle for builds and diagnostics.
-- Serena is a `~/.kent/bin/kent-mcp-call` target. Follow
-  `references/rules/serena.md`.
+Keep credentials and broad/raw authenticated responses out of stdout,
+artifacts, and Git. Persist only known-safe scoped output through the exact
+successful MCP log record.
 
 ## Subagents
 

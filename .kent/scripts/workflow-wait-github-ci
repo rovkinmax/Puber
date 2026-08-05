@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+from typing import Any, Dict, List
+from urllib.parse import urlparse
+
+
+PR_FIELDS = (
+    "state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,"
+    "baseRefOid,url"
+)
+CHECK_FIELDS = "bucket,completedAt,link,name,startedAt,state,workflow"
+DEFAULT_GH_PATHS = ("/opt/homebrew/bin/gh", "/usr/local/bin/gh")
+
+
+def workflow_result(transition: str, **values: str) -> None:
+    print(json.dumps({"transition": transition, **values}, ensure_ascii=False))
+
+
+def require_string(payload: Dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("{} must be a non-empty string".format(key))
+    return value.strip()
+
+
+def validate_pr_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname not in {
+        "github.com",
+        "www.github.com",
+    }:
+        raise ValueError("pr_url must be an https://github.com pull-request URL")
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) != 4 or parts[2] != "pull" or not parts[3].isdigit():
+        raise ValueError("pr_url must identify one GitHub pull request")
+
+
+def resolve_gh_bin() -> str:
+    configured = os.environ.get("KENT_GH_BIN")
+    candidates = (configured,) if configured else ("gh",) + DEFAULT_GH_PATHS
+    for candidate in candidates:
+        if candidate:
+            resolved = shutil.which(candidate)
+            if resolved:
+                return resolved
+    if configured:
+        raise RuntimeError(
+            "configured GitHub CLI is not executable: {}".format(configured)
+        )
+    raise RuntimeError(
+        "GitHub CLI was not found; set KENT_GH_BIN to its absolute path"
+    )
+
+
+def run_gh(
+    gh_bin: str,
+    workspace: Path,
+    args: List[str],
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [gh_bin] + args,
+        cwd=workspace,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+
+def parse_object(result: subprocess.CompletedProcess, label: str) -> Dict[str, Any]:
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise RuntimeError("{} failed: {}".format(label, detail))
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("{} returned invalid JSON: {}".format(label, error))
+    if not isinstance(payload, dict):
+        raise RuntimeError("{} returned a non-object".format(label))
+    return payload
+
+
+def parse_array(result: subprocess.CompletedProcess, label: str) -> List[Dict[str, Any]]:
+    if result.returncode not in (0, 1, 8):
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise RuntimeError("{} failed: {}".format(label, detail))
+    try:
+        payload = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError as error:
+        raise RuntimeError("{} returned invalid JSON: {}".format(label, error))
+    if not isinstance(payload, list) or not all(
+        isinstance(item, dict) for item in payload
+    ):
+        raise RuntimeError("{} returned a non-array".format(label))
+    return payload
+
+
+def read_pr(gh_bin: str, workspace: Path, pr_url: str) -> Dict[str, Any]:
+    return parse_object(
+        run_gh(
+            gh_bin,
+            workspace,
+            ["pr", "view", pr_url, "--json", PR_FIELDS],
+        ),
+        "gh pr view",
+    )
+
+
+def read_checks(
+    gh_bin: str,
+    workspace: Path,
+    pr_url: str,
+) -> List[Dict[str, Any]]:
+    return parse_array(
+        run_gh(
+            gh_bin,
+            workspace,
+            ["pr", "checks", pr_url, "--json", CHECK_FIELDS],
+        ),
+        "gh pr checks",
+    )
+
+
+def compact_checks(checks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "name": check.get("name"),
+            "workflow": check.get("workflow"),
+            "bucket": check.get("bucket"),
+            "state": check.get("state"),
+            "link": check.get("link"),
+        }
+        for check in checks[:50]
+    ]
+
+
+def merge_report(pr: Dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            "state": pr.get("state"),
+            "mergedAt": pr.get("mergedAt"),
+            "mergeCommit": pr.get("mergeCommit"),
+            "headRefName": pr.get("headRefName"),
+            "headRefOid": pr.get("headRefOid"),
+            "baseRefName": pr.get("baseRefName"),
+            "baseRefOid": pr.get("baseRefOid"),
+            "url": pr.get("url"),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def ci_report(
+    pr: Dict[str, Any],
+    checks: List[Dict[str, Any]],
+    reason: str,
+    watch_exit: int,
+) -> str:
+    return json.dumps(
+        {
+            "reason": reason,
+            "watch_exit": watch_exit,
+            "headRefOid": pr.get("headRefOid"),
+            "baseRefOid": pr.get("baseRefOid"),
+            "checks": compact_checks(checks),
+            "url": pr.get("url"),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except json.JSONDecodeError as error:
+        raise ValueError("stdin is not valid JSON: {}".format(error))
+    if not isinstance(payload, dict):
+        raise ValueError("stdin must be one JSON object")
+
+    workspace = Path(
+        require_string(payload, "workspace_path")
+    ).expanduser().resolve()
+    pr_url = require_string(payload, "pr_url")
+    branch_name = require_string(payload, "branch_name")
+    merge_strategy = require_string(payload, "merge_strategy")
+    validate_pr_url(pr_url)
+    if not workspace.is_dir():
+        raise ValueError("workspace does not exist: {}".format(workspace))
+    if merge_strategy not in {"merge", "squash", "rebase"}:
+        raise ValueError(
+            "unsupported merge_strategy: {!r}".format(merge_strategy)
+        )
+
+    gh_bin = resolve_gh_bin()
+    test_mode = os.environ.get("KENT_CI_WATCH_TEST_MODE") == "1"
+    interval = int(os.environ.get("KENT_CI_WATCH_INTERVAL_SECONDS", "30"))
+    interval = max(0 if test_mode else 30, interval)
+    max_polls = int(os.environ.get("KENT_CI_WATCH_MAX_POLLS", "0"))
+    max_errors = max(1, int(os.environ.get("KENT_CI_WATCH_MAX_ERRORS", "5")))
+    errors = 0
+    polls = 0
+
+    while True:
+        polls += 1
+        try:
+            pr = read_pr(gh_bin, workspace, pr_url)
+            if str(pr.get("state") or "").upper() == "MERGED":
+                workflow_result(
+                    "ci_watch_pr_merged",
+                    workspace_path=str(workspace),
+                    pr_url=pr_url,
+                    branch_name=branch_name,
+                    merge_report=merge_report(pr),
+                )
+                return 0
+
+            watch = run_gh(
+                gh_bin,
+                workspace,
+                [
+                    "pr",
+                    "checks",
+                    pr_url,
+                    "--watch",
+                    "--interval",
+                    str(max(1, interval)),
+                ],
+            )
+            checks = read_checks(gh_bin, workspace, pr_url)
+            errors = 0
+        except RuntimeError as error:
+            errors += 1
+            if errors >= max_errors:
+                workflow_result(
+                    "ci_watch_failed",
+                    workspace_path=str(workspace),
+                    pr_url=pr_url,
+                    branch_name=branch_name,
+                    merge_strategy=merge_strategy,
+                    ci_report=json.dumps(
+                        {
+                            "reason": "github_query_failed",
+                            "attempts": errors,
+                            "error": str(error),
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                )
+                return 0
+            print(
+                "GitHub CI query failed ({}/{}): {}".format(
+                    errors,
+                    max_errors,
+                    error,
+                ),
+                file=sys.stderr,
+            )
+            time.sleep(interval)
+            continue
+
+        buckets = {
+            str(check.get("bucket") or "").lower() for check in checks
+        }
+        if not checks:
+            workflow_result(
+                "ci_watch_failed",
+                workspace_path=str(workspace),
+                pr_url=pr_url,
+                branch_name=branch_name,
+                merge_strategy=merge_strategy,
+                ci_report=ci_report(pr, checks, "no_checks_reported", watch.returncode),
+            )
+            return 0
+        if buckets & {"fail", "cancel"}:
+            workflow_result(
+                "ci_watch_failed",
+                workspace_path=str(workspace),
+                pr_url=pr_url,
+                branch_name=branch_name,
+                merge_strategy=merge_strategy,
+                ci_report=ci_report(
+                    pr,
+                    checks,
+                    "terminal_check_failure",
+                    watch.returncode,
+                ),
+            )
+            return 0
+        if "pending" not in buckets and buckets <= {"pass", "skipping"}:
+            workflow_result(
+                "ci_watch_passed",
+                workspace_path=str(workspace),
+                pr_url=pr_url,
+                branch_name=branch_name,
+                merge_strategy=merge_strategy,
+                ci_report=ci_report(
+                    pr,
+                    checks,
+                    "all_checks_terminal_green",
+                    watch.returncode,
+                ),
+            )
+            return 0
+
+        if test_mode and max_polls and polls >= max_polls:
+            workflow_result(
+                "ci_watch_failed",
+                workspace_path=str(workspace),
+                pr_url=pr_url,
+                branch_name=branch_name,
+                merge_strategy=merge_strategy,
+                ci_report=ci_report(
+                    pr,
+                    checks,
+                    "test_poll_limit_with_pending_checks",
+                    watch.returncode,
+                ),
+            )
+            return 0
+        time.sleep(interval)
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (OSError, ValueError) as error:
+        print("workflow-wait-github-ci: {}".format(error), file=sys.stderr)
+        raise SystemExit(1)
