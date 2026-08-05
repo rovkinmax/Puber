@@ -16,6 +16,11 @@ JIRA_KEY = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]+-\d+)(?![A-Z0-9])", re.I)
 URL = re.compile(r"https?://[^\s<>()\[\]{}\"']+")
 POLICIES = {"task", "jira", "github_issue"}
 HANDOFF_KEYS = ("workspace_path", "plan_path", "work_kind")
+DEFAULT_KENT_PATHS = (
+    str(Path.home() / ".kent" / "bin" / "kent"),
+    "/opt/homebrew/bin/kent",
+    "/usr/local/bin/kent",
+)
 TOML_TABLE = re.compile(r"^\[([A-Za-z0-9_.-]+)\]\s*(?:#.*)?$")
 BRANCH_POLICY_ASSIGNMENT = re.compile(
     r'^branch_identity\s*=\s*"([a-z_]+)"\s*(?:#.*)?$'
@@ -112,10 +117,31 @@ def handoff_values(payload: dict[str, object]) -> dict[str, str]:
     return values
 
 
+def resolve_kent_bin() -> str:
+    configured = os.environ.get("KENT_BIN")
+    candidates = (configured,) if configured else ("kent", *DEFAULT_KENT_PATHS)
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if os.path.sep in candidate:
+            path = Path(candidate).expanduser()
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path)
+            continue
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    if configured:
+        raise RuntimeError(
+            f"configured Kent CLI is not executable: {configured}"
+        )
+    raise RuntimeError(
+        "Kent CLI was not found; set KENT_BIN to its absolute path"
+    )
+
+
 def task_payload(root: Path, identity: str) -> dict[str, object]:
-    kent_bin = os.environ.get("KENT_BIN") or shutil.which("kent")
-    if not kent_bin:
-        raise RuntimeError("Kent CLI was not found")
+    kent_bin = resolve_kent_bin()
     result = run(
         [
             kent_bin,
