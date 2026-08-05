@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 JIRA_KEY = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]+-\d+)(?![A-Z0-9])", re.I)
 URL = re.compile(r"https?://[^\s<>()\[\]{}\"']+")
 POLICIES = {"task", "jira", "github_issue"}
+HANDOFF_KEYS = ("workspace_path", "plan_path", "work_kind")
 
 
 def complete(transition: str, commentary: str = "", **values: str) -> None:
@@ -25,8 +26,12 @@ def complete(transition: str, commentary: str = "", **values: str) -> None:
     print(json.dumps(payload, ensure_ascii=False))
 
 
-def blocked(reason: str) -> int:
-    complete("branch_identity_blocked", blocker_reason=reason)
+def blocked(reason: str, handoff: dict[str, str]) -> int:
+    complete(
+        "branch_identity_blocked",
+        blocker_reason=reason,
+        **handoff,
+    )
     return 0
 
 
@@ -78,6 +83,29 @@ def task_id(payload: dict[str, object]) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("workflow input is missing _kent.task_id")
     return value.strip()
+
+
+def handoff_values(payload: dict[str, object]) -> dict[str, str]:
+    present = [key for key in HANDOFF_KEYS if key in payload]
+    if not present:
+        return {}
+    if len(present) != len(HANDOFF_KEYS):
+        missing = sorted(set(HANDOFF_KEYS) - set(present))
+        raise ValueError(
+            "workflow branch handoff is incomplete; missing "
+            + ", ".join(missing)
+        )
+    values: dict[str, str] = {}
+    for key in HANDOFF_KEYS:
+        value = payload[key]
+        if not isinstance(value, str):
+            raise ValueError(f"{key} must be a string")
+        values[key] = value.strip()
+    if not values["workspace_path"]:
+        raise ValueError("workspace_path must be non-empty")
+    if not values["work_kind"]:
+        raise ValueError("work_kind must be non-empty")
+    return values
 
 
 def task_payload(root: Path, identity: str) -> dict[str, object]:
@@ -273,8 +301,18 @@ def remote_branch_state(root: Path, branch: str) -> str:
 
 
 def main() -> int:
+    incoming = workflow_input()
+    handoff = handoff_values(incoming)
     root = repository_root()
-    task = task_payload(root, task_id(workflow_input()))
+    if handoff:
+        workspace = Path(handoff["workspace_path"]).expanduser().resolve()
+        if workspace != root:
+            return blocked(
+                f"Workflow передал workspace_path {workspace}, но Script "
+                f"запущен в {root}. Нужно восстановить канонический task root.",
+                handoff,
+            )
+    task = task_payload(root, task_id(incoming))
     short_id = task_short_id(task)
     policy = profile_policy(root)
     source_url = task_string(task, "source_url")
@@ -286,18 +324,21 @@ def main() -> int:
         complete(
             "branch_identity_ready",
             f"Ветка уже соответствует политике проекта: {current}.",
+            **handoff,
         )
         return 0
     if current != short_id:
         return blocked(
             f"Текущая ветка {current!r} не совпадает ни с Kent ID "
             f"{short_id!r}, ни с ожидаемой веткой {desired!r}. Нужно проверить "
-            "владельца worktree и явно решить, какую ветку сохранять."
+            "владельца worktree и явно решить, какую ветку сохранять.",
+            handoff,
         )
     if desired == short_id:
         complete(
             "branch_identity_ready",
             f"Внешний идентификатор не найден; сохранена Kent-ветка {short_id}.",
+            **handoff,
         )
         return 0
 
@@ -305,19 +346,22 @@ def main() -> int:
     if local_branch_exists(root, desired):
         return blocked(
             f"Локальная ветка {desired!r} уже существует. Нужно удалить её "
-            "только если она доказанно устарела, либо отменить дублирующую задачу."
+            "только если она доказанно устарела, либо отменить дублирующую задачу.",
+            handoff,
         )
     try:
         remote_state = remote_branch_state(root, desired)
     except RuntimeError as error:
         return blocked(
-            f"Не удалось безопасно проверить remote-ветку {desired!r}: {error}"
+            f"Не удалось безопасно проверить remote-ветку {desired!r}: {error}",
+            handoff,
         )
     if remote_state == "exists":
         return blocked(
             f"Remote-ветка origin/{desired} уже существует. Нужно проверить её "
             "владельца и удалить только доказанно устаревший дубль либо отменить "
-            "новую задачу."
+            "новую задачу.",
+            handoff,
         )
 
     try:
@@ -325,11 +369,13 @@ def main() -> int:
     except RuntimeError as error:
         return blocked(
             f"Не удалось безопасно переименовать ветку {short_id!r} в "
-            f"{desired!r}: {error}"
+            f"{desired!r}: {error}",
+            handoff,
         )
     complete(
         "branch_identity_ready",
         f"Ветка переименована: {short_id} → {desired}.",
+        **handoff,
     )
     return 0
 

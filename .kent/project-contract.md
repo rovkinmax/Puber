@@ -34,8 +34,9 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 ## Branch Identity
 
 - Kent keeps `PUB-*` as task lifecycle identity and checkpoint/runtime key.
-- Before Plan, a same-repository GitHub issue URL resolves the new task branch
-  to `issue-<number>`. Inspect task `source_url` first, then task-body URLs.
+- After read-only Plan and before the first Implement writer, a same-repository
+  GitHub issue URL resolves the new task branch to `issue-<number>`. Inspect
+  task `source_url` first, then task-body URLs.
 - Cross-repository issues and tasks without a usable Puber issue keep the
   original `PUB-*` branch.
 - Never rename an already active task branch or reuse/overwrite a colliding
