@@ -3,7 +3,7 @@
     "id": "21d57361-d247-4563-b70a-fbd0413a684e",
     "name": "Puber Engineering Delivery v14",
     "description": "Plan, implement, independently verify, fix, and deliver an engineering change for Puber.",
-    "version": 151,
+    "version": 158,
     "execution_target_policy": {
       "mode": "ask_on_first_execution"
     }
@@ -714,7 +714,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Plan {{.TaskShortId}}: {{.TaskTitle}}\n\nRead .kent/project-contract.md, .kent/workflow-profile.toml, and repository\ninstructions first.\n\nSelect exactly one supported `work_kind` before detailed planning:\n\n- `feature` — User-facing behavior, screens, flows, or business capabilities; Plan: `.kent/commands/feature-start.md`; Implement: `.kent/commands/feature-implement.md`.\n- `bugfix` — Restore intended behavior for a reproducible defect; Plan: `.kent/commands/bugfix-start.md`; Implement: `.kent/commands/bugfix-implement.md`.\n- `refactor` — Improve code structure without intended behavior changes; Plan: `.kent/commands/refactor-start.md`; Implement: `.kent/commands/refactor-start.md`.\n- `migration` — Move contracts, frameworks, modules, or data in dependency order; Plan: `.kent/commands/migration-start.md`; Implement: `.kent/commands/migration-start.md`.\n- `dependency` — Audit or update dependency versions and build-tool artifacts; Plan: `.kent/commands/dependency-update.md`; Implement: `.kent/commands/dependency-update.md`.\n- `test` — Add or improve automated test coverage without product scope; Plan: `.kent/commands/test-coverage.md`; Implement: `.kent/commands/test-coverage.md`.\n\nA standalone `work_kind: <key>` declaration in the task body is an explicit\nhuman routing decision and wins when the key is supported. Otherwise classify\nconservatively from the requested outcome and source context. Do not use the\nJira issue type alone as proof. If the kind is unsupported, multiple kinds are\nmaterially coupled, or the classification remains ambiguous, complete with\n`plan_needs_user_action` and ask for one supported key.\n\nAfter selection, load the mapped Plan procedure as a procedure module. Some\nproject procedures also document execution; this Plan node must use only their\nbootstrap, discovery, design/specification, analysis, planning, and plan-review\nsections. The generated stage contract overrides any instruction to edit\nproduction files, execute plan steps, invoke nested prompt flows, or launch a\nseparate delivery workflow.\n\nTask body:\n{{.TaskBody}}\n\nKeep discovery, design/spec ingestion, decisions, and implementation planning in\nthis one Plan session. Ask questions when a product decision is required. Do not\ninvoke nested prompt flows and do not implement production changes.\nAssign every required evidence artifact an owner and a production-edit\nboundary. If the plan requires a pre-edit red run, make it the first\nwriter-owned step and require capture before any production edit. The plan must\nnot turn a later failure to capture agent-owned evidence into a user approval.\nAny design, specification, or plan that narrows, replaces, or claims to\nsupersede the task body must cite the exact human-authored task-comment ID or\nanother explicit authoritative source. Agent-authored comments, implementation\ninference, and unsupported claims that \"the user clarified\" are not product\nauthority. Use `plan_needs_user_action` before implementation when that provenance\nis absent.\n\n\nIf the task body declares a checkpoint ref, source task, or exact task-comment\nIDs, treat the current checkout as preserved implementation rather than a blank\nfeature:\n\n- verify that HEAD matches the declared checkpoint;\n- read the source task body and exact referenced comments without modifying or\n  canceling the source task;\n- update one authoritative design/specification/plan set and reference comment\n  IDs instead of duplicating decisions;\n- explicitly supersede conflicting earlier decisions;\n- inspect the checkpoint diff and existing tests/evidence;\n- plan only remaining independently verifiable work.\n\nDo not reset, revert, or reimplement preserved code during Plan.\n\nIf the task body says the recovery Plan must stop for confirmation, complete\nthrough `plan_needs_user_action` with a concise artifact/remaining-work summary and\nan explicit confirmation request. Do not choose `plan_implement` in that Plan run.\n\nComplete with `plan_implement` only when the plan has no unresolved product, API, UX,\nor safety ambiguity. `workspace_path` is the repository or managed-worktree\nroot; it is never `.todo/<feature>` or another artifact directory. Provide that\nroot plus `plan_path` and the selected `work_kind`; use an empty `plan_path`\nonly when the project contract explicitly allows planless work.\nComplete with `plan_needs_user_action` and `blocker_reason` for an external blocker.\nChoose `plan_wont_do` only for an explicit cancellation decision and provide\n`closure_reason`."
+      "prompt_template": "Plan {{.TaskShortId}}: {{.TaskTitle}}\n\nRead .kent/project-contract.md, .kent/workflow-profile.toml, and repository\ninstructions first.\n\nSelect exactly one supported `work_kind` before detailed planning:\n\n- `feature` — User-facing behavior, screens, flows, or business capabilities; Plan: `.kent/commands/feature-start.md`; Implement: `.kent/commands/feature-implement.md`.\n- `bugfix` — Restore intended behavior for a reproducible defect; Plan: `.kent/commands/bugfix-start.md`; Implement: `.kent/commands/bugfix-implement.md`.\n- `refactor` — Improve code structure without intended behavior changes; Plan: `.kent/commands/refactor-start.md`; Implement: `.kent/commands/refactor-start.md`.\n- `migration` — Move contracts, frameworks, modules, or data in dependency order; Plan: `.kent/commands/migration-start.md`; Implement: `.kent/commands/migration-start.md`.\n- `dependency` — Audit or update dependency versions and build-tool artifacts; Plan: `.kent/commands/dependency-update.md`; Implement: `.kent/commands/dependency-update.md`.\n- `test` — Add or improve automated test coverage without product scope; Plan: `.kent/commands/test-coverage.md`; Implement: `.kent/commands/test-coverage.md`.\n\nA standalone `work_kind: <key>` declaration in the task body is an explicit\nhuman routing decision and wins when the key is supported. Otherwise classify\nconservatively from the requested outcome and source context. Do not use the\nJira issue type alone as proof. If the kind is unsupported, multiple kinds are\nmaterially coupled, or the classification remains ambiguous, complete with\n`plan_needs_user_action` and ask for one supported key.\n\nAfter selection, load the mapped Plan procedure as a procedure module. Some\nproject procedures also document execution; this Plan node must use only their\nbootstrap, discovery, design/specification, analysis, planning, and plan-review\nsections. The generated stage contract overrides any instruction to edit\nproduction files, execute plan steps, invoke nested prompt flows, or launch a\nseparate delivery workflow.\n\nTask body:\n{{.TaskBody}}\n\nKeep discovery, design/spec ingestion, decisions, and implementation planning in\nthis one Plan session. Ask questions when a product decision is required. Do not\ninvoke nested prompt flows and do not implement production changes.\nAssign every required evidence artifact an owner and a production-edit\nboundary. If the plan requires a pre-edit red run, make it the first\nwriter-owned step and require capture before any production edit. The plan must\nnot turn a later failure to capture agent-owned evidence into a user approval.\nAny design, specification, or plan that narrows, replaces, or claims to\nsupersede the task body must cite the exact human-authored task-comment ID or\nanother explicit authoritative source. Agent-authored comments, implementation\ninference, and unsupported claims that \"the user clarified\" are not product\nauthority. Use `plan_needs_user_action` before implementation when that provenance\nis absent.\n\n\nIf the task body declares a checkpoint ref, source task, or exact task-comment\nIDs, treat the current checkout as preserved implementation rather than a blank\nfeature:\n\n- verify that HEAD matches the declared checkpoint;\n- read the source task body and exact referenced comments without modifying or\n  canceling the source task;\n- update one authoritative design/specification/plan set and reference comment\n  IDs instead of duplicating decisions;\n- explicitly supersede conflicting earlier decisions;\n- inspect the checkpoint diff and existing tests/evidence;\n- plan only remaining independently verifiable work.\n\nDo not reset, revert, or reimplement preserved code during Plan.\n\nIf the task body says the recovery Plan must stop for confirmation, complete\nthrough `plan_needs_user_action` with a concise artifact/remaining-work summary and\nan explicit confirmation request. Do not choose `plan_implement` in that Plan run.\n\nComplete with `plan_implement` only when the plan has no unresolved product, API, UX,\nor safety ambiguity. `workspace_path` is the repository or managed-worktree\nroot; it is never `.todo/<feature>` or another artifact directory. Provide that\nroot plus `plan_path` and the selected `work_kind`; use the literal\n`not-applicable` only when the project contract explicitly allows planless\nwork. Kent transition parameters must be non-empty.\nComplete with `plan_needs_user_action` and `blocker_reason` for an external blocker.\nChoose `plan_wont_do` only for an explicit cancellation decision and provide\n`closure_reason`."
     },
     {
       "id": "edge-c8f9e926-05b0-4a30-a6d6-3d1c47e86cdc",
@@ -734,7 +734,7 @@
         },
         {
           "key": "plan_path",
-          "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          "description": "Path to the approved implementation plan, or the literal not-applicable."
         },
         {
           "key": "work_kind",
@@ -761,7 +761,7 @@
         },
         {
           "key": "plan_path",
-          "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          "description": "Path to the approved implementation plan, or the literal not-applicable."
         },
         {
           "key": "work_kind",
@@ -792,7 +792,7 @@
         },
         {
           "key": "plan_path",
-          "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          "description": "Path to the approved implementation plan, or the literal not-applicable."
         },
         {
           "key": "work_kind",
@@ -818,7 +818,7 @@
         },
         {
           "key": "plan_path",
-          "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          "description": "Path to the approved implementation plan, or the literal not-applicable."
         },
         {
           "key": "work_kind",
@@ -849,7 +849,7 @@
         },
         {
           "key": "plan_path",
-          "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          "description": "Path to the approved implementation plan, or the literal not-applicable."
         },
         {
           "key": "work_kind",
@@ -931,7 +931,7 @@
         },
         {
           "key": "plan_path",
-          "description": "Path to the approved implementation plan, or an empty string when not applicable."
+          "description": "Path to the approved implementation plan, or the literal not-applicable."
         },
         {
           "key": "work_kind",
@@ -2306,7 +2306,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -2331,7 +2331,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -2508,7 +2508,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -2529,7 +2529,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -2861,7 +2861,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -2878,7 +2878,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -2899,7 +2899,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -2916,7 +2916,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -2937,7 +2937,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -2981,7 +2981,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -3822,7 +3822,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -3856,7 +3856,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -3899,7 +3899,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -3933,7 +3933,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -3976,7 +3976,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",
@@ -4058,7 +4058,7 @@
           },
           {
             "name": "plan_path",
-            "description": "Path to the approved implementation plan, or an empty string when not applicable."
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
           },
           {
             "name": "work_kind",

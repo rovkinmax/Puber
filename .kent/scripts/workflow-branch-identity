@@ -300,9 +300,10 @@ def remote_branch_state(root: Path, branch: str) -> str:
     raise RuntimeError(f"cannot inspect origin branch {branch!r}: {detail}")
 
 
-def main() -> int:
-    incoming = workflow_input()
-    handoff = handoff_values(incoming)
+def apply_branch_identity(
+    incoming: dict[str, object],
+    handoff: dict[str, str],
+) -> int:
     root = repository_root()
     if handoff:
         workspace = Path(handoff["workspace_path"]).expanduser().resolve()
@@ -380,9 +381,11 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+def main() -> int:
+    incoming = workflow_input()
+    handoff = handoff_values(incoming)
     try:
-        raise SystemExit(main())
+        return apply_branch_identity(incoming, handoff)
     except (
         json.JSONDecodeError,
         OSError,
@@ -391,5 +394,16 @@ if __name__ == "__main__":
         tomllib.TOMLDecodeError,
         ValueError,
     ) as error:
+        return blocked(
+            "Не удалось выполнить branch identity из-за инфраструктурной "
+            f"ошибки: {error}. После устранения причины повторите Script.",
+            handoff,
+        )
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (json.JSONDecodeError, OSError, ValueError) as error:
         print(f"workflow-branch-identity: {error}", file=sys.stderr)
         raise SystemExit(1)
