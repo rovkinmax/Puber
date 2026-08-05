@@ -349,7 +349,6 @@ internal class DeviceSettingsVM(
                         isApiDomainDialogOpen = false,
                     )
                 )
-                router.newRootScreen(router.screens.main())
             }
         }
     }
@@ -372,7 +371,6 @@ internal class DeviceSettingsVM(
                             isApiDomainDialogOpen = false,
                         )
                     )
-                    router.newRootScreen(router.screens.main())
                 }
             }
         }
@@ -386,7 +384,6 @@ internal class DeviceSettingsVM(
                 isApiDomainDialogOpen = false,
             )
         )
-        router.newRootScreen(router.screens.main())
     }
 
     private fun ApiDomainState.toDialogState(): ApiDomainDialogState {
