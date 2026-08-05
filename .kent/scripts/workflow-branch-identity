@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
-import tomllib
+from typing import Optional
 from urllib.parse import urlparse
 
 
@@ -16,6 +16,10 @@ JIRA_KEY = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]+-\d+)(?![A-Z0-9])", re.I)
 URL = re.compile(r"https?://[^\s<>()\[\]{}\"']+")
 POLICIES = {"task", "jira", "github_issue"}
 HANDOFF_KEYS = ("workspace_path", "plan_path", "work_kind")
+TOML_TABLE = re.compile(r"^\[([A-Za-z0-9_.-]+)\]\s*(?:#.*)?$")
+BRANCH_POLICY_ASSIGNMENT = re.compile(
+    r'^branch_identity\s*=\s*"([a-z_]+)"\s*(?:#.*)?$'
+)
 
 
 def complete(transition: str, commentary: str = "", **values: str) -> None:
@@ -132,14 +136,37 @@ def task_payload(root: Path, identity: str) -> dict[str, object]:
 
 def profile_policy(root: Path) -> str:
     profile_path = root / ".kent" / "workflow-profile.toml"
-    profile = tomllib.loads(profile_path.read_text())
-    policies = profile.get("policies")
-    if not isinstance(policies, dict):
-        raise ValueError("workflow profile is missing [policies]")
-    value = policies.get("branch_identity", "task")
-    if not isinstance(value, str) or value.strip() not in POLICIES:
+    table = ""
+    value = ""
+    for line_number, raw_line in enumerate(
+        profile_path.read_text().splitlines(),
+        start=1,
+    ):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        table_match = TOML_TABLE.fullmatch(line)
+        if table_match:
+            table = table_match.group(1)
+            continue
+        if table != "policies":
+            continue
+        key = line.split("=", 1)[0].strip()
+        if key != "branch_identity":
+            continue
+        assignment = BRANCH_POLICY_ASSIGNMENT.fullmatch(line)
+        if assignment is None:
+            raise ValueError(
+                "policies.branch_identity must be one quoted lowercase "
+                f"identifier at {profile_path}:{line_number}"
+            )
+        if value:
+            raise ValueError("policies.branch_identity is declared more than once")
+        value = assignment.group(1)
+    value = value or "task"
+    if value not in POLICIES:
         raise ValueError(f"unsupported policies.branch_identity: {value!r}")
-    return value.strip()
+    return value
 
 
 def task_string(payload: dict[str, object], key: str) -> str:
@@ -181,7 +208,7 @@ def jira_key(source_url: str, body: str) -> str:
     return body_match.group(1).upper() if body_match else ""
 
 
-def github_repository(root: Path) -> tuple[str, str] | None:
+def github_repository(root: Path) -> Optional[tuple[str, str]]:
     result = run(
         ["git", "remote", "get-url", "origin"],
         cwd=root,
@@ -391,7 +418,6 @@ def main() -> int:
         OSError,
         RuntimeError,
         subprocess.TimeoutExpired,
-        tomllib.TOMLDecodeError,
         ValueError,
     ) as error:
         return blocked(
