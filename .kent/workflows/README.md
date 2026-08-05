@@ -24,6 +24,10 @@ Kent Desktop workflow graph
   Plan selects one `work_kind`, Implement preserves it across bounded slices,
   and the common verification, Smoke, compliance, PR/CI, waiting, and cleanup
   tail handles delivery.
+- `Puber Engineering Delivery v13` (staged, non-default): adds deterministic
+  same-repository GitHub issue branches as `issue-<number>` before Plan and
+  keeps `PUB-*` when no usable issue URL exists. The PR body uses `Fixes #N`
+  only when the task fully resolves that Puber issue.
 - `Puber Release`: next minor release from `origin/master` through
   version-bump PR, CI, approved tag publication, optional automation
   monitoring, and cleanup. Patch/major releases require explicit wording.

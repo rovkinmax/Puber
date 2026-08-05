@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tomllib
+from urllib.parse import urlparse
+
+
+JIRA_KEY = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]+-\d+)(?![A-Z0-9])", re.I)
+URL = re.compile(r"https?://[^\s<>()\[\]{}\"']+")
+POLICIES = {"task", "jira", "github_issue"}
+
+
+def complete(transition: str, commentary: str = "", **values: str) -> None:
+    payload = {"transition": transition}
+    if commentary:
+        payload["commentary"] = commentary
+    payload.update(values)
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def blocked(reason: str) -> int:
+    complete("branch_identity_blocked", blocker_reason=reason)
+    return 0
+
+
+def run(
+    args: list[str],
+    *,
+    cwd: Path,
+    timeout: int = 30,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        args,
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+        check=False,
+    )
+    if check and result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise RuntimeError(f"{' '.join(args)} failed: {detail}")
+    return result
+
+
+def repository_root() -> Path:
+    start = Path.cwd().resolve()
+    result = run(["git", "rev-parse", "--show-toplevel"], cwd=start)
+    root = Path(result.stdout.strip()).resolve()
+    if root != start:
+        raise ValueError(
+            f"script must run at the task worktree root: {start}; found {root}"
+        )
+    return root
+
+
+def workflow_input() -> dict[str, object]:
+    payload = json.load(sys.stdin)
+    if not isinstance(payload, dict):
+        raise ValueError("workflow input must be a JSON object")
+    return payload
+
+
+def task_id(payload: dict[str, object]) -> str:
+    identity = payload.get("_kent")
+    if not isinstance(identity, dict):
+        raise ValueError("workflow input is missing _kent identity")
+    value = identity.get("task_id")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("workflow input is missing _kent.task_id")
+    return value.strip()
+
+
+def task_payload(root: Path, identity: str) -> dict[str, object]:
+    kent_bin = os.environ.get("KENT_BIN") or shutil.which("kent")
+    if not kent_bin:
+        raise RuntimeError("Kent CLI was not found")
+    result = run(
+        [
+            kent_bin,
+            "task",
+            "show",
+            identity,
+            "--project",
+            str(root),
+            "--json",
+        ],
+        cwd=root,
+    )
+    decoded = json.loads(result.stdout)
+    if not isinstance(decoded, dict):
+        raise RuntimeError("kent task show returned a non-object payload")
+    return decoded
+
+
+def profile_policy(root: Path) -> str:
+    profile_path = root / ".kent" / "workflow-profile.toml"
+    profile = tomllib.loads(profile_path.read_text())
+    policies = profile.get("policies")
+    if not isinstance(policies, dict):
+        raise ValueError("workflow profile is missing [policies]")
+    value = policies.get("branch_identity", "task")
+    if not isinstance(value, str) or value.strip() not in POLICIES:
+        raise ValueError(f"unsupported policies.branch_identity: {value!r}")
+    return value.strip()
+
+
+def task_string(payload: dict[str, object], key: str) -> str:
+    value = payload.get(key)
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def task_short_id(payload: dict[str, object]) -> str:
+    summary = payload.get("summary")
+    if isinstance(summary, dict):
+        value = summary.get("short_id")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    value = payload.get("short_id")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    raise ValueError("kent task show payload is missing task short ID")
+
+
+def task_body(payload: dict[str, object]) -> str:
+    body = task_string(payload, "body")
+    if body:
+        return body
+    summary = payload.get("summary")
+    if isinstance(summary, dict):
+        preview = summary.get("body_preview")
+        if isinstance(preview, str):
+            return preview
+    return ""
+
+
+def jira_key(source_url: str, body: str) -> str:
+    source_match = JIRA_KEY.search(source_url)
+    if source_match:
+        return source_match.group(1).upper()
+    body_match = JIRA_KEY.search(body)
+    return body_match.group(1).upper() if body_match else ""
+
+
+def github_repository(root: Path) -> tuple[str, str] | None:
+    result = run(
+        ["git", "remote", "get-url", "origin"],
+        cwd=root,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    remote = result.stdout.strip()
+    if remote.startswith("git@github.com:"):
+        path = remote.removeprefix("git@github.com:")
+    else:
+        parsed = urlparse(remote)
+        if parsed.hostname not in {"github.com", "www.github.com"}:
+            return None
+        path = parsed.path.lstrip("/")
+    path = path.removesuffix(".git").strip("/")
+    parts = path.split("/")
+    if len(parts) != 2 or not all(parts):
+        return None
+    return parts[0].lower(), parts[1].lower()
+
+
+def github_issue_number(root: Path, source_url: str, body: str) -> str:
+    repository = github_repository(root)
+    if repository is None:
+        return ""
+    candidates = []
+    if source_url:
+        candidates.append(source_url)
+    candidates.extend(
+        match.group(0).rstrip(".,;:!?")
+        for match in URL.finditer(body)
+    )
+    for candidate in candidates:
+        parsed = urlparse(candidate)
+        if parsed.hostname not in {"github.com", "www.github.com"}:
+            continue
+        parts = [part for part in parsed.path.split("/") if part]
+        if (
+            len(parts) == 4
+            and (parts[0].lower(), parts[1].removesuffix(".git").lower())
+            == repository
+            and parts[2] == "issues"
+            and parts[3].isdigit()
+            and int(parts[3]) > 0
+        ):
+            return str(int(parts[3]))
+    return ""
+
+
+def desired_branch(
+    policy: str,
+    root: Path,
+    source_url: str,
+    body: str,
+    fallback: str,
+) -> str:
+    if policy == "jira":
+        key = jira_key(source_url, body)
+        return f"feature/{key}" if key else fallback
+    if policy == "github_issue":
+        issue = github_issue_number(root, source_url, body)
+        return f"issue-{issue}" if issue else fallback
+    return fallback
+
+
+def current_branch(root: Path) -> str:
+    result = run(["git", "branch", "--show-current"], cwd=root)
+    branch = result.stdout.strip()
+    if not branch:
+        raise ValueError("task worktree is detached")
+    return branch
+
+
+def validate_branch(root: Path, branch: str) -> None:
+    result = run(
+        ["git", "check-ref-format", "--branch", branch],
+        cwd=root,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "invalid ref"
+        raise ValueError(f"invalid branch {branch!r}: {detail}")
+
+
+def local_branch_exists(root: Path, branch: str) -> bool:
+    return (
+        run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+            cwd=root,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def remote_branch_state(root: Path, branch: str) -> str:
+    result = run(
+        [
+            "git",
+            "ls-remote",
+            "--exit-code",
+            "--heads",
+            "origin",
+            f"refs/heads/{branch}",
+        ],
+        cwd=root,
+        timeout=45,
+        check=False,
+    )
+    if result.returncode == 0:
+        return "exists"
+    if result.returncode == 2:
+        return "absent"
+    detail = result.stderr.strip() or result.stdout.strip() or "no output"
+    raise RuntimeError(f"cannot inspect origin branch {branch!r}: {detail}")
+
+
+def main() -> int:
+    root = repository_root()
+    task = task_payload(root, task_id(workflow_input()))
+    short_id = task_short_id(task)
+    policy = profile_policy(root)
+    source_url = task_string(task, "source_url")
+    body = task_body(task)
+    desired = desired_branch(policy, root, source_url, body, short_id)
+    current = current_branch(root)
+
+    if current == desired:
+        complete(
+            "branch_identity_ready",
+            f"Ветка уже соответствует политике проекта: {current}.",
+        )
+        return 0
+    if current != short_id:
+        return blocked(
+            f"Текущая ветка {current!r} не совпадает ни с Kent ID "
+            f"{short_id!r}, ни с ожидаемой веткой {desired!r}. Нужно проверить "
+            "владельца worktree и явно решить, какую ветку сохранять."
+        )
+    if desired == short_id:
+        complete(
+            "branch_identity_ready",
+            f"Внешний идентификатор не найден; сохранена Kent-ветка {short_id}.",
+        )
+        return 0
+
+    validate_branch(root, desired)
+    if local_branch_exists(root, desired):
+        return blocked(
+            f"Локальная ветка {desired!r} уже существует. Нужно удалить её "
+            "только если она доказанно устарела, либо отменить дублирующую задачу."
+        )
+    try:
+        remote_state = remote_branch_state(root, desired)
+    except RuntimeError as error:
+        return blocked(
+            f"Не удалось безопасно проверить remote-ветку {desired!r}: {error}"
+        )
+    if remote_state == "exists":
+        return blocked(
+            f"Remote-ветка origin/{desired} уже существует. Нужно проверить её "
+            "владельца и удалить только доказанно устаревший дубль либо отменить "
+            "новую задачу."
+        )
+
+    try:
+        run(["git", "branch", "-m", desired], cwd=root)
+    except RuntimeError as error:
+        return blocked(
+            f"Не удалось безопасно переименовать ветку {short_id!r} в "
+            f"{desired!r}: {error}"
+        )
+    complete(
+        "branch_identity_ready",
+        f"Ветка переименована: {short_id} → {desired}.",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (
+        json.JSONDecodeError,
+        OSError,
+        RuntimeError,
+        subprocess.TimeoutExpired,
+        tomllib.TOMLDecodeError,
+        ValueError,
+    ) as error:
+        print(f"workflow-branch-identity: {error}", file=sys.stderr)
+        raise SystemExit(1)

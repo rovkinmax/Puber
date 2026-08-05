@@ -31,6 +31,18 @@ Puber workflow commands must use explicit task artifacts. Do not infer a feature
 - Explicit task cancellation produces `closure_reason` or `cleanup_reason`.
 - Cleanup produces `cleanup_report`.
 
+## Branch Identity
+
+- Kent keeps `PUB-*` as task lifecycle identity and checkpoint/runtime key.
+- Before Plan, a same-repository GitHub issue URL resolves the new task branch
+  to `issue-<number>`. Inspect task `source_url` first, then task-body URLs.
+- Cross-repository issues and tasks without a usable Puber issue keep the
+  original `PUB-*` branch.
+- Never rename an already active task branch or reuse/overwrite a colliding
+  local or remote issue branch.
+- When the task fully resolves that same-repository issue, the PR body uses
+  `Fixes #<number>`. Branch naming alone does not close the issue.
+
 ## Lifecycle State Authority
 
 - The Kent task's current node, transition history, approvals, and comments are the workflow lifecycle source of truth.

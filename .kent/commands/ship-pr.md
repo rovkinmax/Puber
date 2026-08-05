@@ -28,6 +28,8 @@ Desktop workflows.
    git branch --show-current
    git remote -v
    ```
+   Treat `git branch --show-current` as authoritative; an issue-named branch is
+   not expected to equal the Kent `PUB-*` ID.
 3. If there are no repository changes and the task was report-only or smoke-only, report PR as not applicable and use the
    workflow's `no_pr` transition. Do not create empty commits or empty PRs. `no_pr` is approval-gated because it allows
    cleanup without a merged PR.
@@ -42,6 +44,10 @@ Desktop workflows.
    - Compliance Review result.
    - Verification commands and results.
    - Known skipped checks or blockers.
+   - `Fixes #N` when the task fully resolves a GitHub issue in this Puber
+     repository. Use a non-closing link for cross-repository or partial work.
+     Read the current Kent task `source_url`; do not infer issue linkage from
+     branch text alone.
 6. Never merge the PR.
 7. Never push directly to `master`/`main`.
 8. If recoverable repository, branch, or PR state prevents PR creation/update, complete `needs_changes` with
