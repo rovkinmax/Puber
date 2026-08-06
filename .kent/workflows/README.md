@@ -19,18 +19,13 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Engineering Delivery v12` (default): common delivery for
+- `Puber Engineering Delivery v17` (default): common delivery for
   `feature`, `bugfix`, `refactor`, `migration`, `dependency`, and `test`.
   Plan selects one `work_kind`, Implement preserves it across bounded slices,
   and the common verification, Smoke, compliance, PR/CI, waiting, and cleanup
-  tail handles delivery.
-- `Puber Engineering Delivery v13` (rejected, non-default): its first
-  project-relative Script has no task execution root on Kent 2.5.
-- `Puber Engineering Delivery v14` (staged, non-default): resolves
-  same-repository GitHub issue branches as `issue-<number>` after read-only
-  Plan and before the first Implement writer, and keeps `PUB-*` when no usable
-  issue URL exists. The PR body uses `Fixes #N` only when the task fully
-  resolves that Puber issue.
+  tail handles delivery. Same-repository GitHub issues resolve branches as
+  `issue-<number>` after Plan; fresh Fix sessions consume their incoming
+  findings directly instead of repeating bookkeeping-only transitions.
 - `Puber Release`: next minor release from `origin/master` through
   version-bump PR, CI, approved tag publication, optional automation
   monitoring, and cleanup. Patch/major releases require explicit wording.

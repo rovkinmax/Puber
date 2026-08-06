@@ -37,6 +37,9 @@ trigger matches the task.
 - Writer checkboxes exclude Smoke, review, and delivery stages.
 - Implement/Fix are the only production writers and complete one bounded slice
   per fresh session.
+- A `continue_fix` checkpoint action is consumed when the next Fix session is
+  created. Non-empty incoming findings are the new assignment: select and
+  complete one concrete slice instead of repeating a transition-only loop.
 - Standards, Specification, Gate, Smoke, and Compliance are workflow-owned and
   are not duplicated by writers.
 
