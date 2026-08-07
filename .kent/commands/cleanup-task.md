@@ -30,7 +30,10 @@ deterministic deletion.
    state, and any unique content.
 4. Do not invoke `git worktree remove` or `kent worktree delete` for the managed
    task worktree.
-5. Emit the complete `run_janitor` contract required by the workflow prompt.
+5. Poll and close every task-owned background shell or kept-open tool session.
+6. Run `kent worktree leave`; the Janitor will verify this session no longer
+   targets the task worktree.
+7. Emit the complete `run_janitor` contract required by the workflow prompt.
 
 ## Output
 

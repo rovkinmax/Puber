@@ -8,10 +8,12 @@ import re
 import stat
 import subprocess
 import sys
+import time
 from urllib.parse import urlparse
 
 
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+GITHUB_LOOKUP_ATTEMPTS = 3
 
 
 def run(
@@ -54,6 +56,69 @@ def primary_root(workspace: Path) -> Path:
     raise RuntimeError("cannot determine the primary Git worktree")
 
 
+def json_object(output: str, label: str) -> dict[str, object]:
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"{label} returned invalid JSON: {error}") from error
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{label} returned a non-object JSON payload")
+    return payload
+
+
+def cleanup_session_uses_workspace(
+    wrapper: str,
+    primary: Path,
+    cleanup_session_id: str,
+    workspace: Path,
+) -> bool:
+    result = run(
+        [
+            wrapper,
+            "status",
+            "--session",
+            cleanup_session_id,
+            "--json",
+        ],
+        cwd=primary,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise RuntimeError(f"Kent worktree status failed: {detail}")
+    payload = json_object(result.stdout, "Kent worktree status")
+    target = payload.get("target")
+    worktree = payload.get("worktree")
+    candidates: list[object] = []
+    if isinstance(target, dict):
+        candidates.append(target.get("EffectiveWorkdir"))
+    if isinstance(worktree, dict):
+        candidates.extend(
+            (
+                worktree.get("recorded_root"),
+                worktree.get("observed_root"),
+            )
+        )
+    for candidate in candidates:
+        if not isinstance(candidate, str) or not candidate.strip():
+            continue
+        candidate_path = Path(candidate).expanduser().resolve()
+        if candidate_path == workspace or candidate_path.is_relative_to(workspace):
+            return True
+    return False
+
+
+def git_registers_worktree(primary: Path, workspace: Path) -> bool:
+    result = run(["git", "worktree", "list", "--porcelain"], cwd=primary)
+    for line in result.stdout.splitlines():
+        if not line.startswith("worktree "):
+            continue
+        registered = Path(line.removeprefix("worktree ")).expanduser().resolve()
+        if registered == workspace:
+            return True
+    return False
+
+
 def github_pull_number(pr_url: str) -> str:
     parsed = urlparse(pr_url)
     if parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"}:
@@ -66,21 +131,44 @@ def github_pull_number(pr_url: str) -> str:
 
 def github_pr(workspace: Path, pr_url: str) -> dict[str, object]:
     github_pull_number(pr_url)
-    result = run(
-        [
-            os.environ.get("KENT_GH_BIN", "gh"),
-            "pr",
-            "view",
-            pr_url,
-            "--json",
-            "state,mergedAt,headRefName,headRefOid,isCrossRepository,url",
-        ],
-        cwd=workspace,
+    retry_delay = float(
+        os.environ.get("KENT_JANITOR_GH_RETRY_DELAY_SECONDS", "2")
     )
-    payload = json.loads(result.stdout)
-    if not isinstance(payload, dict):
-        raise RuntimeError("gh returned a non-object PR payload")
-    return payload
+    if retry_delay < 0:
+        raise ValueError("KENT_JANITOR_GH_RETRY_DELAY_SECONDS must be non-negative")
+
+    last_error: Exception | None = None
+    for attempt in range(1, GITHUB_LOOKUP_ATTEMPTS + 1):
+        try:
+            result = run(
+                [
+                    os.environ.get("KENT_GH_BIN", "gh"),
+                    "pr",
+                    "view",
+                    pr_url,
+                    "--json",
+                    "state,mergedAt,headRefName,headRefOid,isCrossRepository,url",
+                ],
+                cwd=workspace,
+            )
+            payload = json.loads(result.stdout)
+            if not isinstance(payload, dict):
+                raise RuntimeError("gh returned a non-object PR payload")
+            return payload
+        except (
+            OSError,
+            RuntimeError,
+            json.JSONDecodeError,
+            subprocess.TimeoutExpired,
+        ) as error:
+            last_error = error
+            if attempt < GITHUB_LOOKUP_ATTEMPTS and retry_delay:
+                time.sleep(retry_delay)
+
+    raise RuntimeError(
+        "GitHub PR lookup failed after "
+        f"{GITHUB_LOOKUP_ATTEMPTS} attempts: {last_error}"
+    )
 
 
 def commit_available(repository: Path, oid: str) -> bool:
@@ -119,16 +207,24 @@ def merged_pr_contains_head(
             timeout=120,
             check=False,
         )
-        if fetched.returncode != 0 or not commit_available(primary, pr_head):
-            return False
-    return (
-        run(
-            ["git", "merge-base", "--is-ancestor", head, pr_head],
-            cwd=primary,
-            check=False,
-        ).returncode
-        == 0
+        if fetched.returncode != 0:
+            detail = fetched.stderr.strip() or fetched.stdout.strip() or "no output"
+            raise RuntimeError(f"merged PR head fetch failed: {detail}")
+        if not commit_available(primary, pr_head):
+            raise RuntimeError(
+                f"merged PR head {pr_head} is unavailable after fetch"
+            )
+    ancestry = run(
+        ["git", "merge-base", "--is-ancestor", head, pr_head],
+        cwd=primary,
+        check=False,
     )
+    if ancestry.returncode == 0:
+        return True
+    if ancestry.returncode == 1:
+        return False
+    detail = ancestry.stderr.strip() or ancestry.stdout.strip() or "no output"
+    raise RuntimeError(f"merged PR ancestry check failed: {detail}")
 
 
 def remote_branch_oid(primary: Path, branch: str) -> str:
@@ -356,8 +452,21 @@ def main() -> int:
                     merged_head_oid,
                 )
             )
-        except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
-            recoverable = False
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+            json.JSONDecodeError,
+            subprocess.TimeoutExpired,
+        ) as error:
+            complete(
+                "task_janitor_blocked",
+                f"{previous_report}\nJanitor preserved {workspace}: "
+                f"merged PR evidence lookup failed: {error}",
+                "GitHub merge evidence could not be read after bounded retries. "
+                "Retry Cleanup; no worktree or branch was removed.",
+            )
+            return 0
     elif cleanup_mode in {"no_pr", "report_only"}:
         recoverable = head_matches_current_remote(primary, head)
 
@@ -369,12 +478,37 @@ def main() -> int:
         )
         return 0
 
-    remote_oid = remote_branch_oid(primary, branch) if branch else ""
-
     wrapper = os.environ.get(
         "KENT_WORKTREE_WRAPPER",
         str(Path.home() / ".kent" / "bin" / "kent-worktree"),
     )
+    try:
+        session_uses_workspace = cleanup_session_uses_workspace(
+            wrapper,
+            primary,
+            cleanup_session_id,
+            workspace,
+        )
+    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+        complete(
+            "task_janitor_blocked",
+            f"{previous_report}\nJanitor preserved {workspace}: {error}",
+            "Cleanup session target could not be verified. Retry Cleanup; "
+            "no worktree or branch was removed.",
+        )
+        return 0
+    if session_uses_workspace:
+        complete(
+            "task_janitor_blocked",
+            f"{previous_report}\nJanitor preserved {workspace}: Cleanup session "
+            f"{cleanup_session_id} still targets the task worktree.",
+            "Run `kent worktree leave` from the retained Cleanup session, "
+            "close every task-owned background shell, then retry Janitor.",
+        )
+        return 0
+
+    remote_oid = remote_branch_oid(primary, branch) if branch else ""
+
     os.chdir(primary)
     deletion = run(
         [
@@ -396,6 +530,52 @@ def main() -> int:
             "task_janitor_blocked",
             f"{previous_report}\nJanitor could not remove {workspace}: {detail}",
             "Kent-managed worktree deletion failed after safety checks.",
+        )
+        return 0
+
+    try:
+        deletion_payload = json_object(deletion.stdout, "Kent worktree delete")
+    except RuntimeError as error:
+        complete(
+            "task_janitor_blocked",
+            f"{previous_report}\nJanitor could not confirm removal of "
+            f"{workspace}: {error}",
+            "Kent worktree deletion returned no trustworthy completion result.",
+        )
+        return 0
+    deletion_kind = str(deletion_payload.get("kind") or "")
+    if deletion_kind == "scheduled":
+        scheduled = deletion_payload.get("scheduled")
+        operation_id = (
+            str(scheduled.get("operation_id") or "")
+            if isinstance(scheduled, dict)
+            else ""
+        )
+        complete(
+            "task_janitor_blocked",
+            f"{previous_report}\nJanitor preserved {workspace}: Kent scheduled "
+            f"worktree deletion operation {operation_id or '<unknown>'} but did "
+            "not confirm completion.",
+            "Resume Cleanup so the session can leave the task worktree, close "
+            "task-owned background shells, and retry Janitor.",
+        )
+        return 0
+    if deletion_kind != "completed":
+        complete(
+            "task_janitor_blocked",
+            f"{previous_report}\nJanitor preserved {workspace}: unexpected Kent "
+            f"worktree delete result {deletion_kind or '<missing>'}.",
+            "Kent did not return a completed worktree deletion result.",
+        )
+        return 0
+    if workspace.exists() or git_registers_worktree(primary, workspace):
+        complete(
+            "task_janitor_blocked",
+            f"{previous_report}\nJanitor preserved {workspace}: Kent reported "
+            "completed deletion but the worktree path or Git registration "
+            "still exists.",
+            "Kent worktree deletion postconditions failed; no branch or remote "
+            "cleanup was attempted.",
         )
         return 0
 

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import select
 import secrets
 import stat
 import subprocess
@@ -149,6 +150,23 @@ def decode_payload(raw: str) -> dict[str, object]:
     return payload
 
 
+def read_json_input(label: str) -> dict[str, object]:
+    if sys.stdin.isatty():
+        raise ValueError(
+            f"{label} input requires one JSON object on stdin; pipe the payload "
+            "instead of starting the command interactively"
+        )
+    readable, _, _ = select.select([sys.stdin], [], [], 2.0)
+    if not readable:
+        raise ValueError(
+            f"{label} input timed out waiting for one JSON object on stdin"
+        )
+    raw = sys.stdin.read()
+    if not raw.strip():
+        raise ValueError(f"{label} input requires one JSON object on stdin")
+    return decode_payload(raw)
+
+
 def validate_payload(payload: dict[str, object], *, task: str, stage: str) -> None:
     if payload.get("schema_version") != 1:
         raise ValueError("checkpoint schema_version must be 1")
@@ -189,7 +207,7 @@ def write_checkpoint(
     task: str,
     stage: str,
 ) -> dict[str, object]:
-    payload = decode_payload(sys.stdin.read())
+    payload = read_json_input("checkpoint")
     payload.update(
         {
             "schema_version": 1,

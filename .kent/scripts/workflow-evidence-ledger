@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import select
 import stat
 import subprocess
 import sys
@@ -98,6 +99,26 @@ def optional_count(value: Any, label: str) -> Optional[int]:
     return value
 
 
+def read_json_input(label: str) -> Any:
+    if sys.stdin.isatty():
+        raise ValueError(
+            "{} input requires one JSON object on stdin; pipe the payload "
+            "instead of starting the command interactively".format(label)
+        )
+    readable, _, _ = select.select([sys.stdin], [], [], 2.0)
+    if not readable:
+        raise ValueError(
+            "{} input timed out waiting for one JSON object on stdin".format(label)
+        )
+    raw_text = sys.stdin.read()
+    if not raw_text.strip():
+        raise ValueError("{} input requires one JSON object on stdin".format(label))
+    try:
+        return json.loads(raw_text)
+    except json.JSONDecodeError as error:
+        raise ValueError("{} input is invalid JSON: {}".format(label, error)) from error
+
+
 def resolve_instruction_file(root: Path, configured_path: str, label: str) -> Path:
     relative = Path(configured_path)
     if relative.is_absolute():
@@ -121,7 +142,14 @@ def context_metrics(root: Path, raw: Any) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("context must be an object")
     manifest_path = require_string(raw.get("manifest_path"), "context.manifest_path")
-    files_read = require_string_list(raw.get("files_read", []), "context.files_read")
+    files_read = [
+        path
+        for path in require_string_list(
+            raw.get("files_read", []),
+            "context.files_read",
+        )
+        if path != manifest_path
+    ]
     ordered_paths = [manifest_path] + files_read
     resolved_paths = []
     instruction_bytes = 0
@@ -236,11 +264,17 @@ def open_ledger(path: Path, *, create: bool) -> Any:
     return os.fdopen(descriptor, "r+", encoding="utf-8")
 
 
-def append_entry(root: Path, path: Path, *, task: str) -> Dict[str, Any]:
-    try:
-        raw = json.load(sys.stdin)
-    except json.JSONDecodeError as error:
-        raise ValueError("evidence input is invalid JSON: {}".format(error)) from error
+def kent_identity(name: str) -> str:
+    return os.environ.get(name, "").strip() or "unknown"
+
+
+def append_entry(
+    root: Path,
+    path: Path,
+    *,
+    task: str,
+) -> tuple[Dict[str, Any], bool]:
+    raw = read_json_input("evidence")
     if not isinstance(raw, dict):
         raise ValueError("evidence input must be one JSON object")
     node_key = require_string(raw.get("node_key"), "node_key")
@@ -253,10 +287,17 @@ def append_entry(root: Path, path: Path, *, task: str) -> Dict[str, Any]:
     decisions = require_string_list(raw.get("decisions", []), "decisions")
     metrics = context_metrics(root, raw.get("context"))
     git_head = run_git(root, "rev-parse", "HEAD").stdout.strip()
+    session_id = kent_identity("KENT_SESSION_ID")
+    run_id = kent_identity("KENT_RUN_ID")
+    step_id = kent_identity("KENT_STEP_ID")
 
     with open_ledger(path, create=True) as stream:
         fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
         entries = load_entries(stream, task=task)
+        if run_id != "unknown":
+            for existing in reversed(entries):
+                if existing.get("run_id") == run_id:
+                    return existing, True
         previous_hash = entries[-1]["event_hash"] if entries else ""
         entry = {
             "schema_version": 1,
@@ -271,7 +312,9 @@ def append_entry(root: Path, path: Path, *, task: str) -> Dict[str, Any]:
             "context": metrics,
             "workspace_path": str(root),
             "git_head": git_head,
-            "session_id": os.environ.get("KENT_SESSION_ID", "unknown"),
+            "session_id": session_id,
+            "run_id": run_id,
+            "step_id": step_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "previous_hash": previous_hash,
         }
@@ -281,7 +324,7 @@ def append_entry(root: Path, path: Path, *, task: str) -> Dict[str, Any]:
         stream.write("\n")
         stream.flush()
         os.fsync(stream.fileno())
-        return entry
+        return entry, False
 
 
 def read_entries(path: Path, *, task: str) -> List[Dict[str, Any]]:
@@ -329,13 +372,14 @@ def main() -> int:
     path = ledger_path(root, args.task)
     require_ignored(root, path)
     if args.command == "append":
-        entry = append_entry(root, path, task=args.task)
+        entry, duplicate_suppressed = append_entry(root, path, task=args.task)
         print(
             json.dumps(
                 {
                     "ledger_path": str(path),
                     "sequence": entry["sequence"],
                     "event_hash": entry["event_hash"],
+                    "duplicate_suppressed": duplicate_suppressed,
                 }
             )
         )

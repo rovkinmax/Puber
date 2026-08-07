@@ -10,6 +10,9 @@ script_path="$(
 runtime_root="${KENT_RESOURCE_LOCK_DIR:-$HOME/.kent/runtime/resource-locks}"
 guard_root="$runtime_root/.guards"
 mkdir -p "$runtime_root" "$guard_root"
+if [[ -z "${KENT_RESOURCE_LOCK_OWNER_PID:-}" ]]; then
+  export KENT_RESOURCE_LOCK_OWNER_PID="$PPID"
+fi
 
 usage() {
   cat >&2 <<'USAGE'
@@ -90,7 +93,10 @@ locked_status() {
 locked_try_acquire() {
   local resource="$1"
   local ttl_seconds="$2"
-  local dir age token
+  local dir age token owner_pid
+
+  owner_pid="$KENT_RESOURCE_LOCK_OWNER_PID"
+  require_nonnegative_integer owner_pid "$owner_pid"
 
   dir="$(lock_dir_for "$resource")"
   if [[ -d "$dir" ]]; then
@@ -109,7 +115,7 @@ locked_try_acquire() {
   {
     printf 'token=%s\n' "$token"
     printf 'resource=%s\n' "$resource"
-    printf 'pid=%s\n' "$PPID"
+    printf 'pid=%s\n' "$owner_pid"
     printf 'cwd=%s\n' "$PWD"
     printf 'created_at=%s\n' "$(now_epoch)"
     printf 'task_id=%s\n' "${KENT_TASK_ID:-unknown}"
@@ -143,7 +149,10 @@ locked_release() {
 locked_resume() {
   local resource="$1"
   local token="$2"
-  local dir current
+  local dir current owner_pid
+
+  owner_pid="$KENT_RESOURCE_LOCK_OWNER_PID"
+  require_nonnegative_integer owner_pid "$owner_pid"
 
   dir="$(lock_dir_for "$resource")"
   if [[ -d "$dir" ]]; then
@@ -160,7 +169,7 @@ locked_resume() {
   {
     printf 'token=%s\n' "$token"
     printf 'resource=%s\n' "$resource"
-    printf 'pid=%s\n' "$PPID"
+    printf 'pid=%s\n' "$owner_pid"
     printf 'cwd=%s\n' "$PWD"
     printf 'created_at=%s\n' "$(now_epoch)"
     printf 'task_id=%s\n' "${KENT_TASK_ID:-unknown}"

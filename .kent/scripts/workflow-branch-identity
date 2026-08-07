@@ -226,12 +226,29 @@ def task_body(payload: dict[str, object]) -> str:
     return ""
 
 
+def jira_url_key(value: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"}:
+        return ""
+    parts = [part for part in parsed.path.split("/") if part]
+    for index, part in enumerate(parts[:-1]):
+        if part.lower() != "browse":
+            continue
+        match = JIRA_KEY.fullmatch(parts[index + 1])
+        if match:
+            return match.group(1).upper()
+    return ""
+
+
 def jira_key(source_url: str, body: str) -> str:
     source_match = JIRA_KEY.search(source_url)
     if source_match:
         return source_match.group(1).upper()
-    body_match = JIRA_KEY.search(body)
-    return body_match.group(1).upper() if body_match else ""
+    for match in URL.finditer(body):
+        key = jira_url_key(match.group(0).rstrip(".,;:!?"))
+        if key:
+            return key
+    return ""
 
 
 def github_repository(root: Path) -> Optional[tuple[str, str]]:
