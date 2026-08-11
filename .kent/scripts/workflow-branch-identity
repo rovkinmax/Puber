@@ -27,6 +27,10 @@ BRANCH_POLICY_ASSIGNMENT = re.compile(
 )
 
 
+class IdentityAmbiguity(ValueError):
+    pass
+
+
 def complete(transition: str, commentary: str = "", **values: str) -> None:
     payload = {"transition": transition}
     if commentary:
@@ -241,14 +245,21 @@ def jira_url_key(value: str) -> str:
 
 
 def jira_key(source_url: str, body: str) -> str:
-    source_match = JIRA_KEY.search(source_url)
-    if source_match:
-        return source_match.group(1).upper()
+    source_key = jira_url_key(source_url)
+    if source_key:
+        return source_key
+    keys = []
     for match in URL.finditer(body):
         key = jira_url_key(match.group(0).rstrip(".,;:!?"))
-        if key:
-            return key
-    return ""
+        if key and key not in keys:
+            keys.append(key)
+    if len(keys) > 1:
+        raise IdentityAmbiguity(
+            "В body найдено несколько Jira issue URL без авторитетного "
+            f"source_url: {', '.join(keys)}. Укажите root issue как Source "
+            "задачи; linked, cloned и dependency issues не определяют ветку."
+        )
+    return keys[0] if keys else ""
 
 
 def github_repository(root: Path) -> Optional[tuple[str, str]]:
@@ -278,17 +289,11 @@ def github_issue_number(root: Path, source_url: str, body: str) -> str:
     repository = github_repository(root)
     if repository is None:
         return ""
-    candidates = []
-    if source_url:
-        candidates.append(source_url)
-    candidates.extend(
-        match.group(0).rstrip(".,;:!?")
-        for match in URL.finditer(body)
-    )
-    for candidate in candidates:
+
+    def issue_number(candidate: str) -> str:
         parsed = urlparse(candidate)
         if parsed.hostname not in {"github.com", "www.github.com"}:
-            continue
+            return ""
         parts = [part for part in parsed.path.split("/") if part]
         if (
             len(parts) == 4
@@ -299,7 +304,23 @@ def github_issue_number(root: Path, source_url: str, body: str) -> str:
             and int(parts[3]) > 0
         ):
             return str(int(parts[3]))
-    return ""
+        return ""
+
+    source_issue = issue_number(source_url)
+    if source_issue:
+        return source_issue
+    issues = []
+    for match in URL.finditer(body):
+        issue = issue_number(match.group(0).rstrip(".,;:!?"))
+        if issue and issue not in issues:
+            issues.append(issue)
+    if len(issues) > 1:
+        raise IdentityAmbiguity(
+            "В body найдено несколько GitHub issue URL текущего репозитория "
+            f"без авторитетного source_url: {', '.join(issues)}. Укажите root "
+            "issue как Source задачи."
+        )
+    return issues[0] if issues else ""
 
 
 def desired_branch(
@@ -388,7 +409,10 @@ def apply_branch_identity(
     policy = profile_policy(root)
     source_url = task_string(task, "source_url")
     body = task_body(task)
-    desired = desired_branch(policy, root, source_url, body, short_id)
+    try:
+        desired = desired_branch(policy, root, source_url, body, short_id)
+    except IdentityAmbiguity as error:
+        return blocked(str(error), handoff)
     current = current_branch(root)
 
     if current == desired:

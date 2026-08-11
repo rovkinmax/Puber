@@ -12,10 +12,13 @@ import secrets
 import stat
 import subprocess
 import sys
+import time
 
 
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 STAGES = ("fix", "smoke")
+JSON_INPUT_TIMEOUT_SECONDS = 2.0
+MAX_JSON_INPUT_BYTES = 1024 * 1024
 
 
 def parse_args() -> argparse.Namespace:
@@ -156,15 +159,55 @@ def read_json_input(label: str) -> dict[str, object]:
             f"{label} input requires one JSON object on stdin; pipe the payload "
             "instead of starting the command interactively"
         )
-    readable, _, _ = select.select([sys.stdin], [], [], 2.0)
-    if not readable:
-        raise ValueError(
-            f"{label} input timed out waiting for one JSON object on stdin"
-        )
-    raw = sys.stdin.read()
-    if not raw.strip():
-        raise ValueError(f"{label} input requires one JSON object on stdin")
-    return decode_payload(raw)
+    descriptor = sys.stdin.fileno()
+    deadline = time.monotonic() + JSON_INPUT_TIMEOUT_SECONDS
+    raw = bytearray()
+    decoder = json.JSONDecoder()
+
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            detail = (
+                "one JSON object"
+                if not raw
+                else "a complete JSON object"
+            )
+            raise ValueError(
+                f"{label} input timed out waiting for {detail} on stdin"
+            )
+        readable, _, _ = select.select([descriptor], [], [], remaining)
+        if not readable:
+            continue
+        chunk = os.read(descriptor, 65536)
+        if not chunk:
+            if not raw:
+                raise ValueError(
+                    f"{label} input requires one JSON object on stdin"
+                )
+            return decode_payload(raw.decode("utf-8"))
+        raw.extend(chunk)
+        if len(raw) > MAX_JSON_INPUT_BYTES:
+            raise ValueError(
+                f"{label} input exceeds {MAX_JSON_INPUT_BYTES} bytes"
+            )
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as error:
+            if error.reason == "unexpected end of data":
+                continue
+            raise ValueError(f"{label} input is not valid UTF-8") from error
+        candidate = text.lstrip()
+        if not candidate:
+            continue
+        try:
+            _, end = decoder.raw_decode(candidate)
+        except json.JSONDecodeError:
+            continue
+        if candidate[end:].strip():
+            raise ValueError(
+                f"{label} input must contain exactly one JSON object"
+            )
+        return decode_payload(candidate)
 
 
 def validate_payload(payload: dict[str, object], *, task: str, stage: str) -> None:

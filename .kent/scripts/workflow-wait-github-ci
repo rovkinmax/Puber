@@ -142,6 +142,48 @@ def compact_checks(checks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
+def prior_attempts(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    value = payload.get("ci_report")
+    if value in (None, ""):
+        return []
+    if not isinstance(value, str):
+        raise ValueError("ci_report must be a JSON string when supplied")
+    try:
+        report = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ValueError("ci_report is not valid JSON: {}".format(error))
+    if not isinstance(report, dict):
+        raise ValueError("ci_report must decode to one JSON object")
+    attempts = report.get("attempts")
+    if attempts is None:
+        return [{key: item for key, item in report.items() if key != "attempts"}]
+    if not isinstance(attempts, list) or not all(
+        isinstance(attempt, dict) for attempt in attempts
+    ):
+        raise ValueError("ci_report.attempts must be an array of objects")
+    normalized = [dict(attempt) for attempt in attempts]
+    if normalized:
+        latest = {
+            key: item for key, item in report.items() if key != "attempts"
+        }
+        normalized[-1].update(latest)
+    return normalized
+
+
+def encode_ci_report(
+    current: Dict[str, Any],
+    previous_attempts: List[Dict[str, Any]],
+) -> str:
+    return json.dumps(
+        {
+            **current,
+            "attempts": [*previous_attempts, current],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
 def merge_report(pr: Dict[str, Any]) -> str:
     return json.dumps(
         {
@@ -164,8 +206,9 @@ def ci_report(
     checks: List[Dict[str, Any]],
     reason: str,
     watch_exit: int,
+    previous_attempts: List[Dict[str, Any]],
 ) -> str:
-    return json.dumps(
+    return encode_ci_report(
         {
             "reason": reason,
             "watch_exit": watch_exit,
@@ -174,8 +217,7 @@ def ci_report(
             "checks": compact_checks(checks),
             "url": pr.get("url"),
         },
-        ensure_ascii=False,
-        sort_keys=True,
+        previous_attempts,
     )
 
 
@@ -193,6 +235,7 @@ def main() -> int:
     pr_url = require_string(payload, "pr_url")
     branch_name = require_string(payload, "branch_name")
     merge_strategy = require_string(payload, "merge_strategy")
+    previous_attempts = prior_attempts(payload)
     validate_pr_url(pr_url)
     if not workspace.is_dir():
         raise ValueError("workspace does not exist: {}".format(workspace))
@@ -247,14 +290,13 @@ def main() -> int:
                     pr_url=pr_url,
                     branch_name=branch_name,
                     merge_strategy=merge_strategy,
-                    ci_report=json.dumps(
+                    ci_report=encode_ci_report(
                         {
                             "reason": "github_query_failed",
-                            "attempts": errors,
+                            "query_attempts": errors,
                             "error": str(error),
                         },
-                        ensure_ascii=False,
-                        sort_keys=True,
+                        previous_attempts,
                     ),
                 )
                 return 0
@@ -279,7 +321,13 @@ def main() -> int:
                 pr_url=pr_url,
                 branch_name=branch_name,
                 merge_strategy=merge_strategy,
-                ci_report=ci_report(pr, checks, "no_checks_reported", watch.returncode),
+                ci_report=ci_report(
+                    pr,
+                    checks,
+                    "no_checks_reported",
+                    watch.returncode,
+                    previous_attempts,
+                ),
             )
             return 0
         if buckets & {"fail", "cancel"}:
@@ -294,6 +342,7 @@ def main() -> int:
                     checks,
                     "terminal_check_failure",
                     watch.returncode,
+                    previous_attempts,
                 ),
             )
             return 0
@@ -309,6 +358,7 @@ def main() -> int:
                     checks,
                     "all_checks_terminal_green",
                     watch.returncode,
+                    previous_attempts,
                 ),
             )
             return 0
@@ -325,6 +375,7 @@ def main() -> int:
                     checks,
                     "test_poll_limit_with_pending_checks",
                     watch.returncode,
+                    previous_attempts,
                 ),
             )
             return 0

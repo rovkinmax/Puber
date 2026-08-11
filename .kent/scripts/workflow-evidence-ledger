@@ -13,11 +13,14 @@ import select
 import stat
 import subprocess
 import sys
+import time
 from typing import Any, Dict, List, Optional
 
 
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 NODE_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
+JSON_INPUT_TIMEOUT_SECONDS = 2.0
+MAX_JSON_INPUT_BYTES = 1024 * 1024
 
 
 def parse_args() -> argparse.Namespace:
@@ -105,18 +108,64 @@ def read_json_input(label: str) -> Any:
             "{} input requires one JSON object on stdin; pipe the payload "
             "instead of starting the command interactively".format(label)
         )
-    readable, _, _ = select.select([sys.stdin], [], [], 2.0)
-    if not readable:
-        raise ValueError(
-            "{} input timed out waiting for one JSON object on stdin".format(label)
-        )
-    raw_text = sys.stdin.read()
-    if not raw_text.strip():
-        raise ValueError("{} input requires one JSON object on stdin".format(label))
-    try:
-        return json.loads(raw_text)
-    except json.JSONDecodeError as error:
-        raise ValueError("{} input is invalid JSON: {}".format(label, error)) from error
+    descriptor = sys.stdin.fileno()
+    deadline = time.monotonic() + JSON_INPUT_TIMEOUT_SECONDS
+    raw = bytearray()
+    decoder = json.JSONDecoder()
+
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            detail = "one JSON object" if not raw else "a complete JSON object"
+            raise ValueError(
+                "{} input timed out waiting for {} on stdin".format(
+                    label,
+                    detail,
+                )
+            )
+        readable, _, _ = select.select([descriptor], [], [], remaining)
+        if not readable:
+            continue
+        chunk = os.read(descriptor, 65536)
+        if not chunk:
+            if not raw:
+                raise ValueError(
+                    "{} input requires one JSON object on stdin".format(label)
+                )
+            try:
+                return json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise ValueError(
+                    "{} input is invalid JSON: {}".format(label, error)
+                ) from error
+        raw.extend(chunk)
+        if len(raw) > MAX_JSON_INPUT_BYTES:
+            raise ValueError(
+                "{} input exceeds {} bytes".format(
+                    label,
+                    MAX_JSON_INPUT_BYTES,
+                )
+            )
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as error:
+            if error.reason == "unexpected end of data":
+                continue
+            raise ValueError(
+                "{} input is not valid UTF-8".format(label)
+            ) from error
+        candidate = text.lstrip()
+        if not candidate:
+            continue
+        try:
+            payload, end = decoder.raw_decode(candidate)
+        except json.JSONDecodeError:
+            continue
+        if candidate[end:].strip():
+            raise ValueError(
+                "{} input must contain exactly one JSON object".format(label)
+            )
+        return payload
 
 
 def resolve_instruction_file(root: Path, configured_path: str, label: str) -> Path:
@@ -142,32 +191,38 @@ def context_metrics(root: Path, raw: Any) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("context must be an object")
     manifest_path = require_string(raw.get("manifest_path"), "context.manifest_path")
-    files_read = [
-        path
-        for path in require_string_list(
-            raw.get("files_read", []),
+    configured_files = require_string_list(
+        raw.get("files_read", []),
+        "context.files_read",
+    )
+    manifest = resolve_instruction_file(
+        root,
+        manifest_path,
+        "context.manifest_path",
+    )
+    manifest_relative = str(manifest.relative_to(root))
+    resolved_files = []
+    instruction_bytes = manifest.stat().st_size
+    seen = {manifest_relative}
+    repeated = set()
+    for configured_path in configured_files:
+        resolved = resolve_instruction_file(
+            root,
+            configured_path,
             "context.files_read",
         )
-        if path != manifest_path
-    ]
-    ordered_paths = [manifest_path] + files_read
-    resolved_paths = []
-    instruction_bytes = 0
-    seen = set()
-    repeated = set()
-    for index, configured_path in enumerate(ordered_paths):
-        label = "context.manifest_path" if index == 0 else "context.files_read"
-        resolved = resolve_instruction_file(root, configured_path, label)
         relative = str(resolved.relative_to(root))
-        resolved_paths.append(relative)
+        if relative == manifest_relative:
+            continue
+        resolved_files.append(relative)
         if relative in seen:
             repeated.add(relative)
             continue
         seen.add(relative)
         instruction_bytes += resolved.stat().st_size
     return {
-        "manifest_path": resolved_paths[0],
-        "files_read": resolved_paths[1:],
+        "manifest_path": manifest_relative,
+        "files_read": resolved_files,
         "instruction_bytes": instruction_bytes,
         "repeated_file_count": len(repeated),
         "repeated_files": sorted(repeated),

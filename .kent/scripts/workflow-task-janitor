@@ -294,7 +294,11 @@ def remove_runtime_state(workspace: Path, task_short_id: str) -> tuple[bool, str
             return True, "no task-local runtime state"
         descriptors.append(task_fd)
 
-        allowed = {"fix-checkpoint.json", "smoke-checkpoint.json"}
+        allowed = {
+            "evidence-ledger.jsonl",
+            "fix-checkpoint.json",
+            "smoke-checkpoint.json",
+        }
         entries = os.listdir(task_fd)
         unexpected = sorted(set(entries) - allowed)
         if unexpected:
@@ -324,7 +328,7 @@ def remove_runtime_state(workspace: Path, task_short_id: str) -> tuple[bool, str
         os.close(task_fd)
         descriptors.pop()
         os.rmdir(task_short_id, dir_fd=runtime_fd)
-        return True, "removed task-local runtime checkpoints"
+        return True, "removed task-local runtime state"
     except (NotADirectoryError, OSError, ValueError) as error:
         return False, str(error)
     finally:
