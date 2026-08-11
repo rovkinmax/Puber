@@ -19,13 +19,14 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
-- `Puber Engineering Delivery v17` (default): common delivery for
+- `Puber Engineering Delivery v18` (default): common delivery for
   `feature`, `bugfix`, `refactor`, `migration`, `dependency`, and `test`.
   Plan selects one `work_kind`, Implement preserves it across bounded slices,
   and the common verification, Smoke, compliance, PR/CI, waiting, and cleanup
   tail handles delivery. Same-repository GitHub issues resolve branches as
-  `issue-<number>` after Plan; fresh Fix sessions consume their incoming
-  findings directly instead of repeating bookkeeping-only transitions.
+  `issue-<number>` after Plan. Fresh recovery sessions reload their context
+  manifest and append evidence, CI retries preserve every attempt, and Smoke
+  can recover a same-task lease whose acquire output was lost.
 - `Puber Release`: next minor release from `origin/master` through
   version-bump PR, CI, approved tag publication, optional automation
   monitoring, and cleanup. Patch/major releases require explicit wording.
