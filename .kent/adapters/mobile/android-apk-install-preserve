@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+INSTALL_FAILED = re.compile(r"INSTALL_FAILED_([A-Z0-9_]+)")
+VERSION_CODE = re.compile(r"\bversionCode=(\d+)")
+CERT_DIGEST = re.compile(
+    r"Signer #\d+ certificate SHA-256 digest:\s*([0-9a-f:]+)",
+    re.IGNORECASE,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Inspect or preservation-install one Android APK."
+    )
+    parser.add_argument("command", choices=("inspect", "install-preserve"))
+    parser.add_argument("--serial", required=True)
+    parser.add_argument("--package", required=True)
+    parser.add_argument("--apk", required=True, type=Path)
+    return parser.parse_args()
+
+
+def executable(name: str, candidates: list[Path]) -> str:
+    configured = os.environ.get(name.upper())
+    if configured:
+        path = Path(configured).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+        raise ValueError(f"{name.upper()} is not executable: {path}")
+    resolved = shutil.which(name)
+    if resolved:
+        return resolved
+    for path in candidates:
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    raise ValueError(f"{name} was not found")
+
+
+def android_sdk() -> Path:
+    configured = os.environ.get("ANDROID_SDK_ROOT") or os.environ.get(
+        "ANDROID_HOME"
+    )
+    return (
+        Path(configured).expanduser()
+        if configured
+        else Path.home() / "Library" / "Android" / "sdk"
+    )
+
+
+def latest_executable(paths: list[Path]) -> list[Path]:
+    return sorted(paths, reverse=True)
+
+
+def tools() -> tuple[str, str, str]:
+    sdk = android_sdk()
+    adb = executable(
+        "adb",
+        [sdk / "platform-tools" / "adb"],
+    )
+    apkanalyzer = executable(
+        "apkanalyzer",
+        [
+            sdk / "cmdline-tools" / "latest" / "bin" / "apkanalyzer",
+            *latest_executable(
+                list((sdk / "cmdline-tools").glob("*/bin/apkanalyzer"))
+            ),
+            sdk / "tools" / "bin" / "apkanalyzer",
+        ],
+    )
+    apksigner = executable(
+        "apksigner",
+        latest_executable(list((sdk / "build-tools").glob("*/apksigner"))),
+    )
+    return adb, apkanalyzer, apksigner
+
+
+def run(
+    args: list[str],
+    *,
+    timeout: int = 60,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        args,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=timeout,
+    )
+    if check and result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise ValueError(f"{args[0]} failed: {detail}")
+    return result
+
+
+def one_line(result: subprocess.CompletedProcess[str], label: str) -> str:
+    value = result.stdout.strip()
+    if not value:
+        raise ValueError(f"{label} returned an empty value")
+    return value
+
+
+def candidate_metadata(
+    apk: Path,
+    *,
+    apkanalyzer: str,
+    apksigner: str,
+) -> dict[str, object]:
+    resolved = apk.expanduser().resolve()
+    if resolved.is_symlink() or not resolved.is_file():
+        raise ValueError(f"APK is not a regular file: {resolved}")
+    application_id = one_line(
+        run([apkanalyzer, "manifest", "application-id", str(resolved)]),
+        "application-id",
+    )
+    version_code = int(
+        one_line(
+            run([apkanalyzer, "manifest", "version-code", str(resolved)]),
+            "version-code",
+        )
+    )
+    version_name = one_line(
+        run([apkanalyzer, "manifest", "version-name", str(resolved)]),
+        "version-name",
+    )
+    certificates = run(
+        [apksigner, "verify", "--print-certs", str(resolved)]
+    ).stdout
+    match = CERT_DIGEST.search(certificates)
+    if match is None:
+        raise ValueError("apksigner did not report a certificate SHA-256 digest")
+    digest = hashlib.sha256()
+    with resolved.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return {
+        "apk_path": str(resolved),
+        "apk_sha256": digest.hexdigest(),
+        "application_id": application_id,
+        "version_code": version_code,
+        "version_name": version_name,
+        "signer_sha256": match.group(1).replace(":", "").lower(),
+    }
+
+
+def installed_metadata(
+    *,
+    adb: str,
+    serial: str,
+    package: str,
+    apksigner: str,
+) -> dict[str, object]:
+    path_result = run(
+        [adb, "-s", serial, "shell", "pm", "path", package],
+        check=False,
+    )
+    package_lines = [
+        line.removeprefix("package:").strip()
+        for line in path_result.stdout.splitlines()
+        if line.startswith("package:")
+    ]
+    if path_result.returncode != 0 or not package_lines:
+        return {"present": False}
+
+    dumpsys = run(
+        [adb, "-s", serial, "shell", "dumpsys", "package", package],
+        check=False,
+    )
+    version_match = VERSION_CODE.search(dumpsys.stdout)
+    signer = "unknown"
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix="kent-installed-",
+        suffix=".apk",
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        pull = run(
+            [adb, "-s", serial, "pull", package_lines[0], str(temporary)],
+            check=False,
+            timeout=120,
+        )
+        if pull.returncode == 0 and temporary.is_file():
+            certs = run(
+                [apksigner, "verify", "--print-certs", str(temporary)],
+                check=False,
+            )
+            match = CERT_DIGEST.search(certs.stdout)
+            if certs.returncode == 0 and match is not None:
+                signer = match.group(1).replace(":", "").lower()
+    finally:
+        temporary.unlink(missing_ok=True)
+
+    return {
+        "present": True,
+        "version_code": (
+            int(version_match.group(1)) if version_match is not None else None
+        ),
+        "signer_sha256": signer,
+    }
+
+
+def classify(
+    candidate: dict[str, object],
+    installed: dict[str, object],
+) -> str:
+    if not installed["present"]:
+        return "package_absent"
+    installed_version = installed.get("version_code")
+    if isinstance(installed_version, int) and candidate["version_code"] < installed_version:
+        return "downgrade_blocked"
+    installed_signer = installed.get("signer_sha256")
+    if (
+        isinstance(installed_signer, str)
+        and installed_signer != "unknown"
+        and installed_signer != candidate["signer_sha256"]
+    ):
+        return "signer_mismatch"
+    if installed_signer == "unknown":
+        return "signer_unknown"
+    return "compatible_replace"
+
+
+def main() -> int:
+    args = parse_args()
+    adb, apkanalyzer, apksigner = tools()
+    candidate = candidate_metadata(
+        args.apk,
+        apkanalyzer=apkanalyzer,
+        apksigner=apksigner,
+    )
+    if candidate["application_id"] != args.package:
+        raise ValueError(
+            "APK application ID does not match --package: "
+            f"{candidate['application_id']} != {args.package}"
+        )
+    device = run([adb, "-s", args.serial, "get-state"], check=False)
+    if device.returncode != 0 or device.stdout.strip() != "device":
+        output = {
+            "outcome": "blocked",
+            "classification": "transport_failure",
+            "serial": args.serial,
+            "package": args.package,
+            "candidate": candidate,
+        }
+        print(json.dumps(output, ensure_ascii=False))
+        return 2
+
+    installed = installed_metadata(
+        adb=adb,
+        serial=args.serial,
+        package=args.package,
+        apksigner=apksigner,
+    )
+    classification = classify(candidate, installed)
+    output = {
+        "outcome": "ready",
+        "classification": classification,
+        "serial": args.serial,
+        "package": args.package,
+        "candidate": candidate,
+        "installed": installed,
+        "destructive_action": False,
+    }
+    if args.command == "inspect":
+        print(json.dumps(output, ensure_ascii=False))
+        return (
+            0
+            if classification
+            in {"package_absent", "compatible_replace"}
+            else 2
+        )
+
+    if classification not in {
+        "package_absent",
+        "compatible_replace",
+    }:
+        output["outcome"] = "blocked"
+        print(json.dumps(output, ensure_ascii=False))
+        return 2
+
+    install = run(
+        [adb, "-s", args.serial, "install", "-r", str(candidate["apk_path"])],
+        check=False,
+        timeout=180,
+    )
+    if install.returncode == 0 and "Success" in install.stdout:
+        output["outcome"] = "installed"
+        output["install_mode"] = "adb_install_replace_preserve"
+        print(json.dumps(output, ensure_ascii=False))
+        return 0
+
+    combined = "\n".join((install.stdout, install.stderr))
+    failure = INSTALL_FAILED.search(combined)
+    reason = failure.group(1) if failure else "UNKNOWN"
+    output["outcome"] = "blocked"
+    output["install_failure"] = reason
+    if reason == "VERSION_DOWNGRADE":
+        output["classification"] = "downgrade_blocked"
+    elif reason in {
+        "UPDATE_INCOMPATIBLE",
+        "SHARED_USER_INCOMPATIBLE",
+    }:
+        output["classification"] = "signer_mismatch"
+    else:
+        output["classification"] = "install_failure"
+    print(json.dumps(output, ensure_ascii=False))
+    return 2
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        print(f"android-apk-install-preserve: {error}", file=sys.stderr)
+        raise SystemExit(1)

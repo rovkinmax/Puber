@@ -49,8 +49,14 @@ trigger matches the current node and task.
 - Acquire the shared lease before build, install, launch, input, logs, or MCP.
   On resume, reuse a still-owned checkpoint token through the adapter's
   `resume` operation.
-- Install a fresh dev APK. Runtime proof covers visible behavior,
-  focus/navigation, integration, restoration, and liveness.
+- Build a fresh task APK, but preserve app data by installing only through
+  `.kent/adapters/mobile/android-apk-install-preserve`. Unknown signer,
+  downgrade, signer mismatch, or install failure blocks the replacement.
+  Never uninstall, clear package data, allow downgrade, or replace a signer
+  without separate explicit authority.
+- A resumed Smoke run may reuse a checkpointed install only when the APK
+  SHA-256 and required authenticated state still match. Runtime proof covers
+  visible behavior, focus/navigation, integration, restoration, and liveness.
 - Playback-progress, account, subscription, or server-visible mutations require
   explicit task or comment authority.
 

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KENT_PLAN_CONTRACT_MODE=check
+export KENT_PLAN_CONTRACT_ROUTE=continue
+export KENT_PLAN_CONTRACT_STABLE_TRANSITION=plan_contract_continue_stable
+export KENT_PLAN_CONTRACT_CHANGED_TRANSITION=plan_contract_continue_changed
+exec "$script_dir/workflow-plan-contract"

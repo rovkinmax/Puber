@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KENT_PLAN_CONTRACT_MODE=accept
+exec "$script_dir/workflow-plan-contract"

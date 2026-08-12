@@ -1,0 +1,330 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+
+
+TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+CHECKBOX = re.compile(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)[ xX](\])")
+MODES = {"accept", "check"}
+ROUTES = {"start", "continue", "verify", "fix_continue"}
+ROUTE_CONTEXT_DEFAULT = "not-applicable"
+
+
+def require_string(payload: dict[str, object], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{key} must be a non-empty string")
+    return value.strip()
+
+
+def require_environment(key: str) -> str:
+    value = os.environ.get(key, "").strip()
+    if not value:
+        raise ValueError(f"{key} must be a non-empty environment value")
+    return value
+
+
+def run_git(
+    root: Path,
+    *args: str,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if check and result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise ValueError(f"git {' '.join(args)} failed: {detail}")
+    return result
+
+
+def repository_root(workspace: str) -> Path:
+    resolved = Path(workspace).expanduser().resolve()
+    result = run_git(resolved, "rev-parse", "--show-toplevel")
+    root = Path(result.stdout.strip()).resolve()
+    if root != resolved:
+        raise ValueError(
+            f"workspace_path must be the repository root: {resolved}; found {root}"
+        )
+    return root
+
+
+def plan_file(root: Path, configured: str) -> tuple[Path | None, str]:
+    if configured == "not-applicable":
+        return None, configured
+    candidate = Path(configured).expanduser()
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError("plan_path escapes workspace_path")
+    if not resolved.is_file() or resolved.is_symlink():
+        raise ValueError(f"plan_path is not a regular file: {resolved}")
+    return resolved, resolved.relative_to(root).as_posix()
+
+
+def normalized_plan(path: Path | None) -> str:
+    if path is None:
+        return "not-applicable\n"
+    raw = path.read_text(encoding="utf-8")
+    lines = [
+        CHECKBOX.sub(r"\1 \2", line).rstrip()
+        for line in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    ]
+    while lines and not lines[-1]:
+        lines.pop()
+    return "\n".join(lines) + "\n"
+
+
+def runtime_file(root: Path, task: str) -> Path:
+    if not TASK_KEY.fullmatch(task):
+        raise ValueError(f"invalid task_short_id: {task!r}")
+    path = root / ".kent" / "runtime" / task / "plan-contract.json"
+    ignored = run_git(
+        root,
+        "check-ignore",
+        "-q",
+        "--",
+        str(path.relative_to(root)),
+        check=False,
+    )
+    if ignored.returncode != 0:
+        raise ValueError(
+            "plan contract path is not ignored by Git; "
+            "add /.kent/runtime/ to .gitignore"
+        )
+    return path
+
+
+def ensure_safe_directory(path: Path, root: Path, *, create: bool) -> None:
+    current = root
+    for part in path.relative_to(root).parts:
+        current /= part
+        if current.exists():
+            metadata = current.lstat()
+            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError(
+                    f"plan contract path component is unsafe: {current}"
+                )
+            continue
+        if not create:
+            raise ValueError(
+                f"accepted plan snapshot directory is missing: {current}"
+            )
+        current.mkdir(mode=0o700)
+
+
+def load_snapshot(path: Path) -> dict[str, object]:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"accepted plan snapshot is missing or unsafe: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        raise ValueError("accepted plan snapshot has unsupported schema")
+    return payload
+
+
+def write_snapshot(
+    path: Path,
+    *,
+    root: Path,
+    task: str,
+    plan_path: str,
+    work_kind: str,
+    normalized: str,
+    digest: str,
+) -> None:
+    ensure_safe_directory(path.parent, root, create=True)
+    payload = {
+        "schema_version": 1,
+        "task_short_id": task,
+        "plan_path": plan_path,
+        "work_kind": work_kind,
+        "normalized_sha256": digest,
+        "normalized_plan": normalized,
+    }
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            json.dump(payload, output, indent=2, ensure_ascii=False)
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        temporary.chmod(0o600)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def complete_route(
+    route: str,
+    *,
+    transition: str,
+    workspace: Path,
+    plan_path: str,
+    work_kind: str,
+    review_context: str,
+    route_context: str,
+) -> None:
+    payload: dict[str, str] = {
+        "transition": transition,
+        "commentary": (
+            "Принятый контракт плана стабилен; продолжаю по выбранному маршруту."
+        ),
+    }
+    if route in {"start", "continue"}:
+        payload.update(
+            {
+                "workspace_path": str(workspace),
+                "plan_path": plan_path,
+                "work_kind": work_kind,
+            }
+        )
+    elif route == "verify":
+        payload.update(
+            {
+                "workspace_path": str(workspace),
+                "review_context": review_context,
+            }
+        )
+    else:
+        payload.update(
+            {
+                "workspace_path": str(workspace),
+                "fix_context": route_context,
+            }
+        )
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def main() -> int:
+    payload = json.load(sys.stdin)
+    if not isinstance(payload, dict):
+        raise ValueError("workflow input must be one JSON object")
+
+    workspace = repository_root(require_string(payload, "workspace_path"))
+    mode = require_environment("KENT_PLAN_CONTRACT_MODE")
+    if mode not in MODES:
+        raise ValueError("KENT_PLAN_CONTRACT_MODE must be accept or check")
+    task = require_string(payload, "task_short_id")
+    snapshot_path = runtime_file(workspace, task)
+
+    if mode == "accept":
+        review_context = require_string(payload, "review_context")
+        configured_plan = require_string(payload, "plan_path")
+        work_kind = require_string(payload, "work_kind")
+        route = require_string(payload, "plan_route")
+        route_context = require_string(payload, "plan_route_context")
+    else:
+        route = require_environment("KENT_PLAN_CONTRACT_ROUTE")
+        accepted = load_snapshot(snapshot_path)
+        configured_plan = accepted.get("plan_path")
+        work_kind = accepted.get("work_kind")
+        if not isinstance(configured_plan, str) or not configured_plan:
+            raise ValueError("accepted plan snapshot has no plan_path")
+        if not isinstance(work_kind, str) or not work_kind:
+            raise ValueError("accepted plan snapshot has no work_kind")
+        if route == "fix_continue":
+            route_context = require_string(payload, "fix_context")
+            review_context = route_context
+        else:
+            route_context = ROUTE_CONTEXT_DEFAULT
+            review_context = require_string(payload, "review_context")
+    if route not in ROUTES:
+        raise ValueError(f"unsupported plan_route: {route!r}")
+
+    plan, portable_plan_path = plan_file(workspace, configured_plan)
+    normalized = normalized_plan(plan)
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    if mode == "accept":
+        write_snapshot(
+            snapshot_path,
+            root=workspace,
+            task=task,
+            plan_path=portable_plan_path,
+            work_kind=work_kind,
+            normalized=normalized,
+            digest=digest,
+        )
+        complete_route(
+            route,
+            transition=f"plan_contract_{route}",
+            workspace=workspace,
+            plan_path=configured_plan,
+            work_kind=work_kind,
+            review_context=review_context,
+            route_context=route_context,
+        )
+        return 0
+
+    ensure_safe_directory(snapshot_path.parent, workspace, create=False)
+    accepted_digest = accepted.get("normalized_sha256")
+    accepted_path = accepted.get("plan_path")
+    if accepted_digest == digest and accepted_path == portable_plan_path:
+        complete_route(
+            route,
+            transition=require_environment(
+                "KENT_PLAN_CONTRACT_STABLE_TRANSITION"
+            ),
+            workspace=workspace,
+            plan_path=configured_plan,
+            work_kind=work_kind,
+            review_context=review_context,
+            route_context=route_context,
+        )
+        return 0
+
+    change_report = (
+        "Accepted normalized plan contract changed. "
+        f"accepted_path={accepted_path!r}; current_path={portable_plan_path!r}; "
+        f"accepted_sha256={accepted_digest!r}; current_sha256={digest!r}. "
+        "Checkbox-only progress is excluded from both digests."
+    )
+    print(
+        json.dumps(
+            {
+                "transition": require_environment(
+                    "KENT_PLAN_CONTRACT_CHANGED_TRANSITION"
+                ),
+                "commentary": (
+                    "Контракт плана изменился; требуется повторная сверка "
+                    "требований перед продолжением."
+                ),
+                "workspace_path": str(workspace),
+                "plan_path": configured_plan,
+                "work_kind": work_kind,
+                "plan_route": route,
+                "plan_route_context": route_context,
+                "plan_change_report": change_report,
+                "review_context": review_context,
+                "task_short_id": task,
+            },
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
+        print(f"workflow-plan-contract: {error}", file=sys.stderr)
+        raise SystemExit(1)

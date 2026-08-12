@@ -112,8 +112,10 @@ another branch or commit.
   to `adb -s`. Starting another emulator is allowed only when the task/user explicitly permits parallel device usage and
   the agent acquires a distinct lock for that emulator. Physical devices must not be used unless the task/user explicitly
   provides permission and an explicit serial for that physical device; agents must never rely on adb's default target
-  selection. Smoke workflows must build APKs and install with explicit `adb -s "$DEVICE_SERIAL"`; Gradle `install*` tasks
-  are forbidden for smoke tests.
+  selection. Smoke workflows must build APKs and install only through
+  `.kent/adapters/mobile/android-apk-install-preserve` with the exact serial;
+  direct `adb install`, destructive retries, and Gradle `install*` tasks are
+  forbidden.
 - Every successful terminal path should pass through `cleanup`, but cleanup is conservative by default. Cleanup after a PR
   path must verify the PR through GitHub state rather than git ancestry alone because squash merges are allowed.
 - Pass explicit `workspace_path`, `plan_path`, and `work_kind`; never rely on

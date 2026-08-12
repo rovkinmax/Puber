@@ -4,8 +4,17 @@ project_name = "Puber"
 workflow_prefix = "Puber"
 delivery_profile = "team"
 platforms = ["android-tv"]
-required_adapters = ["mcp_policy", "mobile_resource_lock", "mobile_evidence_audit"]
-kit_managed_adapters = ["mobile_resource_lock", "mobile_evidence_audit"]
+required_adapters = [
+  "android_apk_install",
+  "mcp_policy",
+  "mobile_resource_lock",
+  "mobile_evidence_audit",
+]
+kit_managed_adapters = [
+  "android_apk_install",
+  "mobile_resource_lock",
+  "mobile_evidence_audit",
+]
 source_control = "github"
 issue_tracker = "none"
 release_topology = "tag-after-merged-release-pr"
@@ -39,6 +48,11 @@ dispatch = ".kent/scripts/workflow-verification-dispatch"
 verify = ".kent/scripts/workflow-verify-report"
 checkpoint = ".kent/scripts/workflow-checkpoint"
 evidence = ".kent/scripts/workflow-evidence-ledger"
+plan_contract = ".kent/scripts/workflow-plan-contract"
+plan_contract_accept = ".kent/scripts/workflow-plan-contract-accept"
+plan_contract_continue = ".kent/scripts/workflow-plan-contract-continue"
+plan_contract_verify = ".kent/scripts/workflow-plan-contract-verify"
+plan_contract_fix_continue = ".kent/scripts/workflow-plan-contract-fix-continue"
 wait_ci = ".kent/scripts/workflow-wait-github-ci"
 wait_pr = ".kent/scripts/workflow-wait-github-pr"
 janitor = ".kent/scripts/workflow-task-janitor"
@@ -92,12 +106,14 @@ plan = ".kent/commands/test-coverage.md"
 implement = ".kent/commands/test-coverage.md"
 
 [adapters]
+android_apk_install = ".kent/adapters/mobile/android-apk-install-preserve"
 mcp_policy = ".kent/adapters/mcp/policy"
 mobile_resource_lock = ".kent/adapters/mobile/emulator-resource-lock.sh"
 mobile_evidence_audit = ".kent/adapters/mobile/mobile-evidence-audit.sh"
 
 [roles]
 orchestrator = "default"
+plan_review = "spec-reviewer"
 gate = "workflow-gate"
 researcher = "project-researcher"
 implementation = "implementation-worker"

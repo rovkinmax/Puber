@@ -95,10 +95,16 @@ Runs smoke test for a feature via MCP mobile.
      `emulator-5556` or `avd-<name>-<port>` before starting or using it.
    - If no device can be safely acquired, complete the workflow with `needs_user_action` and explain who/what holds the
      resource.
-3. **Always builds and installs a fresh `devDebug` APK immediately before device testing**
-   - Do this even if the user says the app is already running; stale APKs can hide or misattribute regressions.
-   - Do not use Gradle `install*` tasks for smoke tests; they may invoke adb without the selected serial.
-   - Build the APK, then install it with explicit `adb -s "$DEVICE_SERIAL"`:
+3. **Builds and preservation-installs a fresh `devDebug` APK before device testing**
+   - An initial Smoke run always builds a fresh APK. A resumed run first reads
+     the checkpoint. If it proves a successful install of the same APK SHA-256
+     and the required authenticated state remains available, skip the duplicate
+     build and install.
+   - Before installation, observe authentication with the narrowest semantic
+     check and store only `authenticated`, `unauthenticated`, or `unknown`.
+   - Do not use Gradle `install*` tasks; they may invoke adb without the
+     selected serial.
+   - Build the APK, then use only the preservation adapter:
      ```bash
      test -n "$DEVICE_SERIAL"
      if pwd | grep -q '/.kent/worktrees/'; then
@@ -106,10 +112,31 @@ Runs smoke test for a feature via MCP mobile.
      else
        ./gradlew :app:assembleDevDebug
      fi
-     adb -s "$DEVICE_SERIAL" install -r app/build/outputs/apk/dev/debug/app-dev-debug.apk
+     APK_PATH=app/build/outputs/apk/dev/debug/app-dev-debug.apk
+     INSTALL_REPORT="$(
+       .kent/adapters/mobile/android-apk-install-preserve \
+         install-preserve \
+         --serial "$DEVICE_SERIAL" \
+         --package com.kino.puber.stage \
+         --apk "$APK_PATH"
+     )"
+     printf '%s\n' "$INSTALL_REPORT" |
+       jq -e '.outcome == "installed" and .destructive_action == false' >/dev/null
+     LAUNCH_BOUNDARY_EPOCH="$(
+       adb -s "$DEVICE_SERIAL" shell date +%s |
+         tr -d '\r'
+     )"
+     [[ "$LAUNCH_BOUNDARY_EPOCH" =~ ^[0-9]{10,}$ ]]
      adb -s "$DEVICE_SERIAL" shell am force-stop com.kino.puber.stage
      adb -s "$DEVICE_SERIAL" shell am start -n com.kino.puber.stage/com.kino.puber.MainActivity
      ```
+   - The adapter may use only a compatible `adb install -r`. It blocks
+     downgrade, signer mismatch, unknown installed signer, transport failure,
+     and install failure. Never uninstall, clear package data, permit downgrade,
+     or replace a signer unless the task or a durable user comment separately
+     authorizes that exact destructive boundary.
+   - After launch, observe authentication again and store only the enum. Reuse
+     a matching durable login authorization; never store credentials.
 4. **Verifies Mobile MCP can see the locked serial**
    - Refresh and inspect the schema after Mobile MCP upgrades:
      ```bash
