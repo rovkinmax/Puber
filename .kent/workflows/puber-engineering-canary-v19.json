@@ -1,24 +1,24 @@
 {
   "workflow": {
-    "id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+    "id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
     "name": "Puber Engineering Canary v19",
     "description": "Exercise planning, implementation continuation, deterministic verification, fan-out, Join, and cleanup for Puber.",
-    "version": 123,
+    "version": 122,
     "execution_target_policy": {
       "mode": "head"
     }
   },
   "nodes": [
     {
-      "id": "node-2af2535b-975f-4451-bdac-4d3b5940006c",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-096b72be-54b3-4ecf-ab22-6d0ab8133154",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "backlog",
       "kind": "start",
       "display_name": "Backlog"
     },
     {
-      "id": "node-7800c821-9e64-43c7-9787-139f76182372",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-809761cb-9d69-4601-b93c-04cef1ef1112",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "plan",
       "kind": "agent",
       "display_name": "Plan",
@@ -26,8 +26,8 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-68ed88c5-0af5-4a41-a416-afb3cf2f775a",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-2e4730ef-3460-468b-8923-a095ecc74061",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "plan_review",
       "kind": "agent",
       "display_name": "Independent Plan Review",
@@ -35,32 +35,32 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-ca958493-5a69-4cb1-a231-66c53561c1b1",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-22e70a9b-2c22-4eca-a41f-684405860109",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "plan_contract",
       "kind": "script",
       "display_name": "Plan Contract Accept",
       "script_path": ".kent/scripts/workflow-plan-contract-accept"
     },
     {
-      "id": "node-d3b4d554-673f-4e48-ac6b-740e01d9c004",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-df3fc704-548b-4d7c-b358-11df91092d10",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "plan_contract_continue",
       "kind": "script",
       "display_name": "Plan Contract Continue Guard",
       "script_path": ".kent/scripts/workflow-plan-contract-continue"
     },
     {
-      "id": "node-42a6f2b9-be81-4121-b642-173205231970",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-d681e7d8-22c7-4e7f-8cbb-e749257c979b",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "plan_contract_verify",
       "kind": "script",
       "display_name": "Plan Contract Verify Guard",
       "script_path": ".kent/scripts/workflow-plan-contract-verify"
     },
     {
-      "id": "node-9de173fa-68b7-4411-ace0-dee294e0ff24",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-c26607a8-a074-49cb-b5d6-45d11b7e3ec8",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "plan_revalidation",
       "kind": "agent",
       "display_name": "Plan Revalidation",
@@ -68,8 +68,8 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-f678d78a-98ea-42f8-95a5-36d3aa34a473",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-72daf204-6417-4851-81df-a50c9ff94f67",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "implement",
       "kind": "agent",
       "display_name": "Implement",
@@ -77,24 +77,24 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-387cddf3-d563-4442-89fe-6398ba7a3124",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-3965148f-d48a-4f24-8cde-de50dd9ac24e",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "verification_dispatch",
       "kind": "script",
       "display_name": "Verification Dispatch",
       "script_path": ".kent/scripts/workflow-verification-dispatch"
     },
     {
-      "id": "node-a73f322f-7563-48ec-9932-6debcbdf0af6",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-a4b98b88-f14f-44a9-ad48-b54603da1fe5",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "deterministic_verify",
       "kind": "script",
       "display_name": "Deterministic Verify",
       "script_path": ".kent/scripts/workflow-verify-report"
     },
     {
-      "id": "node-50d942e6-faa0-4ae6-9e34-67625052c3a6",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-86f3805d-3398-435c-814b-8205a48b668f",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "verification_gate",
       "kind": "agent",
       "display_name": "Verification Gate",
@@ -102,8 +102,8 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "fix",
       "kind": "agent",
       "display_name": "Fix",
@@ -111,8 +111,8 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-3adf9607-fbd2-4557-899d-118fb79dc776",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-c617e5b2-d0a8-4664-a597-250d35001512",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "cleanup",
       "kind": "agent",
       "display_name": "Cleanup",
@@ -120,23 +120,23 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-d25a2924-bae7-4e29-b025-a69a23b9e104",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-fcaccb34-1dce-439a-9849-57adf0ee9c3e",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "wont_do",
       "kind": "terminal",
       "display_name": "Won't Do"
     },
     {
-      "id": "node-219fdc3d-3686-4582-9147-fcf3cc4af70c",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-8ca39cef-873e-404f-b4bd-09ff92e0ea83",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "branch_identity",
       "kind": "script",
       "display_name": "Branch Identity",
       "script_path": ".kent/scripts/workflow-branch-identity"
     },
     {
-      "id": "node-b2429335-8cfb-475e-ada4-feafd135a44f",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-fb94eb1f-b8c6-4cf4-9ea1-698973e6e71b",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "branch_identity_resolution",
       "kind": "agent",
       "display_name": "Branch Identity Resolution",
@@ -144,16 +144,16 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-6204aa2e-e89a-48d5-b7e9-f0684ddf3548",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-23d98b7f-8d28-4506-aebe-f9fdeb0a588b",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "plan_contract_fix_continue",
       "kind": "script",
       "display_name": "Plan Contract Fix Guard",
       "script_path": ".kent/scripts/workflow-plan-contract-fix-continue"
     },
     {
-      "id": "node-ef39676d-61ee-4486-9f65-4d09b376d536",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-4208016d-cfe9-4634-a0d8-a915f014ad1e",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "standards_review",
       "kind": "agent",
       "display_name": "Standards Review",
@@ -161,8 +161,8 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-b11592ea-3d7c-4765-9f1f-46f1257bbcfd",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-6665156f-866b-40c0-8db5-fd287f155c1d",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "spec_review",
       "kind": "agent",
       "display_name": "Spec Review",
@@ -170,23 +170,23 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-1265e769-339d-416b-9135-0fb3db502125",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-25c11b34-867c-4bfd-8167-9578cae6ac07",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "verification_join",
       "kind": "join",
       "display_name": "Verification Join"
     },
     {
-      "id": "node-3a170ccd-d7ef-45c1-8a6f-169f9f9c0315",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-da558fe3-034c-4fe8-b115-5cc755d44685",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "task_janitor",
       "kind": "script",
       "display_name": "Task Janitor",
       "script_path": ".kent/scripts/workflow-task-janitor"
     },
     {
-      "id": "node-e61bb3a7-dde6-479b-adce-e17ec71a8d8c",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
+      "id": "node-6621c877-4f4e-407a-a11c-0462acd7b5ce",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
       "key": "done",
       "kind": "terminal",
       "display_name": "Done"
@@ -194,385 +194,385 @@
   ],
   "transition_groups": [
     {
-      "id": "group-58c05996-2a5f-40f8-8cad-6e15351a1b74",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-2af2535b-975f-4451-bdac-4d3b5940006c",
+      "id": "group-f9a373a3-b951-4aaf-9366-0614f4f7e746",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-096b72be-54b3-4ecf-ab22-6d0ab8133154",
       "transition_id": "backlog_start",
       "display_name": "Backlog Start",
       "description": "Start one planning session for this task."
     },
     {
-      "id": "group-3126b0fd-044f-4e04-b47f-4d1864c7cbe4",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-7800c821-9e64-43c7-9787-139f76182372",
+      "id": "group-fe4c5178-740c-4acd-857a-798e97d017e7",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-809761cb-9d69-4601-b93c-04cef1ef1112",
       "transition_id": "plan_review_plan",
       "display_name": "Plan Review Plan",
       "description": "Planning is complete; independently review its authority, scope, evidence, and executable ordering."
     },
     {
-      "id": "group-5577bec9-1789-46dc-a7ce-547cea0b7251",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-68ed88c5-0af5-4a41-a416-afb3cf2f775a",
+      "id": "group-0ed4cc1e-0599-4c34-bf04-523501e69b87",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-2e4730ef-3460-468b-8923-a095ecc74061",
       "transition_id": "plan_review_accepted",
       "display_name": "Plan Review Accepted",
       "description": "The independent plan review passed; accept the normalized plan contract and continue through its declared route."
     },
     {
-      "id": "group-a185096a-250e-45bc-8c5b-29c5eaf3115f",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-68ed88c5-0af5-4a41-a416-afb3cf2f775a",
+      "id": "group-7be7a22c-4da4-4c11-8aab-24b1557329c3",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-2e4730ef-3460-468b-8923-a095ecc74061",
       "transition_id": "plan_review_needs_changes",
       "display_name": "Plan Review Needs Changes",
       "description": "The read-only review found plan-contract defects; revise the plan before any writer or verification stage proceeds."
     },
     {
-      "id": "group-58f84d14-f577-492e-8787-ac519cbc7260",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-68ed88c5-0af5-4a41-a416-afb3cf2f775a",
+      "id": "group-4955c2ef-60b7-41c2-a0d3-6514f68a5078",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-2e4730ef-3460-468b-8923-a095ecc74061",
       "transition_id": "plan_review_needs_user_action",
       "display_name": "Plan Review Needs User Action",
       "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage."
     },
     {
-      "id": "group-0f1bab53-427d-4f61-9599-10cf36bd32fd",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-68ed88c5-0af5-4a41-a416-afb3cf2f775a",
+      "id": "group-d76d40e8-eff1-4809-b432-5ea79fb029ab",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-2e4730ef-3460-468b-8923-a095ecc74061",
       "transition_id": "plan_review_wont_do",
       "display_name": "Plan Review Wont Do",
       "description": "Cancel this task only after explicit user approval and record why."
     },
     {
-      "id": "group-da8dccf4-6256-445e-ad41-e2805dc099b5",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-9de173fa-68b7-4411-ace0-dee294e0ff24",
+      "id": "group-8d2f352a-5ecf-4d10-bebe-fbfdbacf2295",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-c26607a8-a074-49cb-b5d6-45d11b7e3ec8",
       "transition_id": "plan_revalidation_review_plan",
       "display_name": "Plan Revalidation Review Plan",
       "description": "The plan contract was reconciled; independently re-review it before accepting the new snapshot."
     },
     {
-      "id": "group-1c2c9d72-2a84-492a-9c14-0af467f214a1",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-9de173fa-68b7-4411-ace0-dee294e0ff24",
+      "id": "group-41713bdb-fb26-43d5-831f-939ec0616adb",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-c26607a8-a074-49cb-b5d6-45d11b7e3ec8",
       "transition_id": "plan_revalidation_needs_user_action",
       "display_name": "Plan Revalidation Needs User Action",
       "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage."
     },
     {
-      "id": "group-d55840fe-14b1-4cbe-9cfd-a1d9992f7a6b",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-9de173fa-68b7-4411-ace0-dee294e0ff24",
+      "id": "group-2d09ba5f-0f22-452e-a2b6-b308471709bd",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-c26607a8-a074-49cb-b5d6-45d11b7e3ec8",
       "transition_id": "plan_revalidation_wont_do",
       "display_name": "Plan Revalidation Wont Do",
       "description": "Cancel this task only after explicit user approval and record why."
     },
     {
-      "id": "group-67d2b50e-e814-4854-8bc4-bcc0b7d71093",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-d3b4d554-673f-4e48-ac6b-740e01d9c004",
+      "id": "group-9193b0eb-c927-44b1-8bd4-cb7e6b4403b8",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-df3fc704-548b-4d7c-b358-11df91092d10",
       "transition_id": "plan_contract_continue_changed",
       "display_name": "Plan Contract Continue Changed",
       "description": "The normalized accepted plan changed materially; reconcile authority and acceptance before continuing."
     },
     {
-      "id": "group-ac3b26d1-0086-4b1b-9e8e-f73602ca5699",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-42a6f2b9-be81-4121-b642-173205231970",
+      "id": "group-db9237b3-2da5-4df3-b633-f394e986aa84",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-d681e7d8-22c7-4e7f-8cbb-e749257c979b",
       "transition_id": "plan_contract_verify_changed",
       "display_name": "Plan Contract Verify Changed",
       "description": "The normalized accepted plan changed materially; reconcile authority and acceptance before verification."
     },
     {
-      "id": "group-595973c6-d76a-40c5-a7f9-6598574bfe24",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-6204aa2e-e89a-48d5-b7e9-f0684ddf3548",
+      "id": "group-d56d4c63-21cc-444c-be1d-6921c36300eb",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-23d98b7f-8d28-4506-aebe-f9fdeb0a588b",
       "transition_id": "plan_contract_fix_continue_changed",
       "display_name": "Plan Contract Fix Continue Changed",
       "description": "A bounded Fix slice changed the accepted plan; reconcile authority before continuing repair."
     },
     {
-      "id": "group-7ccaa88d-f995-490e-9a05-24ad9b0f6c16",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-ca958493-5a69-4cb1-a231-66c53561c1b1",
+      "id": "group-1e0ee6b3-9215-4f59-956f-f3e6703e6751",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-22e70a9b-2c22-4eca-a41f-684405860109",
       "transition_id": "plan_contract_start",
       "display_name": "Plan Contract Start",
       "description": "The accepted plan contract is stable; resolve source-control branch identity before implementation."
     },
     {
-      "id": "group-3e2b7910-963b-4f1d-82c8-ddfeaf661057",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-219fdc3d-3686-4582-9147-fcf3cc4af70c",
+      "id": "group-0b36f774-65c8-4aeb-86e5-130252c02834",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-8ca39cef-873e-404f-b4bd-09ff92e0ea83",
       "transition_id": "branch_identity_ready",
       "display_name": "Branch Identity Ready",
       "description": "Branch identity is deterministic and implementation can start."
     },
     {
-      "id": "group-c0f6e23e-9775-4e32-94a3-f89d45fedb3d",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-219fdc3d-3686-4582-9147-fcf3cc4af70c",
+      "id": "group-68cc3a17-854d-4fd8-b282-17a01b2ddc23",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-8ca39cef-873e-404f-b4bd-09ff92e0ea83",
       "transition_id": "branch_identity_blocked",
       "display_name": "Branch Identity Blocked",
       "description": "Branch identity is ambiguous or collides with existing repository state and requires a user decision."
     },
     {
-      "id": "group-763f4008-359c-4517-b931-5f46f6230ee1",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-b2429335-8cfb-475e-ada4-feafd135a44f",
+      "id": "group-fce5cc74-73b1-4e66-96a6-a8c428d5c252",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-fb94eb1f-b8c6-4cf4-9ea1-698973e6e71b",
       "transition_id": "branch_identity_resolution_retry",
       "display_name": "Branch Identity Resolution Retry",
       "description": "Retry deterministic branch identity after the reported collision or repository blocker is resolved."
     },
     {
-      "id": "group-1e4bd393-f7df-4272-bb07-a46a3b27add6",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-b2429335-8cfb-475e-ada4-feafd135a44f",
+      "id": "group-5e0e8f07-671b-40e3-939c-700366d89cb1",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-fb94eb1f-b8c6-4cf4-9ea1-698973e6e71b",
       "transition_id": "branch_identity_resolution_needs_user_action",
       "display_name": "Branch Identity Resolution Needs User Action",
       "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage."
     },
     {
-      "id": "group-9b48b578-5661-4ac4-9e0a-260829423aa0",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-b2429335-8cfb-475e-ada4-feafd135a44f",
+      "id": "group-b613afab-5b3b-4807-a285-37e7f88dbd44",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-fb94eb1f-b8c6-4cf4-9ea1-698973e6e71b",
       "transition_id": "branch_identity_resolution_wont_do",
       "display_name": "Branch Identity Resolution Wont Do",
       "description": "Cancel this task only after explicit user approval and record why."
     },
     {
-      "id": "group-1571b1ec-d2e5-40a4-9ea6-0839b0539d31",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-ca958493-5a69-4cb1-a231-66c53561c1b1",
+      "id": "group-50501ca0-6fad-4870-a4cf-0791af6dc828",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-22e70a9b-2c22-4eca-a41f-684405860109",
       "transition_id": "plan_contract_continue",
       "display_name": "Plan Contract Continue",
       "description": "The accepted plan contract is unchanged; continue with the next ready writer-owned step."
     },
     {
-      "id": "group-cb6ef8a6-15bc-4a9e-b772-03c7107eb055",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-ca958493-5a69-4cb1-a231-66c53561c1b1",
+      "id": "group-fd50db9b-75cf-4993-894f-4b1574817f65",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-22e70a9b-2c22-4eca-a41f-684405860109",
       "transition_id": "plan_contract_verify",
       "display_name": "Plan Contract Verify",
       "description": "The accepted plan contract is unchanged and writer work is complete; normalize inputs for read-only verification."
     },
     {
-      "id": "group-dae6218f-1b82-4dc6-bce8-c17143e119fa",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-d3b4d554-673f-4e48-ac6b-740e01d9c004",
+      "id": "group-7d859353-10e9-4cae-b741-4c88e5066ede",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-df3fc704-548b-4d7c-b358-11df91092d10",
       "transition_id": "plan_contract_continue_stable",
       "display_name": "Plan Contract Continue Stable",
       "description": "The accepted plan contract is unchanged; continue with the next ready writer-owned step."
     },
     {
-      "id": "group-7559ee28-91e3-4a1a-b5bc-45b26e61d6c7",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-42a6f2b9-be81-4121-b642-173205231970",
+      "id": "group-101f23cb-90ec-4d41-8c79-c002addfade4",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-d681e7d8-22c7-4e7f-8cbb-e749257c979b",
       "transition_id": "plan_contract_verify_stable",
       "display_name": "Plan Contract Verify Stable",
       "description": "The accepted plan contract is unchanged and writer work is complete; normalize inputs for read-only verification."
     },
     {
-      "id": "group-b62560d1-9888-415a-a917-c504c017027e",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-ca958493-5a69-4cb1-a231-66c53561c1b1",
+      "id": "group-e2185241-0a37-4571-adb3-c052c4bbbdb1",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-22e70a9b-2c22-4eca-a41f-684405860109",
       "transition_id": "plan_contract_fix_continue",
       "display_name": "Plan Contract Fix Continue",
       "description": "The independently revalidated plan is accepted; continue the remaining bounded repair bundle."
     },
     {
-      "id": "group-31a69ad5-0997-4109-9625-28aa73be44d5",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-6204aa2e-e89a-48d5-b7e9-f0684ddf3548",
+      "id": "group-33b43362-7dba-4a7a-8bc2-076dcf7d9bd4",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-23d98b7f-8d28-4506-aebe-f9fdeb0a588b",
       "transition_id": "plan_contract_fix_continue_stable",
       "display_name": "Plan Contract Fix Continue Stable",
       "description": "The accepted plan contract is unchanged; continue only the remaining bounded repair bundle."
     },
     {
-      "id": "group-89c2a386-93a4-40b9-9692-129c5d6bdbc6",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-7800c821-9e64-43c7-9787-139f76182372",
+      "id": "group-1f1added-8064-484b-b44e-99fd6ecc11dc",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-809761cb-9d69-4601-b93c-04cef1ef1112",
       "transition_id": "plan_needs_user_action",
       "display_name": "Plan Needs User Action",
       "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage."
     },
     {
-      "id": "group-cac37d3d-2e0f-4de5-99c6-0db8e0ab05e1",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-7800c821-9e64-43c7-9787-139f76182372",
+      "id": "group-c4a00162-641a-4340-8a95-aab9fc7adaaa",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-809761cb-9d69-4601-b93c-04cef1ef1112",
       "transition_id": "plan_wont_do",
       "display_name": "Plan Wont Do",
       "description": "Cancel this task only after explicit user approval and record why."
     },
     {
-      "id": "group-2cfa962a-25bd-4ac2-bb32-4181e768e765",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-f678d78a-98ea-42f8-95a5-36d3aa34a473",
+      "id": "group-4050911e-319e-470b-a6f4-37b1f0284358",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-72daf204-6417-4851-81df-a50c9ff94f67",
       "transition_id": "implement_continue_implementation",
       "display_name": "Implement Continue Implementation",
       "description": "One plan step is complete; check the accepted plan contract before starting the next writer slice."
     },
     {
-      "id": "group-13eeef3c-9a20-40d4-a00a-fafb62b0c02f",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-f678d78a-98ea-42f8-95a5-36d3aa34a473",
+      "id": "group-b5f02ea8-bbad-4e41-8d16-1c888738d9c0",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-72daf204-6417-4851-81df-a50c9ff94f67",
       "transition_id": "implement_verify",
       "display_name": "Implement Verify",
       "description": "Implementation is complete; check the accepted plan contract before read-only verification."
     },
     {
-      "id": "group-1a229426-64a4-454d-9321-6996a397d169",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-f678d78a-98ea-42f8-95a5-36d3aa34a473",
+      "id": "group-0db297db-3aa3-429f-9484-ddde64cd047c",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-72daf204-6417-4851-81df-a50c9ff94f67",
       "transition_id": "implement_needs_user_action",
       "display_name": "Implement Needs User Action",
       "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage."
     },
     {
-      "id": "group-03784e07-f9f8-4ea2-b11a-ead339e1e981",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-f678d78a-98ea-42f8-95a5-36d3aa34a473",
+      "id": "group-3847ccf1-320a-473a-bde5-0271bca5113b",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-72daf204-6417-4851-81df-a50c9ff94f67",
       "transition_id": "implement_wont_do",
       "display_name": "Implement Wont Do",
       "description": "Cancel this task only after explicit user approval and record why."
     },
     {
-      "id": "group-fc4837d9-1ba2-4495-8133-96119bcf482e",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
+      "id": "group-f49d9fe3-f885-4c76-bedb-d9198387d227",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
       "transition_id": "fix_verify",
       "display_name": "Fix Verify",
       "description": "Task-scoped fixes are complete; check the accepted plan contract before rerunning every verification branch."
     },
     {
-      "id": "group-46446f2c-618b-4063-b3ff-3ea8d44bd4a4",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
+      "id": "group-aa4cee47-e3df-4155-aae5-4a336331447c",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
       "transition_id": "fix_needs_user_action",
       "display_name": "Fix Needs User Action",
       "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage."
     },
     {
-      "id": "group-eba67349-d95b-45d3-9580-81164d81b6ab",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
+      "id": "group-8a44da7d-b9b7-44bb-976b-7fc65d2a8607",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
       "transition_id": "fix_wont_do",
       "display_name": "Fix Wont Do",
       "description": "Cancel this task only after explicit user approval and record why."
     },
     {
-      "id": "group-327aa431-718e-4b75-952b-84a6c24628b0",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
+      "id": "group-ada7ed37-0d98-462d-a8f4-26ca502c88f6",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
       "transition_id": "fix_continue_fix",
       "display_name": "Fix Continue Fix",
       "description": "One bounded fix slice is complete; check the accepted plan before continuing the remaining task-scoped findings."
     },
     {
-      "id": "group-a50f1106-52fa-44a3-a829-5d86a7147bd5",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-387cddf3-d563-4442-89fe-6398ba7a3124",
+      "id": "group-be6a0ff0-67bc-45d6-b6e0-4ac23b4e4b8f",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-3965148f-d48a-4f24-8cde-de50dd9ac24e",
       "transition_id": "verification_dispatch_fanout_verify",
       "display_name": "Verification Dispatch Fanout Verify",
       "description": "Run deterministic verification and independent read-only reviews."
     },
     {
-      "id": "group-9975f608-7b15-49a3-a3b8-800b13913302",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-387cddf3-d563-4442-89fe-6398ba7a3124",
+      "id": "group-891c13d5-bda2-4b79-bf48-f1e75ca38a8b",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-3965148f-d48a-4f24-8cde-de50dd9ac24e",
       "transition_id": "verification_dispatch_invalid_workspace",
       "display_name": "Verification Dispatch Invalid Workspace",
       "description": "Reject an artifact or foreign workspace path before verification."
     },
     {
-      "id": "group-3a88239e-fa83-43a9-849d-9035cc25e84a",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-a73f322f-7563-48ec-9932-6debcbdf0af6",
+      "id": "group-777e2d15-ae91-4f2f-9f8d-9351dd4031a1",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-a4b98b88-f14f-44a9-ad48-b54603da1fe5",
       "transition_id": "deterministic_verify_reported",
       "display_name": "Deterministic Verify Reported",
       "description": "Deterministic verification completed and reported its status."
     },
     {
-      "id": "group-66fbb74e-f4f7-4a08-8ce8-1bb68501fd96",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-1265e769-339d-416b-9135-0fb3db502125",
+      "id": "group-be1544fc-eb82-4c0c-b747-7ba5713310a0",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-25c11b34-867c-4bfd-8167-9578cae6ac07",
       "transition_id": "verification_join_evaluate",
       "display_name": "Verification Join Evaluate",
       "description": "All direct verification branches reported; evaluate them."
     },
     {
-      "id": "group-cbb96fa8-12cd-4820-8344-a67d06ef1bc8",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-ef39676d-61ee-4486-9f65-4d09b376d536",
+      "id": "group-5197981c-b6f1-4c5e-bb13-eacd73192451",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-4208016d-cfe9-4634-a0d8-a915f014ad1e",
       "transition_id": "standards_review_reported",
       "display_name": "Standards Review Reported",
       "description": "Repository standards review completed and reported its status."
     },
     {
-      "id": "group-98b24b6d-39f1-4ff3-b6d3-80fa8cf8fdf1",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-b11592ea-3d7c-4765-9f1f-46f1257bbcfd",
+      "id": "group-e037afca-de7c-4dbf-90bd-11bd8154d4b7",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-6665156f-866b-40c0-8db5-fd287f155c1d",
       "transition_id": "spec_review_reported",
       "display_name": "Spec Review Reported",
       "description": "Specification review completed and reported its status."
     },
     {
-      "id": "group-721378c2-950d-4c5c-b196-821f1bef9bfe",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-50d942e6-faa0-4ae6-9e34-67625052c3a6",
+      "id": "group-5b600895-9f0a-48e4-af70-298491627f3f",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-86f3805d-3398-435c-814b-8205a48b668f",
       "transition_id": "verification_gate_needs_changes",
       "display_name": "Verification Gate Needs Changes",
       "description": "Verification found task-scoped issues for the single writer to fix."
     },
     {
-      "id": "group-a70e3227-2266-441e-b31a-88fc38eac92e",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-50d942e6-faa0-4ae6-9e34-67625052c3a6",
+      "id": "group-61d4b301-7928-4ea2-baea-4b57cbf61ca3",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-86f3805d-3398-435c-814b-8205a48b668f",
       "transition_id": "verification_gate_needs_user_action",
       "display_name": "Verification Gate Needs User Action",
       "description": "Verification is externally blocked; rerun all branches after approval."
     },
     {
-      "id": "group-3c30ff9a-5ad0-43cf-8d4a-0233eb143fd3",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-50d942e6-faa0-4ae6-9e34-67625052c3a6",
+      "id": "group-49a3ef44-9643-4c6d-9625-fca06d149dd2",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-86f3805d-3398-435c-814b-8205a48b668f",
       "transition_id": "verification_gate_wont_do",
       "display_name": "Verification Gate Wont Do",
       "description": "Cancel this task only after explicit user approval and record why."
     },
     {
-      "id": "group-c4b96e31-e9f5-42a9-9154-9d48523a346c",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-50d942e6-faa0-4ae6-9e34-67625052c3a6",
+      "id": "group-622a4164-04db-4d21-b923-3eab8e8836cf",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-86f3805d-3398-435c-814b-8205a48b668f",
       "transition_id": "verification_gate_delivery_ready",
       "display_name": "Verification Gate Delivery Ready",
       "description": "All verification passed and delivery may continue without runtime smoke."
     },
     {
-      "id": "group-6f4c5d1c-fe26-42b9-baab-d934d32c609b",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-3adf9607-fbd2-4557-899d-118fb79dc776",
+      "id": "group-e1418041-de42-4b2c-ada2-f1fa1f49e3df",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-c617e5b2-d0a8-4664-a597-250d35001512",
       "transition_id": "cleanup_run_janitor",
       "display_name": "Cleanup Run Janitor",
       "description": "Cleanup reporting is complete; remove only deterministically safe task-owned resources."
     },
     {
-      "id": "group-828e6997-6d3f-498b-a06b-c8e5f905fc18",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-3a170ccd-d7ef-45c1-8a6f-169f9f9c0315",
+      "id": "group-7a944cc7-9df8-455f-a566-2550bdac1252",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-da558fe3-034c-4fe8-b115-5cc755d44685",
       "transition_id": "task_janitor_done",
       "display_name": "Task Janitor Done",
       "description": "The janitor removed safe resources or preserved them with an explicit cleanup report."
     },
     {
-      "id": "group-9f901593-2f3d-4612-b2d8-f42e3fd2bfd5",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-3a170ccd-d7ef-45c1-8a6f-169f9f9c0315",
+      "id": "group-f78b8820-7416-4570-89e3-7c5c9a2bf5a6",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-da558fe3-034c-4fe8-b115-5cc755d44685",
       "transition_id": "task_janitor_blocked",
       "display_name": "Task Janitor Blocked",
       "description": "Janitor infrastructure failed after safety checks; return to Cleanup without losing its context."
     },
     {
-      "id": "group-861e6d6e-82a6-4bb0-92db-70361c523987",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "source_node_id": "node-3adf9607-fbd2-4557-899d-118fb79dc776",
+      "id": "group-843e4f07-ae2d-4445-94df-3904888c854f",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "source_node_id": "node-c617e5b2-d0a8-4664-a597-250d35001512",
       "transition_id": "cleanup_needs_user_action",
       "display_name": "Cleanup Needs User Action",
       "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage."
@@ -580,11 +580,11 @@
   ],
   "edges": [
     {
-      "id": "edge-99a412a8-6e7c-4841-8e24-aacb359e9658",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-58c05996-2a5f-40f8-8cad-6e15351a1b74",
+      "id": "edge-f2c0ca44-1c38-493a-8f05-2b774714d76d",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-f9a373a3-b951-4aaf-9366-0614f4f7e746",
       "key": "start_plan",
-      "target_node_id": "node-7800c821-9e64-43c7-9787-139f76182372",
+      "target_node_id": "node-809761cb-9d69-4601-b93c-04cef1ef1112",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -593,11 +593,11 @@
       "prompt_template": "Plan {{.TaskShortId}}: {{.TaskTitle}}\n\nRead `.kent/context/plan.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `plan`, `evidence_type` to\n`plan`, and `context.manifest_path` to `.kent/context/plan.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nSelect exactly one supported `work_kind` before detailed planning:\n\n- `feature` — User-facing behavior, screens, flows, or business capabilities; Plan: `.kent/commands/feature-start.md`; Implement: `.kent/commands/feature-implement.md`.\n- `bugfix` — Restore intended behavior for a reproducible defect; Plan: `.kent/commands/bugfix-start.md`; Implement: `.kent/commands/bugfix-implement.md`.\n- `refactor` — Improve code structure without intended behavior changes; Plan: `.kent/commands/refactor-start.md`; Implement: `.kent/commands/refactor-start.md`.\n- `migration` — Move contracts, frameworks, modules, or data in dependency order; Plan: `.kent/commands/migration-start.md`; Implement: `.kent/commands/migration-start.md`.\n- `dependency` — Audit or update dependency versions and build-tool artifacts; Plan: `.kent/commands/dependency-update.md`; Implement: `.kent/commands/dependency-update.md`.\n- `test` — Add or improve automated test coverage without product scope; Plan: `.kent/commands/test-coverage.md`; Implement: `.kent/commands/test-coverage.md`.\n\nA standalone `work_kind: <key>` declaration in the task body is an explicit\nhuman routing decision and wins when the key is supported. Otherwise classify\nconservatively from the requested outcome and source context. Do not use the\nJira issue type alone as proof. If the kind is unsupported, multiple kinds are\nmaterially coupled, or the classification remains ambiguous, complete with\n`plan_needs_user_action` and ask for one supported key.\n\nAfter selection, load the mapped Plan procedure as a procedure module. Some\nproject procedures also document execution; this Plan node must use only their\nbootstrap, discovery, design/specification, analysis, planning, and plan-review\nsections. The generated stage contract overrides any instruction to edit\nproduction files, execute plan steps, invoke nested prompt flows, or launch a\nseparate delivery workflow.\n\n\n\nTask body:\n{{.TaskBody}}\n\nKeep discovery, design/spec ingestion, decisions, and implementation planning in\nthis one Plan session. Ask questions when a product decision is required. Do not\ninvoke nested prompt flows and do not implement production changes.\nBefore planning implementation, write an explicit scope boundary containing the\nincluded root source IDs, related evidence, dependencies, and deferred or\nout-of-scope issues. A relationship, shared parent, common design file, or\nadjacent implementation does not merge issue scopes.\n\nInventory dependency and cross-module impact before implementation. SDK or\nschema upgrades, generated-contract changes, and adaptations in modules outside\nthe root issue must be identified as either a required dependency adaptation or\na separate deferred task. Do not silently widen product behavior to make a\ndependency compile. Preserve generated enum, sealed, identifier, provider,\nstatus, action, and flow types through domain boundaries; free-form string\nrouting requires evidence that no typed source contract exists plus an explicit\nunknown-value strategy.\n\nAssign every required evidence artifact an owner and a production-edit\nboundary. If the plan requires a pre-edit red run, make it the first\nwriter-owned step and require capture before any production edit. The plan must\nnot turn a later failure to capture agent-owned evidence into a user approval.\nAny design, specification, or plan that narrows, replaces, or claims to\nsupersede the task body must cite the exact human-authored task-comment ID or\nanother explicit authoritative source. Agent-authored comments, implementation\ninference, and unsupported claims that \"the user clarified\" are not product\nauthority. Use `plan_needs_user_action` before implementation when that provenance\nis absent.\n\n\nIf the task body declares a checkpoint ref, source task, or exact task-comment\nIDs, treat the current checkout as preserved implementation rather than a blank\nfeature:\n\n- verify that HEAD matches the declared checkpoint;\n- read the source task body and exact referenced comments without modifying or\n  canceling the source task;\n- update one authoritative design/specification/plan set and reference comment\n  IDs instead of duplicating decisions;\n- explicitly supersede conflicting earlier decisions;\n- inspect the checkpoint diff and existing tests/evidence;\n- plan only remaining independently verifiable work.\n\nDo not reset, revert, or reimplement preserved code during Plan.\n\nIf the task body says the recovery Plan must stop for confirmation, complete\nthrough `plan_needs_user_action` with a concise artifact/remaining-work summary and\nan explicit confirmation request. Do not choose `implement` in that Plan run.\n\nComplete with `plan_review_plan` only when the plan has no unresolved product, API,\nUX, or safety ambiguity. `workspace_path` is the repository or\nmanaged-worktree root; it is never `.todo/<feature>` or another artifact\ndirectory. Provide that root plus `plan_path`, selected `work_kind`,\n`plan_route=start`, `plan_route_context=not-applicable`,\n`task_short_id={{.TaskShortId}}`, and a concise `review_context` naming the\ngoverning authority, source IDs, acceptance criteria, planned evidence, and\nrisks. Use the literal `not-applicable` as `plan_path` only when the project\ncontract explicitly allows planless work. Kent transition parameters must be\nnon-empty.\nComplete with `plan_needs_user_action` and `blocker_reason` for an external blocker.\nChoose `plan_wont_do` only for an explicit cancellation decision and provide\n`closure_reason`."
     },
     {
-      "id": "edge-4636e082-3353-446e-89dc-74a9c5bb7869",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-3126b0fd-044f-4e04-b47f-4d1864c7cbe4",
+      "id": "edge-fd6cb1a2-1343-4a0f-b659-66a5e307ba8e",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-fe4c5178-740c-4acd-857a-798e97d017e7",
       "key": "plan_review",
-      "target_node_id": "node-68ed88c5-0af5-4a41-a416-afb3cf2f775a",
+      "target_node_id": "node-2e4730ef-3460-468b-8923-a095ecc74061",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -636,11 +636,11 @@
       ]
     },
     {
-      "id": "edge-ff1784af-6beb-4eed-94df-af18ae701c52",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-5577bec9-1789-46dc-a7ce-547cea0b7251",
+      "id": "edge-301140c0-6d2f-43e8-a7c4-8cbb40a897ed",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-0ed4cc1e-0599-4c34-bf04-523501e69b87",
       "key": "plan_review_accept",
-      "target_node_id": "node-ca958493-5a69-4cb1-a231-66c53561c1b1",
+      "target_node_id": "node-22e70a9b-2c22-4eca-a41f-684405860109",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -682,11 +682,11 @@
       ]
     },
     {
-      "id": "edge-d14e9673-35f7-4ebb-808c-a2356456bbbe",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-a185096a-250e-45bc-8c5b-29c5eaf3115f",
+      "id": "edge-67dd8f5d-e11d-4aa0-9b01-51b08cec5c59",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-7be7a22c-4da4-4c11-8aab-24b1557329c3",
       "key": "plan_review_revalidate",
-      "target_node_id": "node-9de173fa-68b7-4411-ace0-dee294e0ff24",
+      "target_node_id": "node-c26607a8-a074-49cb-b5d6-45d11b7e3ec8",
       "requires_approval": false,
       "context_mode": "continue_session",
       "context_source": {
@@ -730,11 +730,11 @@
       ]
     },
     {
-      "id": "edge-9fb93155-d729-4e0a-8231-71ef0eff9615",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-58f84d14-f577-492e-8787-ac519cbc7260",
+      "id": "edge-c0ccaa86-b09b-4d42-87bd-1f253d8f817c",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-4955c2ef-60b7-41c2-a0d3-6514f68a5078",
       "key": "plan_review_needs_user_action",
-      "target_node_id": "node-68ed88c5-0af5-4a41-a416-afb3cf2f775a",
+      "target_node_id": "node-2e4730ef-3460-468b-8923-a095ecc74061",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -777,11 +777,11 @@
       ]
     },
     {
-      "id": "edge-8662f342-5eb1-47ca-92a8-401bd3d03435",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-0f1bab53-427d-4f61-9599-10cf36bd32fd",
+      "id": "edge-cf106af9-bb48-468b-9d4c-623bbf05f793",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-d76d40e8-eff1-4809-b432-5ea79fb029ab",
       "key": "plan_review_wont_do",
-      "target_node_id": "node-d25a2924-bae7-4e29-b025-a69a23b9e104",
+      "target_node_id": "node-fcaccb34-1dce-439a-9849-57adf0ee9c3e",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -795,11 +795,11 @@
       ]
     },
     {
-      "id": "edge-9550a49a-feea-4c25-808e-b628ef9b01dd",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-da8dccf4-6256-445e-ad41-e2805dc099b5",
+      "id": "edge-3f6e7cb5-79c8-4ca7-989d-ad47302b7a17",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-8d2f352a-5ecf-4d10-bebe-fbfdbacf2295",
       "key": "plan_revalidation_review",
-      "target_node_id": "node-68ed88c5-0af5-4a41-a416-afb3cf2f775a",
+      "target_node_id": "node-2e4730ef-3460-468b-8923-a095ecc74061",
       "requires_approval": false,
       "context_mode": "continue_session",
       "context_source": {
@@ -838,11 +838,11 @@
       ]
     },
     {
-      "id": "edge-aee73a7e-921b-424a-941d-b1d43e482ad4",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-1c2c9d72-2a84-492a-9c14-0af467f214a1",
+      "id": "edge-22e92cec-dac1-4865-993a-8fc9bb56f566",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-41713bdb-fb26-43d5-831f-939ec0616adb",
       "key": "plan_revalidation_needs_user_action",
-      "target_node_id": "node-9de173fa-68b7-4411-ace0-dee294e0ff24",
+      "target_node_id": "node-c26607a8-a074-49cb-b5d6-45d11b7e3ec8",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -885,11 +885,11 @@
       ]
     },
     {
-      "id": "edge-d491d6fb-be32-4ced-b8c0-1daf5cfe1d0f",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-d55840fe-14b1-4cbe-9cfd-a1d9992f7a6b",
+      "id": "edge-b0d63f45-1130-485b-9c1f-21e53f923f01",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-2d09ba5f-0f22-452e-a2b6-b308471709bd",
       "key": "plan_revalidation_wont_do",
-      "target_node_id": "node-d25a2924-bae7-4e29-b025-a69a23b9e104",
+      "target_node_id": "node-fcaccb34-1dce-439a-9849-57adf0ee9c3e",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -903,11 +903,11 @@
       ]
     },
     {
-      "id": "edge-7e80e17f-f323-48ff-945e-893b3e7b43c7",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-67d2b50e-e814-4854-8bc4-bcc0b7d71093",
+      "id": "edge-a7168f8f-3297-4f28-9be1-a11ae4ed60b3",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-9193b0eb-c927-44b1-8bd4-cb7e6b4403b8",
       "key": "plan_contract_continue_revalidate",
-      "target_node_id": "node-9de173fa-68b7-4411-ace0-dee294e0ff24",
+      "target_node_id": "node-c26607a8-a074-49cb-b5d6-45d11b7e3ec8",
       "requires_approval": false,
       "context_mode": "continue_session",
       "context_source": {
@@ -951,11 +951,11 @@
       ]
     },
     {
-      "id": "edge-8a2a3e28-b9f2-48ef-9b44-27a620d8b163",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-ac3b26d1-0086-4b1b-9e8e-f73602ca5699",
+      "id": "edge-62cdda3a-9045-4956-93ff-535d2d2ccd09",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-db9237b3-2da5-4df3-b633-f394e986aa84",
       "key": "plan_contract_verify_revalidate",
-      "target_node_id": "node-9de173fa-68b7-4411-ace0-dee294e0ff24",
+      "target_node_id": "node-c26607a8-a074-49cb-b5d6-45d11b7e3ec8",
       "requires_approval": false,
       "context_mode": "continue_session",
       "context_source": {
@@ -999,11 +999,11 @@
       ]
     },
     {
-      "id": "edge-318cbb04-5bc5-4a39-b7ca-5ddd832f717e",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-595973c6-d76a-40c5-a7f9-6598574bfe24",
+      "id": "edge-09874a8e-441a-4901-a349-9b0a13f1fa07",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-d56d4c63-21cc-444c-be1d-6921c36300eb",
       "key": "plan_contract_fix_revalidate",
-      "target_node_id": "node-9de173fa-68b7-4411-ace0-dee294e0ff24",
+      "target_node_id": "node-c26607a8-a074-49cb-b5d6-45d11b7e3ec8",
       "requires_approval": false,
       "context_mode": "continue_session",
       "context_source": {
@@ -1047,11 +1047,11 @@
       ]
     },
     {
-      "id": "edge-6e22c1da-0242-4094-8b2f-693d7c7a2eaf",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-7ccaa88d-f995-490e-9a05-24ad9b0f6c16",
+      "id": "edge-9ea5e5c4-8c3c-4edb-8f3c-16a77355f8ee",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-1e0ee6b3-9215-4f59-956f-f3e6703e6751",
       "key": "plan_contract_branch_identity",
-      "target_node_id": "node-219fdc3d-3686-4582-9147-fcf3cc4af70c",
+      "target_node_id": "node-8ca39cef-873e-404f-b4bd-09ff92e0ea83",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1073,11 +1073,11 @@
       ]
     },
     {
-      "id": "edge-313eb3d4-e247-45ae-afd8-349a401810b6",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-3e2b7910-963b-4f1d-82c8-ddfeaf661057",
+      "id": "edge-4dac0294-a16b-4cec-a852-fe5f75d69c5f",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-0b36f774-65c8-4aeb-86e5-130252c02834",
       "key": "branch_identity_implement",
-      "target_node_id": "node-f678d78a-98ea-42f8-95a5-36d3aa34a473",
+      "target_node_id": "node-72daf204-6417-4851-81df-a50c9ff94f67",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1100,11 +1100,11 @@
       ]
     },
     {
-      "id": "edge-b718a829-af95-4c30-a647-a5b9b30ed744",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-c0f6e23e-9775-4e32-94a3-f89d45fedb3d",
+      "id": "edge-906b1bf2-9605-4eac-af38-c38e9db2d5d8",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-68cc3a17-854d-4fd8-b282-17a01b2ddc23",
       "key": "branch_identity_resolution",
-      "target_node_id": "node-b2429335-8cfb-475e-ada4-feafd135a44f",
+      "target_node_id": "node-fb94eb1f-b8c6-4cf4-9ea1-698973e6e71b",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1131,11 +1131,11 @@
       ]
     },
     {
-      "id": "edge-f3051ef3-bc1e-42c9-bef9-84f03ea06846",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-763f4008-359c-4517-b931-5f46f6230ee1",
+      "id": "edge-df7679fb-e4d3-40cd-9327-89e2c23283b0",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-fce5cc74-73b1-4e66-96a6-a8c428d5c252",
       "key": "branch_identity_retry",
-      "target_node_id": "node-219fdc3d-3686-4582-9147-fcf3cc4af70c",
+      "target_node_id": "node-8ca39cef-873e-404f-b4bd-09ff92e0ea83",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1157,11 +1157,11 @@
       ]
     },
     {
-      "id": "edge-cd59e85f-0003-4d45-83bc-4b8b58e6f330",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-1e4bd393-f7df-4272-bb07-a46a3b27add6",
+      "id": "edge-1f81db71-c0a6-4e74-8de7-47971035ee9a",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-5e0e8f07-671b-40e3-939c-700366d89cb1",
       "key": "branch_identity_resolution_needs_user_action",
-      "target_node_id": "node-b2429335-8cfb-475e-ada4-feafd135a44f",
+      "target_node_id": "node-fb94eb1f-b8c6-4cf4-9ea1-698973e6e71b",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -1188,11 +1188,11 @@
       ]
     },
     {
-      "id": "edge-2d53695d-1be2-4a4d-b77b-0c4beea0bc47",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-9b48b578-5661-4ac4-9e0a-260829423aa0",
+      "id": "edge-9d0f2f73-78df-4325-821c-236d32da9258",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-b613afab-5b3b-4807-a285-37e7f88dbd44",
       "key": "branch_identity_resolution_wont_do",
-      "target_node_id": "node-d25a2924-bae7-4e29-b025-a69a23b9e104",
+      "target_node_id": "node-fcaccb34-1dce-439a-9849-57adf0ee9c3e",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -1206,11 +1206,11 @@
       ]
     },
     {
-      "id": "edge-26d26dfa-d551-4b9e-8231-9eba85ad6e39",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-1571b1ec-d2e5-40a4-9ea6-0839b0539d31",
+      "id": "edge-b0b8bcee-3f4d-47a5-b688-62326a288a9e",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-50501ca0-6fad-4870-a4cf-0791af6dc828",
       "key": "plan_contract_continue_implement",
-      "target_node_id": "node-f678d78a-98ea-42f8-95a5-36d3aa34a473",
+      "target_node_id": "node-72daf204-6417-4851-81df-a50c9ff94f67",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1233,11 +1233,11 @@
       ]
     },
     {
-      "id": "edge-11e4757e-921a-4182-a234-50ab283c8c59",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-cb6ef8a6-15bc-4a9e-b772-03c7107eb055",
+      "id": "edge-2a1575bf-a364-486e-8455-29bb9772fd16",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-fd50db9b-75cf-4993-894f-4b1574817f65",
       "key": "plan_contract_verify",
-      "target_node_id": "node-387cddf3-d563-4442-89fe-6398ba7a3124",
+      "target_node_id": "node-3965148f-d48a-4f24-8cde-de50dd9ac24e",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1255,11 +1255,11 @@
       ]
     },
     {
-      "id": "edge-d16f1790-7318-4086-9996-c848b9c3a791",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-dae6218f-1b82-4dc6-bce8-c17143e119fa",
+      "id": "edge-6c1cc3fa-9b40-4b86-82a0-fd44e9e96eca",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-7d859353-10e9-4cae-b741-4c88e5066ede",
       "key": "plan_contract_checked_continue",
-      "target_node_id": "node-f678d78a-98ea-42f8-95a5-36d3aa34a473",
+      "target_node_id": "node-72daf204-6417-4851-81df-a50c9ff94f67",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1282,11 +1282,11 @@
       ]
     },
     {
-      "id": "edge-0605d1d2-804f-4cae-a1df-f9f7849fafec",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-7559ee28-91e3-4a1a-b5bc-45b26e61d6c7",
+      "id": "edge-a7b845d6-a700-4fa7-859d-64abb20ee48a",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-101f23cb-90ec-4d41-8c79-c002addfade4",
       "key": "plan_contract_checked_verify",
-      "target_node_id": "node-387cddf3-d563-4442-89fe-6398ba7a3124",
+      "target_node_id": "node-3965148f-d48a-4f24-8cde-de50dd9ac24e",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1304,11 +1304,11 @@
       ]
     },
     {
-      "id": "edge-0ca94f89-cfed-4944-b5a7-a2ae01815664",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-b62560d1-9888-415a-a917-c504c017027e",
+      "id": "edge-4d5e6a99-e11a-4ee6-a5d4-e5cfdf6c43eb",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-e2185241-0a37-4571-adb3-c052c4bbbdb1",
       "key": "plan_contract_fix_continue",
-      "target_node_id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
+      "target_node_id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1327,11 +1327,11 @@
       ]
     },
     {
-      "id": "edge-2bd4a250-b9a9-4565-8b13-f29296591cbe",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-31a69ad5-0997-4109-9625-28aa73be44d5",
+      "id": "edge-f52caa31-8aa2-47b5-b1c1-6f11cfa4e46b",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-33b43362-7dba-4a7a-8bc2-076dcf7d9bd4",
       "key": "plan_contract_checked_fix",
-      "target_node_id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
+      "target_node_id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1350,11 +1350,11 @@
       ]
     },
     {
-      "id": "edge-d9f092ef-e0c0-4d87-93fa-f0fafd3f71c3",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-89c2a386-93a4-40b9-9692-129c5d6bdbc6",
+      "id": "edge-865d5b41-ace3-4034-9ec0-e7c4d305b07d",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-1f1added-8064-484b-b44e-99fd6ecc11dc",
       "key": "plan_needs_user_action",
-      "target_node_id": "node-7800c821-9e64-43c7-9787-139f76182372",
+      "target_node_id": "node-809761cb-9d69-4601-b93c-04cef1ef1112",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -1369,11 +1369,11 @@
       ]
     },
     {
-      "id": "edge-212ee86a-fa6f-4623-93cd-fe4e4f91f9fc",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-cac37d3d-2e0f-4de5-99c6-0db8e0ab05e1",
+      "id": "edge-8dd7f705-2613-476e-92eb-261a582c940f",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-c4a00162-641a-4340-8a95-aab9fc7adaaa",
       "key": "plan_wont_do",
-      "target_node_id": "node-d25a2924-bae7-4e29-b025-a69a23b9e104",
+      "target_node_id": "node-fcaccb34-1dce-439a-9849-57adf0ee9c3e",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -1387,11 +1387,11 @@
       ]
     },
     {
-      "id": "edge-11d46788-cc36-499e-aa44-fd746d0c3ad9",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-2cfa962a-25bd-4ac2-bb32-4181e768e765",
+      "id": "edge-d831f91e-7c93-4e04-b623-13c560ad3128",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-4050911e-319e-470b-a6f4-37b1f0284358",
       "key": "implement_continue",
-      "target_node_id": "node-d3b4d554-673f-4e48-ac6b-740e01d9c004",
+      "target_node_id": "node-df3fc704-548b-4d7c-b358-11df91092d10",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1413,11 +1413,11 @@
       ]
     },
     {
-      "id": "edge-c2fbf37f-a9bc-436b-8237-697375123c2b",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-13eeef3c-9a20-40d4-a00a-fafb62b0c02f",
+      "id": "edge-d33438af-96a4-48e6-b7c6-79bd7ff33b9b",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-b5f02ea8-bbad-4e41-8d16-1c888738d9c0",
       "key": "implement_verify",
-      "target_node_id": "node-42a6f2b9-be81-4121-b642-173205231970",
+      "target_node_id": "node-d681e7d8-22c7-4e7f-8cbb-e749257c979b",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1439,11 +1439,11 @@
       ]
     },
     {
-      "id": "edge-66a35b49-9ffd-423f-8bcf-295c4e143023",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-1a229426-64a4-454d-9321-6996a397d169",
+      "id": "edge-82dd739a-ec28-44ee-a5fd-8fdab7390640",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-0db297db-3aa3-429f-9484-ddde64cd047c",
       "key": "implement_needs_user_action",
-      "target_node_id": "node-f678d78a-98ea-42f8-95a5-36d3aa34a473",
+      "target_node_id": "node-72daf204-6417-4851-81df-a50c9ff94f67",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -1462,11 +1462,11 @@
       ]
     },
     {
-      "id": "edge-65f86c85-30e9-49e9-a675-bdd5f391ae63",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-03784e07-f9f8-4ea2-b11a-ead339e1e981",
+      "id": "edge-384eb3a2-3857-4763-9add-3f14d39ed0ff",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-3847ccf1-320a-473a-bde5-0271bca5113b",
       "key": "implement_wont_do",
-      "target_node_id": "node-d25a2924-bae7-4e29-b025-a69a23b9e104",
+      "target_node_id": "node-fcaccb34-1dce-439a-9849-57adf0ee9c3e",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -1480,11 +1480,11 @@
       ]
     },
     {
-      "id": "edge-1087f30f-802b-4b10-afb8-028edbb68716",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-fc4837d9-1ba2-4495-8133-96119bcf482e",
+      "id": "edge-bd3794f9-95d5-428e-a4b0-4803d70ad9c1",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-f49d9fe3-f885-4c76-bedb-d9198387d227",
       "key": "fix_verify",
-      "target_node_id": "node-42a6f2b9-be81-4121-b642-173205231970",
+      "target_node_id": "node-d681e7d8-22c7-4e7f-8cbb-e749257c979b",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1506,11 +1506,11 @@
       ]
     },
     {
-      "id": "edge-75d748cb-f162-49e1-bce4-844faa9084bc",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-46446f2c-618b-4063-b3ff-3ea8d44bd4a4",
+      "id": "edge-499fdf65-4209-4585-b7a8-a8f0702b9e68",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-aa4cee47-e3df-4155-aae5-4a336331447c",
       "key": "fix_needs_user_action",
-      "target_node_id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
+      "target_node_id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -1525,11 +1525,11 @@
       ]
     },
     {
-      "id": "edge-3a120a4c-795f-437e-893a-94006fdd7066",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-eba67349-d95b-45d3-9580-81164d81b6ab",
+      "id": "edge-1a13a1dd-c164-4623-a293-45de034c1a78",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-8a44da7d-b9b7-44bb-976b-7fc65d2a8607",
       "key": "fix_wont_do",
-      "target_node_id": "node-d25a2924-bae7-4e29-b025-a69a23b9e104",
+      "target_node_id": "node-fcaccb34-1dce-439a-9849-57adf0ee9c3e",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -1543,11 +1543,11 @@
       ]
     },
     {
-      "id": "edge-ac752245-c979-463e-9d19-39fc7a1ea734",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-327aa431-718e-4b75-952b-84a6c24628b0",
+      "id": "edge-abfc4a27-b902-43f9-8ccd-e24c00af3cda",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-ada7ed37-0d98-462d-a8f4-26ca502c88f6",
       "key": "fix_continue",
-      "target_node_id": "node-6204aa2e-e89a-48d5-b7e9-f0684ddf3548",
+      "target_node_id": "node-23d98b7f-8d28-4506-aebe-f9fdeb0a588b",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1569,11 +1569,11 @@
       ]
     },
     {
-      "id": "edge-ebc0a9e3-a92d-460f-9830-6879031d4c41",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-a50f1106-52fa-44a3-a829-5d86a7147bd5",
+      "id": "edge-489301a3-21a7-486b-90a3-a497198a524b",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-be6a0ff0-67bc-45d6-b6e0-4ac23b4e4b8f",
       "key": "dispatch_deterministic_verify",
-      "target_node_id": "node-a73f322f-7563-48ec-9932-6debcbdf0af6",
+      "target_node_id": "node-a4b98b88-f14f-44a9-ad48-b54603da1fe5",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1591,11 +1591,11 @@
       ]
     },
     {
-      "id": "edge-604788f0-e14f-4a52-9543-fdbc2f98ae5d",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-9975f608-7b15-49a3-a3b8-800b13913302",
+      "id": "edge-7132ba09-b0dc-4abe-beae-d3ebb5b1fde9",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-891c13d5-bda2-4b79-bf48-f1e75ca38a8b",
       "key": "dispatch_invalid_workspace",
-      "target_node_id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
+      "target_node_id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1614,11 +1614,11 @@
       ]
     },
     {
-      "id": "edge-3226b1a1-b395-4f45-b63a-c95dc0dbc93c",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-a50f1106-52fa-44a3-a829-5d86a7147bd5",
+      "id": "edge-3c6f1ead-a447-47f0-b56a-fe34bab13810",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-be6a0ff0-67bc-45d6-b6e0-4ac23b4e4b8f",
       "key": "dispatch_standards_review",
-      "target_node_id": "node-ef39676d-61ee-4486-9f65-4d09b376d536",
+      "target_node_id": "node-4208016d-cfe9-4634-a0d8-a915f014ad1e",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1637,11 +1637,11 @@
       ]
     },
     {
-      "id": "edge-b47d5170-9673-4e5d-b213-d70b7e141805",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-a50f1106-52fa-44a3-a829-5d86a7147bd5",
+      "id": "edge-243c3552-8bde-4c46-b365-716f55ad2b03",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-be6a0ff0-67bc-45d6-b6e0-4ac23b4e4b8f",
       "key": "dispatch_spec_review",
-      "target_node_id": "node-b11592ea-3d7c-4765-9f1f-46f1257bbcfd",
+      "target_node_id": "node-6665156f-866b-40c0-8db5-fd287f155c1d",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1660,11 +1660,11 @@
       ]
     },
     {
-      "id": "edge-689c2603-3550-44a7-bfac-d7d53c3ee4d8",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-3a88239e-fa83-43a9-849d-9035cc25e84a",
+      "id": "edge-9afdfdbf-1239-4298-a708-755ec3d5f804",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-777e2d15-ae91-4f2f-9f8d-9351dd4031a1",
       "key": "deterministic_report_join",
-      "target_node_id": "node-1265e769-339d-416b-9135-0fb3db502125",
+      "target_node_id": "node-25c11b34-867c-4bfd-8167-9578cae6ac07",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1682,11 +1682,11 @@
       ]
     },
     {
-      "id": "edge-4523e536-5523-42a5-98ad-f99014ec0f26",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-66fbb74e-f4f7-4a08-8ce8-1bb68501fd96",
+      "id": "edge-959f93e2-4557-4151-addc-264d189fb864",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-be1544fc-eb82-4c0c-b747-7ba5713310a0",
       "key": "verification_join_gate",
-      "target_node_id": "node-50d942e6-faa0-4ae6-9e34-67625052c3a6",
+      "target_node_id": "node-86f3805d-3398-435c-814b-8205a48b668f",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1695,11 +1695,11 @@
       "prompt_template": "Evaluate the joined verification reports without editing files.\n\nRead `.kent/context/review.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `verification_gate`, `evidence_type` to\n`review`, and `context.manifest_path` to `.kent/context/review.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nWorkspace: {{.Params.verification_dispatch_fanout_verify.workspace_path}}\nReview context: {{.Params.verification_dispatch_fanout_verify.review_context}}\nVerification status: {{.Params.verification_status}}\nVerification report: {{.Params.verification_report}}\nStandards status: {{.Params.standards_status}}\nStandards report: {{.Params.standards_report}}\nSpec status: {{.Params.spec_status}}\nSpec report: {{.Params.review_report}}\n\nApply the `workflow-gate` role contract. Choose a delivery transition only when\nevery enabled status is `passed`. Do not poll or classify PR CI here; delivery\nowns CI after PR preparation. Keep full reports in `review_context` and make\nuser-facing commentary name only a real decision or external action.\n\nFor `verification_gate_needs_changes`, emit the deduplicated, dependency-ordered repair bundle\nrequired by the `workflow-gate` role contract.\n\nProvide `workspace_path`, a refreshed `review_context` summarizing all reports,\nand the required Smoke decision fields. The refreshed `review_context` must\nrecord the profile Smoke policy, selected transition, rationale, and required\nscope or concrete evidence for bypassing Smoke.\n\nProject policy disables runtime Smoke for this workflow.\nChoose `verification_gate_delivery_ready` and set `smoke_rationale` to the profile policy. Do not\ninvent a Smoke requirement that the project cannot execute.\n\nChoose `verification_gate_needs_changes` for task-scoped failures and provide `workspace_path`\nplus `fix_context`. Choose `verification_gate_needs_user_action` for external or contradictory\nblockers and provide `workspace_path`, `review_context`, and `blocker_reason`;\nafter approval every verification branch reruns. Choose `verification_gate_wont_do` only for an\nexplicit cancellation decision and provide `closure_reason`."
     },
     {
-      "id": "edge-74b3636b-47d7-40bc-97e3-d56bbf53814f",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-cbb96fa8-12cd-4820-8344-a67d06ef1bc8",
+      "id": "edge-f9ca18a4-7678-41dc-96f5-d47c889d8578",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-5197981c-b6f1-4c5e-bb13-eacd73192451",
       "key": "standards_report_join",
-      "target_node_id": "node-1265e769-339d-416b-9135-0fb3db502125",
+      "target_node_id": "node-25c11b34-867c-4bfd-8167-9578cae6ac07",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1717,11 +1717,11 @@
       ]
     },
     {
-      "id": "edge-931048cb-1cc8-4c99-925e-1e9b55027123",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-98b24b6d-39f1-4ff3-b6d3-80fa8cf8fdf1",
+      "id": "edge-e29850e0-6c39-4b13-8632-1cfb819e4009",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-e037afca-de7c-4dbf-90bd-11bd8154d4b7",
       "key": "spec_report_join",
-      "target_node_id": "node-1265e769-339d-416b-9135-0fb3db502125",
+      "target_node_id": "node-25c11b34-867c-4bfd-8167-9578cae6ac07",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1739,11 +1739,11 @@
       ]
     },
     {
-      "id": "edge-3892c4ee-2625-48c6-b309-70bcd79097dd",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-721378c2-950d-4c5c-b196-821f1bef9bfe",
+      "id": "edge-6318cc8e-e6ce-49dd-97b6-d24544ab09dd",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-5b600895-9f0a-48e4-af70-298491627f3f",
       "key": "gate_fix",
-      "target_node_id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
+      "target_node_id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1762,11 +1762,11 @@
       ]
     },
     {
-      "id": "edge-118e8ce1-8f2e-4e7e-88fd-480d3eb61c2d",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-a70e3227-2266-441e-b31a-88fc38eac92e",
+      "id": "edge-351e1de9-b3c0-4ac1-9382-ddca4649c888",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-61d4b301-7928-4ea2-baea-4b57cbf61ca3",
       "key": "gate_reverify_after_user_action",
-      "target_node_id": "node-387cddf3-d563-4442-89fe-6398ba7a3124",
+      "target_node_id": "node-3965148f-d48a-4f24-8cde-de50dd9ac24e",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -1788,11 +1788,11 @@
       ]
     },
     {
-      "id": "edge-a09da6b7-f366-4aa7-90db-7dada5144188",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-3c30ff9a-5ad0-43cf-8d4a-0233eb143fd3",
+      "id": "edge-066a3b16-129e-4a9b-bd89-84eb954df969",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-49a3ef44-9643-4c6d-9625-fca06d149dd2",
       "key": "verification_gate_wont_do",
-      "target_node_id": "node-d25a2924-bae7-4e29-b025-a69a23b9e104",
+      "target_node_id": "node-fcaccb34-1dce-439a-9849-57adf0ee9c3e",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -1806,11 +1806,11 @@
       ]
     },
     {
-      "id": "edge-1b0ba918-6de7-40c3-b4cf-01e885b76248",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-c4b96e31-e9f5-42a9-9154-9d48523a346c",
+      "id": "edge-13ac50a1-2eec-4d9c-acc3-8832b801f3e8",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-622a4164-04db-4d21-b923-3eab8e8836cf",
       "key": "gate_delivery_ready",
-      "target_node_id": "node-3adf9607-fbd2-4557-899d-118fb79dc776",
+      "target_node_id": "node-c617e5b2-d0a8-4664-a597-250d35001512",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1833,11 +1833,11 @@
       ]
     },
     {
-      "id": "edge-7921164e-ff1d-43bc-ad4e-531db451e597",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-6f4c5d1c-fe26-42b9-baab-d934d32c609b",
+      "id": "edge-03ef0038-9b8b-4866-a785-c0ffbad2c551",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-e1418041-de42-4b2c-ada2-f1fa1f49e3df",
       "key": "cleanup_task_janitor",
-      "target_node_id": "node-3a170ccd-d7ef-45c1-8a6f-169f9f9c0315",
+      "target_node_id": "node-da558fe3-034c-4fe8-b115-5cc755d44685",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1879,11 +1879,11 @@
       ]
     },
     {
-      "id": "edge-534d567b-a9f2-48de-9a68-ec4f65aee29b",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-828e6997-6d3f-498b-a06b-c8e5f905fc18",
+      "id": "edge-7f117317-e2a7-47cb-8354-2d7bbf1ee8b2",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-7a944cc7-9df8-455f-a566-2550bdac1252",
       "key": "task_janitor_done",
-      "target_node_id": "node-e61bb3a7-dde6-479b-adce-e17ec71a8d8c",
+      "target_node_id": "node-6621c877-4f4e-407a-a11c-0462acd7b5ce",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1897,11 +1897,11 @@
       ]
     },
     {
-      "id": "edge-68949163-f94d-46a1-a874-4a152d43e6ab",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-9f901593-2f3d-4612-b2d8-f42e3fd2bfd5",
+      "id": "edge-48560ebf-5269-4ba2-b97c-c1e69a187ded",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-f78b8820-7416-4570-89e3-7c5c9a2bf5a6",
       "key": "task_janitor_blocked",
-      "target_node_id": "node-3adf9607-fbd2-4557-899d-118fb79dc776",
+      "target_node_id": "node-c617e5b2-d0a8-4664-a597-250d35001512",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -1920,11 +1920,11 @@
       ]
     },
     {
-      "id": "edge-93c17a20-80b5-43ca-b214-fbac81401b3d",
-      "workflow_id": "700f9ce2-dbb0-4c65-baa0-f8e922d1865b",
-      "transition_group_id": "group-861e6d6e-82a6-4bb0-92db-70361c523987",
+      "id": "edge-23a5bd54-56a1-4397-87e5-d57977365bb2",
+      "workflow_id": "ebf1a027-87ae-42e3-82bd-14526f5c2c65",
+      "transition_group_id": "group-843e4f07-ae2d-4445-94df-3904888c854f",
       "key": "cleanup_needs_user_action",
-      "target_node_id": "node-3adf9607-fbd2-4557-899d-118fb79dc776",
+      "target_node_id": "node-c617e5b2-d0a8-4664-a597-250d35001512",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -1942,10 +1942,10 @@
   "derived_wiring": {
     "nodes": [
       {
-        "node_id": "node-2af2535b-975f-4451-bdac-4d3b5940006c"
+        "node_id": "node-096b72be-54b3-4ecf-ab22-6d0ab8133154"
       },
       {
-        "node_id": "node-7800c821-9e64-43c7-9787-139f76182372",
+        "node_id": "node-809761cb-9d69-4601-b93c-04cef1ef1112",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -1986,7 +1986,7 @@
         ]
       },
       {
-        "node_id": "node-68ed88c5-0af5-4a41-a416-afb3cf2f775a",
+        "node_id": "node-2e4730ef-3460-468b-8923-a095ecc74061",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2031,7 +2031,7 @@
         ]
       },
       {
-        "node_id": "node-ca958493-5a69-4cb1-a231-66c53561c1b1",
+        "node_id": "node-22e70a9b-2c22-4eca-a41f-684405860109",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2056,7 +2056,7 @@
         ]
       },
       {
-        "node_id": "node-d3b4d554-673f-4e48-ac6b-740e01d9c004",
+        "node_id": "node-df3fc704-548b-4d7c-b358-11df91092d10",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2093,7 +2093,7 @@
         ]
       },
       {
-        "node_id": "node-42a6f2b9-be81-4121-b642-173205231970",
+        "node_id": "node-d681e7d8-22c7-4e7f-8cbb-e749257c979b",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2130,7 +2130,7 @@
         ]
       },
       {
-        "node_id": "node-9de173fa-68b7-4411-ace0-dee294e0ff24",
+        "node_id": "node-c26607a8-a074-49cb-b5d6-45d11b7e3ec8",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2171,7 +2171,7 @@
         ]
       },
       {
-        "node_id": "node-f678d78a-98ea-42f8-95a5-36d3aa34a473",
+        "node_id": "node-72daf204-6417-4851-81df-a50c9ff94f67",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2200,7 +2200,7 @@
         ]
       },
       {
-        "node_id": "node-387cddf3-d563-4442-89fe-6398ba7a3124",
+        "node_id": "node-3965148f-d48a-4f24-8cde-de50dd9ac24e",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2221,7 +2221,7 @@
         ]
       },
       {
-        "node_id": "node-a73f322f-7563-48ec-9932-6debcbdf0af6",
+        "node_id": "node-a4b98b88-f14f-44a9-ad48-b54603da1fe5",
         "possible_provision_fields": [
           {
             "name": "verification_status",
@@ -2234,7 +2234,7 @@
         ]
       },
       {
-        "node_id": "node-50d942e6-faa0-4ae6-9e34-67625052c3a6",
+        "node_id": "node-86f3805d-3398-435c-814b-8205a48b668f",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2263,7 +2263,7 @@
         ]
       },
       {
-        "node_id": "node-62327f38-7632-4ab7-8e8a-12d2562ec73d",
+        "node_id": "node-560190d7-c226-4afe-8b38-f45ae2abd5cd",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2292,7 +2292,7 @@
         ]
       },
       {
-        "node_id": "node-3adf9607-fbd2-4557-899d-118fb79dc776",
+        "node_id": "node-c617e5b2-d0a8-4664-a597-250d35001512",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2333,10 +2333,10 @@
         ]
       },
       {
-        "node_id": "node-d25a2924-bae7-4e29-b025-a69a23b9e104"
+        "node_id": "node-fcaccb34-1dce-439a-9849-57adf0ee9c3e"
       },
       {
-        "node_id": "node-219fdc3d-3686-4582-9147-fcf3cc4af70c",
+        "node_id": "node-8ca39cef-873e-404f-b4bd-09ff92e0ea83",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2357,7 +2357,7 @@
         ]
       },
       {
-        "node_id": "node-b2429335-8cfb-475e-ada4-feafd135a44f",
+        "node_id": "node-fb94eb1f-b8c6-4cf4-9ea1-698973e6e71b",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2382,7 +2382,7 @@
         ]
       },
       {
-        "node_id": "node-6204aa2e-e89a-48d5-b7e9-f0684ddf3548",
+        "node_id": "node-23d98b7f-8d28-4506-aebe-f9fdeb0a588b",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -2423,7 +2423,7 @@
         ]
       },
       {
-        "node_id": "node-ef39676d-61ee-4486-9f65-4d09b376d536",
+        "node_id": "node-4208016d-cfe9-4634-a0d8-a915f014ad1e",
         "possible_provision_fields": [
           {
             "name": "standards_status",
@@ -2436,7 +2436,7 @@
         ]
       },
       {
-        "node_id": "node-b11592ea-3d7c-4765-9f1f-46f1257bbcfd",
+        "node_id": "node-6665156f-866b-40c0-8db5-fd287f155c1d",
         "possible_provision_fields": [
           {
             "name": "spec_status",
@@ -2449,7 +2449,7 @@
         ]
       },
       {
-        "node_id": "node-1265e769-339d-416b-9135-0fb3db502125",
+        "node_id": "node-25c11b34-867c-4bfd-8167-9578cae6ac07",
         "join_output_fields": [
           {
             "name": "verification_status",
@@ -2478,7 +2478,7 @@
         ]
       },
       {
-        "node_id": "node-3a170ccd-d7ef-45c1-8a6f-169f9f9c0315",
+        "node_id": "node-da558fe3-034c-4fe8-b115-5cc755d44685",
         "possible_provision_fields": [
           {
             "name": "cleanup_report",
@@ -2491,15 +2491,15 @@
         ]
       },
       {
-        "node_id": "node-e61bb3a7-dde6-479b-adce-e17ec71a8d8c"
+        "node_id": "node-6621c877-4f4e-407a-a11c-0462acd7b5ce"
       }
     ],
     "transition_groups": [
       {
-        "transition_group_id": "group-58c05996-2a5f-40f8-8cad-6e15351a1b74"
+        "transition_group_id": "group-f9a373a3-b951-4aaf-9366-0614f4f7e746"
       },
       {
-        "transition_group_id": "group-3126b0fd-044f-4e04-b47f-4d1864c7cbe4",
+        "transition_group_id": "group-fe4c5178-740c-4acd-857a-798e97d017e7",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -2532,44 +2532,7 @@
         ]
       },
       {
-        "transition_group_id": "group-5577bec9-1789-46dc-a7ce-547cea0b7251",
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Repository or managed-worktree root; never an artifact directory."
-          },
-          {
-            "name": "plan_path",
-            "description": "Path to the approved implementation plan, or the literal not-applicable."
-          },
-          {
-            "name": "work_kind",
-            "description": "Stable project-profile work kind selected during Plan."
-          },
-          {
-            "name": "plan_route",
-            "description": "Post-review route: start, continue, verify, or fix_continue."
-          },
-          {
-            "name": "plan_route_context",
-            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
-          },
-          {
-            "name": "plan_review_report",
-            "description": "Independent read-only review of plan authority, scope, evidence, and ordering."
-          },
-          {
-            "name": "review_context",
-            "description": "Implementation, fix, report, and artifact context required by verification."
-          },
-          {
-            "name": "task_short_id",
-            "description": "Stable human-readable Kent task short ID."
-          }
-        ]
-      },
-      {
-        "transition_group_id": "group-a185096a-250e-45bc-8c5b-29c5eaf3115f",
+        "transition_group_id": "group-0ed4cc1e-0599-4c34-bf04-523501e69b87",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -2606,7 +2569,44 @@
         ]
       },
       {
-        "transition_group_id": "group-58f84d14-f577-492e-8787-ac519cbc7260",
+        "transition_group_id": "group-7be7a22c-4da4-4c11-8aab-24b1557329c3",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Repository or managed-worktree root; never an artifact directory."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
+          },
+          {
+            "name": "work_kind",
+            "description": "Stable project-profile work kind selected during Plan."
+          },
+          {
+            "name": "plan_route",
+            "description": "Post-review route: start, continue, verify, or fix_continue."
+          },
+          {
+            "name": "plan_route_context",
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
+          },
+          {
+            "name": "plan_review_report",
+            "description": "Independent read-only review of plan authority, scope, evidence, and ordering."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "task_short_id",
+            "description": "Stable human-readable Kent task short ID."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-4955c2ef-60b7-41c2-a0d3-6514f68a5078",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -2643,7 +2643,7 @@
         ]
       },
       {
-        "transition_group_id": "group-0f1bab53-427d-4f61-9599-10cf36bd32fd",
+        "transition_group_id": "group-d76d40e8-eff1-4809-b432-5ea79fb029ab",
         "required_provision_fields": [
           {
             "name": "closure_reason",
@@ -2652,7 +2652,7 @@
         ]
       },
       {
-        "transition_group_id": "group-da8dccf4-6256-445e-ad41-e2805dc099b5",
+        "transition_group_id": "group-8d2f352a-5ecf-4d10-bebe-fbfdbacf2295",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -2685,7 +2685,7 @@
         ]
       },
       {
-        "transition_group_id": "group-1c2c9d72-2a84-492a-9c14-0af467f214a1",
+        "transition_group_id": "group-41713bdb-fb26-43d5-831f-939ec0616adb",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -2722,7 +2722,7 @@
         ]
       },
       {
-        "transition_group_id": "group-d55840fe-14b1-4cbe-9cfd-a1d9992f7a6b",
+        "transition_group_id": "group-2d09ba5f-0f22-452e-a2b6-b308471709bd",
         "required_provision_fields": [
           {
             "name": "closure_reason",
@@ -2731,81 +2731,7 @@
         ]
       },
       {
-        "transition_group_id": "group-67d2b50e-e814-4854-8bc4-bcc0b7d71093",
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Repository or managed-worktree root; never an artifact directory."
-          },
-          {
-            "name": "plan_path",
-            "description": "Path to the approved implementation plan, or the literal not-applicable."
-          },
-          {
-            "name": "work_kind",
-            "description": "Stable project-profile work kind selected during Plan."
-          },
-          {
-            "name": "plan_route",
-            "description": "Post-review route: start, continue, verify, or fix_continue."
-          },
-          {
-            "name": "plan_route_context",
-            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
-          },
-          {
-            "name": "plan_change_report",
-            "description": "Deterministic summary of material plan-contract changes."
-          },
-          {
-            "name": "review_context",
-            "description": "Implementation, fix, report, and artifact context required by verification."
-          },
-          {
-            "name": "task_short_id",
-            "description": "Stable human-readable Kent task short ID."
-          }
-        ]
-      },
-      {
-        "transition_group_id": "group-ac3b26d1-0086-4b1b-9e8e-f73602ca5699",
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Repository or managed-worktree root; never an artifact directory."
-          },
-          {
-            "name": "plan_path",
-            "description": "Path to the approved implementation plan, or the literal not-applicable."
-          },
-          {
-            "name": "work_kind",
-            "description": "Stable project-profile work kind selected during Plan."
-          },
-          {
-            "name": "plan_route",
-            "description": "Post-review route: start, continue, verify, or fix_continue."
-          },
-          {
-            "name": "plan_route_context",
-            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
-          },
-          {
-            "name": "plan_change_report",
-            "description": "Deterministic summary of material plan-contract changes."
-          },
-          {
-            "name": "review_context",
-            "description": "Implementation, fix, report, and artifact context required by verification."
-          },
-          {
-            "name": "task_short_id",
-            "description": "Stable human-readable Kent task short ID."
-          }
-        ]
-      },
-      {
-        "transition_group_id": "group-595973c6-d76a-40c5-a7f9-6598574bfe24",
+        "transition_group_id": "group-9193b0eb-c927-44b1-8bd4-cb7e6b4403b8",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -2842,7 +2768,81 @@
         ]
       },
       {
-        "transition_group_id": "group-7ccaa88d-f995-490e-9a05-24ad9b0f6c16",
+        "transition_group_id": "group-db9237b3-2da5-4df3-b633-f394e986aa84",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Repository or managed-worktree root; never an artifact directory."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
+          },
+          {
+            "name": "work_kind",
+            "description": "Stable project-profile work kind selected during Plan."
+          },
+          {
+            "name": "plan_route",
+            "description": "Post-review route: start, continue, verify, or fix_continue."
+          },
+          {
+            "name": "plan_route_context",
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
+          },
+          {
+            "name": "plan_change_report",
+            "description": "Deterministic summary of material plan-contract changes."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "task_short_id",
+            "description": "Stable human-readable Kent task short ID."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-d56d4c63-21cc-444c-be1d-6921c36300eb",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Repository or managed-worktree root; never an artifact directory."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
+          },
+          {
+            "name": "work_kind",
+            "description": "Stable project-profile work kind selected during Plan."
+          },
+          {
+            "name": "plan_route",
+            "description": "Post-review route: start, continue, verify, or fix_continue."
+          },
+          {
+            "name": "plan_route_context",
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
+          },
+          {
+            "name": "plan_change_report",
+            "description": "Deterministic summary of material plan-contract changes."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "task_short_id",
+            "description": "Stable human-readable Kent task short ID."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "group-1e0ee6b3-9215-4f59-956f-f3e6703e6751",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -2859,7 +2859,7 @@
         ]
       },
       {
-        "transition_group_id": "group-3e2b7910-963b-4f1d-82c8-ddfeaf661057",
+        "transition_group_id": "group-0b36f774-65c8-4aeb-86e5-130252c02834",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -2876,7 +2876,7 @@
         ]
       },
       {
-        "transition_group_id": "group-c0f6e23e-9775-4e32-94a3-f89d45fedb3d",
+        "transition_group_id": "group-68cc3a17-854d-4fd8-b282-17a01b2ddc23",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -2897,7 +2897,7 @@
         ]
       },
       {
-        "transition_group_id": "group-763f4008-359c-4517-b931-5f46f6230ee1",
+        "transition_group_id": "group-fce5cc74-73b1-4e66-96a6-a8c428d5c252",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -2914,7 +2914,7 @@
         ]
       },
       {
-        "transition_group_id": "group-1e4bd393-f7df-4272-bb07-a46a3b27add6",
+        "transition_group_id": "group-5e0e8f07-671b-40e3-939c-700366d89cb1",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -2935,7 +2935,7 @@
         ]
       },
       {
-        "transition_group_id": "group-9b48b578-5661-4ac4-9e0a-260829423aa0",
+        "transition_group_id": "group-b613afab-5b3b-4807-a285-37e7f88dbd44",
         "required_provision_fields": [
           {
             "name": "closure_reason",
@@ -2944,7 +2944,7 @@
         ]
       },
       {
-        "transition_group_id": "group-1571b1ec-d2e5-40a4-9ea6-0839b0539d31",
+        "transition_group_id": "group-50501ca0-6fad-4870-a4cf-0791af6dc828",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -2961,7 +2961,7 @@
         ]
       },
       {
-        "transition_group_id": "group-cb6ef8a6-15bc-4a9e-b772-03c7107eb055",
+        "transition_group_id": "group-fd50db9b-75cf-4993-894f-4b1574817f65",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -2974,7 +2974,7 @@
         ]
       },
       {
-        "transition_group_id": "group-dae6218f-1b82-4dc6-bce8-c17143e119fa",
+        "transition_group_id": "group-7d859353-10e9-4cae-b741-4c88e5066ede",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -2991,7 +2991,7 @@
         ]
       },
       {
-        "transition_group_id": "group-7559ee28-91e3-4a1a-b5bc-45b26e61d6c7",
+        "transition_group_id": "group-101f23cb-90ec-4d41-8c79-c002addfade4",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3004,7 +3004,7 @@
         ]
       },
       {
-        "transition_group_id": "group-b62560d1-9888-415a-a917-c504c017027e",
+        "transition_group_id": "group-e2185241-0a37-4571-adb3-c052c4bbbdb1",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3017,7 +3017,7 @@
         ]
       },
       {
-        "transition_group_id": "group-31a69ad5-0997-4109-9625-28aa73be44d5",
+        "transition_group_id": "group-33b43362-7dba-4a7a-8bc2-076dcf7d9bd4",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3030,7 +3030,7 @@
         ]
       },
       {
-        "transition_group_id": "group-89c2a386-93a4-40b9-9692-129c5d6bdbc6",
+        "transition_group_id": "group-1f1added-8064-484b-b44e-99fd6ecc11dc",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -3039,7 +3039,7 @@
         ]
       },
       {
-        "transition_group_id": "group-cac37d3d-2e0f-4de5-99c6-0db8e0ab05e1",
+        "transition_group_id": "group-c4a00162-641a-4340-8a95-aab9fc7adaaa",
         "required_provision_fields": [
           {
             "name": "closure_reason",
@@ -3048,7 +3048,7 @@
         ]
       },
       {
-        "transition_group_id": "group-2cfa962a-25bd-4ac2-bb32-4181e768e765",
+        "transition_group_id": "group-4050911e-319e-470b-a6f4-37b1f0284358",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3065,7 +3065,7 @@
         ]
       },
       {
-        "transition_group_id": "group-13eeef3c-9a20-40d4-a00a-fafb62b0c02f",
+        "transition_group_id": "group-b5f02ea8-bbad-4e41-8d16-1c888738d9c0",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3082,7 +3082,7 @@
         ]
       },
       {
-        "transition_group_id": "group-1a229426-64a4-454d-9321-6996a397d169",
+        "transition_group_id": "group-0db297db-3aa3-429f-9484-ddde64cd047c",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -3095,7 +3095,7 @@
         ]
       },
       {
-        "transition_group_id": "group-03784e07-f9f8-4ea2-b11a-ead339e1e981",
+        "transition_group_id": "group-3847ccf1-320a-473a-bde5-0271bca5113b",
         "required_provision_fields": [
           {
             "name": "closure_reason",
@@ -3104,7 +3104,7 @@
         ]
       },
       {
-        "transition_group_id": "group-fc4837d9-1ba2-4495-8133-96119bcf482e",
+        "transition_group_id": "group-f49d9fe3-f885-4c76-bedb-d9198387d227",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3121,7 +3121,7 @@
         ]
       },
       {
-        "transition_group_id": "group-46446f2c-618b-4063-b3ff-3ea8d44bd4a4",
+        "transition_group_id": "group-aa4cee47-e3df-4155-aae5-4a336331447c",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -3130,7 +3130,7 @@
         ]
       },
       {
-        "transition_group_id": "group-eba67349-d95b-45d3-9580-81164d81b6ab",
+        "transition_group_id": "group-8a44da7d-b9b7-44bb-976b-7fc65d2a8607",
         "required_provision_fields": [
           {
             "name": "closure_reason",
@@ -3139,7 +3139,7 @@
         ]
       },
       {
-        "transition_group_id": "group-327aa431-718e-4b75-952b-84a6c24628b0",
+        "transition_group_id": "group-ada7ed37-0d98-462d-a8f4-26ca502c88f6",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3156,7 +3156,7 @@
         ]
       },
       {
-        "transition_group_id": "group-a50f1106-52fa-44a3-a829-5d86a7147bd5",
+        "transition_group_id": "group-be6a0ff0-67bc-45d6-b6e0-4ac23b4e4b8f",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3169,7 +3169,7 @@
         ]
       },
       {
-        "transition_group_id": "group-9975f608-7b15-49a3-a3b8-800b13913302",
+        "transition_group_id": "group-891c13d5-bda2-4b79-bf48-f1e75ca38a8b",
         "required_provision_fields": [
           {
             "name": "reported_workspace_path",
@@ -3182,7 +3182,7 @@
         ]
       },
       {
-        "transition_group_id": "group-3a88239e-fa83-43a9-849d-9035cc25e84a",
+        "transition_group_id": "group-777e2d15-ae91-4f2f-9f8d-9351dd4031a1",
         "required_provision_fields": [
           {
             "name": "verification_status",
@@ -3195,10 +3195,10 @@
         ]
       },
       {
-        "transition_group_id": "group-66fbb74e-f4f7-4a08-8ce8-1bb68501fd96"
+        "transition_group_id": "group-be1544fc-eb82-4c0c-b747-7ba5713310a0"
       },
       {
-        "transition_group_id": "group-cbb96fa8-12cd-4820-8344-a67d06ef1bc8",
+        "transition_group_id": "group-5197981c-b6f1-4c5e-bb13-eacd73192451",
         "required_provision_fields": [
           {
             "name": "standards_status",
@@ -3211,7 +3211,7 @@
         ]
       },
       {
-        "transition_group_id": "group-98b24b6d-39f1-4ff3-b6d3-80fa8cf8fdf1",
+        "transition_group_id": "group-e037afca-de7c-4dbf-90bd-11bd8154d4b7",
         "required_provision_fields": [
           {
             "name": "spec_status",
@@ -3224,7 +3224,7 @@
         ]
       },
       {
-        "transition_group_id": "group-721378c2-950d-4c5c-b196-821f1bef9bfe",
+        "transition_group_id": "group-5b600895-9f0a-48e4-af70-298491627f3f",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3237,7 +3237,7 @@
         ]
       },
       {
-        "transition_group_id": "group-a70e3227-2266-441e-b31a-88fc38eac92e",
+        "transition_group_id": "group-61d4b301-7928-4ea2-baea-4b57cbf61ca3",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3254,7 +3254,7 @@
         ]
       },
       {
-        "transition_group_id": "group-3c30ff9a-5ad0-43cf-8d4a-0233eb143fd3",
+        "transition_group_id": "group-49a3ef44-9643-4c6d-9625-fca06d149dd2",
         "required_provision_fields": [
           {
             "name": "closure_reason",
@@ -3263,7 +3263,7 @@
         ]
       },
       {
-        "transition_group_id": "group-c4b96e31-e9f5-42a9-9154-9d48523a346c",
+        "transition_group_id": "group-622a4164-04db-4d21-b923-3eab8e8836cf",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3280,7 +3280,7 @@
         ]
       },
       {
-        "transition_group_id": "group-6f4c5d1c-fe26-42b9-baab-d934d32c609b",
+        "transition_group_id": "group-e1418041-de42-4b2c-ada2-f1fa1f49e3df",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -3317,7 +3317,7 @@
         ]
       },
       {
-        "transition_group_id": "group-828e6997-6d3f-498b-a06b-c8e5f905fc18",
+        "transition_group_id": "group-7a944cc7-9df8-455f-a566-2550bdac1252",
         "required_provision_fields": [
           {
             "name": "cleanup_report",
@@ -3326,7 +3326,7 @@
         ]
       },
       {
-        "transition_group_id": "group-9f901593-2f3d-4612-b2d8-f42e3fd2bfd5",
+        "transition_group_id": "group-f78b8820-7416-4570-89e3-7c5c9a2bf5a6",
         "required_provision_fields": [
           {
             "name": "cleanup_report",
@@ -3339,7 +3339,7 @@
         ]
       },
       {
-        "transition_group_id": "group-861e6d6e-82a6-4bb0-92db-70361c523987",
+        "transition_group_id": "group-843e4f07-ae2d-4445-94df-3904888c854f",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -3350,10 +3350,10 @@
     ],
     "edges": [
       {
-        "edge_id": "edge-99a412a8-6e7c-4841-8e24-aacb359e9658"
+        "edge_id": "edge-f2c0ca44-1c38-493a-8f05-2b774714d76d"
       },
       {
-        "edge_id": "edge-4636e082-3353-446e-89dc-74a9c5bb7869",
+        "edge_id": "edge-fd6cb1a2-1343-4a0f-b659-66a5e307ba8e",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -3423,86 +3423,7 @@
         ]
       },
       {
-        "edge_id": "edge-ff1784af-6beb-4eed-94df-af18ae701c52",
-        "input_bindings": [
-          {
-            "name": "workspace_path",
-            "source": "transition_output",
-            "field": "workspace_path"
-          },
-          {
-            "name": "plan_path",
-            "source": "transition_output",
-            "field": "plan_path"
-          },
-          {
-            "name": "work_kind",
-            "source": "transition_output",
-            "field": "work_kind"
-          },
-          {
-            "name": "plan_route",
-            "source": "transition_output",
-            "field": "plan_route"
-          },
-          {
-            "name": "plan_route_context",
-            "source": "transition_output",
-            "field": "plan_route_context"
-          },
-          {
-            "name": "plan_review_report",
-            "source": "transition_output",
-            "field": "plan_review_report"
-          },
-          {
-            "name": "review_context",
-            "source": "transition_output",
-            "field": "review_context"
-          },
-          {
-            "name": "task_short_id",
-            "source": "transition_output",
-            "field": "task_short_id"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Repository or managed-worktree root; never an artifact directory."
-          },
-          {
-            "name": "plan_path",
-            "description": "Path to the approved implementation plan, or the literal not-applicable."
-          },
-          {
-            "name": "work_kind",
-            "description": "Stable project-profile work kind selected during Plan."
-          },
-          {
-            "name": "plan_route",
-            "description": "Post-review route: start, continue, verify, or fix_continue."
-          },
-          {
-            "name": "plan_route_context",
-            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
-          },
-          {
-            "name": "plan_review_report",
-            "description": "Independent read-only review of plan authority, scope, evidence, and ordering."
-          },
-          {
-            "name": "review_context",
-            "description": "Implementation, fix, report, and artifact context required by verification."
-          },
-          {
-            "name": "task_short_id",
-            "description": "Stable human-readable Kent task short ID."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-d14e9673-35f7-4ebb-808c-a2356456bbbe",
+        "edge_id": "edge-301140c0-6d2f-43e8-a7c4-8cbb40a897ed",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -3581,7 +3502,86 @@
         ]
       },
       {
-        "edge_id": "edge-9fb93155-d729-4e0a-8231-71ef0eff9615",
+        "edge_id": "edge-67dd8f5d-e11d-4aa0-9b01-51b08cec5c59",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          },
+          {
+            "name": "work_kind",
+            "source": "transition_output",
+            "field": "work_kind"
+          },
+          {
+            "name": "plan_route",
+            "source": "transition_output",
+            "field": "plan_route"
+          },
+          {
+            "name": "plan_route_context",
+            "source": "transition_output",
+            "field": "plan_route_context"
+          },
+          {
+            "name": "plan_review_report",
+            "source": "transition_output",
+            "field": "plan_review_report"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          },
+          {
+            "name": "task_short_id",
+            "source": "transition_output",
+            "field": "task_short_id"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Repository or managed-worktree root; never an artifact directory."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
+          },
+          {
+            "name": "work_kind",
+            "description": "Stable project-profile work kind selected during Plan."
+          },
+          {
+            "name": "plan_route",
+            "description": "Post-review route: start, continue, verify, or fix_continue."
+          },
+          {
+            "name": "plan_route_context",
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
+          },
+          {
+            "name": "plan_review_report",
+            "description": "Independent read-only review of plan authority, scope, evidence, and ordering."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "task_short_id",
+            "description": "Stable human-readable Kent task short ID."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-c0ccaa86-b09b-4d42-87bd-1f253d8f817c",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -3660,7 +3660,7 @@
         ]
       },
       {
-        "edge_id": "edge-8662f342-5eb1-47ca-92a8-401bd3d03435",
+        "edge_id": "edge-cf106af9-bb48-468b-9d4c-623bbf05f793",
         "input_bindings": [
           {
             "name": "closure_reason",
@@ -3676,7 +3676,7 @@
         ]
       },
       {
-        "edge_id": "edge-9550a49a-feea-4c25-808e-b628ef9b01dd",
+        "edge_id": "edge-3f6e7cb5-79c8-4ca7-989d-ad47302b7a17",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -3746,7 +3746,7 @@
         ]
       },
       {
-        "edge_id": "edge-aee73a7e-921b-424a-941d-b1d43e482ad4",
+        "edge_id": "edge-22e92cec-dac1-4865-993a-8fc9bb56f566",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -3825,7 +3825,7 @@
         ]
       },
       {
-        "edge_id": "edge-d491d6fb-be32-4ced-b8c0-1daf5cfe1d0f",
+        "edge_id": "edge-b0d63f45-1130-485b-9c1f-21e53f923f01",
         "input_bindings": [
           {
             "name": "closure_reason",
@@ -3841,165 +3841,7 @@
         ]
       },
       {
-        "edge_id": "edge-7e80e17f-f323-48ff-945e-893b3e7b43c7",
-        "input_bindings": [
-          {
-            "name": "workspace_path",
-            "source": "transition_output",
-            "field": "workspace_path"
-          },
-          {
-            "name": "plan_path",
-            "source": "transition_output",
-            "field": "plan_path"
-          },
-          {
-            "name": "work_kind",
-            "source": "transition_output",
-            "field": "work_kind"
-          },
-          {
-            "name": "plan_route",
-            "source": "transition_output",
-            "field": "plan_route"
-          },
-          {
-            "name": "plan_route_context",
-            "source": "transition_output",
-            "field": "plan_route_context"
-          },
-          {
-            "name": "plan_change_report",
-            "source": "transition_output",
-            "field": "plan_change_report"
-          },
-          {
-            "name": "review_context",
-            "source": "transition_output",
-            "field": "review_context"
-          },
-          {
-            "name": "task_short_id",
-            "source": "transition_output",
-            "field": "task_short_id"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Repository or managed-worktree root; never an artifact directory."
-          },
-          {
-            "name": "plan_path",
-            "description": "Path to the approved implementation plan, or the literal not-applicable."
-          },
-          {
-            "name": "work_kind",
-            "description": "Stable project-profile work kind selected during Plan."
-          },
-          {
-            "name": "plan_route",
-            "description": "Post-review route: start, continue, verify, or fix_continue."
-          },
-          {
-            "name": "plan_route_context",
-            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
-          },
-          {
-            "name": "plan_change_report",
-            "description": "Deterministic summary of material plan-contract changes."
-          },
-          {
-            "name": "review_context",
-            "description": "Implementation, fix, report, and artifact context required by verification."
-          },
-          {
-            "name": "task_short_id",
-            "description": "Stable human-readable Kent task short ID."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-8a2a3e28-b9f2-48ef-9b44-27a620d8b163",
-        "input_bindings": [
-          {
-            "name": "workspace_path",
-            "source": "transition_output",
-            "field": "workspace_path"
-          },
-          {
-            "name": "plan_path",
-            "source": "transition_output",
-            "field": "plan_path"
-          },
-          {
-            "name": "work_kind",
-            "source": "transition_output",
-            "field": "work_kind"
-          },
-          {
-            "name": "plan_route",
-            "source": "transition_output",
-            "field": "plan_route"
-          },
-          {
-            "name": "plan_route_context",
-            "source": "transition_output",
-            "field": "plan_route_context"
-          },
-          {
-            "name": "plan_change_report",
-            "source": "transition_output",
-            "field": "plan_change_report"
-          },
-          {
-            "name": "review_context",
-            "source": "transition_output",
-            "field": "review_context"
-          },
-          {
-            "name": "task_short_id",
-            "source": "transition_output",
-            "field": "task_short_id"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Repository or managed-worktree root; never an artifact directory."
-          },
-          {
-            "name": "plan_path",
-            "description": "Path to the approved implementation plan, or the literal not-applicable."
-          },
-          {
-            "name": "work_kind",
-            "description": "Stable project-profile work kind selected during Plan."
-          },
-          {
-            "name": "plan_route",
-            "description": "Post-review route: start, continue, verify, or fix_continue."
-          },
-          {
-            "name": "plan_route_context",
-            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
-          },
-          {
-            "name": "plan_change_report",
-            "description": "Deterministic summary of material plan-contract changes."
-          },
-          {
-            "name": "review_context",
-            "description": "Implementation, fix, report, and artifact context required by verification."
-          },
-          {
-            "name": "task_short_id",
-            "description": "Stable human-readable Kent task short ID."
-          }
-        ]
-      },
-      {
-        "edge_id": "edge-318cbb04-5bc5-4a39-b7ca-5ddd832f717e",
+        "edge_id": "edge-a7168f8f-3297-4f28-9be1-a11ae4ed60b3",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4078,7 +3920,165 @@
         ]
       },
       {
-        "edge_id": "edge-6e22c1da-0242-4094-8b2f-693d7c7a2eaf",
+        "edge_id": "edge-62cdda3a-9045-4956-93ff-535d2d2ccd09",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          },
+          {
+            "name": "work_kind",
+            "source": "transition_output",
+            "field": "work_kind"
+          },
+          {
+            "name": "plan_route",
+            "source": "transition_output",
+            "field": "plan_route"
+          },
+          {
+            "name": "plan_route_context",
+            "source": "transition_output",
+            "field": "plan_route_context"
+          },
+          {
+            "name": "plan_change_report",
+            "source": "transition_output",
+            "field": "plan_change_report"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          },
+          {
+            "name": "task_short_id",
+            "source": "transition_output",
+            "field": "task_short_id"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Repository or managed-worktree root; never an artifact directory."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
+          },
+          {
+            "name": "work_kind",
+            "description": "Stable project-profile work kind selected during Plan."
+          },
+          {
+            "name": "plan_route",
+            "description": "Post-review route: start, continue, verify, or fix_continue."
+          },
+          {
+            "name": "plan_route_context",
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
+          },
+          {
+            "name": "plan_change_report",
+            "description": "Deterministic summary of material plan-contract changes."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "task_short_id",
+            "description": "Stable human-readable Kent task short ID."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-09874a8e-441a-4901-a349-9b0a13f1fa07",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "plan_path",
+            "source": "transition_output",
+            "field": "plan_path"
+          },
+          {
+            "name": "work_kind",
+            "source": "transition_output",
+            "field": "work_kind"
+          },
+          {
+            "name": "plan_route",
+            "source": "transition_output",
+            "field": "plan_route"
+          },
+          {
+            "name": "plan_route_context",
+            "source": "transition_output",
+            "field": "plan_route_context"
+          },
+          {
+            "name": "plan_change_report",
+            "source": "transition_output",
+            "field": "plan_change_report"
+          },
+          {
+            "name": "review_context",
+            "source": "transition_output",
+            "field": "review_context"
+          },
+          {
+            "name": "task_short_id",
+            "source": "transition_output",
+            "field": "task_short_id"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Repository or managed-worktree root; never an artifact directory."
+          },
+          {
+            "name": "plan_path",
+            "description": "Path to the approved implementation plan, or the literal not-applicable."
+          },
+          {
+            "name": "work_kind",
+            "description": "Stable project-profile work kind selected during Plan."
+          },
+          {
+            "name": "plan_route",
+            "description": "Post-review route: start, continue, verify, or fix_continue."
+          },
+          {
+            "name": "plan_route_context",
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle."
+          },
+          {
+            "name": "plan_change_report",
+            "description": "Deterministic summary of material plan-contract changes."
+          },
+          {
+            "name": "review_context",
+            "description": "Implementation, fix, report, and artifact context required by verification."
+          },
+          {
+            "name": "task_short_id",
+            "description": "Stable human-readable Kent task short ID."
+          }
+        ]
+      },
+      {
+        "edge_id": "edge-9ea5e5c4-8c3c-4edb-8f3c-16a77355f8ee",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4112,7 +4112,7 @@
         ]
       },
       {
-        "edge_id": "edge-313eb3d4-e247-45ae-afd8-349a401810b6",
+        "edge_id": "edge-4dac0294-a16b-4cec-a852-fe5f75d69c5f",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4146,7 +4146,7 @@
         ]
       },
       {
-        "edge_id": "edge-b718a829-af95-4c30-a647-a5b9b30ed744",
+        "edge_id": "edge-906b1bf2-9605-4eac-af38-c38e9db2d5d8",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -4189,7 +4189,7 @@
         ]
       },
       {
-        "edge_id": "edge-f3051ef3-bc1e-42c9-bef9-84f03ea06846",
+        "edge_id": "edge-df7679fb-e4d3-40cd-9327-89e2c23283b0",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4223,7 +4223,7 @@
         ]
       },
       {
-        "edge_id": "edge-cd59e85f-0003-4d45-83bc-4b8b58e6f330",
+        "edge_id": "edge-1f81db71-c0a6-4e74-8de7-47971035ee9a",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -4266,7 +4266,7 @@
         ]
       },
       {
-        "edge_id": "edge-2d53695d-1be2-4a4d-b77b-0c4beea0bc47",
+        "edge_id": "edge-9d0f2f73-78df-4325-821c-236d32da9258",
         "input_bindings": [
           {
             "name": "closure_reason",
@@ -4282,7 +4282,7 @@
         ]
       },
       {
-        "edge_id": "edge-26d26dfa-d551-4b9e-8231-9eba85ad6e39",
+        "edge_id": "edge-b0b8bcee-3f4d-47a5-b688-62326a288a9e",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4316,7 +4316,7 @@
         ]
       },
       {
-        "edge_id": "edge-11e4757e-921a-4182-a234-50ab283c8c59",
+        "edge_id": "edge-2a1575bf-a364-486e-8455-29bb9772fd16",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4341,7 +4341,7 @@
         ]
       },
       {
-        "edge_id": "edge-d16f1790-7318-4086-9996-c848b9c3a791",
+        "edge_id": "edge-6c1cc3fa-9b40-4b86-82a0-fd44e9e96eca",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4375,7 +4375,7 @@
         ]
       },
       {
-        "edge_id": "edge-0605d1d2-804f-4cae-a1df-f9f7849fafec",
+        "edge_id": "edge-a7b845d6-a700-4fa7-859d-64abb20ee48a",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4400,7 +4400,7 @@
         ]
       },
       {
-        "edge_id": "edge-0ca94f89-cfed-4944-b5a7-a2ae01815664",
+        "edge_id": "edge-4d5e6a99-e11a-4ee6-a5d4-e5cfdf6c43eb",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4425,7 +4425,7 @@
         ]
       },
       {
-        "edge_id": "edge-2bd4a250-b9a9-4565-8b13-f29296591cbe",
+        "edge_id": "edge-f52caa31-8aa2-47b5-b1c1-6f11cfa4e46b",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4450,7 +4450,7 @@
         ]
       },
       {
-        "edge_id": "edge-d9f092ef-e0c0-4d87-93fa-f0fafd3f71c3",
+        "edge_id": "edge-865d5b41-ace3-4034-9ec0-e7c4d305b07d",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -4466,7 +4466,7 @@
         ]
       },
       {
-        "edge_id": "edge-212ee86a-fa6f-4623-93cd-fe4e4f91f9fc",
+        "edge_id": "edge-8dd7f705-2613-476e-92eb-261a582c940f",
         "input_bindings": [
           {
             "name": "closure_reason",
@@ -4482,7 +4482,7 @@
         ]
       },
       {
-        "edge_id": "edge-11d46788-cc36-499e-aa44-fd746d0c3ad9",
+        "edge_id": "edge-d831f91e-7c93-4e04-b623-13c560ad3128",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4516,7 +4516,7 @@
         ]
       },
       {
-        "edge_id": "edge-c2fbf37f-a9bc-436b-8237-697375123c2b",
+        "edge_id": "edge-d33438af-96a4-48e6-b7c6-79bd7ff33b9b",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4550,7 +4550,7 @@
         ]
       },
       {
-        "edge_id": "edge-66a35b49-9ffd-423f-8bcf-295c4e143023",
+        "edge_id": "edge-82dd739a-ec28-44ee-a5fd-8fdab7390640",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -4575,7 +4575,7 @@
         ]
       },
       {
-        "edge_id": "edge-65f86c85-30e9-49e9-a675-bdd5f391ae63",
+        "edge_id": "edge-384eb3a2-3857-4763-9add-3f14d39ed0ff",
         "input_bindings": [
           {
             "name": "closure_reason",
@@ -4591,7 +4591,7 @@
         ]
       },
       {
-        "edge_id": "edge-1087f30f-802b-4b10-afb8-028edbb68716",
+        "edge_id": "edge-bd3794f9-95d5-428e-a4b0-4803d70ad9c1",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4625,7 +4625,7 @@
         ]
       },
       {
-        "edge_id": "edge-75d748cb-f162-49e1-bce4-844faa9084bc",
+        "edge_id": "edge-499fdf65-4209-4585-b7a8-a8f0702b9e68",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -4641,7 +4641,7 @@
         ]
       },
       {
-        "edge_id": "edge-3a120a4c-795f-437e-893a-94006fdd7066",
+        "edge_id": "edge-1a13a1dd-c164-4623-a293-45de034c1a78",
         "input_bindings": [
           {
             "name": "closure_reason",
@@ -4657,7 +4657,7 @@
         ]
       },
       {
-        "edge_id": "edge-ac752245-c979-463e-9d19-39fc7a1ea734",
+        "edge_id": "edge-abfc4a27-b902-43f9-8ccd-e24c00af3cda",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4691,7 +4691,7 @@
         ]
       },
       {
-        "edge_id": "edge-ebc0a9e3-a92d-460f-9830-6879031d4c41",
+        "edge_id": "edge-489301a3-21a7-486b-90a3-a497198a524b",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4716,7 +4716,7 @@
         ]
       },
       {
-        "edge_id": "edge-604788f0-e14f-4a52-9543-fdbc2f98ae5d",
+        "edge_id": "edge-7132ba09-b0dc-4abe-beae-d3ebb5b1fde9",
         "input_bindings": [
           {
             "name": "reported_workspace_path",
@@ -4741,7 +4741,7 @@
         ]
       },
       {
-        "edge_id": "edge-3226b1a1-b395-4f45-b63a-c95dc0dbc93c",
+        "edge_id": "edge-3c6f1ead-a447-47f0-b56a-fe34bab13810",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4766,7 +4766,7 @@
         ]
       },
       {
-        "edge_id": "edge-b47d5170-9673-4e5d-b213-d70b7e141805",
+        "edge_id": "edge-243c3552-8bde-4c46-b365-716f55ad2b03",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4791,7 +4791,7 @@
         ]
       },
       {
-        "edge_id": "edge-689c2603-3550-44a7-bfac-d7d53c3ee4d8",
+        "edge_id": "edge-9afdfdbf-1239-4298-a708-755ec3d5f804",
         "input_bindings": [
           {
             "name": "verification_status",
@@ -4826,10 +4826,10 @@
         ]
       },
       {
-        "edge_id": "edge-4523e536-5523-42a5-98ad-f99014ec0f26"
+        "edge_id": "edge-959f93e2-4557-4151-addc-264d189fb864"
       },
       {
-        "edge_id": "edge-74b3636b-47d7-40bc-97e3-d56bbf53814f",
+        "edge_id": "edge-f9ca18a4-7678-41dc-96f5-d47c889d8578",
         "input_bindings": [
           {
             "name": "standards_status",
@@ -4864,7 +4864,7 @@
         ]
       },
       {
-        "edge_id": "edge-931048cb-1cc8-4c99-925e-1e9b55027123",
+        "edge_id": "edge-e29850e0-6c39-4b13-8632-1cfb819e4009",
         "input_bindings": [
           {
             "name": "spec_status",
@@ -4899,7 +4899,7 @@
         ]
       },
       {
-        "edge_id": "edge-3892c4ee-2625-48c6-b309-70bcd79097dd",
+        "edge_id": "edge-6318cc8e-e6ce-49dd-97b6-d24544ab09dd",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4924,7 +4924,7 @@
         ]
       },
       {
-        "edge_id": "edge-118e8ce1-8f2e-4e7e-88fd-480d3eb61c2d",
+        "edge_id": "edge-351e1de9-b3c0-4ac1-9382-ddca4649c888",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -4958,7 +4958,7 @@
         ]
       },
       {
-        "edge_id": "edge-a09da6b7-f366-4aa7-90db-7dada5144188",
+        "edge_id": "edge-066a3b16-129e-4a9b-bd89-84eb954df969",
         "input_bindings": [
           {
             "name": "closure_reason",
@@ -4974,7 +4974,7 @@
         ]
       },
       {
-        "edge_id": "edge-1b0ba918-6de7-40c3-b4cf-01e885b76248",
+        "edge_id": "edge-13ac50a1-2eec-4d9c-acc3-8832b801f3e8",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -5008,7 +5008,7 @@
         ]
       },
       {
-        "edge_id": "edge-7921164e-ff1d-43bc-ad4e-531db451e597",
+        "edge_id": "edge-03ef0038-9b8b-4866-a785-c0ffbad2c551",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -5087,7 +5087,7 @@
         ]
       },
       {
-        "edge_id": "edge-534d567b-a9f2-48de-9a68-ec4f65aee29b",
+        "edge_id": "edge-7f117317-e2a7-47cb-8354-2d7bbf1ee8b2",
         "input_bindings": [
           {
             "name": "cleanup_report",
@@ -5103,7 +5103,7 @@
         ]
       },
       {
-        "edge_id": "edge-68949163-f94d-46a1-a874-4a152d43e6ab",
+        "edge_id": "edge-48560ebf-5269-4ba2-b97c-c1e69a187ded",
         "input_bindings": [
           {
             "name": "cleanup_report",
@@ -5128,7 +5128,7 @@
         ]
       },
       {
-        "edge_id": "edge-93c17a20-80b5-43ca-b214-fbac81401b3d",
+        "edge_id": "edge-23a5bd54-56a1-4397-87e5-d57977365bb2",
         "input_bindings": [
           {
             "name": "blocker_reason",
