@@ -13,7 +13,9 @@ import tempfile
 
 
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-CHECKBOX = re.compile(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)[ xX](\])")
+CHECKBOX = re.compile(
+    r"^(\s*(?:(?:[-*+]|\d+[.)])\s+|#{1,6}\s+)\[)[ xX](\])"
+)
 MODES = {"accept", "check"}
 ROUTES = {"start", "continue", "verify", "fix_continue"}
 ROUTE_CONTEXT_DEFAULT = "not-applicable"
