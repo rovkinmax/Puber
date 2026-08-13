@@ -3,279 +3,290 @@
     "id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
-    "version": 86,
+    "version": 87,
     "execution_target_policy": {
       "mode": "head"
     }
   },
   "nodes": [
     {
-      "id": "node-73976fdb-cbc3-4df6-9733-3413e362105d",
+      "id": "69c194f1-46fa-43f9-ba62-95e5332fe6e5",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "backlog",
       "kind": "start",
-      "display_name": "Backlog"
+      "display_name": "Backlog",
+      "group_id": null
     },
     {
-      "id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "prepare",
       "kind": "agent",
       "display_name": "Prepare Release",
+      "group_id": null,
       "subagent_role": "release-manager",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
+      "id": "e7444395-765d-422b-890e-5b2dd69f52e4",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "compliance",
       "kind": "agent",
       "display_name": "Compliance Review",
+      "group_id": null,
       "subagent_role": "compliance_reviewer",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
+      "id": "2456358a-92e6-44ca-b8f1-846517d88032",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "ship_pr",
       "kind": "agent",
       "display_name": "Create PR",
+      "group_id": null,
       "subagent_role": "delivery-operator",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
+      "id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "ci_monitor",
       "kind": "agent",
       "display_name": "Monitor CI",
+      "group_id": null,
       "subagent_role": "ci-monitor",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
+      "id": "7ab29a1a-9ab5-40c4-ae91-1c6f47c12941",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "publish",
       "kind": "agent",
       "display_name": "Publish Tag",
+      "group_id": null,
       "subagent_role": "release-manager",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
+      "id": "ac6c3970-99e4-4b40-841b-9dc7da036159",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "monitor",
       "kind": "agent",
       "display_name": "Monitor Release",
+      "group_id": null,
       "subagent_role": "ci-monitor",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
+      "id": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "cleanup",
       "kind": "agent",
       "display_name": "Cleanup",
+      "group_id": null,
       "subagent_role": "delivery-operator",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-bf653ac7-5910-4077-8e01-84002a436d03",
+      "id": "dd3e4e97-a974-4e6a-bafe-da1d891bb5ce",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "wont_do",
       "kind": "terminal",
-      "display_name": "Won't Do"
+      "display_name": "Won't Do",
+      "group_id": null
     },
     {
-      "id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
+      "id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "waiting_pr",
       "kind": "agent",
       "display_name": "Waiting PR",
+      "group_id": null,
       "subagent_role": "ci-monitor",
       "completion_mode": "shell_command"
     },
     {
-      "id": "node-6d3acc49-d5b3-42ee-b829-fa0d5c0ad1e3",
+      "id": "7dfc3956-53ec-4307-ae59-daf1a3dd1151",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "done",
       "kind": "terminal",
-      "display_name": "Done"
+      "display_name": "Done",
+      "group_id": null
     }
   ],
   "transition_groups": [
     {
-      "id": "group-6b4e20b0-0ba0-426f-b92e-d46db3a3feb6",
+      "id": "0986cf0c-3ef2-40dd-a811-a3217844bdf4",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-73976fdb-cbc3-4df6-9733-3413e362105d",
+      "source_node_id": "69c194f1-46fa-43f9-ba62-95e5332fe6e5",
       "transition_id": "backlog_start",
       "display_name": "Start",
       "description": "Start one-flow release preparation from the task body."
     },
     {
-      "id": "group-25e690fa-41ae-458c-9e23-1790dc7bcfe2",
+      "id": "d9f9403a-bff0-42f0-8073-a9338e94e09f",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "source_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
       "transition_id": "prepare_compliance",
       "display_name": "Compliance",
       "description": "Release version bump is prepared; run mandatory compliance review before PR."
     },
     {
-      "id": "group-254f0452-3cae-4ec6-a7a3-23d2131f6bd6",
+      "id": "9d9d9a7e-f5d2-4b53-9950-c8fd6e41763d",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "source_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
       "transition_id": "prepare_needs_user_action",
       "display_name": "Needs User Action",
       "description": "prepare cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-40f94378-7c2e-4638-94d8-4f0e596581ac",
+      "id": "a631667c-3e83-4c8d-93c0-1f0957cf8e38",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
+      "source_node_id": "e7444395-765d-422b-890e-5b2dd69f52e4",
       "transition_id": "compliance_ship_pr",
       "display_name": "Ship PR",
       "description": "Compliance passed; create or update the task PR before any terminal completion."
     },
     {
-      "id": "group-0c5a2849-8183-427c-8fb1-636ae725e7c3",
+      "id": "97071c3c-96f6-4775-9889-938e82b81961",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
+      "source_node_id": "e7444395-765d-422b-890e-5b2dd69f52e4",
       "transition_id": "compliance_needs_changes",
       "display_name": "Needs Changes",
       "description": "Compliance found release-preparation violations; continue to fixes without manual approval."
     },
     {
-      "id": "group-bda095a6-2a1a-4c75-9eb9-1921e021a1a9",
+      "id": "6e02e333-9041-4e3f-84bd-1c3568f53836",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
+      "source_node_id": "e7444395-765d-422b-890e-5b2dd69f52e4",
       "transition_id": "compliance_needs_user_action",
       "display_name": "Needs User Action",
       "description": "compliance cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-31b6f0a4-f78a-4778-ad48-f0fa131f1e37",
+      "id": "9ff7e6f2-968b-4407-ad27-da6a475a4be6",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
+      "source_node_id": "2456358a-92e6-44ca-b8f1-846517d88032",
       "transition_id": "ship_pr_monitor_ci",
       "display_name": "Monitor Ci",
       "description": "Release PR exists; monitor checks."
     },
     {
-      "id": "group-2a42e3f4-ca4f-4aac-a8bf-951c440fcd3a",
+      "id": "0aa10a6b-e1c2-4f33-b467-c63b3ab10519",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
+      "source_node_id": "2456358a-92e6-44ca-b8f1-846517d88032",
       "transition_id": "ship_pr_needs_user_action",
       "display_name": "Needs User Action",
       "description": "ship_pr cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-ff962732-bc93-4152-8fbd-e4f4f599e298",
+      "id": "eb11a35c-408f-4fc8-8b3e-9d5b1f0d6234",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
+      "source_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
       "transition_id": "ci_monitor_waiting_pr",
       "display_name": "Waiting PR",
       "description": "Release PR CI passed or was intentionally skipped; wait until the PR is merged before tag publication."
     },
     {
-      "id": "group-9a377344-c009-4447-b4c7-c291f4b20a86",
+      "id": "5ccf1d3d-d079-43f5-8738-7a9266412c08",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
+      "source_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
       "transition_id": "ci_monitor_needs_changes",
       "display_name": "Needs Changes",
       "description": "Release PR checks failed; continue to fixes without manual approval."
     },
     {
-      "id": "group-05159cae-6e2c-469e-a432-a7065d774792",
+      "id": "d329ef05-a0d0-442f-9356-c96d798f2e87",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
+      "source_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
       "transition_id": "ci_monitor_needs_user_action",
       "display_name": "Needs User Action",
       "description": "ci_monitor cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-f2ec6527-7b65-49a1-8d95-0f404ffa94eb",
+      "id": "b92790c2-665d-4e63-b3b0-aabfbe618f53",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
+      "source_node_id": "7ab29a1a-9ab5-40c4-ae91-1c6f47c12941",
       "transition_id": "publish_monitor",
       "display_name": "Monitor",
       "description": "Release tag was pushed; monitor release automation when available."
     },
     {
-      "id": "group-7ffd37d5-6e2e-4860-9eb5-cf2dbd037975",
+      "id": "ba6c058f-15c3-40e7-aab8-072f7b4b277c",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
+      "source_node_id": "7ab29a1a-9ab5-40c4-ae91-1c6f47c12941",
       "transition_id": "publish_needs_user_action",
       "display_name": "Needs User Action",
       "description": "publish cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-cba3a377-df16-44ff-aee8-671b5cbf7d95",
+      "id": "359fefea-23a3-4a7f-9663-0ad5888781ec",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
+      "source_node_id": "ac6c3970-99e4-4b40-841b-9dc7da036159",
       "transition_id": "monitor_release_published",
       "display_name": "Release Published",
       "description": "Release tag/publication was completed and monitored; cleanup can finish the task."
     },
     {
-      "id": "group-42b09abf-62a0-442a-b26d-ed64524f97a0",
+      "id": "bf03f4f5-420f-4fbc-87b3-f78771055034",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
+      "source_node_id": "ac6c3970-99e4-4b40-841b-9dc7da036159",
       "transition_id": "monitor_needs_user_action",
       "display_name": "Needs User Action",
       "description": "monitor cannot safely continue until the user or external system resolves the blocker; remain in the same stage."
     },
     {
-      "id": "group-c2dae728-5f18-4901-a3c0-3bc6af4fca03",
+      "id": "0c461a27-a313-464d-b3a6-f2ba22ed60ed",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
+      "source_node_id": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
       "transition_id": "cleanup_done",
       "display_name": "Done",
       "description": "Cleanup report is ready; finish the release task."
     },
     {
-      "id": "group-7d5870e1-7ee1-4f94-9d2b-7709f28be05d",
+      "id": "3f7215d2-8255-4d5d-a9e4-9d1677711c6a",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
+      "source_node_id": "2456358a-92e6-44ca-b8f1-846517d88032",
       "transition_id": "ship_pr_needs_changes",
       "display_name": "Needs Changes",
       "description": "Release PR creation/update hit a recoverable branch, rebase, conflict, push, or metadata issue; user approval required before recovery work."
     },
     {
-      "id": "group-fedc6be8-56f2-4c04-a147-3e3727ff4146",
+      "id": "0173072c-5be0-41f7-8596-a8010a81e0b6",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
+      "source_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
       "transition_id": "waiting_pr_pr_merged",
       "display_name": "Pr Merged",
       "description": "Release PR is merged; publish the approved tag after human approval."
     },
     {
-      "id": "group-b36e18d1-e437-4053-be6e-11be463e6aa4",
+      "id": "e886f920-16e5-4102-888d-fb5a5630cdc1",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
+      "source_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
       "transition_id": "waiting_pr_needs_changes",
       "display_name": "Needs Changes",
       "description": "Release PR needs task-scoped changes before it can be merged."
     },
     {
-      "id": "group-87b5a742-40cd-462f-8962-6b395a8eef7f",
+      "id": "d478a60a-a785-479b-8930-38ec76089f3a",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
+      "source_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
       "transition_id": "waiting_pr_needs_user_action",
       "display_name": "Needs User Action",
       "description": "Release PR is still waiting on a human or external process; remain in Waiting PR."
     },
     {
-      "id": "group-2ca80118-bc7d-4a36-bb97-becb5afb662d",
+      "id": "0a089232-dea1-4279-89df-14275373e8b3",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
+      "source_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
       "transition_id": "waiting_pr_close_without_merge",
       "display_name": "Close Without Merge",
       "description": "User explicitly canceled the release PR without merge; cleanup can finish."
     },
     {
-      "id": "group-6b4c5dce-d0c1-43e4-8843-a2c8ec17270d",
+      "id": "69f11360-bb72-4a2d-86b6-cbc16560cb36",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "source_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
       "transition_id": "prepare_wont_do",
       "display_name": "Wont Do",
       "description": "Latest user comment explicitly cancels this task or declares it not planned; finish without treating it as a recoverable blocker."
@@ -283,11 +294,13 @@
   ],
   "edges": [
     {
-      "id": "edge-f30cd67a-03f9-42b4-bf08-14e39ec7f1da",
+      "id": "716994a0-cc95-4c94-a841-ffe624e4ba78",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-6b4e20b0-0ba0-426f-b92e-d46db3a3feb6",
+      "transition_group_id": "0986cf0c-3ef2-40dd-a811-a3217844bdf4",
       "key": "start_prepare",
-      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "target_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -296,11 +309,13 @@
       "prompt_template": "Run the Puber one-flow release process.\n\nRead .kent/project-contract.md, .kent/commands/release-branch.md, .kent/commands/release-tag.md, and AGENTS.md first. Treat the task body as release intent. Default to next minor release from origin/master. Use patch only when explicitly requested; use major only when explicitly requested. If .kent/commands/release.md exists, use it as supplementary unified guidance, but do not block solely because that file is absent.\n\nFetch origin/master and tags, compute the target version, create or reuse release/<version>, update app/build.gradle.kts currentVersion, commit the bump, and verify with focused compile checks. If local release signing secrets are unavailable, record that production packaging could not be locally proven, but do not block the version-bump PR solely for missing local signing secrets. Do not create or push a release tag in this node.\n\nComplete with compliance when the version bump branch is ready and provide release_version, release_type, release_branch, release_tag, workspace_path, version_bump_commit, and verification_summary. Complete with needs_user_action and provide blocker_reason if the release cannot be prepared safely."
     },
     {
-      "id": "edge-bf4f1e98-5236-4f6d-9ff7-1297ac0f2d46",
+      "id": "60a07a7a-f6b3-4f92-9359-707c038774c4",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-25e690fa-41ae-458c-9e23-1790dc7bcfe2",
+      "transition_group_id": "d9f9403a-bff0-42f0-8073-a9338e94e09f",
       "key": "prepare_done",
-      "target_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
+      "target_node_id": "e7444395-765d-422b-890e-5b2dd69f52e4",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -310,40 +325,49 @@
       "parameters": [
         {
           "key": "release_version",
-          "description": "Release version prepared by this workflow."
+          "description": "Release version prepared by this workflow.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_type",
-          "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+          "description": "Version bump type: minor by default, patch or major only when explicitly requested.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_branch",
-          "description": "Release branch containing the version bump."
+          "description": "Release branch containing the version bump.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Release tag to create or publish after PR merge."
+          "description": "Release tag to create or publish after PR merge.",
+          "purpose": "ordinary"
         },
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
+          "purpose": "ordinary"
         },
         {
           "key": "version_bump_commit",
-          "description": "Commit hash containing the version bump."
+          "description": "Commit hash containing the version bump.",
+          "purpose": "ordinary"
         },
         {
           "key": "verification_summary",
-          "description": "Commands run and their pass/fail results."
+          "description": "Commands run and their pass/fail results.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-1e655c4e-5f7f-4748-acd7-282d011f81c1",
+      "id": "b747e820-ef6b-4af9-89c7-b9c8b74ef4c2",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-254f0452-3cae-4ec6-a7a3-23d2131f6bd6",
+      "transition_group_id": "9d9d9a7e-f5d2-4b53-9950-c8fd6e41763d",
       "key": "prepare_needs_user_action",
-      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "target_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -353,16 +377,19 @@
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-a1d1516a-bb3c-4e76-9878-dafa7ab151b3",
+      "id": "f0246b5f-1e85-4f5c-ae18-5ae199c174b1",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-40f94378-7c2e-4638-94d8-4f0e596581ac",
+      "transition_group_id": "a631667c-3e83-4c8d-93c0-1f0957cf8e38",
       "key": "compliance_ship_pr",
-      "target_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
+      "target_node_id": "2456358a-92e6-44ca-b8f1-846517d88032",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -372,16 +399,19 @@
       "parameters": [
         {
           "key": "compliance_report",
-          "description": "Compliance review report or summary."
+          "description": "Compliance review report or summary.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-f42f7da6-822d-4e09-8685-9c9d5a6127a8",
+      "id": "8853227a-d9a3-4ca6-8214-5fc7fb9f997f",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-0c5a2849-8183-427c-8fb1-636ae725e7c3",
+      "transition_group_id": "97071c3c-96f6-4775-9889-938e82b81961",
       "key": "compliance_fix",
-      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "target_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -391,20 +421,24 @@
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
+          "purpose": "ordinary"
         },
         {
           "key": "compliance_report",
-          "description": "Compliance review report or summary."
+          "description": "Compliance review report or summary.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-469e82b6-de84-4ec1-82ef-4a0ea5a2a876",
+      "id": "c03a2990-6cad-42f5-84a6-8bb33cd0fe0f",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-bda095a6-2a1a-4c75-9eb9-1921e021a1a9",
+      "transition_group_id": "6e02e333-9041-4e3f-84bd-1c3568f53836",
       "key": "compliance_needs_user_action",
-      "target_node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
+      "target_node_id": "e7444395-765d-422b-890e-5b2dd69f52e4",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -414,16 +448,19 @@
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-fa6b5dd5-fc96-4cfe-ba27-34c0e6ebe0b3",
+      "id": "5d2e05be-6bc1-4835-8bfb-415b2b313068",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-31b6f0a4-f78a-4778-ad48-f0fa131f1e37",
+      "transition_group_id": "9ff7e6f2-968b-4407-ad27-da6a475a4be6",
       "key": "monitor_ci",
-      "target_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
+      "target_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -433,32 +470,39 @@
       "parameters": [
         {
           "key": "pr_url",
-          "description": "URL of the created, updated, or monitored pull request."
+          "description": "URL of the created, updated, or monitored pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "branch_name",
-          "description": "Name of the task or release branch associated with the pull request."
+          "description": "Name of the task or release branch associated with the pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_version",
-          "description": "Release version prepared by this workflow."
+          "description": "Release version prepared by this workflow.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Release tag to create or publish after PR merge."
+          "description": "Release tag to create or publish after PR merge.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-db7e99b9-b502-454a-b1d9-d3a9c4d2e0ba",
+      "id": "4356af92-518c-4620-a8fa-4bcc135ba13a",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-2a42e3f4-ca4f-4aac-a8bf-951c440fcd3a",
+      "transition_group_id": "0aa10a6b-e1c2-4f33-b467-c63b3ab10519",
       "key": "ship_pr_needs_user_action",
-      "target_node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
+      "target_node_id": "2456358a-92e6-44ca-b8f1-846517d88032",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -468,16 +512,19 @@
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-98597989-2b6e-4f8b-9624-7a77e72321bf",
+      "id": "c0ee8cc0-fe2b-4351-be6d-a09b2d83833f",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-ff962732-bc93-4152-8fbd-e4f4f599e298",
+      "transition_group_id": "eb11a35c-408f-4fc8-8b3e-9d5b1f0d6234",
       "key": "ci_waiting_pr",
-      "target_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
+      "target_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -487,36 +534,44 @@
       "parameters": [
         {
           "key": "pr_url",
-          "description": "URL of the created, updated, or monitored pull request."
+          "description": "URL of the created, updated, or monitored pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "branch_name",
-          "description": "Name of the task or release branch associated with the pull request."
+          "description": "Name of the task or release branch associated with the pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_version",
-          "description": "Release version prepared by this workflow."
+          "description": "Release version prepared by this workflow.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Release tag to create or publish after PR merge."
+          "description": "Release tag to create or publish after PR merge.",
+          "purpose": "ordinary"
         },
         {
           "key": "ci_report",
-          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-789f485a-f295-4512-95f2-f397308c5812",
+      "id": "e6e782d1-1ad7-4ad1-8cb0-21fce9193db3",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-9a377344-c009-4447-b4c7-c291f4b20a86",
+      "transition_group_id": "5ccf1d3d-d079-43f5-8738-7a9266412c08",
       "key": "ci_fix",
-      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "target_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -526,20 +581,24 @@
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
+          "purpose": "ordinary"
         },
         {
           "key": "ci_report",
-          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-28ea1c8d-1c54-4bc6-8bb4-2136d446c214",
+      "id": "a7f1b46f-f396-4d2d-af7d-37d1b5b28864",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-05159cae-6e2c-469e-a432-a7065d774792",
+      "transition_group_id": "d329ef05-a0d0-442f-9356-c96d798f2e87",
       "key": "ci_monitor_needs_user_action",
-      "target_node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
+      "target_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -549,16 +608,19 @@
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-dce08ef7-233e-4221-92fe-a130e07eda10",
+      "id": "bb55d801-2100-4d78-9cbc-334ad1dd60b4",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-f2ec6527-7b65-49a1-8d95-0f404ffa94eb",
+      "transition_group_id": "b92790c2-665d-4e63-b3b0-aabfbe618f53",
       "key": "monitor_release",
-      "target_node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
+      "target_node_id": "ac6c3970-99e4-4b40-841b-9dc7da036159",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -568,36 +630,44 @@
       "parameters": [
         {
           "key": "release_version",
-          "description": "Release version prepared by this workflow."
+          "description": "Release version prepared by this workflow.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Release tag to create or publish after PR merge."
+          "description": "Release tag to create or publish after PR merge.",
+          "purpose": "ordinary"
         },
         {
           "key": "target_commit",
-          "description": "Master commit targeted by the release tag."
+          "description": "Master commit targeted by the release tag.",
+          "purpose": "ordinary"
         },
         {
           "key": "pr_url",
-          "description": "URL of the created, updated, or monitored pull request."
+          "description": "URL of the created, updated, or monitored pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "tag_push_status",
-          "description": "Result of local/remote tag creation and push."
+          "description": "Result of local/remote tag creation and push.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_notes_path",
-          "description": "Task-local path to the prepared non-empty Russian release notes file."
+          "description": "Task-local path to the prepared non-empty Russian release notes file.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-be46bffb-ad0d-42e1-965d-806f9ca2c229",
+      "id": "7f2be5e7-3a7e-4268-9062-be73266b6748",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-7ffd37d5-6e2e-4860-9eb5-cf2dbd037975",
+      "transition_group_id": "ba6c058f-15c3-40e7-aab8-072f7b4b277c",
       "key": "publish_needs_user_action",
-      "target_node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
+      "target_node_id": "7ab29a1a-9ab5-40c4-ae91-1c6f47c12941",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -607,16 +677,19 @@
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-a6b801c6-244b-422c-ad98-d9bbb9271f62",
+      "id": "6ff5d620-df53-4807-a0bb-9cddf858cc7a",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-cba3a377-df16-44ff-aee8-671b5cbf7d95",
+      "transition_group_id": "359fefea-23a3-4a7f-9663-0ad5888781ec",
       "key": "release_release_published",
-      "target_node_id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
+      "target_node_id": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -626,16 +699,19 @@
       "parameters": [
         {
           "key": "release_report",
-          "description": "Release publication and automation monitoring report."
+          "description": "Release publication and automation monitoring report.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-26077f26-6c57-41ab-8245-9e1446d2c8b8",
+      "id": "1849786d-aa63-4e80-a728-61826068fc53",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-42b09abf-62a0-442a-b26d-ed64524f97a0",
+      "transition_group_id": "bf03f4f5-420f-4fbc-87b3-f78771055034",
       "key": "monitor_needs_user_action",
-      "target_node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
+      "target_node_id": "ac6c3970-99e4-4b40-841b-9dc7da036159",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -645,16 +721,19 @@
       "parameters": [
         {
           "key": "blocker_reason",
-          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-0c0c4eb5-c271-49dd-bb06-034973638b15",
+      "id": "2dd80b36-fe09-4244-a35d-8cf0b6c2aa2b",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-c2dae728-5f18-4901-a3c0-3bc6af4fca03",
+      "transition_group_id": "0c461a27-a313-464d-b3a6-f2ba22ed60ed",
       "key": "cleanup_done",
-      "target_node_id": "node-6d3acc49-d5b3-42ee-b829-fa0d5c0ad1e3",
+      "target_node_id": "7dfc3956-53ec-4307-ae59-daf1a3dd1151",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -663,16 +742,19 @@
       "parameters": [
         {
           "key": "cleanup_report",
-          "description": "Summary of cleanup performed or deliberately skipped."
+          "description": "Summary of cleanup performed or deliberately skipped.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-b3efc5c1-2623-40db-afa1-81e28f4de91f",
+      "id": "d6f28f2e-7314-446e-b77e-f009c6f0d3f1",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-7d5870e1-7ee1-4f94-9d2b-7709f28be05d",
+      "transition_group_id": "3f7215d2-8255-4d5d-a9e4-9d1677711c6a",
       "key": "pr_fix",
-      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "target_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -682,36 +764,44 @@
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_version",
-          "description": "Release version prepared by this workflow."
+          "description": "Release version prepared by this workflow.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_type",
-          "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+          "description": "Version bump type: minor by default, patch or major only when explicitly requested.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_branch",
-          "description": "Release branch containing the version bump."
+          "description": "Release branch containing the version bump.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Release tag to create or publish after PR merge."
+          "description": "Release tag to create or publish after PR merge.",
+          "purpose": "ordinary"
         },
         {
           "key": "blocker_reason",
-          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-c4271bd5-8edb-465b-b633-5d0d8e428d33",
+      "id": "ff859e0d-eb11-4dde-b67d-21800fc2b25c",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-fedc6be8-56f2-4c04-a147-3e3727ff4146",
+      "transition_group_id": "0173072c-5be0-41f7-8596-a8010a81e0b6",
       "key": "publish_after_merge",
-      "target_node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
+      "target_node_id": "7ab29a1a-9ab5-40c4-ae91-1c6f47c12941",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -721,36 +811,44 @@
       "parameters": [
         {
           "key": "pr_url",
-          "description": "URL of the created, updated, or monitored pull request."
+          "description": "URL of the created, updated, or monitored pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "branch_name",
-          "description": "Name of the task or release branch associated with the pull request."
+          "description": "Name of the task or release branch associated with the pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_version",
-          "description": "Release version prepared by this workflow."
+          "description": "Release version prepared by this workflow.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Release tag to create or publish after PR merge."
+          "description": "Release tag to create or publish after PR merge.",
+          "purpose": "ordinary"
         },
         {
           "key": "merge_report",
-          "description": "GitHub PR state, mergedAt, mergeCommit, and cleanup or release notes."
+          "description": "GitHub PR state, mergedAt, mergeCommit, and cleanup or release notes.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-85f82683-3a4f-4e61-909e-431df6e16be8",
+      "id": "af73d14a-c73f-45d1-83bd-3562d3b8a17f",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-b36e18d1-e437-4053-be6e-11be463e6aa4",
+      "transition_group_id": "e886f920-16e5-4102-888d-fb5a5630cdc1",
       "key": "pr_feedback",
-      "target_node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+      "target_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": false,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -760,28 +858,34 @@
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_version",
-          "description": "Release version prepared by this workflow."
+          "description": "Release version prepared by this workflow.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Release tag to create or publish after PR merge."
+          "description": "Release tag to create or publish after PR merge.",
+          "purpose": "ordinary"
         },
         {
           "key": "pr_report",
-          "description": "PR creation, review, conflict, or post-CI regression report."
+          "description": "PR creation, review, conflict, or post-CI regression report.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-a6a386ca-7963-4090-b245-07187998eff1",
+      "id": "e3725c05-ed98-4c8d-846a-74c08799ae7a",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-87b5a742-40cd-462f-8962-6b395a8eef7f",
+      "transition_group_id": "d478a60a-a785-479b-8930-38ec76089f3a",
       "key": "waiting_pr_needs_user_action",
-      "target_node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
+      "target_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "compact_and_continue_session",
       "context_source": {
@@ -791,36 +895,44 @@
       "parameters": [
         {
           "key": "pr_url",
-          "description": "URL of the created, updated, or monitored pull request."
+          "description": "URL of the created, updated, or monitored pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "branch_name",
-          "description": "Name of the task or release branch associated with the pull request."
+          "description": "Name of the task or release branch associated with the pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_version",
-          "description": "Release version prepared by this workflow."
+          "description": "Release version prepared by this workflow.",
+          "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Release tag to create or publish after PR merge."
+          "description": "Release tag to create or publish after PR merge.",
+          "purpose": "ordinary"
         },
         {
           "key": "waiting_reason",
-          "description": "Why the PR cannot advance yet and the exact user or external action needed."
+          "description": "Why the PR cannot advance yet and the exact user or external action needed.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-dba0a07e-9787-4523-ade6-b96fffefaa83",
+      "id": "9d28ea00-6c2d-4c5b-9128-0b0928eb998b",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-2ca80118-bc7d-4a36-bb97-becb5afb662d",
+      "transition_group_id": "0a089232-dea1-4279-89df-14275373e8b3",
       "key": "release_cancel_cleanup",
-      "target_node_id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
+      "target_node_id": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -830,28 +942,34 @@
       "parameters": [
         {
           "key": "pr_url",
-          "description": "URL of the created, updated, or monitored pull request."
+          "description": "URL of the created, updated, or monitored pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "branch_name",
-          "description": "Name of the task or release branch associated with the pull request."
+          "description": "Name of the task or release branch associated with the pull request.",
+          "purpose": "ordinary"
         },
         {
           "key": "workspace_path",
-          "description": "Path to the task workspace or worktree relevant to this workflow transition."
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
+          "purpose": "ordinary"
         },
         {
           "key": "cleanup_reason",
-          "description": "Explicit user instruction or reason for cleanup without merge."
+          "description": "Explicit user instruction or reason for cleanup without merge.",
+          "purpose": "ordinary"
         }
       ]
     },
     {
-      "id": "edge-e7a68b89-f65b-48d5-8470-63ce1cbc2ead",
+      "id": "e4383325-6562-41f2-b5fd-0029565afd40",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "group-6b4c5dce-d0c1-43e4-8843-a2c8ec17270d",
+      "transition_group_id": "69f11360-bb72-4a2d-86b6-cbc16560cb36",
       "key": "prepare_wont_do",
-      "target_node_id": "node-bf653ac7-5910-4077-8e01-84002a436d03",
+      "target_node_id": "dd3e4e97-a974-4e6a-bafe-da1d891bb5ce",
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -860,7 +978,8 @@
       "parameters": [
         {
           "key": "closure_reason",
-          "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
+          "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled.",
+          "purpose": "ordinary"
         }
       ]
     }
@@ -868,10 +987,10 @@
   "derived_wiring": {
     "nodes": [
       {
-        "node_id": "node-73976fdb-cbc3-4df6-9733-3413e362105d"
+        "node_id": "69c194f1-46fa-43f9-ba62-95e5332fe6e5"
       },
       {
-        "node_id": "node-19047a56-590a-4ed9-8e67-aeb4c392ba6b",
+        "node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
         "possible_provision_fields": [
           {
             "name": "release_version",
@@ -912,7 +1031,7 @@
         ]
       },
       {
-        "node_id": "node-ff891130-eaf0-4feb-8a93-b1367138a2f2",
+        "node_id": "e7444395-765d-422b-890e-5b2dd69f52e4",
         "possible_provision_fields": [
           {
             "name": "compliance_report",
@@ -929,7 +1048,7 @@
         ]
       },
       {
-        "node_id": "node-a53b1c78-17e2-4e15-90f4-9148549e39de",
+        "node_id": "2456358a-92e6-44ca-b8f1-846517d88032",
         "possible_provision_fields": [
           {
             "name": "pr_url",
@@ -966,7 +1085,7 @@
         ]
       },
       {
-        "node_id": "node-0ead1c70-016d-4b14-a356-0a4ad30e8985",
+        "node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
         "possible_provision_fields": [
           {
             "name": "pr_url",
@@ -999,7 +1118,7 @@
         ]
       },
       {
-        "node_id": "node-0ab918e8-0b84-446c-a3d2-89604494d7c2",
+        "node_id": "7ab29a1a-9ab5-40c4-ae91-1c6f47c12941",
         "possible_provision_fields": [
           {
             "name": "release_version",
@@ -1032,7 +1151,7 @@
         ]
       },
       {
-        "node_id": "node-54d7fe7c-2f3b-4585-bcd4-4c1286568afc",
+        "node_id": "ac6c3970-99e4-4b40-841b-9dc7da036159",
         "possible_provision_fields": [
           {
             "name": "release_report",
@@ -1045,7 +1164,7 @@
         ]
       },
       {
-        "node_id": "node-310f1a54-61db-42af-80ac-ae80ade42629",
+        "node_id": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
         "possible_provision_fields": [
           {
             "name": "cleanup_report",
@@ -1054,10 +1173,10 @@
         ]
       },
       {
-        "node_id": "node-bf653ac7-5910-4077-8e01-84002a436d03"
+        "node_id": "dd3e4e97-a974-4e6a-bafe-da1d891bb5ce"
       },
       {
-        "node_id": "node-3c99cdbc-0367-49dc-aea7-b4b29ca1d86c",
+        "node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
         "possible_provision_fields": [
           {
             "name": "pr_url",
@@ -1098,15 +1217,15 @@
         ]
       },
       {
-        "node_id": "node-6d3acc49-d5b3-42ee-b829-fa0d5c0ad1e3"
+        "node_id": "7dfc3956-53ec-4307-ae59-daf1a3dd1151"
       }
     ],
     "transition_groups": [
       {
-        "transition_group_id": "group-6b4e20b0-0ba0-426f-b92e-d46db3a3feb6"
+        "transition_group_id": "0986cf0c-3ef2-40dd-a811-a3217844bdf4"
       },
       {
-        "transition_group_id": "group-25e690fa-41ae-458c-9e23-1790dc7bcfe2",
+        "transition_group_id": "d9f9403a-bff0-42f0-8073-a9338e94e09f",
         "required_provision_fields": [
           {
             "name": "release_version",
@@ -1139,7 +1258,7 @@
         ]
       },
       {
-        "transition_group_id": "group-254f0452-3cae-4ec6-a7a3-23d2131f6bd6",
+        "transition_group_id": "9d9d9a7e-f5d2-4b53-9950-c8fd6e41763d",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1148,7 +1267,7 @@
         ]
       },
       {
-        "transition_group_id": "group-40f94378-7c2e-4638-94d8-4f0e596581ac",
+        "transition_group_id": "a631667c-3e83-4c8d-93c0-1f0957cf8e38",
         "required_provision_fields": [
           {
             "name": "compliance_report",
@@ -1157,7 +1276,7 @@
         ]
       },
       {
-        "transition_group_id": "group-0c5a2849-8183-427c-8fb1-636ae725e7c3",
+        "transition_group_id": "97071c3c-96f6-4775-9889-938e82b81961",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -1170,7 +1289,7 @@
         ]
       },
       {
-        "transition_group_id": "group-bda095a6-2a1a-4c75-9eb9-1921e021a1a9",
+        "transition_group_id": "6e02e333-9041-4e3f-84bd-1c3568f53836",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1179,7 +1298,7 @@
         ]
       },
       {
-        "transition_group_id": "group-31b6f0a4-f78a-4778-ad48-f0fa131f1e37",
+        "transition_group_id": "9ff7e6f2-968b-4407-ad27-da6a475a4be6",
         "required_provision_fields": [
           {
             "name": "pr_url",
@@ -1204,7 +1323,7 @@
         ]
       },
       {
-        "transition_group_id": "group-2a42e3f4-ca4f-4aac-a8bf-951c440fcd3a",
+        "transition_group_id": "0aa10a6b-e1c2-4f33-b467-c63b3ab10519",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1213,7 +1332,7 @@
         ]
       },
       {
-        "transition_group_id": "group-ff962732-bc93-4152-8fbd-e4f4f599e298",
+        "transition_group_id": "eb11a35c-408f-4fc8-8b3e-9d5b1f0d6234",
         "required_provision_fields": [
           {
             "name": "pr_url",
@@ -1242,7 +1361,7 @@
         ]
       },
       {
-        "transition_group_id": "group-9a377344-c009-4447-b4c7-c291f4b20a86",
+        "transition_group_id": "5ccf1d3d-d079-43f5-8738-7a9266412c08",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -1255,7 +1374,7 @@
         ]
       },
       {
-        "transition_group_id": "group-05159cae-6e2c-469e-a432-a7065d774792",
+        "transition_group_id": "d329ef05-a0d0-442f-9356-c96d798f2e87",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1264,7 +1383,7 @@
         ]
       },
       {
-        "transition_group_id": "group-f2ec6527-7b65-49a1-8d95-0f404ffa94eb",
+        "transition_group_id": "b92790c2-665d-4e63-b3b0-aabfbe618f53",
         "required_provision_fields": [
           {
             "name": "release_version",
@@ -1293,7 +1412,7 @@
         ]
       },
       {
-        "transition_group_id": "group-7ffd37d5-6e2e-4860-9eb5-cf2dbd037975",
+        "transition_group_id": "ba6c058f-15c3-40e7-aab8-072f7b4b277c",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1302,7 +1421,7 @@
         ]
       },
       {
-        "transition_group_id": "group-cba3a377-df16-44ff-aee8-671b5cbf7d95",
+        "transition_group_id": "359fefea-23a3-4a7f-9663-0ad5888781ec",
         "required_provision_fields": [
           {
             "name": "release_report",
@@ -1311,7 +1430,7 @@
         ]
       },
       {
-        "transition_group_id": "group-42b09abf-62a0-442a-b26d-ed64524f97a0",
+        "transition_group_id": "bf03f4f5-420f-4fbc-87b3-f78771055034",
         "required_provision_fields": [
           {
             "name": "blocker_reason",
@@ -1320,7 +1439,7 @@
         ]
       },
       {
-        "transition_group_id": "group-c2dae728-5f18-4901-a3c0-3bc6af4fca03",
+        "transition_group_id": "0c461a27-a313-464d-b3a6-f2ba22ed60ed",
         "required_provision_fields": [
           {
             "name": "cleanup_report",
@@ -1329,7 +1448,7 @@
         ]
       },
       {
-        "transition_group_id": "group-7d5870e1-7ee1-4f94-9d2b-7709f28be05d",
+        "transition_group_id": "3f7215d2-8255-4d5d-a9e4-9d1677711c6a",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -1358,7 +1477,7 @@
         ]
       },
       {
-        "transition_group_id": "group-fedc6be8-56f2-4c04-a147-3e3727ff4146",
+        "transition_group_id": "0173072c-5be0-41f7-8596-a8010a81e0b6",
         "required_provision_fields": [
           {
             "name": "pr_url",
@@ -1387,7 +1506,7 @@
         ]
       },
       {
-        "transition_group_id": "group-b36e18d1-e437-4053-be6e-11be463e6aa4",
+        "transition_group_id": "e886f920-16e5-4102-888d-fb5a5630cdc1",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -1408,7 +1527,7 @@
         ]
       },
       {
-        "transition_group_id": "group-87b5a742-40cd-462f-8962-6b395a8eef7f",
+        "transition_group_id": "d478a60a-a785-479b-8930-38ec76089f3a",
         "required_provision_fields": [
           {
             "name": "pr_url",
@@ -1437,7 +1556,7 @@
         ]
       },
       {
-        "transition_group_id": "group-2ca80118-bc7d-4a36-bb97-becb5afb662d",
+        "transition_group_id": "0a089232-dea1-4279-89df-14275373e8b3",
         "required_provision_fields": [
           {
             "name": "pr_url",
@@ -1458,7 +1577,7 @@
         ]
       },
       {
-        "transition_group_id": "group-6b4c5dce-d0c1-43e4-8843-a2c8ec17270d",
+        "transition_group_id": "69f11360-bb72-4a2d-86b6-cbc16560cb36",
         "required_provision_fields": [
           {
             "name": "closure_reason",
@@ -1469,10 +1588,20 @@
     ],
     "edges": [
       {
-        "edge_id": "edge-f30cd67a-03f9-42b4-bf08-14e39ec7f1da"
+        "edge_id": "716994a0-cc95-4c94-a841-ffe624e4ba78",
+        "assignee_selection_applicability": {
+          "available": false,
+          "parameter_visible": false,
+          "reason": "topology"
+        },
+        "thinking_selection_applicability": {
+          "available": false,
+          "parameter_visible": false,
+          "reason": "topology"
+        }
       },
       {
-        "edge_id": "edge-bf4f1e98-5236-4f6d-9ff7-1297ac0f2d46",
+        "edge_id": "60a07a7a-f6b3-4f92-9359-707c038774c4",
         "input_bindings": [
           {
             "name": "release_version",
@@ -1539,10 +1668,20 @@
             "name": "verification_summary",
             "description": "Commands run and their pass/fail results."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-1e655c4e-5f7f-4748-acd7-282d011f81c1",
+        "edge_id": "b747e820-ef6b-4af9-89c7-b9c8b74ef4c2",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1555,10 +1694,20 @@
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-a1d1516a-bb3c-4e76-9878-dafa7ab151b3",
+        "edge_id": "f0246b5f-1e85-4f5c-ae18-5ae199c174b1",
         "input_bindings": [
           {
             "name": "compliance_report",
@@ -1571,10 +1720,20 @@
             "name": "compliance_report",
             "description": "Compliance review report or summary."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-f42f7da6-822d-4e09-8685-9c9d5a6127a8",
+        "edge_id": "8853227a-d9a3-4ca6-8214-5fc7fb9f997f",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -1596,10 +1755,20 @@
             "name": "compliance_report",
             "description": "Compliance review report or summary."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-469e82b6-de84-4ec1-82ef-4a0ea5a2a876",
+        "edge_id": "c03a2990-6cad-42f5-84a6-8bb33cd0fe0f",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1612,10 +1781,20 @@
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-fa6b5dd5-fc96-4cfe-ba27-34c0e6ebe0b3",
+        "edge_id": "5d2e05be-6bc1-4835-8bfb-415b2b313068",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -1664,10 +1843,20 @@
             "name": "release_tag",
             "description": "Release tag to create or publish after PR merge."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-db7e99b9-b502-454a-b1d9-d3a9c4d2e0ba",
+        "edge_id": "4356af92-518c-4620-a8fa-4bcc135ba13a",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1680,10 +1869,20 @@
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-98597989-2b6e-4f8b-9624-7a77e72321bf",
+        "edge_id": "c0ee8cc0-fe2b-4351-be6d-a09b2d83833f",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -1741,10 +1940,20 @@
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-789f485a-f295-4512-95f2-f397308c5812",
+        "edge_id": "e6e782d1-1ad7-4ad1-8cb0-21fce9193db3",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -1766,10 +1975,20 @@
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-28ea1c8d-1c54-4bc6-8bb4-2136d446c214",
+        "edge_id": "a7f1b46f-f396-4d2d-af7d-37d1b5b28864",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1782,10 +2001,20 @@
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-dce08ef7-233e-4221-92fe-a130e07eda10",
+        "edge_id": "bb55d801-2100-4d78-9cbc-334ad1dd60b4",
         "input_bindings": [
           {
             "name": "release_version",
@@ -1843,10 +2072,20 @@
             "name": "release_notes_path",
             "description": "Task-local path to the prepared non-empty Russian release notes file."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-be46bffb-ad0d-42e1-965d-806f9ca2c229",
+        "edge_id": "7f2be5e7-3a7e-4268-9062-be73266b6748",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1859,10 +2098,20 @@
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-a6b801c6-244b-422c-ad98-d9bbb9271f62",
+        "edge_id": "6ff5d620-df53-4807-a0bb-9cddf858cc7a",
         "input_bindings": [
           {
             "name": "release_report",
@@ -1875,10 +2124,20 @@
             "name": "release_report",
             "description": "Release publication and automation monitoring report."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-26077f26-6c57-41ab-8245-9e1446d2c8b8",
+        "edge_id": "1849786d-aa63-4e80-a728-61826068fc53",
         "input_bindings": [
           {
             "name": "blocker_reason",
@@ -1891,10 +2150,20 @@
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-0c0c4eb5-c271-49dd-bb06-034973638b15",
+        "edge_id": "2dd80b36-fe09-4244-a35d-8cf0b6c2aa2b",
         "input_bindings": [
           {
             "name": "cleanup_report",
@@ -1907,10 +2176,20 @@
             "name": "cleanup_report",
             "description": "Summary of cleanup performed or deliberately skipped."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": false,
+          "parameter_visible": false,
+          "reason": "topology"
+        },
+        "thinking_selection_applicability": {
+          "available": false,
+          "parameter_visible": false,
+          "reason": "topology"
+        }
       },
       {
-        "edge_id": "edge-b3efc5c1-2623-40db-afa1-81e28f4de91f",
+        "edge_id": "d6f28f2e-7314-446e-b77e-f009c6f0d3f1",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -1968,10 +2247,20 @@
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-c4271bd5-8edb-465b-b633-5d0d8e428d33",
+        "edge_id": "ff859e0d-eb11-4dde-b67d-21800fc2b25c",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -2029,10 +2318,20 @@
             "name": "merge_report",
             "description": "GitHub PR state, mergedAt, mergeCommit, and cleanup or release notes."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-85f82683-3a4f-4e61-909e-431df6e16be8",
+        "edge_id": "af73d14a-c73f-45d1-83bd-3562d3b8a17f",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -2072,10 +2371,20 @@
             "name": "pr_report",
             "description": "PR creation, review, conflict, or post-CI regression report."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-a6a386ca-7963-4090-b245-07187998eff1",
+        "edge_id": "e3725c05-ed98-4c8d-846a-74c08799ae7a",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -2133,10 +2442,20 @@
             "name": "waiting_reason",
             "description": "Why the PR cannot advance yet and the exact user or external action needed."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-dba0a07e-9787-4523-ade6-b96fffefaa83",
+        "edge_id": "9d28ea00-6c2d-4c5b-9128-0b0928eb998b",
         "input_bindings": [
           {
             "name": "pr_url",
@@ -2176,10 +2495,20 @@
             "name": "cleanup_reason",
             "description": "Explicit user instruction or reason for cleanup without merge."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
       },
       {
-        "edge_id": "edge-e7a68b89-f65b-48d5-8470-63ce1cbc2ead",
+        "edge_id": "e4383325-6562-41f2-b5fd-0029565afd40",
         "input_bindings": [
           {
             "name": "closure_reason",
@@ -2192,7 +2521,17 @@
             "name": "closure_reason",
             "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled."
           }
-        ]
+        ],
+        "assignee_selection_applicability": {
+          "available": false,
+          "parameter_visible": false,
+          "reason": "topology"
+        },
+        "thinking_selection_applicability": {
+          "available": false,
+          "parameter_visible": false,
+          "reason": "topology"
+        }
       }
     ]
   }
