@@ -39,6 +39,9 @@ internal fun PlayerVideoSurface(
                 view.player = currentPlayer
             }
             currentPlayer?.let { view.resizeMode = content.resizeMode() }
+            // Android TV, Fire TV in particular, starts its screen saver after a period without
+            // remote input; playback alone does not count as user activity.
+            view.keepScreenOn = content.isPlaying
         },
         modifier = Modifier
             .fillMaxSize()

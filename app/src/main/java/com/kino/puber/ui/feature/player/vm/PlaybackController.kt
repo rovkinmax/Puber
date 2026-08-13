@@ -93,7 +93,10 @@ internal class PlaybackController(
     val player: ExoPlayer? get() = exoPlayer
     override val currentPosition: Long get() = exoPlayer?.currentPosition ?: 0L
     override val duration: Long get() = exoPlayer?.duration?.coerceAtLeast(0) ?: 0L
-    override val isPlaying: Boolean get() = exoPlayer?.isPlaying == true
+    override val isPlaying: Boolean
+        get() = exoPlayer?.let {
+            isPlaybackIntended(it.playWhenReady, it.playbackState, it.playbackSuppressionReason)
+        } == true
     override val bufferedPosition: Long get() = exoPlayer?.bufferedPosition ?: 0L
     
     private val playerListener = object : Player.Listener {
@@ -101,9 +104,22 @@ internal class PlaybackController(
             notifyPlaybackState()
         }
 
+        // onIsPlayingChanged stays silent while the player is stalled or suppressed, so these two
+        // report the transitions it misses.
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            notifyPlaybackState()
+        }
+
+        override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+            notifyPlaybackState()
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
             when (playbackState) {
-                Player.STATE_ENDED -> callback?.onPlaybackEnded()
+                Player.STATE_ENDED -> {
+                    notifyPlaybackState()
+                    callback?.onPlaybackEnded()
+                }
                 Player.STATE_READY -> {
                     notifyPlaybackState()
                     notifyTracksUpdated()
@@ -220,7 +236,7 @@ internal class PlaybackController(
     override fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?) {
         val player = exoPlayer ?: return
         val savedPosition = player.currentPosition
-        val wasPlaying = player.isPlaying
+        val wasPlaying = player.playWhenReady
         val savedTrackParams = player.trackSelectionParameters
 
         player.stop()
@@ -235,7 +251,13 @@ internal class PlaybackController(
     }
 
     override fun play() {
-        exoPlayer?.play()
+        exoPlayer?.let { player ->
+            // playWhenReady stays true once media ends, so play() alone would be a no-op there.
+            if (player.playbackState == Player.STATE_ENDED) {
+                player.seekToDefaultPosition()
+            }
+            player.play()
+        }
     }
 
     override fun pause() {
@@ -418,7 +440,11 @@ internal class PlaybackController(
     private fun notifyPlaybackState() {
         val player = exoPlayer ?: return
         callback?.onPlaybackStateChanged(
-            isPlaying = player.isPlaying,
+            isPlaying = isPlaybackIntended(
+                playWhenReady = player.playWhenReady,
+                playbackState = player.playbackState,
+                playbackSuppressionReason = player.playbackSuppressionReason,
+            ),
             isBuffering = player.playbackState == Player.STATE_BUFFERING,
             position = player.currentPosition,
             duration = player.duration.coerceAtLeast(0),
@@ -540,3 +566,23 @@ internal class PlaybackController(
         const val BITS_PER_MEGABIT = 1_000_000.0
     }
 }
+
+/**
+ * Whether playback is running from the user's point of view.
+ *
+ * Deliberately not [androidx.media3.common.Player.isPlaying], which drops to `false` on every
+ * re-buffering: the UI would then report a pause the user never asked for, and keep-screen-on
+ * would be released mid-playback, letting the TV screen saver in.
+ *
+ * Suppression is honoured, though — on transient audio focus loss, say when Alexa answers,
+ * playback really does stop while `playWhenReady` stays true.
+ */
+internal fun isPlaybackIntended(
+    playWhenReady: Boolean,
+    playbackState: Int,
+    playbackSuppressionReason: Int,
+): Boolean =
+    playWhenReady &&
+        playbackState != Player.STATE_IDLE &&
+        playbackState != Player.STATE_ENDED &&
+        playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE
