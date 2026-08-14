@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.contentlist.model
 
 import com.kino.puber.data.api.models.ANIME_GENRE_ID
 import com.kino.puber.data.api.models.CARTOON_GENRE_ID
+import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.ui.feature.main.model.TabType
 
 internal object TabTypeConfig {
@@ -125,6 +126,14 @@ internal object TabTypeConfig {
 
     private fun cartoonSections(): List<SectionConfig> = listOf(
         SectionConfig(
+            id = "fresh_cartoon",
+            title = "Новинки",
+            shortcut = "fresh",
+            shortcutTypes = listOf(ItemType.MOVIE, ItemType.SERIAL),
+            requiredGenreId = CARTOON_GENRE_ID,
+            animeFilterMode = AnimeFilterMode.Exclude,
+        ),
+        SectionConfig(
             id = "popular_cartoon",
             title = "Популярные",
             genre = CARTOON_GENRE_ID.toString(),
@@ -141,6 +150,14 @@ internal object TabTypeConfig {
     )
 
     private fun animeSections(): List<SectionConfig> = listOf(
+        SectionConfig(
+            id = "fresh_anime",
+            title = "Новинки",
+            shortcut = "fresh",
+            shortcutTypes = listOf(ItemType.MOVIE, ItemType.SERIAL),
+            requiredGenreId = ANIME_GENRE_ID,
+            animeFilterMode = AnimeFilterMode.Only,
+        ),
         SectionConfig(
             id = "popular_anime",
             title = "Популярные",
