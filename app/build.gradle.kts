@@ -272,7 +272,6 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
-    implementation(libs.media3.session)
     implementation(libs.media3.common)
     implementation(libs.media3.datasource.okhttp)
 
