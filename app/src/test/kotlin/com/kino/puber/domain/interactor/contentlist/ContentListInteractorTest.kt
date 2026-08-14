@@ -169,6 +169,155 @@ class ContentListInteractorTest {
     }
 
     @Test
+    fun freshCartoonConfig_routesTypedFreshRequestsWithoutServerGenre() = runTest {
+        val config = TabTypeConfig.sectionsFor(TabType.Cartoons)
+            .single { it.id == "fresh_cartoon" }
+        val cartoon = item(id = 1, title = "Cartoon", CARTOON_GENRE_ID)
+        coEvery {
+            api.getItemsByShortcut("fresh", ItemType.MOVIE.value, 1, null)
+        } returns Result.success(
+            page(
+                cartoon,
+                current = 1,
+                total = 1,
+                perpage = 2,
+            )
+        )
+        coEvery {
+            api.getItemsByShortcut("fresh", ItemType.SERIAL.value, 1, null)
+        } returns Result.success(
+            page(
+                item(id = 2, title = "Anime", CARTOON_GENRE_ID, ANIME_GENRE_ID),
+                current = 1,
+                total = 1,
+                perpage = 2,
+            )
+        )
+
+        val result = interactor.loadPage(config, page = 1)
+
+        assertEquals(listOf(cartoon), result.items)
+        coVerify(exactly = 1) {
+            api.getItemsByShortcut("fresh", ItemType.MOVIE.value, 1, null)
+        }
+        coVerify(exactly = 1) {
+            api.getItemsByShortcut("fresh", ItemType.SERIAL.value, 1, null)
+        }
+        coVerify(exactly = 0) { api.getItems(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun freshAnimeConfig_routesTypedFreshRequestsWithoutServerGenre() = runTest {
+        val config = TabTypeConfig.sectionsFor(TabType.Anime)
+            .single { it.id == "fresh_anime" }
+        val anime = item(id = 1, title = "Anime", ANIME_GENRE_ID)
+        coEvery {
+            api.getItemsByShortcut("fresh", ItemType.MOVIE.value, 1, null)
+        } returns Result.success(
+            page(
+                anime,
+                current = 1,
+                total = 1,
+                perpage = 2,
+            )
+        )
+        coEvery {
+            api.getItemsByShortcut("fresh", ItemType.SERIAL.value, 1, null)
+        } returns Result.success(
+            page(
+                item(id = 2, title = "Cartoon", CARTOON_GENRE_ID),
+                current = 1,
+                total = 1,
+                perpage = 2,
+            )
+        )
+
+        val result = interactor.loadPage(config, page = 1)
+
+        assertEquals(listOf(anime), result.items)
+        coVerify(exactly = 1) {
+            api.getItemsByShortcut("fresh", ItemType.MOVIE.value, 1, null)
+        }
+        coVerify(exactly = 1) {
+            api.getItemsByShortcut("fresh", ItemType.SERIAL.value, 1, null)
+        }
+        coVerify(exactly = 0) { api.getItems(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun freshFirstPage_bypassesSharedCacheAndResetsSourcePaging() = runTest {
+        val config = TabTypeConfig.sectionsFor(TabType.Cartoons)
+            .single { it.id == "fresh_cartoon" }
+        val firstMovie = item(id = 1, title = "First movie", CARTOON_GENRE_ID)
+        val secondMovie = item(id = 2, title = "Second movie", CARTOON_GENRE_ID)
+        val firstSerial = item(id = 3, title = "First serial", CARTOON_GENRE_ID)
+        val secondSerial = item(id = 4, title = "Second serial", CARTOON_GENRE_ID)
+        coEvery {
+            api.getItemsByShortcut("fresh", ItemType.MOVIE.value, 1, null)
+        } returns Result.success(page(firstMovie, perpage = 2)) andThen
+            Result.success(page(secondMovie, perpage = 2))
+        coEvery {
+            api.getItemsByShortcut("fresh", ItemType.SERIAL.value, 1, null)
+        } returns Result.success(page(firstSerial, perpage = 2)) andThen
+            Result.success(page(secondSerial, perpage = 2))
+
+        assertEquals(
+            listOf(firstMovie, firstSerial),
+            interactor.loadPage(config, page = 1).items,
+        )
+        assertEquals(
+            listOf(secondMovie, secondSerial),
+            interactor.loadPage(config, page = 1).items,
+        )
+
+        coVerify(exactly = 2) {
+            api.getItemsByShortcut("fresh", ItemType.MOVIE.value, 1, null)
+        }
+        coVerify(exactly = 2) {
+            api.getItemsByShortcut("fresh", ItemType.SERIAL.value, 1, null)
+        }
+        coVerify(exactly = 0) { api.getItems(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun invalidateFirstPageCache_discardsFreshSourcePagingState() = runTest {
+        val config = TabTypeConfig.sectionsFor(TabType.Cartoons)
+            .single { it.id == "fresh_cartoon" }
+        coEvery {
+            api.getItemsByShortcut("fresh", ItemType.MOVIE.value, 1, null)
+        } returns Result.success(
+            page(
+                item(id = 1, title = "Movie", CARTOON_GENRE_ID),
+                current = 1,
+                total = 2,
+                perpage = 2,
+            )
+        )
+        coEvery {
+            api.getItemsByShortcut("fresh", ItemType.SERIAL.value, 1, null)
+        } returns Result.success(
+            page(
+                item(id = 2, title = "Serial", CARTOON_GENRE_ID),
+                current = 1,
+                total = 2,
+                perpage = 2,
+            )
+        )
+
+        interactor.loadPage(config, page = 1)
+        interactor.invalidateFirstPageCache()
+        val error = runCatching { interactor.loadPage(config, page = 2) }.exceptionOrNull()
+
+        assertEquals("Fresh logical page 2 did not match expected page 1", error?.message)
+        coVerify(exactly = 0) {
+            api.getItemsByShortcut("fresh", ItemType.MOVIE.value, 2, null)
+        }
+        coVerify(exactly = 0) {
+            api.getItemsByShortcut("fresh", ItemType.SERIAL.value, 2, null)
+        }
+    }
+
+    @Test
     fun cartoonHeroConfig_refillsAcrossShortcutPagesAndSuppressesDuplicateIds() = runTest {
         val config = TabTypeConfig.heroConfigsFor(TabType.Cartoons)
             .single { it.type == "movie" }

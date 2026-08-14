@@ -10,6 +10,7 @@ import com.kino.puber.data.api.models.isAnime
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.ui.feature.contentlist.model.AnimeFilterMode
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.minutes
 
 internal class ContentListInteractor(
@@ -18,8 +19,14 @@ internal class ContentListInteractor(
 ) {
 
     private val detailedItemsCache: TypedTtlCache<String, Item> = TypedTtlCacheImpl()
+    private val freshPagers = ConcurrentHashMap<String, FreshSectionPager>()
 
     suspend fun loadPage(config: SectionConfig, page: Int): PaginatedResponse<Item> {
+        if (config.shortcutTypes.isNotEmpty()) {
+            return freshPagers
+                .computeIfAbsent(config.id) { FreshSectionPager(api, config) }
+                .loadPage(page)
+        }
         val showAnime = navigationPreferencesRepository.contentPreferences.value.showAnime
         if (page == 1) {
             val cacheKey = listOf(
@@ -27,9 +34,11 @@ internal class ContentListInteractor(
                 config.id,
                 config.shortcut.orEmpty(),
                 config.type,
+                config.shortcutTypes.joinToString(separator = ",") { it.value },
                 config.sort,
                 config.quality,
                 config.genre.orEmpty(),
+                config.requiredGenreId,
                 config.animeFilterMode,
                 showAnime,
             ).joinToString(separator = "_")
@@ -104,6 +113,7 @@ internal class ContentListInteractor(
 
     fun invalidateFirstPageCache() {
         firstPageCache.clear()
+        freshPagers.clear()
     }
 
     fun invalidateItemDetails(id: Int) {
