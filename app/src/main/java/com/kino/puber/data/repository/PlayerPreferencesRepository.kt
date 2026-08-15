@@ -100,6 +100,14 @@ class PlayerPreferencesRepository(context: Context) {
         get() = prefs.getBoolean(KEY_WATCHED_INDICATORS, true)
         set(value) = prefs.edit().putBoolean(KEY_WATCHED_INDICATORS, value).apply()
 
+    var discardEmbeddedArtworkMetadata: Boolean
+        get() = prefs.getBoolean(KEY_DISCARD_EMBEDDED_ARTWORK_METADATA, true)
+        set(value) = prefs.edit().putBoolean(KEY_DISCARD_EMBEDDED_ARTWORK_METADATA, value).apply()
+
+    var hagcPlaybackEnabled: Boolean
+        get() = prefs.getBoolean(KEY_HAGC_PLAYBACK_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_HAGC_PLAYBACK_ENABLED, value).apply()
+
     private companion object {
         const val PREFS_NAME = "player_preferences"
         const val KEY_AUDIO_LANG_PREFIX = "audio_lang_"
@@ -115,5 +123,7 @@ class PlayerPreferencesRepository(context: Context) {
         const val KEY_BUFFER_PRESET = "buffer_preset"
         const val KEY_FAST_DNS = "fast_dns_enabled"
         const val KEY_WATCHED_INDICATORS = "watched_indicators_enabled"
+        const val KEY_DISCARD_EMBEDDED_ARTWORK_METADATA = "discard_embedded_artwork_metadata"
+        const val KEY_HAGC_PLAYBACK_ENABLED = "hagc_playback_enabled"
     }
 }
