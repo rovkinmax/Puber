@@ -77,6 +77,9 @@ internal class DeviceSettingsVM(
                                 debugOverlayEnabled = playerPreferencesRepository.debugOverlayEnabled,
                                 preferSurroundAudio = playerPreferencesRepository.preferSurroundAudio,
                                 watchedIndicatorsEnabled = playerPreferencesRepository.watchedIndicatorsEnabled,
+                                discardEmbeddedArtworkMetadata =
+                                    playerPreferencesRepository.discardEmbeddedArtworkMetadata,
+                                hagcPlaybackEnabled = playerPreferencesRepository.hagcPlaybackEnabled,
                                 navigationMode = navigationPreferencesRepository.getNavigationMode(),
                                 showCartoonsTab = contentPreferences.showCartoonsTab,
                                 showAnimeTab = contentPreferences.showAnimeTab,
@@ -106,6 +109,9 @@ internal class DeviceSettingsVM(
             DeviceSettingsActions.ToggleDebugOverlay -> toggleDebugOverlay()
             DeviceSettingsActions.ToggleSurroundAudio -> toggleSurroundAudio()
             DeviceSettingsActions.ToggleWatchedIndicators -> toggleWatchedIndicators()
+            DeviceSettingsActions.ToggleDiscardEmbeddedArtworkMetadata ->
+                toggleDiscardEmbeddedArtworkMetadata()
+            DeviceSettingsActions.ToggleHagcPlayback -> toggleHagcPlayback()
             is DeviceSettingsActions.ChangeNavigationMode -> onChangeNavigationMode(action.mode)
             DeviceSettingsActions.ToggleCartoonsTab -> toggleCartoonsTab()
             DeviceSettingsActions.ToggleAnimeTab -> toggleAnimeTab()
@@ -275,6 +281,24 @@ internal class DeviceSettingsVM(
         val newValue = !currentState.watchedIndicatorsEnabled
         playerPreferencesRepository.watchedIndicatorsEnabled = newValue
         updateViewState(stateValue.copy(state = currentState.copy(watchedIndicatorsEnabled = newValue)))
+    }
+
+    private fun toggleDiscardEmbeddedArtworkMetadata() {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        val newValue = !currentState.discardEmbeddedArtworkMetadata
+        playerPreferencesRepository.discardEmbeddedArtworkMetadata = newValue
+        updateViewState(
+            stateValue.copy(state = currentState.copy(discardEmbeddedArtworkMetadata = newValue))
+        )
+    }
+
+    private fun toggleHagcPlayback() {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        val newValue = !currentState.hagcPlaybackEnabled
+        playerPreferencesRepository.hagcPlaybackEnabled = newValue
+        updateViewState(stateValue.copy(state = currentState.copy(hagcPlaybackEnabled = newValue)))
     }
 
     private fun onChangeNavigationMode(mode: NavigationMode) {

@@ -29,6 +29,8 @@ internal sealed interface DeviceSettingsState {
         val debugOverlayEnabled: Boolean = false,
         val preferSurroundAudio: Boolean = false,
         val watchedIndicatorsEnabled: Boolean = true,
+        val discardEmbeddedArtworkMetadata: Boolean = true,
+        val hagcPlaybackEnabled: Boolean = false,
         val navigationMode: NavigationMode = NavigationMode.TopTabs,
         val showCartoonsTab: Boolean = false,
         val showAnimeTab: Boolean = false,

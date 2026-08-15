@@ -30,6 +30,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.kino.puber.BuildConfig
 import com.kino.puber.R
 import com.kino.puber.data.api.models.SubtitleLink
+import com.kino.puber.data.repository.PlayerPreferencesRepository
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.BufferPreset
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
@@ -78,6 +79,7 @@ internal class PlaybackController(
     private val context: Context,
     private val okHttpClient: OkHttpClient,
     private val mediaCache: androidx.media3.datasource.cache.Cache,
+    private val playerPreferencesRepository: PlayerPreferencesRepository,
 ) : PlaybackControl {
 
     private var exoPlayer: ExoPlayer? = null
@@ -226,8 +228,10 @@ internal class PlaybackController(
     ): DefaultMediaSourceFactory {
         return DefaultMediaSourceFactory(
             dataSourceFactory,
-            DefaultExtractorsFactory().setDisableArtworkMetadata(true),
-        ).setExperimentalEnableHagcPlayback(false)
+            DefaultExtractorsFactory().setDisableArtworkMetadata(
+                playerPreferencesRepository.discardEmbeddedArtworkMetadata,
+            ),
+        ).setExperimentalEnableHagcPlayback(playerPreferencesRepository.hagcPlaybackEnabled)
     }
 
     override fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?) {
