@@ -19,6 +19,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.source.BehindLiveWindowException
+import androidx.media3.extractor.DefaultExtractorsFactory
 import okhttp3.OkHttpClient
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -194,11 +195,13 @@ internal class PlaybackController(
 
         dataSourceFactory = createDataSourceFactory()
 
+        val mediaSourceFactory = createMediaSourceFactory(dataSourceFactory!!)
+
         val player = ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             .setBandwidthMeter(bandwidthMeter)
             .setTrackSelector(trackSelector)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory!!))
+            .setMediaSourceFactory(mediaSourceFactory)
             .setHandleAudioBecomingNoisy(true)
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             .build()
@@ -215,6 +218,16 @@ internal class PlaybackController(
             }
             player.playWhenReady = true
         }
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun createMediaSourceFactory(
+        dataSourceFactory: DataSource.Factory,
+    ): DefaultMediaSourceFactory {
+        return DefaultMediaSourceFactory(
+            dataSourceFactory,
+            DefaultExtractorsFactory().setDisableArtworkMetadata(true),
+        ).setExperimentalEnableHagcPlayback(false)
     }
 
     override fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?) {
