@@ -202,36 +202,6 @@ private fun DeviceSettingsList(
         }
         localPreferencesItems(state, onAction)
 
-        // Media3 playback section (local-only preferences)
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-        item {
-            Text(
-                text = stringResource(R.string.settings_media3_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        item {
-            LocalToggleItem(
-                label = stringResource(R.string.settings_discard_embedded_artwork),
-                description = stringResource(R.string.settings_discard_embedded_artwork_description),
-                checked = state.discardEmbeddedArtworkMetadata,
-                onToggle = {
-                    onAction(DeviceSettingsActions.ToggleDiscardEmbeddedArtworkMetadata)
-                },
-            )
-        }
-        item {
-            LocalToggleItem(
-                label = stringResource(R.string.settings_hagc_playback),
-                description = stringResource(R.string.settings_hagc_playback_description),
-                checked = state.hagcPlaybackEnabled,
-                onToggle = { onAction(DeviceSettingsActions.ToggleHagcPlayback) },
-            )
-        }
-
         // Skip segments section (local-only preferences)
         item {
             Spacer(modifier = Modifier.height(16.dp))
@@ -390,6 +360,42 @@ private fun LazyListScope.localPreferencesItems(
             description = stringResource(R.string.settings_show_anime_description),
             checked = state.showAnime,
             onToggle = { onAction(DeviceSettingsActions.ToggleShowAnime) },
+        )
+    }
+    media3PlaybackItems(state, onAction)
+}
+
+private fun LazyListScope.media3PlaybackItems(
+    state: DeviceSettingsState.Success,
+    onAction: (UIAction) -> Unit,
+) {
+    // Media3 playback section (local-only preferences)
+    item {
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+    item {
+        Text(
+            text = stringResource(R.string.settings_media3_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_discard_embedded_artwork),
+            description = stringResource(R.string.settings_discard_embedded_artwork_description),
+            checked = state.discardEmbeddedArtworkMetadata,
+            onToggle = {
+                onAction(DeviceSettingsActions.ToggleDiscardEmbeddedArtworkMetadata)
+            },
+        )
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_hagc_playback),
+            description = stringResource(R.string.settings_hagc_playback_description),
+            checked = state.hagcPlaybackEnabled,
+            onToggle = { onAction(DeviceSettingsActions.ToggleHagcPlayback) },
         )
     }
 }
