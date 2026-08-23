@@ -1,11 +1,24 @@
 package com.kino.puber.ui.feature.details.component
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Duotone
 import com.adamglin.phosphoricons.duotone.Play
@@ -14,17 +27,24 @@ import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsButtonUIState
+import com.kino.puber.ui.feature.details.model.DetailsCastMemberUIState
+import com.kino.puber.ui.feature.details.model.DetailsInfoRowUIState
 import com.kino.puber.ui.feature.details.model.DetailsInfoUIState
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
 private const val PRIMARY_ACTION = "Primary details action"
 private const val DEFAULT_EPISODE = "S1E1"
 private const val TARGET_EPISODE = "S8E4 target"
+private const val SERIES_STATUS = "Series ongoing"
+private const val MAX_VERTICAL_KEY_PRESSES = 20
 
 internal class DetailsScreenContentTest {
 
@@ -110,10 +130,175 @@ internal class DetailsScreenContentTest {
         composeRule.onNodeWithText(DEFAULT_EPISODE).assertIsFocused()
     }
 
+    @Test
+    fun actorCardsUseWholeSurfaceForPortraitAndNameClicks() {
+        val actions = mutableListOf<UIAction>()
+        val focusRequester = FocusRequester()
+        val firstActor = DetailsCastMemberUIState(
+            actorQuery = "First Actor",
+            displayName = "First Actor",
+            photoUrl = "photo://first",
+        )
+        val secondActor = DetailsCastMemberUIState(
+            actorQuery = "Second Actor",
+            displayName = "Second Actor With A Long Display Name",
+        )
+        val thirdActor = DetailsCastMemberUIState(
+            actorQuery = "Third Actor",
+            displayName = "Third Actor",
+        )
+
+        composeRule.setContent {
+            PuberTheme {
+                DetailsInfoPage(
+                    info = DetailsInfoUIState(
+                        description = "",
+                        ratings = emptyList(),
+                        primaryRows = emptyList(),
+                        secondaryRows = emptyList(),
+                        castCards = listOf(firstActor, secondActor, thirdActor),
+                    ),
+                    hasNextPage = false,
+                    showPageChevrons = false,
+                    focusRequester = focusRequester,
+                    onAction = { actions += it },
+                    onPreviousPageRequested = {},
+                    onNextPageRequested = {},
+                )
+            }
+        }
+
+        composeRule.runOnIdle { focusRequester.requestFocus() }
+        composeRule.onNodeWithContentDescription(firstActor.displayName).assertIsDisplayed().assertIsFocused()
+        composeRule.onNodeWithText(secondActor.displayName).assertIsDisplayed()
+        composeRule.onNodeWithText(thirdActor.displayName).assertIsDisplayed()
+
+        val portraitBounds = composeRule
+            .onNodeWithTag(ACTOR_PORTRAIT_TEST_TAG_PREFIX + secondActor.actorQuery, useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+        val longNameBounds = composeRule
+            .onNodeWithText(secondActor.displayName, useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+        val secondCardBounds = composeRule
+            .onNodeWithContentDescription(secondActor.displayName)
+            .getUnclippedBoundsInRoot()
+        val thirdCardBounds = composeRule
+            .onNodeWithContentDescription(thirdActor.displayName)
+            .getUnclippedBoundsInRoot()
+        assertTrue(portraitBounds.right - portraitBounds.left > 56.dp)
+        assertTrue(longNameBounds.top >= portraitBounds.bottom)
+        assertEquals(secondCardBounds.right - secondCardBounds.left, thirdCardBounds.right - thirdCardBounds.left)
+        assertEquals(secondCardBounds.bottom - secondCardBounds.top, thirdCardBounds.bottom - thirdCardBounds.top)
+
+        composeRule
+            .onNodeWithContentDescription(firstActor.displayName)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule
+            .onNodeWithText(secondActor.displayName)
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        assertEquals(
+            listOf(
+                DetailsAction.CastMemberSelected(firstActor.actorQuery),
+                DetailsAction.CastMemberSelected(secondActor.actorQuery),
+            ),
+            actions,
+        )
+    }
+
+    @Test
+    fun seriesStatusIsRenderedOnMainDetailsPage() {
+        composeRule.setContent {
+            PuberTheme {
+                DetailsScreenContent(
+                    state = content(
+                        episodes = episodes(),
+                        seasonsPanelVisible = false,
+                        initialEpisodeFocusId = null,
+                        seriesStatus = SERIES_STATUS,
+                    ),
+                    onAction = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(SERIES_STATUS).assertIsDisplayed()
+    }
+
+    @Test
+    fun longPlotAndFullMetadataKeepStatusReachableBeforePagerHandoff() {
+        val focusRequester = FocusRequester()
+        var previousPageRequests = 0
+        var nextPageRequests = 0
+        val actor = DetailsCastMemberUIState(
+            actorQuery = "Focused Actor",
+            displayName = "Focused Actor",
+        )
+        val metadata = (1..10).map { index ->
+            DetailsInfoRowUIState(
+                label = "Metadata $index",
+                value = "Complete metadata value $index",
+            )
+        }
+
+        composeRule.setContent {
+            PuberTheme {
+                DetailsInfoPage(
+                    info = DetailsInfoUIState(
+                        description = List(80) {
+                            "A deliberately long plot keeps the complete metadata below the initial viewport."
+                        }.joinToString(separator = " "),
+                        ratings = emptyList(),
+                        primaryRows = metadata.take(5),
+                        secondaryRows = metadata.drop(5) + DetailsInfoRowUIState(
+                            label = "Status",
+                            value = SERIES_STATUS,
+                        ),
+                        castCards = listOf(actor),
+                    ),
+                    hasNextPage = true,
+                    showPageChevrons = false,
+                    focusRequester = focusRequester,
+                    onAction = {},
+                    onPreviousPageRequested = { previousPageRequests += 1 },
+                    onNextPageRequested = { nextPageRequests += 1 },
+                    modifier = Modifier.size(width = 640.dp, height = 360.dp),
+                )
+            }
+        }
+
+        composeRule.runOnIdle { focusRequester.requestFocus() }
+        val actorCard = composeRule.onNodeWithContentDescription(actor.displayName)
+        val status = composeRule.onNodeWithText(SERIES_STATUS)
+        actorCard.assertIsFocused()
+        assertTrue(!status.isDisplayedForTest())
+
+        composeRule.pressDirectionUntil(Key.DirectionDown) {
+            status.isDisplayedForTest()
+        }
+
+        status.assertIsDisplayed()
+        actorCard.assertIsFocused()
+        assertEquals(0, nextPageRequests)
+
+        composeRule.pressDirectionUntil(Key.DirectionDown) {
+            nextPageRequests == 1
+        }
+        assertEquals(1, nextPageRequests)
+
+        composeRule.pressDirectionUntil(Key.DirectionUp) {
+            previousPageRequests == 1
+        }
+        assertEquals(1, previousPageRequests)
+        actorCard.assertIsFocused()
+    }
+
     private fun content(
         episodes: VideoGridUIState,
         seasonsPanelVisible: Boolean,
         initialEpisodeFocusId: Int?,
+        seriesStatus: String? = null,
+        castCards: List<DetailsCastMemberUIState> = emptyList(),
     ): DetailsScreenState.Content {
         return DetailsScreenState.Content(
             details = VideoDetailsUIState(
@@ -133,7 +318,7 @@ internal class DetailsScreenContentTest {
                 ratings = emptyList(),
                 primaryRows = emptyList(),
                 secondaryRows = emptyList(),
-                castMembers = emptyList(),
+                castCards = castCards,
             ),
             buttons = listOf(
                 DetailsButtonUIState.TextButton(
@@ -148,6 +333,7 @@ internal class DetailsScreenContentTest {
             seasonsPanelVisible = seasonsPanelVisible,
             episodes = episodes,
             initialEpisodeFocusId = initialEpisodeFocusId,
+            seriesStatus = seriesStatus,
         )
     }
 
@@ -205,4 +391,24 @@ internal class DetailsScreenContentTest {
     private companion object {
         const val TARGET_EPISODE_ID = 804
     }
+}
+
+private fun androidx.compose.ui.test.junit4.ComposeTestRule.pressDirectionUntil(
+    key: Key,
+    condition: () -> Boolean,
+) {
+    var attempts = 0
+    while (!condition() && attempts < MAX_VERTICAL_KEY_PRESSES) {
+        onRoot().performKeyInput {
+            keyDown(key)
+            keyUp(key)
+        }
+        waitForIdle()
+        attempts += 1
+    }
+    assertTrue("Direction $key did not reach the expected state", condition())
+}
+
+private fun SemanticsNodeInteraction.isDisplayedForTest(): Boolean {
+    return runCatching { assertIsDisplayed() }.isSuccess
 }

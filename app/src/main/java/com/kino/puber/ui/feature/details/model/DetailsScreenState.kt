@@ -24,6 +24,7 @@ internal sealed class DetailsScreenState {
         val initialEpisodeFocusId: Int? = null,
         val similarItems: List<VideoItemUIState> = emptyList(),
         val trailerUrl: String? = null,
+        val seriesStatus: String? = null,
     ) : DetailsScreenState()
 }
 
@@ -59,7 +60,14 @@ internal data class DetailsInfoUIState(
     val ratings: List<RatingUIState>,
     val primaryRows: List<DetailsInfoRowUIState>,
     val secondaryRows: List<DetailsInfoRowUIState>,
-    val castMembers: List<String>,
+    val castCards: List<DetailsCastMemberUIState> = emptyList(),
+)
+
+@Immutable
+internal data class DetailsCastMemberUIState(
+    val actorQuery: String,
+    val displayName: String,
+    val photoUrl: String? = null,
 )
 
 @Immutable
@@ -79,6 +87,7 @@ internal sealed class DetailsAction : UIAction {
     data class EpisodeWatchedChanged(val item: VideoItemUIState, val watched: Boolean) : DetailsAction()
     data class SeasonWatchedChanged(val item: VideoItemUIState, val watched: Boolean) : DetailsAction()
     data class SimilarSelected(val item: VideoItemUIState) : DetailsAction()
+    data class CastMemberSelected(val actorQuery: String) : DetailsAction()
     data object CloseSeasonsPanel : DetailsAction()
     data object CloseTrailer : DetailsAction()
 }

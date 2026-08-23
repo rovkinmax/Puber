@@ -10,4 +10,7 @@
     <string name="device_settings_unlink">Отвязать устройство</string>
     <string name="device_settings_not_supported">Не поддерживается устройством</string>
     <string name="device_settings_restart_required">Нужно перезапустить приложение</string>
+    <string name="device_settings_tmdb_attribution_title">О TMDB</string>
+    <string name="device_settings_tmdb_logo_description">Логотип TMDB</string>
+    <string name="device_settings_tmdb_attribution_notice">This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
 </resources>

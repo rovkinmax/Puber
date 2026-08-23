@@ -22,6 +22,7 @@ import com.kino.puber.data.repository.KinoPubRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
 import com.kino.puber.data.repository.SkipSegmentRepository
 import com.kino.puber.data.repository.SkipSegmentService
+import com.kino.puber.data.repository.TmdbCastRepository
 import com.kino.puber.data.repository.TmdbIdRepository
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.data.api.IntroDbAppApiClient
@@ -74,6 +75,7 @@ val repositoryModule = module {
     singleOf(::ItemDetailsRepository)
     singleOf(::PlayerPreferencesRepository)
     singleOf(::TmdbIdRepository)
+    singleOf(::TmdbCastRepository)
     singleOf(::SkipSegmentRepository)
     singleOf(::SkipSegmentService)
     singleOf(::NavigationPreferencesRepository)

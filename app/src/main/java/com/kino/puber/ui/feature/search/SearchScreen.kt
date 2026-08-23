@@ -9,7 +9,10 @@ import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.search.SearchInteractor
 import com.kino.puber.ui.feature.search.content.SearchScreenContent
+import com.kino.puber.ui.feature.search.model.SearchScreenParams
 import com.kino.puber.ui.feature.search.vm.SearchVM
+import cafe.adriel.voyager.core.screen.ScreenKey
+import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import com.kino.puber.core.di.puberViewModel
 import org.koin.core.module.dsl.scopedOf
@@ -20,11 +23,20 @@ import org.koin.core.scope.ScopeID
 import org.koin.dsl.module
 
 @Parcelize
-internal class SearchScreen : PuberScreen {
+internal class SearchScreen(
+    private val params: SearchScreenParams = SearchScreenParams(),
+) : PuberScreen {
+
+    @IgnoredOnParcel
+    override val key: ScreenKey = when (val mode = params.mode) {
+        SearchScreenParams.SearchMode.Title -> "SearchScreen"
+        is SearchScreenParams.SearchMode.Actor -> "SearchScreen_Actor_${mode.actorQuery}"
+    }
 
     @Suppress("unused")
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
         scope(named(scopeId)) {
+            scoped { params }
             scopedOf(::SearchInteractor)
             scoped { VideoItemUIMapper(get(), get()) }
             viewModelOf(::SearchVM)

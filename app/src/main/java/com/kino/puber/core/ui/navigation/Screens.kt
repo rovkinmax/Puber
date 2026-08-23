@@ -12,6 +12,8 @@ interface Screens {
 
     fun search(): PuberScreen
 
+    fun actorItems(actorName: String): PuberScreen
+
     fun home(): PuberScreen
 
     fun history(presentation: HistoryPresentation): PuberScreen

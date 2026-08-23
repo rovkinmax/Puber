@@ -7,6 +7,7 @@ import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.Season
+import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.Trailer
 import com.kino.puber.data.api.models.Video
 import com.kino.puber.util.FakeResourceProvider
@@ -113,6 +114,121 @@ class DetailsScreenUIMapperTest {
         assertEquals(204, state.initialEpisodeFocusId)
     }
 
+    @Test
+    fun map_seriesStatus_mapsFinishedOngoingAndUnknownOnlyForSeries() {
+        assertEquals(
+            "string_${R.string.video_details_series_status_finished}",
+            mapper.map(series(trailer = null, finished = true)).seriesStatus,
+        )
+        assertEquals(
+            "string_${R.string.video_details_series_status_ongoing}",
+            mapper.map(series(trailer = null, finished = false)).seriesStatus,
+        )
+        assertEquals(null, mapper.map(series(trailer = null, finished = null)).seriesStatus)
+        assertEquals(null, mapper.map(movie(trailer = null, finished = true)).seriesStatus)
+    }
+
+    @Test
+    fun map_seriesStatus_addsStatusRowOnlyWhenKnown() {
+        val state = mapper.map(series(trailer = null, finished = false))
+
+        assertEquals(
+            "string_${R.string.video_details_info_status}" to
+                "string_${R.string.video_details_series_status_ongoing}",
+            state.info.secondaryRows.last().let { it.label to it.value },
+        )
+        assertEquals(
+            false,
+            mapper.map(series(trailer = null, finished = null)).info.secondaryRows.any {
+                it.label == "string_${R.string.video_details_info_status}"
+            },
+        )
+    }
+
+    @Test
+    fun map_castCards_preservesOrderAndOriginalActorQueries() {
+        val state = mapper.map(
+            movie(
+                trailer = null,
+                cast = " Actor One, Actor Two, Actor One ,, ",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                DetailsCastMemberUIState("Actor One", "Actor One"),
+                DetailsCastMemberUIState("Actor Two", "Actor Two"),
+                DetailsCastMemberUIState("Actor One", "Actor One"),
+            ),
+            state.info.castCards,
+        )
+    }
+
+    @Test
+    fun enrichCastCards_attachesOnlyUniqueNormalizedExactMatches() {
+        val cards = listOf(
+            DetailsCastMemberUIState("Anne-Marie O'Neil", "Anne-Marie O'Neil"),
+            DetailsCastMemberUIState("Unknown Actor", "Unknown Actor"),
+            DetailsCastMemberUIState("Duplicate", "Duplicate"),
+            DetailsCastMemberUIState("No Photo", "No Photo"),
+        )
+
+        val enriched = mapper.enrichCastCards(
+            castCards = cards,
+            tmdbCast = listOf(
+                TmdbCastMember(" Anne Marie O Neil ", "https://image/one"),
+                TmdbCastMember("Duplicate", "https://image/a"),
+                TmdbCastMember("duplicate", "https://image/b"),
+                TmdbCastMember("No Photo", null),
+                TmdbCastMember("Unmatched", "https://image/unmatched"),
+            ),
+        )
+
+        assertEquals(
+            listOf("https://image/one", null, null, null),
+            enriched.map { it.photoUrl },
+        )
+        assertEquals(cards.map { it.actorQuery }, enriched.map { it.actorQuery })
+        assertEquals(cards.map { it.displayName }, enriched.map { it.displayName })
+    }
+
+    @Test
+    fun enrichCastCards_matchesLocalizedReorderedNamesAndKeepsUnsupportedFallback() {
+        val cards = listOf(
+            DetailsCastMemberUIState("Сираиси Харука", "Сираиси Харука"),
+            DetailsCastMemberUIState("Тамура Муцуми", "Тамура Муцуми"),
+            DetailsCastMemberUIState("Накамура Юити", "Накамура Юити"),
+            DetailsCastMemberUIState("Айдзава Сая", "Айдзава Сая"),
+            DetailsCastMemberUIState("Юки Аой", "Юки Аой"),
+            DetailsCastMemberUIState("Неизвестный Актёр", "Неизвестный Актёр"),
+        )
+
+        val enriched = mapper.enrichCastCards(
+            castCards = cards,
+            tmdbCast = listOf(
+                TmdbCastMember("Haruka Shiraishi", "https://image/shiraishi"),
+                TmdbCastMember("Mutsumi Tamura", "https://image/tamura"),
+                TmdbCastMember("Yuichi Nakamura", "https://image/nakamura"),
+                TmdbCastMember("Saya Aizawa", "https://image/aizawa"),
+                TmdbCastMember("Aoi Yuki", "https://image/yuki"),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                "https://image/shiraishi",
+                "https://image/tamura",
+                "https://image/nakamura",
+                "https://image/aizawa",
+                "https://image/yuki",
+                null,
+            ),
+            enriched.map { it.photoUrl },
+        )
+        assertEquals(cards.map { it.actorQuery }, enriched.map { it.actorQuery })
+        assertEquals(cards.map { it.displayName }, enriched.map { it.displayName })
+    }
+
     private inline fun <reified T : DetailsButtonUIState> List<DetailsButtonUIState>.count(
         action: DetailsAction,
     ): Int {
@@ -139,14 +255,32 @@ class DetailsScreenUIMapperTest {
     private fun movie(
         trailer: Trailer?,
         videos: List<Video>? = null,
+        cast: String? = null,
+        finished: Boolean? = null,
     ): Item {
-        return Item(id = 1, title = "Movie", type = ItemType.MOVIE, trailer = trailer, videos = videos)
+        return Item(
+            id = 1,
+            title = "Movie",
+            type = ItemType.MOVIE,
+            trailer = trailer,
+            videos = videos,
+            cast = cast,
+            finished = finished,
+        )
     }
 
     private fun series(
         trailer: Trailer?,
         seasons: List<Season>? = null,
+        finished: Boolean? = null,
     ): Item {
-        return Item(id = 2, title = "Series", type = ItemType.SERIAL, trailer = trailer, seasons = seasons)
+        return Item(
+            id = 2,
+            title = "Series",
+            type = ItemType.SERIAL,
+            trailer = trailer,
+            seasons = seasons,
+            finished = finished,
+        )
     }
 }

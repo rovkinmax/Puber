@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.device.settings
 
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -35,7 +37,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.kino.puber.BuildConfig
@@ -129,6 +134,7 @@ private fun DeviceSettingsList(
             .focusRequester(focusRequester)
             .focusGroup()
             .fillMaxSize()
+            .testTag(DEVICE_SETTINGS_LIST_TEST_TAG)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -271,44 +277,89 @@ private fun DeviceSettingsList(
             )
         }
 
-        // App updates section
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-        item {
-            Text(
-                text = stringResource(R.string.settings_updates_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        item {
-            LocalToggleItem(
-                label = stringResource(R.string.settings_auto_update_check),
-                description = stringResource(R.string.settings_auto_update_check_subtitle),
-                checked = state.autoUpdateCheckEnabled,
-                onToggle = { onAction(DeviceSettingsActions.ToggleAutoUpdateCheck) },
-            )
-        }
+        applicationItems(state, onAction)
+    }
+}
 
-        // Debug section
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-        item {
-            Text(
-                text = stringResource(R.string.settings_debug_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        item {
-            LocalToggleItem(
-                label = stringResource(R.string.settings_debug_overlay),
-                checked = state.debugOverlayEnabled,
-                onToggle = { onAction(DeviceSettingsActions.ToggleDebugOverlay) },
-            )
-        }
+internal const val DEVICE_SETTINGS_LIST_TEST_TAG = "device_settings_list"
+
+private fun LazyListScope.applicationItems(
+    state: DeviceSettingsState.Success,
+    onAction: (UIAction) -> Unit,
+) {
+    // App updates section
+    item {
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+    item {
+        Text(
+            text = stringResource(R.string.settings_updates_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_auto_update_check),
+            description = stringResource(R.string.settings_auto_update_check_subtitle),
+            checked = state.autoUpdateCheckEnabled,
+            onToggle = { onAction(DeviceSettingsActions.ToggleAutoUpdateCheck) },
+        )
+    }
+
+    // Debug section
+    item {
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+    item {
+        Text(
+            text = stringResource(R.string.settings_debug_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_debug_overlay),
+            checked = state.debugOverlayEnabled,
+            onToggle = { onAction(DeviceSettingsActions.ToggleDebugOverlay) },
+        )
+    }
+
+    item {
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+    item {
+        TmdbAttribution()
+    }
+}
+
+@Composable
+private fun TmdbAttribution() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.device_settings_tmdb_attribution_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Image(
+            painter = painterResource(R.drawable.tmdb_logo_primary_short_blue),
+            contentDescription = stringResource(R.string.device_settings_tmdb_logo_description),
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .width(140.dp)
+                .height(60.dp),
+        )
+        Text(
+            text = stringResource(R.string.device_settings_tmdb_attribution_notice),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

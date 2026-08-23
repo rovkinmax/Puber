@@ -104,6 +104,8 @@ private object ProbeScreens : Screens {
 
     override fun search(): PuberScreen = ProbeSearchScreen
 
+    override fun actorItems(actorName: String): PuberScreen = unsupported()
+
     override fun home(): PuberScreen = unsupported()
 
     override fun history(presentation: HistoryPresentation): PuberScreen = unsupported()

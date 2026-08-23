@@ -22,6 +22,7 @@ import com.kino.puber.ui.feature.player.model.PlayerStartMode
 import com.kino.puber.ui.feature.favorites.content.FavoritesScreen
 import com.kino.puber.ui.feature.main.component.MainScreen
 import com.kino.puber.ui.feature.search.SearchScreen
+import com.kino.puber.ui.feature.search.model.SearchScreenParams
 import com.kino.puber.ui.feature.home.component.HomeScreen
 import com.kino.puber.ui.feature.history.component.HistoryScreen
 import com.kino.puber.ui.feature.history.model.HistoryPresentation
@@ -41,6 +42,14 @@ internal object ScreensImpl : Screens {
 
     override fun search(): PuberScreen {
         return SearchScreen()
+    }
+
+    override fun actorItems(actorName: String): PuberScreen {
+        return SearchScreen(
+            SearchScreenParams(
+                mode = SearchScreenParams.SearchMode.Actor(actorName),
+            ),
+        )
     }
 
     override fun home(): PuberScreen = HomeScreen()

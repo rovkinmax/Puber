@@ -14,8 +14,10 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.Video
 import com.kino.puber.data.api.models.isSeriesLike
+import java.text.Normalizer
 
 internal class DetailsScreenUIMapper(
     private val resources: ResourceProvider,
@@ -45,6 +47,7 @@ internal class DetailsScreenUIMapper(
     ): DetailsScreenState.Content {
         val episodes = if (item.type.isSeriesLike()) mapEpisodes(item) else null
         val requestedEpisode = episodes?.findEpisode(initialEpisode)
+        val seriesStatus = mapSeriesStatus(item)
         return DetailsScreenState.Content(
             details = itemMapper.mapDetailedItem(item),
             info = buildInfo(item),
@@ -55,12 +58,26 @@ internal class DetailsScreenUIMapper(
             currentEpisode = requestedEpisode
                 ?: if (item.type.isSeriesLike()) mapCurrentEpisode(item) else null,
             initialEpisodeFocusId = requestedEpisode?.id,
+            seriesStatus = seriesStatus,
         )
     }
 
     fun mapSimilarItems(items: List<Item>): List<VideoItemUIState> {
         return itemMapper.mapShortItemList(items)
             .map { item -> item.copy(showTitle = true) }
+    }
+
+    fun enrichCastCards(
+        castCards: List<DetailsCastMemberUIState>,
+        tmdbCast: List<TmdbCastMember>,
+    ): List<DetailsCastMemberUIState> {
+        return castCards.map { card ->
+            val actorNameKeys = actorNameKeys(card.displayName)
+            val matchingCredits = tmdbCast.filter { credit ->
+                actorNameKeys.intersect(actorNameKeys(credit.name)).isNotEmpty()
+            }
+            card.copy(photoUrl = matchingCredits.singleOrNull()?.profileUrl)
+        }
     }
 
     private fun mapEpisodes(item: Item): VideoGridUIState? {
@@ -235,12 +252,18 @@ internal class DetailsScreenUIMapper(
 
     private fun buildInfo(item: Item): DetailsInfoUIState {
         val details = itemMapper.mapDetailedItem(item)
+        val castNames = item.parsedCastNames()
         return DetailsInfoUIState(
             description = item.plot.orEmpty(),
             ratings = details.ratings,
             primaryRows = buildPrimaryRows(item),
             secondaryRows = buildSecondaryRows(item),
-            castMembers = item.castMembers(),
+            castCards = castNames.map { actor ->
+                DetailsCastMemberUIState(
+                    actorQuery = actor,
+                    displayName = actor,
+                )
+            },
         )
     }
 
@@ -271,6 +294,18 @@ internal class DetailsScreenUIMapper(
         item.displayQuality()?.let { add(row(R.string.video_details_info_quality, it)) }
         if (item.ac3 == 1 || item.mediaItemsHaveSurroundSound()) {
             add(row(R.string.video_details_info_sound, resources.getString(R.string.video_details_info_sound_surround)))
+        }
+        mapSeriesStatus(item)?.let { status ->
+            add(row(R.string.video_details_info_status, status))
+        }
+    }
+
+    private fun mapSeriesStatus(item: Item): String? {
+        if (!item.type.isSeriesLike()) return null
+        return when (item.finished) {
+            true -> resources.getString(R.string.video_details_series_status_finished)
+            false -> resources.getString(R.string.video_details_series_status_ongoing)
+            null -> null
         }
     }
 
@@ -339,11 +374,64 @@ internal class DetailsScreenUIMapper(
                 .any { episode -> episode.hasSurroundSound() }
     }
 
-    private fun Item.castMembers(): List<String> {
+    private fun Item.parsedCastNames(): List<String> {
         return cast.orEmpty()
             .split(",")
             .map { actor -> actor.trim() }
             .filter { actor -> actor.isNotBlank() }
+    }
+
+    private fun normalizeActorName(value: String): String {
+        return Normalizer.normalize(value, Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .trim()
+            .lowercase()
+            .replace(Regex("[\\p{Punct}]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    private fun actorNameKeys(value: String): Set<String> {
+        val normalized = normalizeActorName(value)
+        if (normalized.isEmpty()) return emptySet()
+        val romanized = if (normalized.any { character -> character.isCyrillic() }) {
+            setOf(
+                normalized.transliterateCyrillic(),
+                normalized.transliterateJapaneseCyrillic(),
+            )
+        } else {
+            emptySet()
+        }
+        return (romanized + normalized)
+            .flatMap { name -> listOf(name, name.sortedNameTokens()) }
+            .filter(String::isNotEmpty)
+            .toSet()
+    }
+
+    private fun String.sortedNameTokens(): String {
+        return split(" ")
+            .filter(String::isNotEmpty)
+            .sorted()
+            .joinToString(" ")
+    }
+
+    private fun String.transliterateCyrillic(): String {
+        return buildString {
+            this@transliterateCyrillic.forEach { character ->
+                append(CYRILLIC_TRANSLITERATION[character] ?: character)
+            }
+        }
+    }
+
+    private fun String.transliterateJapaneseCyrillic(): String {
+        return JAPANESE_CYRILLIC_SEQUENCES.entries.fold(this) { result, (source, target) ->
+            result.replace(source, target)
+        }.transliterateCyrillic()
+            .replace("v", "w")
+    }
+
+    private fun Char.isCyrillic(): Boolean {
+        return Character.UnicodeBlock.of(this) == Character.UnicodeBlock.CYRILLIC
     }
 
     private fun Video.hasSurroundSound(): Boolean {
@@ -356,5 +444,45 @@ internal class DetailsScreenUIMapper(
 
     private companion object {
         const val SURROUND_CHANNELS = 6
+        val CYRILLIC_TRANSLITERATION = mapOf(
+            'а' to "a",
+            'б' to "b",
+            'в' to "v",
+            'г' to "g",
+            'д' to "d",
+            'е' to "e",
+            'ё' to "e",
+            'ж' to "zh",
+            'з' to "z",
+            'и' to "i",
+            'й' to "y",
+            'к' to "k",
+            'л' to "l",
+            'м' to "m",
+            'н' to "n",
+            'о' to "o",
+            'п' to "p",
+            'р' to "r",
+            'с' to "s",
+            'т' to "t",
+            'у' to "u",
+            'ф' to "f",
+            'х' to "h",
+            'ц' to "ts",
+            'ч' to "ch",
+            'ш' to "sh",
+            'щ' to "shch",
+            'ъ' to "",
+            'ы' to "y",
+            'ь' to "",
+            'э' to "e",
+            'ю' to "yu",
+            'я' to "ya",
+        )
+        val JAPANESE_CYRILLIC_SEQUENCES = linkedMapOf(
+            "дз" to "z",
+            "си" to "shi",
+            "ти" to "chi",
+        )
     }
 }
