@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.episodeschedule.vm
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.navigation.AppRouter
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.model.SnackbarMessage
 import com.kino.puber.domain.interactor.schedule.EpisodeScheduleInteractor
 import com.kino.puber.domain.model.EpisodeScheduleResult
@@ -109,6 +110,7 @@ internal class EpisodeScheduleVMTest {
             title = "Series",
             provider = ScheduleProvider.TMDB,
             seasons = emptyList(),
+            grid = VideoGridUIState(emptyList()),
         )
         coEvery { interactor.getSchedule("tt123") } returns available
         every { mapper.map(params, available) } returns content

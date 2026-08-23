@@ -22,6 +22,11 @@ import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.RootPuberScreen
 import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.core.ui.uikit.component.modifier.rememberFocusRequesterOnLaunch
+import com.kino.puber.core.ui.uikit.component.moviesList.SCHEDULED_VIDEO_ITEM_TEST_TAG
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemPresentation
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.domain.model.ScheduleProvider
 import com.kino.puber.ui.feature.episodeschedule.model.EpisodeScheduleScreenParams
@@ -35,7 +40,6 @@ import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 private const val DETAILS_SCHEDULE_TAG = "probe_details_schedule"
-private const val SCHEDULE_CARD_TAG = "episode_schedule_1_1"
 
 internal class EpisodeSchedulePushBackFocusTest {
 
@@ -77,12 +81,12 @@ internal class EpisodeSchedulePushBackFocusTest {
 
         composeRule.waitUntil {
             composeRule
-                .onNodeWithTag(SCHEDULE_CARD_TAG)
+                .onNodeWithTag(SCHEDULED_VIDEO_ITEM_TEST_TAG)
                 .fetchSemanticsNode()
                 .config
                 .getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Focused) == true
         }
-        composeRule.onNodeWithTag(SCHEDULE_CARD_TAG).assertIsFocused()
+        composeRule.onNodeWithTag(SCHEDULED_VIDEO_ITEM_TEST_TAG).assertIsFocused()
         composeRule.runOnIdle {
             assertNotNull(ProbeNavigationHost.router)
             ProbeNavigationHost.router!!.back()
@@ -216,6 +220,26 @@ private data object ProbeScheduleScreen : PuberScreen {
                                 airDate = LocalDate(2026, 8, 23),
                                 airDateLabel = "23 авг. 2026 г.",
                             ),
+                        ),
+                    ),
+                ),
+                grid = VideoGridUIState(
+                    list = listOf(
+                        VideoGridItemUIState.Title("Сезон 1"),
+                        VideoGridItemUIState.Items(
+                            items = listOf(
+                                VideoItemUIState(
+                                    id = -1_000_002,
+                                    title = "1. Episode 1",
+                                    imageUrl = "",
+                                    bigImageUrl = "",
+                                    seasonNumber = 1,
+                                    episodeNumber = 1,
+                                    presentation = VideoItemPresentation.Scheduled,
+                                    scheduledReleaseDate = "23 авг. 2026 г.",
+                                ),
+                            ),
+                            rowKey = "season_1",
                         ),
                     ),
                 ),

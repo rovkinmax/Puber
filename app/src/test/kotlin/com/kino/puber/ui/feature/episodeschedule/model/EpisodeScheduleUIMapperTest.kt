@@ -1,5 +1,7 @@
 package com.kino.puber.ui.feature.episodeschedule.model
 
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemPresentation
 import com.kino.puber.domain.model.EpisodeSchedule
 import com.kino.puber.domain.model.ScheduledEpisode
 import com.kino.puber.domain.model.ScheduledSeason
@@ -83,6 +85,12 @@ internal class EpisodeScheduleUIMapperTest {
         )
         assertNotNull(content.seasons.first().episodes.first().airDateLabel)
         assertTrue(content.seasons.first().episodes.first().airDateLabel.isNotBlank())
+
+        val rows = content.grid.list.filterIsInstance<VideoGridItemUIState.Items>()
+        assertEquals(listOf("season_1", "season_2"), rows.map { it.rowKey })
+        assertEquals(listOf(1, 2), rows.first().items.mapNotNull { it.episodeNumber })
+        assertTrue(rows.flatMap { it.items }.all { it.presentation == VideoItemPresentation.Scheduled })
+        assertEquals(rows.first().items.first().id, content.initialFocusedItemId)
     }
 
     @Test
@@ -104,6 +112,64 @@ internal class EpisodeScheduleUIMapperTest {
         assertEquals(LocalDate(2026, 10, 1), season.announcementDate)
         assertFalse(season.announcementDateLabel.isNullOrBlank())
         assertTrue(season.episodes.isEmpty())
+
+        val card = content.grid.list
+            .filterIsInstance<VideoGridItemUIState.Items>()
+            .single()
+            .items
+            .single()
+        assertEquals(VideoItemPresentation.Scheduled, card.presentation)
+        assertEquals(3, card.seasonNumber)
+        assertEquals(null, card.episodeNumber)
+        assertTrue(card.scheduledReleaseDate?.isNotBlank() == true)
+    }
+
+    @Test
+    fun mapToContent_omitsSeasonAnnouncement_whenDatedEpisodesExist() {
+        val content = mapper.mapToContent(
+            title = "Series",
+            schedule = EpisodeSchedule(
+                provider = ScheduleProvider.TMDB,
+                seasons = listOf(
+                    ScheduledSeason(
+                        seasonNumber = 4,
+                        announcementDate = LocalDate(2026, 10, 1),
+                        episodes = listOf(
+                            ScheduledEpisode(
+                                seasonNumber = 4,
+                                episodeNumber = 1,
+                                title = "Premiere",
+                                airDate = LocalDate(2026, 10, 1),
+                            ),
+                            ScheduledEpisode(
+                                seasonNumber = 4,
+                                episodeNumber = 2,
+                                title = "Follow-up",
+                                airDate = LocalDate(2026, 10, 8),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val title = content.grid.list
+            .filterIsInstance<VideoGridItemUIState.Title>()
+            .single()
+        val row = content.grid.list
+            .filterIsInstance<VideoGridItemUIState.Items>()
+            .single()
+
+        assertEquals(
+            "string_${com.kino.puber.R.string.player_season_episodes_count}_4_2",
+            title.title,
+        )
+        assertEquals("season_4", row.rowKey)
+        assertEquals(listOf(1, 2), row.items.map { it.episodeNumber })
+        assertEquals(
+            listOf("1. Premiere", "2. Follow-up"),
+            row.items.map { it.title },
+        )
     }
 
     @Test
