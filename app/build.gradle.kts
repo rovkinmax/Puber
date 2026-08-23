@@ -283,6 +283,7 @@ dependencies {
     testRuntimeOnly(libs.junit5.launcher)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.mockk)
+    testImplementation(libs.ktor.client.mock)
 
     detektPlugins(libs.detekt.compose.rules)
 

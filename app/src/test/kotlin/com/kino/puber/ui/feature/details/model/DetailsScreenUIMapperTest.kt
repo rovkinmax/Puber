@@ -37,9 +37,35 @@ class DetailsScreenUIMapperTest {
 
         assertEquals(1, state.buttons.count<DetailsButtonUIState.TextButton>(DetailsAction.PlayClicked))
         assertEquals(1, state.buttons.count<DetailsButtonUIState.TextButton>(DetailsAction.SelectSeasonClicked))
+        assertEquals(0, state.buttons.count<DetailsButtonUIState.TextButton>(DetailsAction.ScheduleClicked))
         assertEquals(1, state.buttons.count<DetailsButtonUIState.IconOnly>(DetailsAction.TrailerClicked))
         assertEquals(1, state.buttons.count<DetailsButtonUIState.WatchlistToggle>(DetailsAction.WatchlistToggleClicked))
         assertEquals(0, state.buttons.count<DetailsButtonUIState.WatchedToggle>(DetailsAction.WatchedToggleClicked))
+    }
+
+    @Test
+    fun map_seriesWithImdb_addsScheduleButton() {
+        val state = mapper.map(series(trailer = null, imdb = " tt123 "))
+
+        assertEquals(1, state.buttons.count<DetailsButtonUIState.TextButton>(DetailsAction.ScheduleClicked))
+        val scheduleButton = state.buttons
+            .filterIsInstance<DetailsButtonUIState.TextButton>()
+            .single { it.action == DetailsAction.ScheduleClicked }
+        assertEquals(R.string.video_details_button_schedule, scheduleButton.textRes)
+    }
+
+    @Test
+    fun map_movieWithImdb_doesNotAddScheduleButton() {
+        val state = mapper.map(movie(trailer = null, imdb = "tt123"))
+
+        assertEquals(0, state.buttons.count<DetailsButtonUIState.TextButton>(DetailsAction.ScheduleClicked))
+    }
+
+    @Test
+    fun map_seriesWithBlankImdb_doesNotAddScheduleButton() {
+        val state = mapper.map(series(trailer = null, imdb = "   "))
+
+        assertEquals(0, state.buttons.count<DetailsButtonUIState.TextButton>(DetailsAction.ScheduleClicked))
     }
 
     @Test
@@ -229,6 +255,20 @@ class DetailsScreenUIMapperTest {
         assertEquals(cards.map { it.displayName }, enriched.map { it.displayName })
     }
 
+    @Test
+    fun map_seriesWithEmptySeasonsAndUnavailableSchedule_preservesEmptyEpisodeGrid() {
+        val state = mapper.map(
+            item = series(
+                trailer = null,
+                seasons = emptyList(),
+            ),
+            isInWatchlist = false,
+            schedule = null,
+        )
+
+        assertEquals(emptyList<Any>(), state.episodes?.list)
+    }
+
     private inline fun <reified T : DetailsButtonUIState> List<DetailsButtonUIState>.count(
         action: DetailsAction,
     ): Int {
@@ -257,6 +297,7 @@ class DetailsScreenUIMapperTest {
         videos: List<Video>? = null,
         cast: String? = null,
         finished: Boolean? = null,
+        imdb: String? = null,
     ): Item {
         return Item(
             id = 1,
@@ -266,6 +307,7 @@ class DetailsScreenUIMapperTest {
             videos = videos,
             cast = cast,
             finished = finished,
+            imdb = imdb,
         )
     }
 
@@ -273,6 +315,7 @@ class DetailsScreenUIMapperTest {
         trailer: Trailer?,
         seasons: List<Season>? = null,
         finished: Boolean? = null,
+        imdb: String? = null,
     ): Item {
         return Item(
             id = 2,
@@ -281,6 +324,7 @@ class DetailsScreenUIMapperTest {
             trailer = trailer,
             seasons = seasons,
             finished = finished,
+            imdb = imdb,
         )
     }
 }

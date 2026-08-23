@@ -9,6 +9,7 @@ import com.kino.puber.core.ui.navigation.RootPuberScreen
 import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.details.DetailsInteractor
+import com.kino.puber.domain.interactor.schedule.EpisodeScheduleInteractor
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
 import com.kino.puber.ui.feature.details.model.DetailsScreenUIMapper
 import com.kino.puber.ui.feature.details.vm.DetailsVM
@@ -42,6 +43,7 @@ internal data class DetailsScreen(private val params: DetailsScreenParams) : Roo
         scope(named(scopeId)) {
             scoped { params }
             scopedOf(::DetailsInteractor)
+            scopedOf(::EpisodeScheduleInteractor)
             scopedOf(::DetailsScreenUIMapper)
             viewModelOf(::DetailsVM)
         }

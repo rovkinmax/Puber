@@ -61,4 +61,6 @@
     <string name="player_season_episode_title">%1$d сезон, %2$d серия, %3$s</string>
     <string name="player_season_episodes_count">%1$d сезон, %2$d серий</string>
     <string name="player_episode_untitled">Серия</string>
+    <string name="player_scheduled_episode_date">Дата выхода: %1$s</string>
+    <string name="player_scheduled_season_date">Премьера сезона: %1$s</string>
 </resources>

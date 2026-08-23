@@ -18,11 +18,15 @@ import com.kino.puber.data.api.models.isSeriesLike
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import com.kino.puber.domain.interactor.details.DetailsInteractor
+import com.kino.puber.domain.interactor.schedule.EpisodeScheduleInteractor
+import com.kino.puber.domain.model.EpisodeSchedule
+import com.kino.puber.domain.model.EpisodeScheduleResult
 import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsCastMemberUIState
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
 import com.kino.puber.ui.feature.details.model.DetailsScreenUIMapper
+import com.kino.puber.ui.feature.episodeschedule.model.EpisodeScheduleScreenParams
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -36,6 +40,7 @@ internal class DetailsVM(
     private val params: DetailsScreenParams,
     private val mapper: DetailsScreenUIMapper,
     private val interactor: DetailsInteractor,
+    private val episodeScheduleInteractor: EpisodeScheduleInteractor,
     private val savedItemInteractor: SavedItemInteractor,
     private val resources: ResourceProvider,
     override val errorHandler: ErrorHandler,
@@ -51,6 +56,10 @@ internal class DetailsVM(
         }
     }
     private var currentItem: Item? = null
+    private var currentSchedule: EpisodeSchedule? = null
+    private var currentScheduleIdentity: ScheduleIdentity? = null
+    private var scheduleLoadJob: Job? = null
+    private var scheduleRequestGeneration = 0L
     private var contentChanges = ContentChangeSet.empty()
     private val pendingMutations = mutableSetOf<Job>()
     private val mutationMutex = Mutex()
@@ -70,6 +79,7 @@ internal class DetailsVM(
             } else {
                 interactor.getItemDetails(params.itemId)
             }
+            clearScheduleIfIdentityChanged(item)
             currentItem = item
             val previousCastCards = (stateValue as? DetailsScreenState.Content)
                 ?.info
@@ -86,6 +96,66 @@ internal class DetailsVM(
             )
             startCastEnrichment(item)
             loadSimilarItems()
+            loadEpisodeSchedule(item)
+        }
+    }
+
+    private fun loadEpisodeSchedule(item: Item) {
+        val requestGeneration = ++scheduleRequestGeneration
+        scheduleLoadJob?.cancel()
+        if (!item.type.isSeriesLike()) {
+            clearSchedule()
+            return
+        }
+        val imdbId = item.imdb?.trim().orEmpty()
+        if (imdbId.isBlank()) {
+            clearSchedule()
+            return
+        }
+
+        launch {
+            val result = try {
+                episodeScheduleInteractor.getSchedule(imdbId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                return@launch
+            }
+            if (
+                requestGeneration != scheduleRequestGeneration ||
+                currentItem?.id != item.id ||
+                currentItem?.imdb?.trim() != imdbId
+            ) {
+                return@launch
+            }
+            when (result) {
+                is EpisodeScheduleResult.Available -> {
+                    currentSchedule = result.schedule
+                    currentScheduleIdentity = item.scheduleIdentity()
+                }
+                EpisodeScheduleResult.MissingCredentials,
+                EpisodeScheduleResult.NoMatch,
+                EpisodeScheduleResult.NoUpcomingReleases,
+                -> {
+                    currentSchedule = null
+                    currentScheduleIdentity = null
+                }
+            }
+            remapCurrentItem()
+        }.also { scheduleLoadJob = it }
+    }
+
+    private fun clearSchedule() {
+        if (currentSchedule == null && currentScheduleIdentity == null) return
+        currentSchedule = null
+        currentScheduleIdentity = null
+        remapCurrentItem()
+    }
+
+    private fun clearScheduleIfIdentityChanged(item: Item) {
+        if (currentScheduleIdentity != item.scheduleIdentity()) {
+            currentSchedule = null
+            currentScheduleIdentity = null
         }
     }
 
@@ -111,6 +181,7 @@ internal class DetailsVM(
             is DetailsAction.TrailerClicked -> showTrailer()
             is DetailsAction.CloseTrailer -> hideTrailer()
             is DetailsAction.SelectSeasonClicked -> showSeasonsPanel()
+            is DetailsAction.ScheduleClicked -> openEpisodeSchedule()
             is DetailsAction.WatchlistToggleClicked -> onWatchlistToggle()
             is DetailsAction.WatchedToggleClicked -> onWatchedToggle()
             is DetailsAction.EpisodeSelected -> onEpisodeSelected(action.item)
@@ -205,6 +276,7 @@ internal class DetailsVM(
         isWatched: Boolean? = null,
     ) {
         val state = stateValue as? DetailsScreenState.Content
+        clearScheduleIfIdentityChanged(item)
         val mapped = mapDetails(item = item, isInWatchlist = isInWatchlist)
         currentItem = item
         updateViewState(
@@ -223,13 +295,33 @@ internal class DetailsVM(
         item: Item,
         isInWatchlist: Boolean,
     ): DetailsScreenState.Content {
+        val schedule = currentSchedule.takeIf {
+            currentScheduleIdentity == item.scheduleIdentity()
+        }
         return params.initialEpisode?.let { initialEpisode ->
+            if (schedule == null) {
+                mapper.map(
+                    item = item,
+                    isInWatchlist = isInWatchlist,
+                    initialEpisode = initialEpisode,
+                )
+            } else {
+                mapper.map(
+                    item = item,
+                    isInWatchlist = isInWatchlist,
+                    initialEpisode = initialEpisode,
+                    schedule = schedule,
+                )
+            }
+        } ?: if (schedule == null) {
+            mapper.map(item, isInWatchlist = isInWatchlist)
+        } else {
             mapper.map(
                 item = item,
                 isInWatchlist = isInWatchlist,
-                initialEpisode = initialEpisode,
+                schedule = schedule,
             )
-        } ?: mapper.map(item, isInWatchlist = isInWatchlist)
+        }
     }
 
     private fun preserveCastPhotos(
@@ -469,6 +561,21 @@ internal class DetailsVM(
         )
     }
 
+    private fun openEpisodeSchedule() {
+        val item = currentItem ?: return
+        if (!item.type.isSeriesLike()) return
+        val imdbId = item.imdb?.trim()?.takeIf { it.isNotBlank() } ?: return
+        router.navigateTo(
+            router.screens.episodeSchedule(
+                EpisodeScheduleScreenParams(
+                    itemId = item.id,
+                    title = item.title,
+                    imdbId = imdbId,
+                ),
+            ),
+        )
+    }
+
     private fun openDetails(itemId: Int) {
         router.navigateForResult<ContentChangeSet>(
             screen = router.screens.details(itemId),
@@ -606,6 +713,17 @@ internal class DetailsVM(
     }
 
     private fun Boolean.toStatus(): Int = if (this) WATCHED_STATUS else UNWATCHED_STATUS
+
+    private fun Item.scheduleIdentity(): ScheduleIdentity? {
+        if (!type.isSeriesLike()) return null
+        val imdbId = imdb?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return ScheduleIdentity(itemId = id, imdbId = imdbId)
+    }
+
+    private data class ScheduleIdentity(
+        val itemId: Int,
+        val imdbId: String,
+    )
 
     private companion object {
         const val WATCHED_STATUS = 1

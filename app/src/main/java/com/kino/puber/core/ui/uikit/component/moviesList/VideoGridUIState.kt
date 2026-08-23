@@ -215,12 +215,19 @@ private fun VideoGridRowItem(
             }
         }
     }
-    val clickCallback = remember(item.id) {
-        {
-            runCatching { rowFocusRequester.saveFocusedChild() }
-            onItemClick(item)
+    val clickCallback = remember(item.id, item.presentation) {
+        if (item.presentation == VideoItemPresentation.Playable) {
+            {
+                runCatching { rowFocusRequester.saveFocusedChild() }
+                onItemClick(item)
+            }
+        } else {
+            {}
         }
     }
+    val contextMenuCallback = onItemContextMenu
+        ?.takeIf { item.presentation == VideoItemPresentation.Playable }
+        ?.let { callback -> { callback(item) } }
     VideoItem(
         modifier = Modifier
             .then(
@@ -233,6 +240,6 @@ private fun VideoGridRowItem(
             .then(focusModifier),
         state = item,
         onClick = clickCallback,
-        onContextMenu = onItemContextMenu?.let { callback -> { callback(item) } },
+        onContextMenu = contextMenuCallback,
     )
 }

@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.details.model
 
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Duotone
+import com.adamglin.phosphoricons.duotone.CalendarBlank
 import com.adamglin.phosphoricons.duotone.FilmSlate
 import com.adamglin.phosphoricons.duotone.Play
 import com.adamglin.phosphoricons.duotone.Playlist
@@ -11,13 +12,21 @@ import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemPresentation
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.data.api.config.TmdbImageConfig
 import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.Video
 import com.kino.puber.data.api.models.isSeriesLike
+import com.kino.puber.domain.model.EpisodeSchedule
+import com.kino.puber.domain.model.ScheduledEpisode
 import java.text.Normalizer
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
+import kotlinx.datetime.LocalDate
 
 internal class DetailsScreenUIMapper(
     private val resources: ResourceProvider,
@@ -26,6 +35,18 @@ internal class DetailsScreenUIMapper(
 
     fun map(item: Item, isInWatchlist: Boolean = item.inWatchlist ?: false): DetailsScreenState.Content {
         return mapContent(item = item, isInWatchlist = isInWatchlist)
+    }
+
+    fun map(
+        item: Item,
+        isInWatchlist: Boolean,
+        schedule: EpisodeSchedule?,
+    ): DetailsScreenState.Content {
+        return mapContent(
+            item = item,
+            isInWatchlist = isInWatchlist,
+            schedule = schedule,
+        )
     }
 
     fun map(
@@ -40,12 +61,27 @@ internal class DetailsScreenUIMapper(
         )
     }
 
+    fun map(
+        item: Item,
+        isInWatchlist: Boolean,
+        initialEpisode: DetailsEpisodeTarget,
+        schedule: EpisodeSchedule?,
+    ): DetailsScreenState.Content {
+        return mapContent(
+            item = item,
+            isInWatchlist = isInWatchlist,
+            initialEpisode = initialEpisode,
+            schedule = schedule,
+        )
+    }
+
     private fun mapContent(
         item: Item,
         isInWatchlist: Boolean,
         initialEpisode: DetailsEpisodeTarget? = null,
+        schedule: EpisodeSchedule? = null,
     ): DetailsScreenState.Content {
-        val episodes = if (item.type.isSeriesLike()) mapEpisodes(item) else null
+        val episodes = if (item.type.isSeriesLike()) mapEpisodes(item, schedule) else null
         val requestedEpisode = episodes?.findEpisode(initialEpisode)
         val seriesStatus = mapSeriesStatus(item)
         return DetailsScreenState.Content(
@@ -80,25 +116,111 @@ internal class DetailsScreenUIMapper(
         }
     }
 
-    private fun mapEpisodes(item: Item): VideoGridUIState? {
-        val seasons = item.seasons ?: return null
+    private fun mapEpisodes(item: Item, schedule: EpisodeSchedule?): VideoGridUIState? {
+        val kinoPubSeasons = item.seasons
+        val scheduledBySeason = schedule?.seasons.orEmpty().associateBy { it.seasonNumber }
+        if (kinoPubSeasons == null && scheduledBySeason.isEmpty()) return null
+        val kinoPubBySeason = kinoPubSeasons.orEmpty().associateBy { it.number }
+
+        val seasonNumbers = (kinoPubBySeason.keys + scheduledBySeason.keys).distinct().sorted()
         val gridItems = mutableListOf<VideoGridItemUIState>()
-        for (season in seasons) {
-            val episodes = season.episodes.orEmpty()
+        for (seasonNumber in seasonNumbers) {
+            val season = kinoPubBySeason[seasonNumber]
+            val scheduledSeason = scheduledBySeason[seasonNumber]
+            val playableEpisodes = season?.episodes.orEmpty()
+            val playableCoordinates = playableEpisodes
+                .map { episode -> seasonNumber to episode.number }
+                .toSet()
+            val scheduledEpisodes = scheduledSeason?.episodes.orEmpty()
+                .filterNot { episode ->
+                    (episode.seasonNumber to episode.episodeNumber) in playableCoordinates
+                }
+            val items = (playableEpisodes.map { episode ->
+                mapEpisode(seasonNumber, playableEpisodes, episode)
+            } + scheduledEpisodes.map(::mapScheduledEpisode))
+                .sortedBy { it.episodeNumber ?: Int.MAX_VALUE }
+            val visibleItems = if (items.isNotEmpty()) {
+                items
+            } else {
+                scheduledSeason?.announcementDate?.let { announcementDate ->
+                    listOf(mapScheduledSeasonAnnouncement(seasonNumber, announcementDate))
+                }.orEmpty()
+            }
             gridItems.add(
                 VideoGridItemUIState.Title(
-                    resources.getString(R.string.player_season_episodes_count, season.number, episodes.size)
+                    resources.getString(R.string.player_season_episodes_count, seasonNumber, visibleItems.size)
                 )
             )
-            val items = episodes.map { episode -> mapEpisode(season.number, episodes, episode) }
             gridItems.add(
                 VideoGridItemUIState.Items(
-                    items = items,
-                    rowKey = "season_${season.number}",
+                    items = visibleItems,
+                    rowKey = "season_$seasonNumber",
                 )
             )
         }
         return VideoGridUIState(list = gridItems)
+    }
+
+    private fun mapScheduledEpisode(episode: ScheduledEpisode): VideoItemUIState {
+        val stillUrl = TmdbImageConfig.resolveStillUrl(episode.stillPath)
+        val title = buildString {
+            append(episode.episodeNumber)
+            append(". ")
+            append(episode.title ?: resources.getString(R.string.player_episode_untitled))
+        }
+        return VideoItemUIState(
+            id = scheduledItemId(episode.seasonNumber, episode.episodeNumber),
+            title = title,
+            imageUrl = stillUrl,
+            bigImageUrl = stillUrl,
+            showTitle = true,
+            isWatched = null,
+            isSeriesLike = false,
+            seasonNumber = episode.seasonNumber,
+            episodeNumber = episode.episodeNumber,
+            presentation = VideoItemPresentation.Scheduled,
+            scheduledReleaseDate = resources.getString(
+                R.string.player_scheduled_episode_date,
+                episode.airDate.localizedDate(),
+            ),
+        )
+    }
+
+    private fun mapScheduledSeasonAnnouncement(
+        seasonNumber: Int,
+        announcementDate: LocalDate,
+    ): VideoItemUIState {
+        return VideoItemUIState(
+            id = scheduledItemId(seasonNumber, ANNOUNCEMENT_EPISODE_NUMBER),
+            title = resources.getString(
+                R.string.player_scheduled_season_date,
+                announcementDate.localizedDate(),
+            ),
+            imageUrl = "",
+            bigImageUrl = "",
+            showTitle = true,
+            isWatched = null,
+            isSeriesLike = false,
+            seasonNumber = seasonNumber,
+            presentation = VideoItemPresentation.Scheduled,
+            scheduledReleaseDate = resources.getString(
+                R.string.player_scheduled_season_date,
+                announcementDate.localizedDate(),
+            ),
+        )
+    }
+
+    private fun LocalDate.localizedDate(): String {
+        return java.time.LocalDate.of(year, month.ordinal + 1, day)
+            .format(
+                DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+                    .withLocale(Locale.getDefault()),
+            )
+    }
+
+    private fun scheduledItemId(seasonNumber: Int, episodeNumber: Int): Int {
+        val encoded = seasonNumber.toLong() * SCHEDULED_SEASON_MULTIPLIER + episodeNumber + 1L
+        return -encoded.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
     }
 
     private fun mapCurrentEpisode(item: Item): VideoItemUIState? {
@@ -180,6 +302,15 @@ internal class DetailsScreenUIMapper(
                 action = DetailsAction.SelectSeasonClicked,
             )
         )
+        if (item.imdb?.trim()?.isNotBlank() == true) {
+            add(
+                DetailsButtonUIState.TextButton(
+                    textRes = R.string.video_details_button_schedule,
+                    icon = PhosphorIcons.Duotone.CalendarBlank,
+                    action = DetailsAction.ScheduleClicked,
+                )
+            )
+        }
         if (item.trailer != null) {
             add(
                 DetailsButtonUIState.IconOnly(
@@ -444,6 +575,8 @@ internal class DetailsScreenUIMapper(
 
     private companion object {
         const val SURROUND_CHANNELS = 6
+        const val ANNOUNCEMENT_EPISODE_NUMBER = 0
+        const val SCHEDULED_SEASON_MULTIPLIER = 1_000_000L
         val CYRILLIC_TRANSLITERATION = mapOf(
             'а' to "a",
             'б' to "b",

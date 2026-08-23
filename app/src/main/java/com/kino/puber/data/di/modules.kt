@@ -12,6 +12,7 @@ import com.kino.puber.data.repository.AppUpdateRepository
 import com.kino.puber.data.repository.CryptoPreferenceRepository
 import com.kino.puber.data.repository.DeviceInfoRepository
 import com.kino.puber.data.repository.DeviceSettingsRepository
+import com.kino.puber.data.repository.EpisodeScheduleRepository
 import com.kino.puber.data.repository.IAppUpdateRepository
 import com.kino.puber.data.repository.ICryptoPreferenceRepository
 import com.kino.puber.data.repository.IDeviceInfoRepository
@@ -72,6 +73,7 @@ val repositoryModule = module {
     singleOf(::CryptoPreferenceRepository) { bind<ICryptoPreferenceRepository>() }
     singleOf(::DeviceInfoRepository) { bind<IDeviceInfoRepository>() }
     singleOf(::DeviceSettingsRepository) { bind<IDeviceSettingsRepository>() }
+    singleOf(::EpisodeScheduleRepository)
     singleOf(::ItemDetailsRepository)
     singleOf(::PlayerPreferencesRepository)
     singleOf(::TmdbIdRepository)
