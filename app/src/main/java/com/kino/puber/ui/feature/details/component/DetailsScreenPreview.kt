@@ -21,6 +21,7 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsButtonUIState
+import com.kino.puber.ui.feature.details.model.DetailsCastMemberUIState
 import com.kino.puber.ui.feature.details.model.DetailsInfoRowUIState
 import com.kino.puber.ui.feature.details.model.DetailsInfoUIState
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
@@ -118,8 +119,22 @@ private fun previewInfo(details: VideoDetailsUIState) = DetailsInfoUIState(
     secondaryRows = listOf(
         DetailsInfoRowUIState("Режиссёр", "Ларри Ян"),
         DetailsInfoRowUIState("Качество", "1080p"),
+        DetailsInfoRowUIState("Статус", "Сериал выходит"),
     ),
-    castMembers = listOf("Джеки Чан", "Чжан Цзыфэн", "Тони Люн Ка-Фай"),
+    castCards = listOf(
+        DetailsCastMemberUIState(
+            actorQuery = "Джеки Чан",
+            displayName = "Джеки Чан",
+        ),
+        DetailsCastMemberUIState(
+            actorQuery = "Чжан Цзыфэн",
+            displayName = "Чжан Цзыфэн",
+        ),
+        DetailsCastMemberUIState(
+            actorQuery = "Александр Людвиг Скарсгард",
+            displayName = "Александр Людвиг Скарсгард",
+        ),
+    ),
 )
 
 private val previewEpisodes = VideoGridUIState(
@@ -159,6 +174,7 @@ private fun previewSeriesContent(
     seasonsPanelVisible = seasonsPanelVisible,
     episodes = previewEpisodes,
     trailerUrl = trailerUrl,
+    seriesStatus = "Сериал выходит",
 )
 
 private fun previewMovieContent(

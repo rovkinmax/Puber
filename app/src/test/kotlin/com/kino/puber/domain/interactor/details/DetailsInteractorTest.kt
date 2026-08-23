@@ -6,8 +6,10 @@ import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.BookmarkFolder
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
+import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.WatchingToggleResponse
 import com.kino.puber.data.repository.ItemDetailsRepository
+import com.kino.puber.data.repository.TmdbCastRepository
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -21,7 +23,13 @@ class DetailsInteractorTest {
     private val api = mockk<KinoPubApiClient>(relaxed = true)
     private val itemDetailsRepository = mockk<ItemDetailsRepository>(relaxed = true)
     private val watchLaterBookmarkInteractor = mockk<WatchLaterBookmarkInteractor>()
-    private val interactor = DetailsInteractor(api, itemDetailsRepository, watchLaterBookmarkInteractor)
+    private val tmdbCastRepository = mockk<TmdbCastRepository>(relaxed = true)
+    private val interactor = DetailsInteractor(
+        api,
+        itemDetailsRepository,
+        watchLaterBookmarkInteractor,
+        tmdbCastRepository,
+    )
 
     @Test
     fun isInWatchLaterFolder_returnsTrueFromLocalBookmarks_withoutLiveLookup() = runTest {
@@ -70,6 +78,15 @@ class DetailsInteractorTest {
         val result = interactor.getSimilarItems(42)
 
         assertEquals(listOf(similar), result)
+    }
+
+    @Test
+    fun getTmdbCast_delegatesToRepository() = runTest {
+        val cast = listOf(TmdbCastMember(name = "Actor", profileUrl = "https://image"))
+        coEvery { tmdbCastRepository.getCast("tt123") } returns cast
+
+        assertEquals(cast, interactor.getTmdbCast("tt123"))
+        coVerify(exactly = 1) { tmdbCastRepository.getCast("tt123") }
     }
 
     @Test

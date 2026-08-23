@@ -1,10 +1,13 @@
 package com.kino.puber.ui.feature.details.component
 
 import androidx.annotation.OptIn
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,9 +25,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
@@ -47,9 +53,15 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.util.UnstableApi
@@ -85,10 +97,14 @@ import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsButtonUIState
+import com.kino.puber.ui.feature.details.model.DetailsCastMemberUIState
 import com.kino.puber.ui.feature.details.model.DetailsInfoRowUIState
 import com.kino.puber.ui.feature.details.model.DetailsInfoUIState
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
 import com.kino.puber.ui.feature.player.component.EpisodesPanel
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -98,8 +114,12 @@ private const val DETAILS_BUTTONS_FOCUS_DELAY_MS = 100L
 private const val DETAILS_PAGE_FOCUS_DELAY_MS = 50L
 private const val CHEVRON_ALPHA = 0.5F
 private const val INFO_ROW_MAX_LINES = 2
-private const val INFO_CHIP_MAX_LINES = 1
+private const val ACTOR_CARD_WIDTH = 112
+private const val ACTOR_CARD_HEIGHT = 132
+private const val ACTOR_PORTRAIT_SIZE = 72
+internal const val ACTOR_PORTRAIT_TEST_TAG_PREFIX = "details_actor_portrait:"
 private val INFO_CHIP_FOCUS_SAFE_PADDING = 8.dp
+private val INFO_PAGE_SCROLL_STEP = 240.dp
 private val DETAILS_PAGE_PEEK_HEIGHT = 32.dp
 private val PAGE_FOCUS_BRIDGE_HEIGHT = 56.dp
 
@@ -174,38 +194,14 @@ private fun DetailsContentBody(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val pageCount = if (state.similarItems.isNotEmpty()) DETAILS_PAGES_WITH_SIMILAR else DETAILS_PAGES_BASE
         val pagerState = rememberPagerState(pageCount = { pageCount })
-        val coroutineScope = rememberCoroutineScope()
         val infoPageFocusRequester = remember { FocusRequester() }
         val similarFirstItemFocusRequester = remember { FocusRequester() }
         val hasSimilarItems = state.similarItems.isNotEmpty()
-        val focusMainPage = remember {
-            {
-                coroutineScope.launch {
-                    pagerState.animateScrollToPage(MAIN_PAGE_INDEX)
-                }
-                Unit
-            }
-        }
-        val focusInfoPage = remember {
-            {
-                coroutineScope.launch {
-                    pagerState.animateScrollToPage(INFO_PAGE_INDEX)
-                    delay(DETAILS_PAGE_FOCUS_DELAY_MS)
-                    runCatching { infoPageFocusRequester.requestFocus() }
-                }
-                Unit
-            }
-        }
-        val focusSimilarPage = remember {
-            {
-                coroutineScope.launch {
-                    pagerState.animateScrollToPage(SIMILAR_PAGE_INDEX)
-                    delay(DETAILS_PAGE_FOCUS_DELAY_MS)
-                    runCatching { similarFirstItemFocusRequester.requestFocus() }
-                }
-                Unit
-            }
-        }
+        val focusActions = rememberDetailsPageFocusActions(
+            pagerState = pagerState,
+            infoPageFocusRequester = infoPageFocusRequester,
+            similarFirstItemFocusRequester = similarFirstItemFocusRequester,
+        )
         val isMainPageVisible by remember {
             derivedStateOf {
                 pagerState.currentPage == MAIN_PAGE_INDEX &&
@@ -215,51 +211,137 @@ private fun DetailsContentBody(
         val currentPage by remember {
             derivedStateOf { pagerState.currentPage }
         }
-        LaunchedEffect(pagerState.currentPage, state.info.castMembers.size, hasSimilarItems) {
-            delay(DETAILS_PAGE_FOCUS_DELAY_MS)
-            when (pagerState.currentPage) {
-                INFO_PAGE_INDEX -> runCatching { infoPageFocusRequester.requestFocus() }
-                SIMILAR_PAGE_INDEX -> if (hasSimilarItems) {
+        RequestCurrentDetailsPageFocus(
+            currentPage = pagerState.currentPage,
+            castCardCount = state.info.castCards.size,
+            hasSimilarItems = hasSimilarItems,
+            infoPageFocusRequester = infoPageFocusRequester,
+            similarFirstItemFocusRequester = similarFirstItemFocusRequester,
+        )
+        DetailsPager(
+            pagerState = pagerState,
+            state = state,
+            currentPage = currentPage,
+            isMainPageVisible = isMainPageVisible,
+            hasSimilarItems = hasSimilarItems,
+            focusActions = focusActions,
+            infoPageFocusRequester = infoPageFocusRequester,
+            similarFirstItemFocusRequester = similarFirstItemFocusRequester,
+            onAction = onAction,
+            onEpisodeContextMenu = onEpisodeContextMenu,
+        )
+    }
+}
+
+private data class DetailsPageFocusActions(
+    val focusMainPage: () -> Unit,
+    val focusInfoPage: () -> Unit,
+    val focusSimilarPage: () -> Unit,
+)
+
+@Composable
+private fun rememberDetailsPageFocusActions(
+    pagerState: PagerState,
+    infoPageFocusRequester: FocusRequester,
+    similarFirstItemFocusRequester: FocusRequester,
+): DetailsPageFocusActions {
+    val coroutineScope = rememberCoroutineScope()
+    return remember(pagerState, infoPageFocusRequester, similarFirstItemFocusRequester, coroutineScope) {
+        DetailsPageFocusActions(
+            focusMainPage = {
+                coroutineScope.launch {
+                    pagerState.animateScrollToPage(MAIN_PAGE_INDEX)
+                }
+                Unit
+            },
+            focusInfoPage = {
+                coroutineScope.launch {
+                    pagerState.animateScrollToPage(INFO_PAGE_INDEX)
+                    delay(DETAILS_PAGE_FOCUS_DELAY_MS)
+                    runCatching { infoPageFocusRequester.requestFocus() }
+                }
+                Unit
+            },
+            focusSimilarPage = {
+                coroutineScope.launch {
+                    pagerState.animateScrollToPage(SIMILAR_PAGE_INDEX)
+                    delay(DETAILS_PAGE_FOCUS_DELAY_MS)
                     runCatching { similarFirstItemFocusRequester.requestFocus() }
                 }
+                Unit
+            },
+        )
+    }
+}
+
+@Composable
+private fun RequestCurrentDetailsPageFocus(
+    currentPage: Int,
+    castCardCount: Int,
+    hasSimilarItems: Boolean,
+    infoPageFocusRequester: FocusRequester,
+    similarFirstItemFocusRequester: FocusRequester,
+) {
+    LaunchedEffect(currentPage, castCardCount, hasSimilarItems) {
+        delay(DETAILS_PAGE_FOCUS_DELAY_MS)
+        when (currentPage) {
+            INFO_PAGE_INDEX -> runCatching { infoPageFocusRequester.requestFocus() }
+            SIMILAR_PAGE_INDEX -> if (hasSimilarItems) {
+                runCatching { similarFirstItemFocusRequester.requestFocus() }
             }
         }
-        KeepFocusedChildVisibleWithoutRepositioning {
-            VerticalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = DETAILS_PAGE_PEEK_HEIGHT),
-                beyondViewportPageCount = 1,
-            ) { page ->
-                when (page) {
-                    MAIN_PAGE_INDEX -> DetailsMainPage(
-                        modifier = Modifier.fillMaxSize(),
-                        state = state,
-                        onAction = onAction,
-                        onEpisodeContextMenu = onEpisodeContextMenu,
-                        seasonsPanelVisible = state.seasonsPanelVisible,
-                        recoverActionFocus = isMainPageVisible,
-                        showPageChevron = currentPage == MAIN_PAGE_INDEX,
-                        scrollToMainPage = { pagerState.animateScrollToPage(MAIN_PAGE_INDEX) },
-                    )
-                    INFO_PAGE_INDEX -> DetailsInfoPage(
-                        info = state.info,
-                        hasNextPage = hasSimilarItems,
-                        showPageChevrons = currentPage == INFO_PAGE_INDEX,
-                        focusRequester = infoPageFocusRequester,
-                        onPreviousPageRequested = focusMainPage,
-                        onNextPageRequested = focusSimilarPage,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    SIMILAR_PAGE_INDEX -> DetailsSimilarPage(
-                        items = state.similarItems,
-                        onAction = onAction,
-                        firstItemFocusRequester = similarFirstItemFocusRequester,
-                        onPreviousPageRequested = focusInfoPage,
-                        showPageChevron = currentPage == SIMILAR_PAGE_INDEX,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+    }
+}
+
+@Composable
+private fun DetailsPager(
+    pagerState: PagerState,
+    state: DetailsScreenState.Content,
+    currentPage: Int,
+    isMainPageVisible: Boolean,
+    hasSimilarItems: Boolean,
+    focusActions: DetailsPageFocusActions,
+    infoPageFocusRequester: FocusRequester,
+    similarFirstItemFocusRequester: FocusRequester,
+    onAction: (UIAction) -> Unit,
+    onEpisodeContextMenu: (VideoItemUIState) -> Unit,
+) {
+    KeepFocusedChildVisibleWithoutRepositioning {
+        VerticalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = DETAILS_PAGE_PEEK_HEIGHT),
+            beyondViewportPageCount = 1,
+        ) { page ->
+            when (page) {
+                MAIN_PAGE_INDEX -> DetailsMainPage(
+                    modifier = Modifier.fillMaxSize(),
+                    state = state,
+                    onAction = onAction,
+                    onEpisodeContextMenu = onEpisodeContextMenu,
+                    seasonsPanelVisible = state.seasonsPanelVisible,
+                    recoverActionFocus = isMainPageVisible,
+                    showPageChevron = currentPage == MAIN_PAGE_INDEX,
+                    scrollToMainPage = { pagerState.animateScrollToPage(MAIN_PAGE_INDEX) },
+                )
+                INFO_PAGE_INDEX -> DetailsInfoPage(
+                    info = state.info,
+                    hasNextPage = hasSimilarItems,
+                    showPageChevrons = currentPage == INFO_PAGE_INDEX,
+                    focusRequester = infoPageFocusRequester,
+                    onAction = onAction,
+                    onPreviousPageRequested = focusActions.focusMainPage,
+                    onNextPageRequested = focusActions.focusSimilarPage,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                SIMILAR_PAGE_INDEX -> DetailsSimilarPage(
+                    items = state.similarItems,
+                    onAction = onAction,
+                    firstItemFocusRequester = similarFirstItemFocusRequester,
+                    onPreviousPageRequested = focusActions.focusInfoPage,
+                    showPageChevron = currentPage == SIMILAR_PAGE_INDEX,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
     }
@@ -309,13 +391,27 @@ private fun DetailsMainPage(
     scrollToMainPage: suspend () -> Unit,
 ) {
     Column(modifier = modifier) {
-        VideoItemGridDetails(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(DETAILS_CONTENT_WEIGHT),
-            state = state.details,
-            descriptionMaxLines = FIRST_PAGE_DESCRIPTION_LINES,
-        )
+        ) {
+            VideoItemGridDetails(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1F),
+                state = state.details,
+                descriptionMaxLines = FIRST_PAGE_DESCRIPTION_LINES,
+            )
+            state.seriesStatus?.let { status ->
+                Text(
+                    text = status,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72F),
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -500,75 +596,178 @@ private fun DetailsWatchedButton(
 }
 
 @Composable
-private fun DetailsInfoPage(
+internal fun DetailsInfoPage(
     info: DetailsInfoUIState,
     hasNextPage: Boolean,
     showPageChevrons: Boolean,
     focusRequester: FocusRequester,
+    onAction: (UIAction) -> Unit,
     onPreviousPageRequested: () -> Unit,
     onNextPageRequested: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
-        PageFocusBridge(
-            enabled = showPageChevrons,
-            onFocused = onPreviousPageRequested,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(PAGE_FOCUS_BRIDGE_HEIGHT),
+        DetailsInfoTopNavigation(
+            showPageChevrons = showPageChevrons,
+            onPreviousPageRequested = onPreviousPageRequested,
+            modifier = Modifier.align(Alignment.TopCenter),
         )
-        if (showPageChevrons) {
-            ChevronIndicator(
-                direction = ChevronDirection.Up,
-                modifier = Modifier.align(Alignment.TopCenter),
+        DetailsInfoContent(
+            info = info,
+            hasNextPage = hasNextPage,
+            focusRequester = focusRequester,
+            onAction = onAction,
+            onPreviousPageRequested = onPreviousPageRequested,
+            onNextPageRequested = onNextPageRequested,
+        )
+        if (hasNextPage) {
+            DetailsInfoBottomNavigation(
+                showPageChevrons = showPageChevrons,
+                onNextPageRequested = onNextPageRequested,
+                modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
-        Box(
+    }
+}
+
+@Composable
+private fun DetailsInfoTopNavigation(
+    showPageChevrons: Boolean,
+    onPreviousPageRequested: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PageFocusBridge(
+        enabled = showPageChevrons,
+        onFocused = onPreviousPageRequested,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(PAGE_FOCUS_BRIDGE_HEIGHT),
+    )
+    if (showPageChevrons) {
+        ChevronIndicator(
+            direction = ChevronDirection.Up,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun DetailsInfoContent(
+    info: DetailsInfoUIState,
+    hasNextPage: Boolean,
+    focusRequester: FocusRequester,
+    onAction: (UIAction) -> Unit,
+    onPreviousPageRequested: () -> Unit,
+    onNextPageRequested: () -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    val scrollActions = rememberDetailsInfoScrollActions(
+        scrollState = scrollState,
+        hasNextPage = hasNextPage,
+        onPreviousPageRequested = onPreviousPageRequested,
+        onNextPageRequested = onNextPageRequested,
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(if (info.castCards.isEmpty()) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusable()
+            .onDirectionKey(Key.DirectionUp, onKey = scrollActions.onUp)
+            .onDirectionKey(Key.DirectionDown, onKey = scrollActions.onDown)
+            .padding(start = 16.dp, top = 44.dp, end = 16.dp, bottom = 20.dp),
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (info.castMembers.isEmpty()) Modifier.focusRequester(focusRequester) else Modifier)
-                .focusable()
-                .onDirectionKey(Key.DirectionUp, onKey = onPreviousPageRequested)
-                .onDirectionKey(Key.DirectionDown, enabled = hasNextPage, onKey = onNextPageRequested)
-                .padding(start = 96.dp, top = 44.dp, end = 96.dp, bottom = 20.dp),
+                .verticalScroll(scrollState)
+                .padding(bottom = if (hasNextPage) PAGE_FOCUS_BRIDGE_HEIGHT else 0.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                DetailsInfoHeader(info)
-                Text(
-                    text = info.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                DetailsCastRow(
-                    info = info,
-                    firstItemFocusRequester = focusRequester,
-                    hasNextPage = hasNextPage,
-                    onPreviousPageRequested = onPreviousPageRequested,
-                    onNextPageRequested = onNextPageRequested,
-                )
-                DetailsInfoGrid(rows = info.primaryRows + info.secondaryRows)
-            }
-        }
-
-        if (hasNextPage) {
-            PageFocusBridge(
-                enabled = showPageChevrons,
-                onFocused = onNextPageRequested,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(PAGE_FOCUS_BRIDGE_HEIGHT),
+            DetailsInfoHeader(info)
+            Text(
+                text = info.description,
+                style = MaterialTheme.typography.bodyMedium,
             )
-            if (showPageChevrons) {
-                ChevronIndicator(
-                    direction = ChevronDirection.Down,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
-            }
+            DetailsCastRow(
+                info = info,
+                firstItemFocusRequester = focusRequester,
+                hasNextPage = hasNextPage,
+                onAction = onAction,
+                onPreviousPageRequested = scrollActions.onUp,
+                onNextPageRequested = scrollActions.onDown,
+            )
+            DetailsInfoGrid(rows = info.primaryRows + info.secondaryRows)
         }
+    }
+}
+
+private data class DetailsInfoScrollActions(
+    val onUp: () -> Unit,
+    val onDown: () -> Unit,
+)
+
+@Composable
+private fun rememberDetailsInfoScrollActions(
+    scrollState: ScrollState,
+    hasNextPage: Boolean,
+    onPreviousPageRequested: () -> Unit,
+    onNextPageRequested: () -> Unit,
+): DetailsInfoScrollActions {
+    val coroutineScope = rememberCoroutineScope()
+    val scrollStepPx = with(LocalDensity.current) { INFO_PAGE_SCROLL_STEP.roundToPx() }
+    return remember(
+        scrollState,
+        hasNextPage,
+        onPreviousPageRequested,
+        onNextPageRequested,
+        coroutineScope,
+        scrollStepPx,
+    ) {
+        DetailsInfoScrollActions(
+            onUp = {
+                if (scrollState.value > 0) {
+                    coroutineScope.launch {
+                        scrollState.animateScrollTo(
+                            value = (scrollState.value - scrollStepPx).coerceAtLeast(0),
+                        )
+                    }
+                } else {
+                    onPreviousPageRequested()
+                }
+            },
+            onDown = {
+                if (scrollState.value < scrollState.maxValue) {
+                    coroutineScope.launch {
+                        scrollState.animateScrollTo(
+                            value = (scrollState.value + scrollStepPx).coerceAtMost(scrollState.maxValue),
+                        )
+                    }
+                } else if (hasNextPage) {
+                    onNextPageRequested()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun DetailsInfoBottomNavigation(
+    showPageChevrons: Boolean,
+    onNextPageRequested: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PageFocusBridge(
+        enabled = showPageChevrons,
+        onFocused = onNextPageRequested,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(PAGE_FOCUS_BRIDGE_HEIGHT),
+    )
+    if (showPageChevrons) {
+        ChevronIndicator(
+            direction = ChevronDirection.Down,
+            modifier = modifier,
+        )
     }
 }
 
@@ -639,11 +838,12 @@ private fun DetailsCastRow(
     info: DetailsInfoUIState,
     firstItemFocusRequester: FocusRequester,
     hasNextPage: Boolean,
+    onAction: (UIAction) -> Unit,
     onPreviousPageRequested: () -> Unit,
     onNextPageRequested: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (info.castMembers.isEmpty()) return
+    if (info.castCards.isEmpty()) return
 
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -673,14 +873,18 @@ private fun DetailsCastRow(
                 bottom = INFO_CHIP_FOCUS_SAFE_PADDING,
             ),
         ) {
-            itemsIndexed(info.castMembers, key = { index, actor -> "$index:$actor" }) { index, actor ->
+            itemsIndexed(
+                items = info.castCards,
+                key = { index, card -> "$index:${card.actorQuery}" },
+            ) { index, card ->
                 val itemModifier = if (index == 0) {
                     Modifier.focusRequester(firstItemFocusRequester)
                 } else {
                     Modifier
                 }
-                DetailsInfoChip(
-                    text = actor,
+                DetailsCastCard(
+                    card = card,
+                    onClick = { onAction(DetailsAction.CastMemberSelected(card.actorQuery)) },
                     modifier = itemModifier
                         .onFocusChanged { focusState ->
                             if (focusState.isFocused) {
@@ -701,14 +905,17 @@ private fun DetailsCastRow(
 }
 
 @Composable
-private fun DetailsInfoChip(
-    text: String,
+private fun DetailsCastCard(
+    card: DetailsCastMemberUIState,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        onClick = {},
-        modifier = modifier,
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(100.dp)),
+        onClick = onClick,
+        modifier = modifier.semantics(mergeDescendants = true) {
+            contentDescription = card.displayName
+        },
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56F),
             focusedContainerColor = MaterialTheme.colorScheme.onSurface,
@@ -716,15 +923,67 @@ private fun DetailsInfoChip(
             focusedContentColor = MaterialTheme.colorScheme.surface,
         ),
     ) {
-        Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+        Column(
+            modifier = Modifier
+                .size(width = ACTOR_CARD_WIDTH.dp, height = ACTOR_CARD_HEIGHT.dp)
+                .padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            ActorPortrait(card)
             Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = INFO_CHIP_MAX_LINES,
+                text = card.displayName,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
+}
+
+@Composable
+private fun ActorPortrait(card: DetailsCastMemberUIState) {
+    var imageFailed by remember(card.photoUrl) { mutableStateOf(false) }
+    val photoUrl = card.photoUrl
+    Box(
+        modifier = Modifier
+            .size(ACTOR_PORTRAIT_SIZE.dp)
+            .testTag(ACTOR_PORTRAIT_TEST_TAG_PREFIX + card.actorQuery)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surface),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = actorInitials(card.displayName),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72F),
+        )
+        if (!photoUrl.isNullOrBlank() && !imageFailed) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(photoUrl)
+                    .crossfade(true)
+                    .build(),
+                onError = { imageFailed = true },
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(10.dp)),
+            )
+        }
+    }
+}
+
+private fun actorInitials(name: String): String {
+    return name
+        .trim()
+        .split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+        .take(2)
+        .joinToString(separator = "") { word -> word.first().uppercase() }
 }
 
 @Composable

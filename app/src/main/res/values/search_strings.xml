@@ -3,4 +3,6 @@
     <string name="search_hint">Введите название…</string>
     <string name="search_no_results">Ничего не найдено</string>
     <string name="search_min_query">Введите минимум 3 символа</string>
+    <string name="search_actor_title">Featuring: %1$s</string>
+    <string name="search_actor_no_results">Ничего не найдено по этому актёру</string>
 </resources>

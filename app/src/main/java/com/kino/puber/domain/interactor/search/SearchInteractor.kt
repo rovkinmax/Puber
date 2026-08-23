@@ -11,6 +11,10 @@ internal class SearchInteractor(
         return api.searchItems(query, perpage = SEARCH_PER_PAGE).getOrThrow().items
     }
 
+    suspend fun searchByActor(actorQuery: String): List<Item> {
+        return api.searchByActor(actor = actorQuery, perpage = SEARCH_PER_PAGE).getOrThrow().items
+    }
+
     private companion object {
         const val SEARCH_PER_PAGE = 50
     }

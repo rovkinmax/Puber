@@ -1,6 +1,7 @@
 package com.kino.puber.ui.feature.search.content
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -40,23 +42,19 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.modifier.placeholder
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemHorizontal
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.component.VideoItemContextMenuDialog
+import com.kino.puber.core.ui.uikit.component.FullScreenError
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.search.model.SearchViewState
-
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.size
 import kotlinx.coroutines.delay
 
 private const val GRID_COLUMNS = 3
@@ -79,41 +77,30 @@ internal fun SearchScreenContent(
         gridFocusRequester.requestFocus()
     }
 
-    // Restore focus on (re-)composition: text field on first launch, grid on return from details
-    LaunchedEffect(Unit) {
-        delay(100)
-        when {
-            focusTarget == FOCUS_TARGET_GRID && state is SearchViewState.Content ->
-                gridFocusRequester.requestFocus()
-            else ->
-                textFieldFocusRequester.requestFocus()
-        }
-    }
-
-    // Move focus to grid when IME dismisses via Back
-    val imeBottomPx = WindowInsets.ime.getBottom(LocalDensity.current)
-    val isKeyboardOpen = imeBottomPx > 0
-    var wasKeyboardOpen by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(isKeyboardOpen) {
-        if (wasKeyboardOpen && !isKeyboardOpen && state is SearchViewState.Content) {
-            focusTarget = FOCUS_TARGET_GRID
-            gridFocusRequester.requestFocus()
-        }
-        wasKeyboardOpen = isKeyboardOpen
-    }
+    SearchFocusEffects(
+        state = state,
+        focusTarget = focusTarget,
+        onFocusTargetChanged = { focusTarget = it },
+        textFieldFocusRequester = textFieldFocusRequester,
+        gridFocusRequester = gridFocusRequester,
+    )
 
     Column(modifier = Modifier.fillMaxSize()) {
-        SearchInputField(
-            query = query,
-            textFieldFocusRequester = textFieldFocusRequester,
-            hasResults = state is SearchViewState.Content,
-            onFocusResults = focusResults,
-            onQueryChanged = { text ->
-                query = text
-                onAction(CommonAction.TextChanged(text, SEARCH_TAG))
-            },
-        )
+        if (state.presentation.showSearchInput) {
+            SearchInputField(
+                query = query,
+                hint = state.presentation.inputHint,
+                textFieldFocusRequester = textFieldFocusRequester,
+                hasResults = state is SearchViewState.Content,
+                onFocusResults = focusResults,
+                onQueryChanged = { text ->
+                    query = text
+                    onAction(CommonAction.TextChanged(text, SEARCH_TAG))
+                },
+            )
+        } else {
+            SearchTitle(state.presentation.title.orEmpty())
+        }
         SearchResultsArea(
             state = state,
             gridFocusRequester = gridFocusRequester,
@@ -127,8 +114,61 @@ internal fun SearchScreenContent(
 }
 
 @Composable
+private fun SearchFocusEffects(
+    state: SearchViewState,
+    focusTarget: Int,
+    onFocusTargetChanged: (Int) -> Unit,
+    textFieldFocusRequester: FocusRequester,
+    gridFocusRequester: FocusRequester,
+) {
+    // Restore focus on (re-)composition: text field on first launch, grid on return from details.
+    LaunchedEffect(Unit) {
+        if (state.presentation.focusResultsOnContent) return@LaunchedEffect
+        delay(100)
+        when {
+            focusTarget == FOCUS_TARGET_GRID && state is SearchViewState.Content ->
+                gridFocusRequester.requestFocus()
+            else ->
+                textFieldFocusRequester.requestFocus()
+        }
+    }
+
+    // Actor mode has no text field; focus the first result when the response arrives.
+    LaunchedEffect(state.presentation.focusResultsOnContent, state) {
+        if (!state.presentation.focusResultsOnContent || state !is SearchViewState.Content) {
+            return@LaunchedEffect
+        }
+        delay(100)
+        gridFocusRequester.requestFocus()
+    }
+
+    // Move focus to grid when IME dismisses via Back
+    val imeBottomPx = WindowInsets.ime.getBottom(LocalDensity.current)
+    val isKeyboardOpen = imeBottomPx > 0
+    var wasKeyboardOpen by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(isKeyboardOpen) {
+        if (wasKeyboardOpen && !isKeyboardOpen && state is SearchViewState.Content) {
+            onFocusTargetChanged(FOCUS_TARGET_GRID)
+            gridFocusRequester.requestFocus()
+        }
+        wasKeyboardOpen = isKeyboardOpen
+    }
+}
+
+@Composable
+private fun SearchTitle(title: String) {
+    Text(
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+        text = title,
+        style = MaterialTheme.typography.titleLarge,
+    )
+}
+
+@Composable
 private fun SearchInputField(
     query: String,
+    hint: String,
     textFieldFocusRequester: FocusRequester,
     hasResults: Boolean,
     onFocusResults: () -> Unit,
@@ -176,7 +216,7 @@ private fun SearchInputField(
                     Box(modifier = Modifier.weight(1f)) {
                         if (query.isEmpty()) {
                             Text(
-                                text = stringResource(R.string.search_hint),
+                                text = hint,
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -215,10 +255,17 @@ private fun SearchResultsArea(
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (state) {
-            is SearchViewState.Idle -> CenteredText(stringResource(R.string.search_hint))
+            is SearchViewState.Idle -> CenteredText(state.presentation.inputHint)
             is SearchViewState.Loading -> ShimmerSearchGrid()
-            is SearchViewState.Empty -> CenteredText(stringResource(R.string.search_no_results))
-            is SearchViewState.Error -> CenteredText(state.message)
+            is SearchViewState.Empty -> CenteredText(state.presentation.emptyMessage)
+            is SearchViewState.Error -> if (state.presentation.showRetryOnError) {
+                FullScreenError(
+                    error = state.message,
+                    onClick = { onAction(CommonAction.RetryClicked) },
+                )
+            } else {
+                CenteredText(state.message)
+            }
             is SearchViewState.Content -> SearchResultsGrid(
                 state = state,
                 gridFocusRequester = gridFocusRequester,

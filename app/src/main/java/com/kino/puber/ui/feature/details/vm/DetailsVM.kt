@@ -19,6 +19,7 @@ import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import com.kino.puber.domain.interactor.details.DetailsInteractor
 import com.kino.puber.ui.feature.details.model.DetailsAction
+import com.kino.puber.ui.feature.details.model.DetailsCastMemberUIState
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
 import com.kino.puber.ui.feature.details.model.DetailsScreenUIMapper
@@ -53,6 +54,8 @@ internal class DetailsVM(
     private var contentChanges = ContentChangeSet.empty()
     private val pendingMutations = mutableSetOf<Job>()
     private val mutationMutex = Mutex()
+    private var castEnrichmentJob: Job? = null
+    private var castEnrichmentGeneration = 0L
     private var closeJob: Job? = null
     private var closing = false
 
@@ -68,15 +71,20 @@ internal class DetailsVM(
                 interactor.getItemDetails(params.itemId)
             }
             currentItem = item
+            val previousCastCards = (stateValue as? DetailsScreenState.Content)
+                ?.info
+                ?.castCards
+                .orEmpty()
             val mapped = mapDetails(
                 item = item,
                 isInWatchlist = interactor.isInWatchLaterFolder(item),
             )
             updateViewState(
-                mapped.copy(
+                preserveCastPhotos(mapped, previousCastCards).copy(
                     seasonsPanelVisible = mapped.initialEpisodeFocusId != null,
                 ),
             )
+            startCastEnrichment(item)
             loadSimilarItems()
         }
     }
@@ -109,6 +117,7 @@ internal class DetailsVM(
             is DetailsAction.EpisodeWatchedChanged -> onEpisodeWatchedChanged(action.item, action.watched)
             is DetailsAction.SeasonWatchedChanged -> onSeasonWatchedChanged(action.item, action.watched)
             is DetailsAction.SimilarSelected -> openDetails(action.item.id)
+            is DetailsAction.CastMemberSelected -> openActorItems(action.actorQuery)
             is DetailsAction.CloseSeasonsPanel -> hideSeasonsPanel()
             is CommonAction.ItemSelected<*> -> {
                 val item = action.item as VideoItemUIState
@@ -199,7 +208,7 @@ internal class DetailsVM(
         val mapped = mapDetails(item = item, isInWatchlist = isInWatchlist)
         currentItem = item
         updateViewState(
-            mapped.copy(
+            preserveCastPhotos(mapped, state?.info?.castCards.orEmpty()).copy(
                 isInWatchlist = isInWatchlist,
                 isWatched = isWatched ?: mapped.isWatched,
                 seasonsPanelVisible = state?.seasonsPanelVisible ?: false,
@@ -207,6 +216,7 @@ internal class DetailsVM(
                 trailerUrl = state?.trailerUrl,
             )
         )
+        startCastEnrichment(item)
     }
 
     private fun mapDetails(
@@ -220,6 +230,66 @@ internal class DetailsVM(
                 initialEpisode = initialEpisode,
             )
         } ?: mapper.map(item, isInWatchlist = isInWatchlist)
+    }
+
+    private fun preserveCastPhotos(
+        mapped: DetailsScreenState.Content,
+        previousCastCards: List<DetailsCastMemberUIState>,
+    ): DetailsScreenState.Content {
+        if (previousCastCards.isEmpty()) return mapped
+        val previousPhotos = previousCastCards
+            .filter { card -> card.photoUrl != null }
+            .associateBy { card -> card.actorQuery }
+        if (previousPhotos.isEmpty()) return mapped
+        return mapped.copy(
+            info = mapped.info.copy(
+                castCards = mapped.info.castCards.map { card ->
+                    previousPhotos[card.actorQuery]?.photoUrl?.let { photoUrl ->
+                        card.copy(photoUrl = photoUrl)
+                    } ?: card
+                },
+            ),
+        )
+    }
+
+    private fun startCastEnrichment(item: Item) {
+        val generation = ++castEnrichmentGeneration
+        castEnrichmentJob?.cancel()
+        val imdbId = item.imdb?.trim()?.takeIf(String::isNotEmpty) ?: return
+        val castCards = (stateValue as? DetailsScreenState.Content)
+            ?.info
+            ?.castCards
+            .orEmpty()
+        if (castCards.isEmpty()) return
+
+        castEnrichmentJob = launch {
+            try {
+                val tmdbCast = interactor.getTmdbCast(imdbId)
+                if (tmdbCast.isEmpty()) return@launch
+                if (
+                    generation != castEnrichmentGeneration ||
+                    currentItem?.id != item.id ||
+                    currentItem?.imdb?.trim() != imdbId
+                ) {
+                    return@launch
+                }
+                updateViewState<DetailsScreenState.Content> {
+                    copy(
+                        info = info.copy(
+                            castCards = mapper.enrichCastCards(castCards, tmdbCast),
+                        ),
+                    )
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // TMDB enrichment is optional; keep the KinoPub details content intact.
+            }
+        }
+    }
+
+    private fun openActorItems(actorQuery: String) {
+        router.navigateTo(router.screens.actorItems(actorQuery))
     }
 
     private fun showTrailer() {
