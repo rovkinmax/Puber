@@ -1,6 +1,8 @@
 package com.kino.puber.ui.feature.episodeschedule.model
 
 import androidx.compose.runtime.Immutable
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.model.ScheduleProvider
 import kotlinx.datetime.LocalDate
@@ -14,7 +16,12 @@ internal sealed class EpisodeScheduleScreenState {
         val title: String,
         val provider: ScheduleProvider,
         val seasons: List<Season>,
-    ) : EpisodeScheduleScreenState()
+        val grid: VideoGridUIState,
+    ) : EpisodeScheduleScreenState() {
+        val initialFocusedItemId: Int? = grid.list
+            .filterIsInstance<VideoGridItemUIState.Items>()
+            .firstNotNullOfOrNull { row -> row.items.firstOrNull()?.id }
+    }
 
     @Immutable
     data class Empty(

@@ -14,6 +14,11 @@ import androidx.compose.ui.test.onParent
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performSemanticsAction
+import com.kino.puber.core.ui.uikit.component.moviesList.SCHEDULED_VIDEO_ITEM_TEST_TAG
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemPresentation
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.ui.feature.episodeschedule.model.EpisodeScheduleScreenState
@@ -43,15 +48,14 @@ internal class EpisodeScheduleScreenContentTest {
 
         composeRule.onNodeWithText("Дом дракона").assertIsDisplayed()
         composeRule.onNodeWithText("Сезон 2").assertIsDisplayed()
-        composeRule.onNodeWithText("Серия 1").assertIsDisplayed()
-        composeRule.onNodeWithText("Новая серия", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("1. Новая серия").assertIsDisplayed()
         composeRule.onNodeWithText(DATE_LABEL_SENTINEL, substring = true).assertIsDisplayed()
-        composeRule.onNodeWithTag("episode_schedule_2_1").assertIsDisplayed()
+        composeRule.onNodeWithTag(SCHEDULED_VIDEO_ITEM_TEST_TAG).assertIsDisplayed()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onNodeWithTag("episode_schedule_2_1").fetchSemanticsNode().config
+            composeRule.onNodeWithTag(SCHEDULED_VIDEO_ITEM_TEST_TAG).fetchSemanticsNode().config
                 .getOrNull(SemanticsProperties.Focused) == true
         }
-        composeRule.onNodeWithTag("episode_schedule_2_1").assertIsFocused().performKeyInput {
+        composeRule.onNodeWithTag(SCHEDULED_VIDEO_ITEM_TEST_TAG).assertIsFocused().performKeyInput {
             keyDown(Key.DirectionCenter)
             keyUp(Key.DirectionCenter)
         }
@@ -134,6 +138,26 @@ internal class EpisodeScheduleScreenContentTest {
                             airDate = LocalDate(2026, 9, 1),
                             airDateLabel = DATE_LABEL_SENTINEL,
                         ),
+                    ),
+                ),
+            ),
+            grid = VideoGridUIState(
+                list = listOf(
+                    VideoGridItemUIState.Title("Сезон 2"),
+                    VideoGridItemUIState.Items(
+                        items = listOf(
+                            VideoItemUIState(
+                                id = -2_000_002,
+                                title = "1. Новая серия",
+                                imageUrl = "",
+                                bigImageUrl = "",
+                                seasonNumber = 2,
+                                episodeNumber = 1,
+                                presentation = VideoItemPresentation.Scheduled,
+                                scheduledReleaseDate = DATE_LABEL_SENTINEL,
+                            ),
+                        ),
+                        rowKey = "season_2",
                     ),
                 ),
             ),
