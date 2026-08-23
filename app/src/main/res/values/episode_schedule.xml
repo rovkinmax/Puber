@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="episode_schedule_season">Сезон %1$d</string>
+    <string name="episode_schedule_episode">Серия %1$d</string>
+    <string name="episode_schedule_episode_subtitle">%1$s · %2$s</string>
+    <string name="episode_schedule_season_announcement">Премьера сезона</string>
+    <string name="episode_schedule_release_date">Дата выхода: %1$s</string>
+    <string name="episode_schedule_source_notice">Даты выхода предоставлены TMDB и могут измениться.</string>
+    <string name="episode_schedule_disclaimer">This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
+    <string name="episode_schedule_empty_title">Расписание недоступно</string>
+    <string name="episode_schedule_empty_missing_credentials">Не настроен доступ к TMDB.</string>
+    <string name="episode_schedule_empty_no_match">Сериал не найден в TMDB.</string>
+    <string name="episode_schedule_empty_no_upcoming">Будущие даты выхода не объявлены.</string>
+    <string name="episode_schedule_error_title">Не удалось загрузить расписание</string>
+    <string name="episode_schedule_retry">Повторить</string>
+</resources>

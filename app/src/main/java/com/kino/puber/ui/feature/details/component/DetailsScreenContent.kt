@@ -90,6 +90,7 @@ import com.kino.puber.core.ui.uikit.component.VideoItemContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItem
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemPresentation
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.component.modifier.placeholder
 import com.kino.puber.core.ui.uikit.component.onTvContextMenuKey
@@ -136,53 +137,81 @@ internal fun DetailsScreenContent(
             onClick = { onAction(CommonAction.RetryClicked) },
         )
 
-        is DetailsScreenState.Content -> {
-            val seasonsPanelFocusRequester = remember { FocusRequester() }
-            var episodeContextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
-            LaunchedEffect(state.seasonsPanelVisible, state.initialEpisodeFocusId) {
-                if (state.seasonsPanelVisible && state.initialEpisodeFocusId == null) {
-                    delay(SEASONS_PANEL_FOCUS_DELAY_MS)
-                    try {
-                        seasonsPanelFocusRequester.requestFocus()
-                    } catch (_: Exception) {
-                    }
-                }
-            }
-            Box(modifier = Modifier.fillMaxSize()) {
-                DetailsContentBody(
-                    state = state,
-                    onAction = onAction,
-                    onEpisodeContextMenu = { episodeContextMenuItem = it },
-                )
-                if (state.episodes != null) {
-                    EpisodesPanel(
-                        visible = state.seasonsPanelVisible,
-                        episodes = state.episodes,
-                        initialFocusedItemId = state.initialEpisodeFocusId,
-                        onEpisodeSelected = { item -> onAction(DetailsAction.EpisodeSelected(item)) },
-                        onEpisodeContextMenu = { episodeContextMenuItem = it },
-                        onBackPressed = { onAction(DetailsAction.CloseSeasonsPanel) },
-                        allowFocusExit = episodeContextMenuItem != null,
-                        modifier = Modifier.focusRequester(seasonsPanelFocusRequester),
-                    )
-                }
-                EpisodeContextMenuDialog(
-                    episode = episodeContextMenuItem,
-                    onDismiss = { episodeContextMenuItem = null },
-                    onPlay = { onAction(DetailsAction.EpisodeSelected(it)) },
-                    onMarkEpisodeWatched = { item, watched ->
-                        onAction(DetailsAction.EpisodeWatchedChanged(item, watched))
-                    },
-                    onMarkSeasonWatched = { item, watched ->
-                        onAction(DetailsAction.SeasonWatchedChanged(item, watched))
-                    },
-                )
-                TrailerOverlay(
-                    url = state.trailerUrl,
-                )
+        is DetailsScreenState.Content -> DetailsLoadedContent(state, onAction)
+    }
+}
+
+@Composable
+private fun DetailsLoadedContent(
+    state: DetailsScreenState.Content,
+    onAction: (UIAction) -> Unit,
+) {
+    val seasonsPanelFocusRequester = remember { FocusRequester() }
+    var episodeContextMenuItem by remember { mutableStateOf<VideoItemUIState?>(null) }
+    LaunchedEffect(state.seasonsPanelVisible, state.initialEpisodeFocusId) {
+        if (state.seasonsPanelVisible && state.initialEpisodeFocusId == null) {
+            delay(SEASONS_PANEL_FOCUS_DELAY_MS)
+            try {
+                seasonsPanelFocusRequester.requestFocus()
+            } catch (_: Exception) {
             }
         }
     }
+    Box(modifier = Modifier.fillMaxSize()) {
+        DetailsContentBody(
+            state = state,
+            onAction = onAction,
+            onEpisodeContextMenu = { episodeContextMenuItem = it },
+        )
+        ScheduleAwareEpisodesPanel(
+            state = state,
+            contextMenuItem = episodeContextMenuItem,
+            focusRequester = seasonsPanelFocusRequester,
+            onAction = onAction,
+            onContextMenuItemChanged = { episodeContextMenuItem = it },
+        )
+        EpisodeContextMenuDialog(
+            episode = episodeContextMenuItem,
+            onDismiss = { episodeContextMenuItem = null },
+            onPlay = { onAction(DetailsAction.EpisodeSelected(it)) },
+            onMarkEpisodeWatched = { item, watched ->
+                onAction(DetailsAction.EpisodeWatchedChanged(item, watched))
+            },
+            onMarkSeasonWatched = { item, watched ->
+                onAction(DetailsAction.SeasonWatchedChanged(item, watched))
+            },
+        )
+        TrailerOverlay(url = state.trailerUrl)
+    }
+}
+
+@Composable
+private fun ScheduleAwareEpisodesPanel(
+    state: DetailsScreenState.Content,
+    contextMenuItem: VideoItemUIState?,
+    focusRequester: FocusRequester,
+    onAction: (UIAction) -> Unit,
+    onContextMenuItemChanged: (VideoItemUIState?) -> Unit,
+) {
+    val episodes = state.episodes ?: return
+    EpisodesPanel(
+        visible = state.seasonsPanelVisible,
+        episodes = episodes,
+        initialFocusedItemId = state.initialEpisodeFocusId,
+        onEpisodeSelected = { item ->
+            if (item.presentation == VideoItemPresentation.Playable) {
+                onAction(DetailsAction.EpisodeSelected(item))
+            }
+        },
+        onEpisodeContextMenu = { item ->
+            if (item.presentation == VideoItemPresentation.Playable) {
+                onContextMenuItemChanged(item)
+            }
+        },
+        onBackPressed = { onAction(DetailsAction.CloseSeasonsPanel) },
+        allowFocusExit = contextMenuItem != null,
+        modifier = Modifier.focusRequester(focusRequester),
+    )
 }
 
 @Composable

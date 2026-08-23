@@ -2,6 +2,7 @@ package com.kino.puber.core.ui.navigation
 
 import com.kino.puber.ui.feature.main.model.TabType
 import com.kino.puber.ui.feature.details.model.DetailsEpisodeTarget
+import com.kino.puber.ui.feature.episodeschedule.model.EpisodeScheduleScreenParams
 import com.kino.puber.ui.feature.history.model.HistoryPresentation
 import com.kino.puber.ui.feature.player.model.PlayerStartMode
 
@@ -33,6 +34,8 @@ interface Screens {
     fun details(itemId: Int): PuberScreen
 
     fun details(itemId: Int, initialEpisode: DetailsEpisodeTarget): PuberScreen
+
+    fun episodeSchedule(params: EpisodeScheduleScreenParams): PuberScreen
 
     fun player(
         itemId: Int,

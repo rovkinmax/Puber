@@ -81,6 +81,7 @@ internal sealed class DetailsAction : UIAction {
     data object PlayClicked : DetailsAction()
     data object TrailerClicked : DetailsAction()
     data object SelectSeasonClicked : DetailsAction()
+    data object ScheduleClicked : DetailsAction()
     data object WatchlistToggleClicked : DetailsAction()
     data object WatchedToggleClicked : DetailsAction()
     data class EpisodeSelected(val item: VideoItemUIState) : DetailsAction()

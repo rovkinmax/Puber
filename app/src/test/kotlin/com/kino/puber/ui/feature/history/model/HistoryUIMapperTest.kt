@@ -201,7 +201,7 @@ class HistoryUIMapperTest {
         val state = requireNotNull(historyMapper.map(completed))
 
         assertTrue(state.isWatched)
-        assertTrue(state.card.isWatched)
+        assertTrue(state.card.isWatched == true)
         assertTrue(state.card.showWatchedIndicator)
     }
 

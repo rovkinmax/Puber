@@ -226,7 +226,7 @@ internal fun EpisodeContextMenuDialog(
     onMarkSeasonWatched: (VideoItemUIState, Boolean) -> Unit,
 ) {
     if (episode == null) return
-    val isWatched = episode.isWatched
+    val isWatched = episode.isWatched == true
     val isSeasonWatched = episode.isSeasonWatched ?: isWatched
     TvContextMenuDialog(
         title = episode.title,

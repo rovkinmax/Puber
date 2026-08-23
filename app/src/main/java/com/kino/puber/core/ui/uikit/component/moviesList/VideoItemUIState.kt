@@ -3,6 +3,7 @@ package com.kino.puber.core.ui.uikit.component.moviesList
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,7 +33,9 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Duotone
 import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.duotone.CalendarBlank
 import com.adamglin.phosphoricons.fill.Eye
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -41,6 +44,12 @@ import com.kino.puber.core.ui.uikit.component.RatingUIState
 import com.kino.puber.core.ui.uikit.component.SkeletonAsyncImage
 import com.kino.puber.core.ui.uikit.component.onTvContextMenuKey
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
+
+@Immutable
+sealed interface VideoItemPresentation {
+    data object Playable : VideoItemPresentation
+    data object Scheduled : VideoItemPresentation
+}
 
 @Immutable
 data class VideoItemUIState(
@@ -54,16 +63,20 @@ data class VideoItemUIState(
     val unwatchedCount: Int? = null,
     val ratings: List<RatingUIState> = emptyList(),
     val progressPercent: Float? = null,
-    val isWatched: Boolean = false,
+    val isWatched: Boolean? = false,
     val showWatchedIndicator: Boolean = true,
     val isSeriesLike: Boolean = false,
     val isSaved: Boolean = false,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
     val isSeasonWatched: Boolean? = null,
+    val presentation: VideoItemPresentation = VideoItemPresentation.Playable,
+    val scheduledReleaseDate: String? = null,
+    val scheduledSubtitle: String? = null,
 )
 
 internal const val WATCHED_INDICATOR_TEST_TAG = "watched_indicator"
+internal const val SCHEDULED_VIDEO_ITEM_TEST_TAG = "scheduled_video_item"
 
 @Composable
 fun VideoItem(
@@ -72,112 +85,206 @@ fun VideoItem(
     onClick: () -> Unit,
     onContextMenu: (() -> Unit)? = null,
 ) {
+    val isPlayable = state.presentation == VideoItemPresentation.Playable
     Card(
-        modifier = modifier
-            .then(
-                if (onContextMenu != null) {
-                    Modifier.onTvContextMenuKey(onOpen = onContextMenu)
-                } else {
-                    Modifier
-                }
-            )
-            .size(
-                PuberTheme.Defaults.VideoItemWidth,
-                PuberTheme.Defaults.VideoItemHeight,
-            ),
+        modifier = modifier.videoItemModifier(
+            isPlayable = isPlayable,
+            isScheduled = state.presentation == VideoItemPresentation.Scheduled,
+            onContextMenu = onContextMenu,
+        ),
         scale = CardDefaults.scale(pressedScale = 1f, focusedScale = 1f),
-        onClick = onClick,
+        onClick = {
+            if (isPlayable) {
+                onClick()
+            }
+        },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            val context = LocalContext.current
-            val urls = remember(state.imageUrl, state.imageFallbackUrls) {
-                (listOf(state.imageUrl) + state.imageFallbackUrls)
-                    .filter { it.isNotBlank() }
-                    .distinct()
+            if (state.presentation == VideoItemPresentation.Scheduled) {
+                ScheduledVideoItemContent(state)
+            } else {
+                PlayableVideoItemContent(state)
             }
-            var urlIndex by remember(state.id, urls) { mutableIntStateOf(0) }
-            val currentUrl = urls.getOrNull(urlIndex)
-            val imageRequest = remember(currentUrl) {
-                currentUrl?.let { imageUrl ->
-                    ImageRequest.Builder(context)
-                        .data(imageUrl)
-                        .crossfade(true)
-                        .build()
-                }
-            }
-            SkeletonAsyncImage(
-                modifier = Modifier.fillMaxSize(),
-                model = imageRequest,
-                onError = {
-                    if (urlIndex < urls.lastIndex) {
-                        urlIndex++
-                    }
-                },
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-            )
-            val count = state.unwatchedCount
-            if (count != null && count > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .background(
-                            MaterialTheme.colorScheme.primary,
-                            RoundedCornerShape(4.dp),
-                        )
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Text(
-                        text = count.toString(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                }
-            }
-            WatchedIndicatorBadge(
-                visible = state.isWatched && state.showWatchedIndicator,
-                modifier = Modifier.align(Alignment.TopEnd),
-            )
-            val hasRatings = state.ratings.isNotEmpty()
-            val hasTitle = state.showTitle && state.title.isNotEmpty()
-            if (hasRatings || hasTitle) {
-                val scrimColor = MaterialTheme.colorScheme.scrim
-                val gradientBrush = remember(scrimColor) {
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            scrimColor.copy(alpha = 0f),
-                            scrimColor.copy(alpha = 0.85f),
-                        ),
-                    )
-                }
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .background(gradientBrush)
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                ) {
-                    if (hasRatings) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            state.ratings.forEach { rating ->
-                                Rating(state = rating)
-                            }
-                        }
-                    }
+        }
+    }
+}
 
-                    if (hasTitle) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = state.title,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = if (hasRatings) 2 else 4,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+@Composable
+private fun Modifier.videoItemModifier(
+    isPlayable: Boolean,
+    isScheduled: Boolean,
+    onContextMenu: (() -> Unit)?,
+): Modifier = this
+    .then(
+        if (onContextMenu != null && isPlayable) {
+            Modifier.onTvContextMenuKey(onOpen = onContextMenu)
+        } else {
+            Modifier
+        }
+    )
+    .then(if (isScheduled) Modifier.testTag(SCHEDULED_VIDEO_ITEM_TEST_TAG) else Modifier)
+    .size(
+        PuberTheme.Defaults.VideoItemWidth,
+        PuberTheme.Defaults.VideoItemHeight,
+    )
+
+@Composable
+private fun BoxScope.PlayableVideoItemContent(state: VideoItemUIState) {
+    VideoItemArtwork(state)
+    UnwatchedCountBadge(
+        count = state.unwatchedCount,
+        modifier = Modifier.align(Alignment.TopEnd),
+    )
+    WatchedIndicatorBadge(
+        visible = state.isWatched == true && state.showWatchedIndicator,
+        modifier = Modifier.align(Alignment.TopEnd),
+    )
+    VideoItemMetadata(
+        state = state,
+        modifier = Modifier.align(Alignment.BottomCenter),
+    )
+}
+
+@Composable
+private fun VideoItemArtwork(state: VideoItemUIState) {
+    val context = LocalContext.current
+    val urls = remember(state.imageUrl, state.imageFallbackUrls) {
+        (listOf(state.imageUrl) + state.imageFallbackUrls)
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+    var urlIndex by remember(state.id, urls) { mutableIntStateOf(0) }
+    val currentUrl = urls.getOrNull(urlIndex)
+    val imageRequest = remember(currentUrl) {
+        currentUrl?.let { imageUrl ->
+            ImageRequest.Builder(context)
+                .data(imageUrl)
+                .crossfade(true)
+                .build()
+        }
+    }
+    SkeletonAsyncImage(
+        modifier = Modifier.fillMaxSize(),
+        model = imageRequest,
+        onError = {
+            if (urlIndex < urls.lastIndex) {
+                urlIndex++
             }
+        },
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+    )
+}
+
+@Composable
+private fun UnwatchedCountBadge(
+    count: Int?,
+    modifier: Modifier = Modifier,
+) {
+    if (count == null || count <= 0) return
+
+    Box(
+        modifier = modifier
+            .padding(6.dp)
+            .background(
+                MaterialTheme.colorScheme.primary,
+                RoundedCornerShape(4.dp),
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimary,
+        )
+    }
+}
+
+@Composable
+private fun VideoItemMetadata(
+    state: VideoItemUIState,
+    modifier: Modifier = Modifier,
+) {
+    val hasRatings = state.ratings.isNotEmpty()
+    val hasTitle = state.showTitle && state.title.isNotEmpty()
+    if (!hasRatings && !hasTitle) return
+
+    val scrimColor = MaterialTheme.colorScheme.scrim
+    val gradientBrush = remember(scrimColor) {
+        Brush.verticalGradient(
+            colors = listOf(
+                scrimColor.copy(alpha = 0f),
+                scrimColor.copy(alpha = 0.85f),
+            ),
+        )
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(gradientBrush)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        if (hasRatings) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                state.ratings.forEach { rating -> Rating(state = rating) }
+            }
+        }
+        if (hasTitle) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = state.title,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = if (hasRatings) 2 else 4,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScheduledVideoItemContent(state: VideoItemUIState) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = PhosphorIcons.Duotone.CalendarBlank,
+            contentDescription = null,
+            modifier = Modifier.size(36.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = state.title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        state.scheduledSubtitle?.takeIf { it.isNotBlank() }?.let { subtitle ->
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        state.scheduledReleaseDate?.takeIf { it.isNotBlank() }?.let { releaseDate ->
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = releaseDate,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -319,6 +426,22 @@ private fun PreviewPlainCard() = PuberTheme {
 private fun PreviewBadgeOnly() = PuberTheme {
     VideoItem(
         state = previewState(unwatchedCount = 12),
+        onClick = {},
+    )
+}
+
+@Preview(name = "Scheduled episode")
+@Composable
+private fun PreviewScheduledEpisode() = PuberTheme {
+    VideoItem(
+        state = VideoItemUIState(
+            id = -1001,
+            title = "Будущая серия",
+            imageUrl = "",
+            bigImageUrl = "",
+            presentation = VideoItemPresentation.Scheduled,
+            scheduledReleaseDate = "Дата выхода: 23.08.2026",
+        ),
         onClick = {},
     )
 }

@@ -19,6 +19,7 @@ import com.kino.puber.domain.interactor.details.DetailsInteractor
 import com.kino.puber.domain.interactor.details.MovieBookmarkUpdate
 import com.kino.puber.domain.interactor.details.MovieWatchedUpdate
 import com.kino.puber.domain.interactor.details.WatchedUpdate
+import com.kino.puber.domain.interactor.schedule.EpisodeScheduleInteractor
 import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsEpisodeTarget
 import com.kino.puber.ui.feature.details.model.DetailsInfoUIState
@@ -53,6 +54,7 @@ class DetailsVMTest {
     private lateinit var screens: Screens
     private lateinit var mapper: DetailsScreenUIMapper
     private lateinit var interactor: DetailsInteractor
+    private lateinit var episodeScheduleInteractor: EpisodeScheduleInteractor
     private lateinit var savedItemInteractor: SavedItemInteractor
     private lateinit var errorHandler: ErrorHandler
 
@@ -66,6 +68,7 @@ class DetailsVMTest {
         }
         mapper = mockk(relaxed = true)
         interactor = mockk(relaxed = true)
+        episodeScheduleInteractor = mockk(relaxed = true)
         savedItemInteractor = mockk(relaxed = true)
         errorHandler = mockk {
             every { proceed(any()) } returns { }
@@ -620,6 +623,7 @@ class DetailsVMTest {
         params = params,
         mapper = mapper,
         interactor = interactor,
+        episodeScheduleInteractor = episodeScheduleInteractor,
         savedItemInteractor = savedItemInteractor,
         resources = FakeResourceProvider(),
         errorHandler = errorHandler,

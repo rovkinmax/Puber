@@ -153,12 +153,12 @@ fun VideoItemHorizontal(
             }
 
             WatchedIndicatorBadge(
-                visible = state.isWatched && state.showWatchedIndicator,
+                visible = state.isWatched == true && state.showWatchedIndicator,
                 modifier = Modifier.align(Alignment.TopEnd),
             )
 
             val progressValue = state.progressPercent
-            if (progressValue != null && !state.isWatched) {
+            if (progressValue != null && state.isWatched != true) {
                 LinearProgressIndicator(
                     progress = { progressValue.coerceIn(0f, 1f) },
                     modifier = Modifier
