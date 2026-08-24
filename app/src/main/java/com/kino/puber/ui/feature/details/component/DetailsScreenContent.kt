@@ -86,10 +86,12 @@ import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.EpisodeContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.FullScreenError
 import com.kino.puber.core.ui.uikit.component.Rating
+import com.kino.puber.core.ui.uikit.component.TmdbSourceNotice
 import com.kino.puber.core.ui.uikit.component.VideoItemContextMenuDialog
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.details.VideoItemGridDetails
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItem
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemPresentation
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.component.modifier.placeholder
@@ -194,6 +196,9 @@ private fun ScheduleAwareEpisodesPanel(
     onContextMenuItemChanged: (VideoItemUIState?) -> Unit,
 ) {
     val episodes = state.episodes ?: return
+    val hasTmdbSchedule = episodes.list
+        .filterIsInstance<VideoGridItemUIState.Items>()
+        .any { row -> row.items.any { item -> item.presentation == VideoItemPresentation.Scheduled } }
     EpisodesPanel(
         visible = state.seasonsPanelVisible,
         episodes = episodes,
@@ -210,6 +215,7 @@ private fun ScheduleAwareEpisodesPanel(
         },
         onBackPressed = { onAction(DetailsAction.CloseSeasonsPanel) },
         allowFocusExit = contextMenuItem != null,
+        showTmdbSourceNotice = hasTmdbSchedule,
         modifier = Modifier.focusRequester(focusRequester),
     )
 }
@@ -876,9 +882,7 @@ private fun DetailsCastRow(
 
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    val safeScrollOffset = with(LocalDensity.current) {
-        -INFO_CHIP_FOCUS_SAFE_PADDING.roundToPx()
-    }
+    val safeScrollOffset = with(LocalDensity.current) { -INFO_CHIP_FOCUS_SAFE_PADDING.roundToPx() }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -930,6 +934,14 @@ private fun DetailsCastRow(
                 )
             }
         }
+        TmdbCastSourceNotice(castCards = info.castCards)
+    }
+}
+
+@Composable
+private fun TmdbCastSourceNotice(castCards: List<DetailsCastMemberUIState>) {
+    if (castCards.any { card -> !card.photoUrl.isNullOrBlank() }) {
+        TmdbSourceNotice()
     }
 }
 

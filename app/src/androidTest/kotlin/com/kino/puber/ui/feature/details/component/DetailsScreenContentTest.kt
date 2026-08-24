@@ -26,7 +26,9 @@ import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemPresentation
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
+import com.kino.puber.core.ui.uikit.component.moviesList.SCHEDULED_VIDEO_ITEM_TEST_TAG
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
 import com.kino.puber.ui.feature.details.model.DetailsAction
@@ -131,6 +133,51 @@ internal class DetailsScreenContentTest {
     }
 
     @Test
+    fun embeddedScheduledEpisodePanel_showsTmdbNotice_andKeepsGridFocus() {
+        val scheduledEpisodeId = -9001
+        composeRule.setContent {
+            PuberTheme {
+                DetailsScreenContent(
+                    state = content(
+                        episodes = VideoGridUIState(
+                            list = listOf(
+                                VideoGridItemUIState.Title("Season 9"),
+                                VideoGridItemUIState.Items(
+                                    items = listOf(
+                                        scheduledEpisode(
+                                            id = scheduledEpisodeId,
+                                            title = "S9E1 scheduled",
+                                        ),
+                                    ),
+                                    rowKey = "season_9",
+                                ),
+                            ),
+                        ),
+                        seasonsPanelVisible = true,
+                        initialEpisodeFocusId = scheduledEpisodeId,
+                    ),
+                    onAction = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Season 9").assertIsDisplayed()
+        composeRule.onNodeWithText("S9E1 scheduled").assertIsDisplayed()
+        composeRule.onNodeWithTag(SCHEDULED_VIDEO_ITEM_TEST_TAG).assertIsDisplayed()
+        composeRule.waitUntil {
+            composeRule
+                .onNodeWithTag(SCHEDULED_VIDEO_ITEM_TEST_TAG)
+                .fetchSemanticsNode()
+                .config
+                .getOrNull(SemanticsProperties.Focused) == true
+        }
+        composeRule.onNodeWithTag(SCHEDULED_VIDEO_ITEM_TEST_TAG).assertIsFocused()
+        composeRule
+            .onNodeWithText("Источник данных и изображений — TMDB; даты могут измениться.")
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun actorCardsUseWholeSurfaceForPortraitAndNameClicks() {
         val actions = mutableListOf<UIAction>()
         val focusRequester = FocusRequester()
@@ -196,6 +243,9 @@ internal class DetailsScreenContentTest {
         composeRule
             .onNodeWithText(secondActor.displayName)
             .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule
+            .onNodeWithText("Источник данных и изображений — TMDB; даты могут измениться.")
+            .assertIsDisplayed()
 
         assertEquals(
             listOf(
@@ -385,6 +435,24 @@ internal class DetailsScreenContentTest {
             showTitle = true,
             seasonNumber = seasonNumber,
             episodeNumber = episodeNumber,
+        )
+    }
+
+    private fun scheduledEpisode(
+        id: Int,
+        title: String,
+    ): VideoItemUIState {
+        return VideoItemUIState(
+            id = id,
+            title = title,
+            imageUrl = "",
+            bigImageUrl = "",
+            showTitle = true,
+            seasonNumber = 9,
+            episodeNumber = 1,
+            presentation = VideoItemPresentation.Scheduled,
+            scheduledSubtitle = "Серия 1",
+            scheduledReleaseDate = "Дата выхода: 1 сент. 2026 г.",
         )
     }
 

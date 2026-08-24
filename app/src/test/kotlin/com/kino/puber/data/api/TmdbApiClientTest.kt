@@ -131,6 +131,67 @@ internal class TmdbApiClientTest {
         assertNull(api.findByImdbId("123").getOrThrow())
     }
 
+    @Test
+    fun castAndConfigurationEndpoints_preservePathsLocalizationAndDecoding() = runTest {
+        var requestNumber = 0
+        val api = TmdbApiClient.forTesting(
+            client { request ->
+                requestNumber += 1
+                when (requestNumber) {
+                    1 -> {
+                        assertEquals("/3/movie/7/credits", request.url.encodedPath)
+                        assertEquals("ru-RU", request.url.parameters["language"])
+                        respondJson("""{"cast":[{"name":"Actor","profile_path":"/actor.jpg"}]}""")
+                    }
+
+                    2 -> {
+                        assertEquals("/3/tv/8/aggregate_credits", request.url.encodedPath)
+                        assertEquals("ru-RU", request.url.parameters["language"])
+                        respondJson("""{"cast":[{"name":"Actor TV","profile_path":null}]}""")
+                    }
+
+                    else -> {
+                        assertEquals("/3/configuration", request.url.encodedPath)
+                        respondJson(
+                            """
+                            {
+                              "images":{
+                                "secure_base_url":"https://image.tmdb.org/t/p/",
+                                "profile_sizes":["w92","w185"]
+                              }
+                            }
+                            """.trimIndent(),
+                        )
+                    }
+                }
+            },
+        )
+
+        assertEquals("Actor", api.getMovieCredits(7).getOrThrow().cast.single().name)
+        assertEquals("Actor TV", api.getTvAggregateCredits(8).getOrThrow().cast.single().name)
+        assertEquals(
+            listOf("w92", "w185"),
+            api.getConfiguration().getOrThrow().images?.profileSizes,
+        )
+    }
+
+    @Test
+    fun scheduleEndpoint_rethrowsCancellation() = runTest {
+        val cancellation = kotlinx.coroutines.CancellationException("cancelled")
+        val api = TmdbApiClient.forTesting(
+            client { throw cancellation },
+        )
+
+        val thrown = try {
+            api.getTvDetails(101)
+            null
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            error
+        }
+
+        assertEquals(cancellation.message, thrown?.message)
+    }
+
     private fun client(
         handler: MockRequestHandler =
             { respondJson("{}") },

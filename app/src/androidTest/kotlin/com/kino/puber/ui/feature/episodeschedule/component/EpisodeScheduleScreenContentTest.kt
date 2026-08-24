@@ -28,6 +28,8 @@ import org.junit.Rule
 import org.junit.Test
 
 private const val DATE_LABEL_SENTINEL = "DATE_LABEL_SENTINEL"
+private const val TMDB_SOURCE_NOTICE =
+    "Источник данных и изображений — TMDB; даты могут измениться."
 
 internal class EpisodeScheduleScreenContentTest {
 
@@ -50,6 +52,7 @@ internal class EpisodeScheduleScreenContentTest {
         composeRule.onNodeWithText("Сезон 2").assertIsDisplayed()
         composeRule.onNodeWithText("1. Новая серия").assertIsDisplayed()
         composeRule.onNodeWithText(DATE_LABEL_SENTINEL, substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText(TMDB_SOURCE_NOTICE).assertIsDisplayed()
         composeRule.onNodeWithTag(SCHEDULED_VIDEO_ITEM_TEST_TAG).assertIsDisplayed()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onNodeWithTag(SCHEDULED_VIDEO_ITEM_TEST_TAG).fetchSemanticsNode().config
@@ -96,8 +99,7 @@ internal class EpisodeScheduleScreenContentTest {
 
         composeRule.onNodeWithText("Расписание недоступно").assertIsDisplayed()
         composeRule.onNodeWithText("Сериал не найден в TMDB.").assertIsDisplayed()
-        composeRule.onNodeWithText("Даты выхода предоставлены TMDB и могут измениться.")
-            .assertIsDisplayed()
+        composeRule.onNodeWithText(TMDB_SOURCE_NOTICE).assertIsDisplayed()
     }
 
     @Test
@@ -117,6 +119,7 @@ internal class EpisodeScheduleScreenContentTest {
             .performSemanticsAction(SemanticsActions.RequestFocus)
             .assertIsFocused()
             .performClick()
+        composeRule.onNodeWithText(TMDB_SOURCE_NOTICE).assertIsDisplayed()
         composeRule.runOnIdle {
             assertTrue(actions == listOf(EpisodeScheduleScreenState.Action.Retry))
         }
