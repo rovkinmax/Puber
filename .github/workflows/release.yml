@@ -4,12 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Release tag to publish, for example v1.2.0'
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -18,50 +12,33 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
-    env:
-      RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up JDK 21
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
-          ref: ${{ env.RELEASE_REF }}
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v5
-
+          java-version: '21'
+          distribution: temurin
       - run: chmod +x gradlew
-
       - name: Run unit tests
-        run: ./gradlew testProdDebugUnitTest
+        run: ./gradlew :app:testProdDebugUnitTest
 
   release:
     name: Build & Publish
     needs: test
     runs-on: ubuntu-latest
     env:
-      RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      RELEASE_TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ env.RELEASE_REF }}
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+          ref: ${{ github.ref }}
+      - name: Set up JDK 21
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v5
-
+          java-version: '21'
+          distribution: temurin
       - run: chmod +x gradlew
-
       - name: Validate release secrets
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
@@ -72,17 +49,13 @@ jobs:
         run: |
           missing=()
           for name in RELEASE_KEYSTORE_BASE64 STOREPASS KEYALIAS PUBER_CLIENT_SECRET TMDB_READ_ACCESS_TOKEN; do
-            if [[ -z "${!name}" ]]; then
-              missing+=("$name")
-            fi
+            if [[ -z "${!name}" ]]; then missing+=("$name"); fi
           done
-
           if (( ${#missing[@]} > 0 )); then
             printf 'Missing required GitHub Secrets:\n' >&2
             printf '  - %s\n' "${missing[@]}" >&2
             exit 1
           fi
-
       - name: Build release APK
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
@@ -91,34 +64,33 @@ jobs:
           KEYPASS: ${{ secrets.KEYPASS }}
           PUBER_CLIENT_SECRET: ${{ secrets.PUBER_CLIENT_SECRET }}
           TMDB_READ_ACCESS_TOKEN: ${{ secrets.TMDB_READ_ACCESS_TOKEN }}
-        run: ./gradlew assembleProdRelease
-
+        run: ./gradlew :app:assembleProdRelease
       - name: Prepare release artifacts
         run: |
           mkdir -p release-artifacts
           apk_path="$(find app/build/outputs/apk/prod/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
-          if [[ -z "$apk_path" ]]; then
-            echo "Release APK was not produced" >&2
-            exit 1
-          fi
-
+          test -n "$apk_path"
           cp "$apk_path" "release-artifacts/puber-${RELEASE_TAG}.apk"
-          (
-            cd release-artifacts
-            shasum -a 256 "puber-${RELEASE_TAG}.apk" > "puber-${RELEASE_TAG}.apk.sha256"
-          )
-
+          (cd release-artifacts && shasum -a 256 "puber-${RELEASE_TAG}.apk" > "puber-${RELEASE_TAG}.apk.sha256")
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: puber-${{ env.RELEASE_TAG }}
           path: release-artifacts/*
           if-no-files-found: error
-
+      - name: Prepare deterministic release notes
+        run: |
+          previous_tag="$(git tag --sort=-v:refname | grep -Fxv "$RELEASE_TAG" | head -n 1 || true)"
+          if [[ -n "$previous_tag" ]]; then
+            git log --format='- %s' "$previous_tag..$GITHUB_SHA" > "$RUNNER_TEMP/release-notes-en.md"
+          else
+            git log --format='- %s' "$GITHUB_SHA" -n 20 > "$RUNNER_TEMP/release-notes-en.md"
+          fi
+          test -s "$RUNNER_TEMP/release-notes-en.md"
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          name: Puber ${{ env.RELEASE_TAG }}
-          generate_release_notes: true
-          files: release-artifacts/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$RELEASE_TAG" --verify-tag
+          --title "Puber $RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes-en.md"
+          release-artifacts/*

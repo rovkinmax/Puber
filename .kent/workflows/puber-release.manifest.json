@@ -1,0 +1,24 @@
+{
+  "schema_version": 4,
+  "workflow": {
+    "id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+    "name": "Puber Release",
+    "revision": 88,
+    "default": false,
+    "counts": {
+      "nodes": 15,
+      "transition_groups": 42,
+      "edges": 42
+    }
+  },
+  "graph_path": ".kent/workflows/puber-release.json",
+  "spec_path": ".kent/workflows/specs/puber-release.toml",
+  "graph_sha256": "9723286b4859b300bc7dc15d05dd51c71feed45401fc2bdf57d0b5209060eef7",
+  "required_nodes": [
+    "release_intent_gate",
+    "ci_watch",
+    "merge_watch",
+    "task_janitor"
+  ],
+  "no_live_apply": true
+}

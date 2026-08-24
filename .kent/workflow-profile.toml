@@ -1,4 +1,4 @@
-schema_version = 3
+schema_version = 4
 minimum_kent_version = "2.6.1"
 project_name = "Puber"
 workflow_prefix = "Puber"

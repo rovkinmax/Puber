@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from workflow_runtime_contracts import ContractError, emit, git, operation, read_object, repository_root
+
+VERSION = re.compile(r"currentVersion\s*=\s*['\"](?P<version>\d+\.\d+\.\d+)['\"]")
+SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def next_version(current: str, release_type: str) -> str:
+    major, minor, patch = (int(part) for part in current.split("."))
+    if release_type == "major":
+        return f"{major + 1}.0.0"
+    if release_type == "patch":
+        return f"{major}.{minor}.{patch + 1}"
+    return f"{major}.{minor + 1}.0"
+
+
+def main() -> int:
+    try:
+        payload = read_object()
+        workspace = repository_root(str(payload.get("workspace_path") or Path.cwd()))
+        op = operation(payload, "release_intent_gate")
+        branch = git(workspace, "branch", "--show-current")
+        requested_branch = str(payload.get("branch_name") or branch).strip()
+        if requested_branch != branch:
+            raise ContractError(f"branch mismatch: expected {requested_branch}, found {branch}")
+        if not branch or branch in {"master", "main"}:
+            raise ContractError("release intent requires a non-default task branch")
+        match = VERSION.search((workspace / "app/build.gradle.kts").read_text())
+        if not match:
+            raise ContractError("app/build.gradle.kts has no currentVersion")
+        current = match.group("version")
+        release_type = str(payload.get("release_type") or "minor").strip().lower()
+        if release_type not in {"minor", "patch", "major"}:
+            raise ContractError("release_type must be minor, patch, or major")
+        release_version = str(payload.get("release_version") or next_version(current, release_type)).strip()
+        if not SEMVER.fullmatch(release_version):
+            raise ContractError("release_version must be semantic version text")
+        release_tag = str(payload.get("release_tag") or f"v{release_version}").strip()
+        if release_tag != f"v{release_version}":
+            raise ContractError("release_tag must match release_version")
+        emit(
+            "release_intent_passed",
+            operation_data=op,
+            workspace_path=str(workspace),
+            branch_name=branch,
+            release_type=release_type,
+            current_version=current,
+            release_version=release_version,
+            release_branch=branch,
+            release_tag=release_tag,
+            target_commit=git(workspace, "rev-parse", "HEAD"),
+            source_revision=88,
+            no_live_apply=True,
+        )
+    except (ContractError, OSError) as error:
+        emit("release_intent_blocked", blocker_reason=str(error), no_live_apply=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
