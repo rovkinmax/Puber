@@ -57,6 +57,7 @@ internal abstract class PlayerVMTestFixture {
         contentStateFactory = mockk()
         playbackController = mockk(relaxUnitFun = true) {
             every { isPlaying } returns true
+            every { playbackIntent } returns PlaybackIntent.PlayRequested
             every { currentPosition } returns 0L
             every { duration } returns 2_400_000L
             every { bufferedPosition } returns 0L
@@ -203,6 +204,8 @@ internal abstract class PlayerVMTestFixture {
         title = "Breaking Bad",
         subtitle = "S1E1",
         isPlaying = true,
+        playbackIntent = PlaybackIntent.PlayRequested,
+        shouldKeepScreenOn = true,
         currentPosition = 0L,
         duration = 2_400_000L,
         bufferedPosition = 0L,

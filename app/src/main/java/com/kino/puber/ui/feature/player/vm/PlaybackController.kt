@@ -11,6 +11,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -37,23 +38,16 @@ import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 import java.util.Locale
 
 internal interface PlaybackControl {
-    interface Callback {
-        fun onPlaybackStateChanged(
-            isPlaying: Boolean,
-            isBuffering: Boolean,
-            position: Long,
-            duration: Long,
-            buffered: Long,
-        )
-
+    interface Callback : PlaybackEventSink {
         fun onTracksUpdated(audioTracks: List<AudioTrackUIState>, selectedIndex: Int)
-        fun onPlaybackEnded()
         fun onError(message: String)
     }
 
     val currentPosition: Long
     val duration: Long
     val isPlaying: Boolean
+    val playbackIntent: PlaybackIntent
+    val shouldKeepScreenOn: Boolean
     val bufferedPosition: Long
 
     fun setCallback(callback: Callback)
@@ -97,6 +91,10 @@ internal class PlaybackController(
     override val currentPosition: Long get() = exoPlayer?.currentPosition ?: 0L
     override val duration: Long get() = exoPlayer?.duration?.coerceAtLeast(0) ?: 0L
     override val isPlaying: Boolean get() = exoPlayer?.isPlaying == true
+    override val playbackIntent: PlaybackIntent
+        get() = playbackSnapshot().intent
+    override val shouldKeepScreenOn: Boolean
+        get() = playbackSnapshot().shouldKeepScreenOn
     override val bufferedPosition: Long get() = exoPlayer?.bufferedPosition ?: 0L
     
     private val playerListener = object : Player.Listener {
@@ -105,15 +103,25 @@ internal class PlaybackController(
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            exoPlayer?.let { player ->
+                PlaybackTransitions.dispatchPlaybackState(
+                    engine = ExoPlayerPlaybackEngine(player),
+                    playbackState = playbackState,
+                    sink = callback,
+                )
+            }
             when (playbackState) {
-                Player.STATE_ENDED -> callback?.onPlaybackEnded()
-                Player.STATE_READY -> {
-                    notifyPlaybackState()
-                    notifyTracksUpdated()
-                }
-                Player.STATE_BUFFERING -> notifyPlaybackState()
+                Player.STATE_READY -> notifyTracksUpdated()
                 else -> {}
             }
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            notifyPlaybackState()
+        }
+
+        override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+            notifyPlaybackState()
         }
 
         override fun onTracksChanged(tracks: Tracks) {
@@ -220,6 +228,7 @@ internal class PlaybackController(
             }
             player.playWhenReady = true
         }
+        notifyPlaybackState()
     }
 
     @OptIn(UnstableApi::class)
@@ -236,27 +245,27 @@ internal class PlaybackController(
 
     override fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?) {
         val player = exoPlayer ?: return
-        val savedPosition = player.currentPosition
-        val wasPlaying = player.isPlaying
-        val savedTrackParams = player.trackSelectionParameters
-
-        player.stop()
-
-        val mediaItem = buildMediaItem(streamUrl, subtitles)
-        setMediaSource(player, mediaItem, streamUrl)
-
-        player.trackSelectionParameters = savedTrackParams
-        player.prepare()
-        player.seekTo(savedPosition)
-        player.playWhenReady = wasPlaying
+        val engine = ExoPlayerPlaybackEngine(player)
+        PlaybackTransitions.switchStream(
+            engine = engine,
+            streamUrl = streamUrl,
+            subtitles = subtitles,
+        )
+        notifyPlaybackState()
     }
 
     override fun play() {
-        exoPlayer?.play()
+        exoPlayer?.let { player ->
+            PlaybackTransitions.play(ExoPlayerPlaybackEngine(player))
+            notifyPlaybackState()
+        }
     }
 
     override fun pause() {
-        exoPlayer?.pause()
+        exoPlayer?.let { player ->
+            player.pause()
+            notifyPlaybackState()
+        }
     }
 
     override fun seekTo(positionMs: Long) {
@@ -432,15 +441,93 @@ internal class PlaybackController(
         )
     }
 
-    private fun notifyPlaybackState() {
-        val player = exoPlayer ?: return
-        callback?.onPlaybackStateChanged(
+    private fun playbackSnapshot(): PlaybackSnapshot {
+        val player = exoPlayer ?: return PlaybackStatePolicy.derive(
+            isPlaying = false,
+            playWhenReady = false,
+            playbackState = Player.STATE_IDLE,
+            suppressionReason = Player.PLAYBACK_SUPPRESSION_REASON_NONE,
+        )
+        return playbackSnapshot(player)
+    }
+
+    private fun playbackSnapshot(player: ExoPlayer): PlaybackSnapshot {
+        return PlaybackStatePolicy.derive(
             isPlaying = player.isPlaying,
-            isBuffering = player.playbackState == Player.STATE_BUFFERING,
+            playWhenReady = player.playWhenReady,
+            playbackState = player.playbackState,
+            suppressionReason = player.playbackSuppressionReason,
             position = player.currentPosition,
             duration = player.duration.coerceAtLeast(0),
             buffered = player.bufferedPosition,
         )
+    }
+
+    private fun notifyPlaybackState() {
+        val player = exoPlayer ?: return
+        PlaybackTransitions.dispatchPlaybackSnapshot(
+            engine = ExoPlayerPlaybackEngine(player),
+            sink = callback,
+        )
+    }
+
+    private inner class ExoPlayerPlaybackEngine(
+        private val player: ExoPlayer,
+    ) : PlaybackEnginePort {
+        private var pendingTrackSelectionParameters: TrackSelectionParameters? = null
+
+        override val isPlaying: Boolean
+            get() = player.isPlaying
+        override val playWhenReady: Boolean
+            get() = player.playWhenReady
+        override val playbackState: Int
+            get() = player.playbackState
+        override val playbackSuppressionReason: Int
+            get() = player.playbackSuppressionReason
+        override val currentPosition: Long
+            get() = player.currentPosition
+        override val duration: Long
+            get() = player.duration.coerceAtLeast(0)
+        override val bufferedPosition: Long
+            get() = player.bufferedPosition
+        override var trackSelectionParameters: Any
+            get() = player.trackSelectionParameters
+            set(value) {
+                pendingTrackSelectionParameters = value as? TrackSelectionParameters
+            }
+
+        override fun stop() {
+            player.stop()
+        }
+
+        override fun setMediaSource(streamUrl: String, subtitles: List<SubtitleLink>?) {
+            setMediaSource(player, buildMediaItem(streamUrl, subtitles), streamUrl)
+        }
+
+        override fun restoreTrackSelection() {
+            pendingTrackSelectionParameters?.let { player.trackSelectionParameters = it }
+            pendingTrackSelectionParameters = null
+        }
+
+        override fun prepare() {
+            player.prepare()
+        }
+
+        override fun seekTo(positionMs: Long) {
+            player.seekTo(positionMs)
+        }
+
+        override fun setPlayWhenReady(playWhenReady: Boolean) {
+            player.playWhenReady = playWhenReady
+        }
+
+        override fun seekToDefaultPosition() {
+            player.seekToDefaultPosition()
+        }
+
+        override fun play() {
+            player.play()
+        }
     }
 
     private fun notifyTracksUpdated() {

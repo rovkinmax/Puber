@@ -155,16 +155,11 @@ internal class PlayerVM(
     private val debugOverlayEnabled = interactor.isDebugOverlayEnabled()
 
     private val playbackCallback = object : PlaybackControl.Callback {
-        override fun onPlaybackStateChanged(
-            isPlaying: Boolean,
-            isBuffering: Boolean,
-            position: Long,
-            duration: Long,
-            buffered: Long,
-        ) {
+        override fun onPlaybackStateChanged(snapshot: PlaybackSnapshot) {
+            val isBuffering = snapshot.isBuffering
             val wasBuffering = (stateValue as? PlayerViewState.Content)?.content?.isBuffering == true
             updateContent {
-                copy(isPlaying = isPlaying)
+                withPlaybackSnapshot(snapshot)
             }
             if (isBuffering && !wasBuffering) {
                 // Debounce: only show spinner if buffering lasts > 800ms
@@ -417,21 +412,27 @@ internal class PlayerVM(
     }
 
     private fun togglePlayPause() {
-        if (playbackController.isPlaying) {
+        if (playbackController.playbackIntent == PlaybackIntent.PlayRequested) {
             playbackController.pause()
             saveCurrentPosition()
-            updateContent { copy(isPlaying = false) }
-            showPlayPauseIndicator(isPlaying = false)
+            updatePlaybackIntent(PlaybackIntent.Paused)
+            showPlayPauseIndicator(isPlayRequested = false)
         } else {
             playbackController.play()
-            updateContent { copy(isPlaying = true) }
-            showPlayPauseIndicator(isPlaying = true)
+            updatePlaybackIntent(PlaybackIntent.PlayRequested)
+            showPlayPauseIndicator(isPlayRequested = true)
         }
     }
 
-    private fun showPlayPauseIndicator(isPlaying: Boolean) {
+    private fun updatePlaybackIntent(intent: PlaybackIntent) {
         updateContent {
-            copy(playPauseIndicator = PlayPauseIndicatorState(isPlaying = isPlaying))
+            copy(playbackIntent = intent)
+        }
+    }
+
+    private fun showPlayPauseIndicator(isPlayRequested: Boolean) {
+        updateContent {
+            copy(playPauseIndicator = PlayPauseIndicatorState(isPlayRequested = isPlayRequested))
         }
         playPauseHideJob?.cancel()
         playPauseHideJob = launch {
@@ -496,7 +497,7 @@ internal class PlayerVM(
     }
 
     private fun openPanel(panel: ActivePanel) {
-        val effects = controlsStateMachine.openPanel(panel, playbackController.isPlaying)
+        val effects = controlsStateMachine.openPanel(panel, playbackController.playbackIntent)
         applyControlsState()
         processEffects(effects)
     }
@@ -523,8 +524,14 @@ internal class PlayerVM(
             when (effect) {
                 is ControlsStateMachine.Effect.ScheduleHide -> scheduleControlsHide()
                 is ControlsStateMachine.Effect.CancelHide -> controlsHideJob?.cancel()
-                is ControlsStateMachine.Effect.PausePlayback -> playbackController.pause()
-                is ControlsStateMachine.Effect.ResumePlayback -> playbackController.play()
+                is ControlsStateMachine.Effect.PausePlayback -> {
+                    playbackController.pause()
+                    updatePlaybackIntent(PlaybackIntent.Paused)
+                }
+                is ControlsStateMachine.Effect.ResumePlayback -> {
+                    playbackController.play()
+                    updatePlaybackIntent(PlaybackIntent.PlayRequested)
+                }
                 is ControlsStateMachine.Effect.SaveAndExit -> exitPlayer()
             }
         }
@@ -1012,7 +1019,7 @@ internal class PlayerVM(
         playbackController.seekTo(position)
         playbackController.play()
         updateContent {
-            copy(resumeDialog = null, isPlaying = true)
+            copy(resumeDialog = null, playbackIntent = PlaybackIntent.PlayRequested)
         }
         scheduleControlsHide()
     }
@@ -1021,16 +1028,16 @@ internal class PlayerVM(
         playbackController.seekTo(0)
         playbackController.play()
         updateContent {
-            copy(resumeDialog = null, isPlaying = true)
+            copy(resumeDialog = null, playbackIntent = PlaybackIntent.PlayRequested)
         }
         scheduleControlsHide()
     }
 
     private fun pauseForBackground() {
-        val wasPlaying = playbackController.isPlaying
-        if (wasPlaying) {
+        val wasPlayRequested = playbackController.playbackIntent == PlaybackIntent.PlayRequested
+        if (wasPlayRequested) {
             playbackController.pause()
-            updateContent { copy(isPlaying = false) }
+            updatePlaybackIntent(PlaybackIntent.Paused)
         }
         saveCurrentPosition()
     }
@@ -1173,7 +1180,8 @@ internal class PlayerVM(
         state: PlayerContentState,
         segment: SkipSegment,
     ): Boolean {
-        return !state.isMovie &&
+        return playbackController.isPlaying &&
+            !state.isMovie &&
             state.hasNextEpisode &&
             state.nextEpisodeCountdown == null &&
             playbackController.currentPosition >= segment.startMs

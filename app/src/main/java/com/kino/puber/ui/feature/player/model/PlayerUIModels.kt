@@ -76,7 +76,7 @@ internal data class SeekIndicatorState(
 
 @Immutable
 internal data class PlayPauseIndicatorState(
-    val isPlaying: Boolean,
+    val isPlayRequested: Boolean,
 )
 
 @Immutable
