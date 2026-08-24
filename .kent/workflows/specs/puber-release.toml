@@ -1,10 +1,489 @@
-schema_version = 4
-workflow_id = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
+schema_version = 2
+spec_kind = "release"
+topology_kind = "puber-release"
+adoption_mode = "managed-in-place"
+project_name = "Puber"
+repository = "rovkinmax/Puber"
+runtime_attested = false
+
+[workflow_source_intent]
 name = "Puber Release"
-default = false
-source_revision = 88
-nodes = 15
-transition_groups = 42
-edges = 42
-required_node_keys = ["release_intent_gate", "ci_watch", "merge_watch", "task_janitor"]
-required_script_paths = [".kent/scripts/workflow-puber-release-intent", ".kent/scripts/workflow-wait-github-ci", ".kent/scripts/workflow-wait-github-pr", ".kent/scripts/workflow-task-janitor"]
+id = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
+update_kind = "graph-and-metadata"
+expected_project_link = "non-default"
+expected_project_default = false
+allow_create = false
+allow_default_change = false
+allow_uuid_change = false
+
+[source_manifest]
+schema = "release_source_manifest_v1"
+path = ".kent/workflows/puber-release.manifest.json"
+revision_binding = "runtime-source-envelope"
+runtime_attested = false
+
+[required_jobs_v1]
+schema = "required_jobs_v1"
+
+[[required_jobs_v1.jobs]]
+contract_key = "detekt_contract"
+workflow_path = ".github/workflows/pr-checks.yml"
+job_key = "detekt"
+job_display_name = "Detekt"
+needs = []
+matrix = {  }
+condition = ""
+continue_on_error = false
+runs_on = "ubuntu-latest"
+runner_trust = "github-hosted-standard-ephemeral"
+credential_profile = "none"
+allowed_effects = ["dependency-downloads", "github-actions-logs"]
+skip_policy = "never"
+branch_protection_required = true
+control_plane_fixtures_forbidden = true
+credential_scope_is_job_local = false
+runner_environment_asserted = true
+effective_permissions = { "contents" = "read" }
+effective_defaults_run = { "shell" = "", "working_directory" = "" }
+github_environment = ""
+services = {  }
+container = { "image" = "", "environment" = {  }, "ports" = [], "options" = "" }
+checkout_persist_credentials = false
+secret_refs = []
+effective_environment = {  }
+[required_jobs_v1.jobs.event_selector]
+name = "pull_request"
+branches = ["master"]
+branches_ignore = []
+tags = []
+tags_ignore = []
+paths = []
+paths_ignore = []
+types = []
+dispatch_inputs = []
+[[required_jobs_v1.jobs.steps]]
+kind = "uses"
+name = "Checkout exact source"
+condition = ""
+continue_on_error = false
+uses = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+run = ""
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+[required_jobs_v1.jobs.steps.with]
+"persist-credentials" = false
+[[required_jobs_v1.jobs.steps]]
+kind = "uses"
+name = "Set up Java 21"
+condition = ""
+continue_on_error = false
+uses = "actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00"
+run = ""
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+[required_jobs_v1.jobs.steps.with]
+"java-version" = "21"
+"distribution" = "temurin"
+[[required_jobs_v1.jobs.steps]]
+kind = "run"
+name = "Assert GitHub-hosted runner"
+condition = ""
+continue_on_error = false
+uses = ""
+with = {  }
+run = "test \"${RUNNER_ENVIRONMENT:-github-hosted}\" = github-hosted"
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+[[required_jobs_v1.jobs.steps]]
+kind = "run"
+name = "Run Detekt"
+condition = ""
+continue_on_error = false
+uses = ""
+with = {  }
+run = "./gradlew :app:detektAll"
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+
+[[required_jobs_v1.jobs]]
+contract_key = "unit-tests_contract"
+workflow_path = ".github/workflows/pr-checks.yml"
+job_key = "unit-tests"
+job_display_name = "Unit Tests"
+needs = []
+matrix = {  }
+condition = ""
+continue_on_error = false
+runs_on = "ubuntu-latest"
+runner_trust = "github-hosted-standard-ephemeral"
+credential_profile = "none"
+allowed_effects = ["dependency-downloads", "github-actions-logs"]
+skip_policy = "never"
+branch_protection_required = true
+control_plane_fixtures_forbidden = true
+credential_scope_is_job_local = false
+runner_environment_asserted = true
+effective_permissions = { "contents" = "read" }
+effective_defaults_run = { "shell" = "", "working_directory" = "" }
+github_environment = ""
+services = {  }
+container = { "image" = "", "environment" = {  }, "ports" = [], "options" = "" }
+checkout_persist_credentials = false
+secret_refs = []
+effective_environment = {  }
+[required_jobs_v1.jobs.event_selector]
+name = "pull_request"
+branches = ["master"]
+branches_ignore = []
+tags = []
+tags_ignore = []
+paths = []
+paths_ignore = []
+types = []
+dispatch_inputs = []
+[[required_jobs_v1.jobs.steps]]
+kind = "uses"
+name = "Checkout exact source"
+condition = ""
+continue_on_error = false
+uses = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+run = ""
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+[required_jobs_v1.jobs.steps.with]
+"persist-credentials" = false
+[[required_jobs_v1.jobs.steps]]
+kind = "uses"
+name = "Set up Java 21"
+condition = ""
+continue_on_error = false
+uses = "actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00"
+run = ""
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+[required_jobs_v1.jobs.steps.with]
+"java-version" = "21"
+"distribution" = "temurin"
+[[required_jobs_v1.jobs.steps]]
+kind = "run"
+name = "Assert GitHub-hosted runner"
+condition = ""
+continue_on_error = false
+uses = ""
+with = {  }
+run = "test \"${RUNNER_ENVIRONMENT:-github-hosted}\" = github-hosted"
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+[[required_jobs_v1.jobs.steps]]
+kind = "run"
+name = "Run unit tests"
+condition = ""
+continue_on_error = false
+uses = ""
+with = {  }
+run = "./gradlew :app:testProdDebugUnitTest"
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+
+[[required_jobs_v1.jobs]]
+contract_key = "build_contract"
+workflow_path = ".github/workflows/pr-checks.yml"
+job_key = "build"
+job_display_name = "Build"
+needs = []
+matrix = {  }
+condition = ""
+continue_on_error = false
+runs_on = "ubuntu-latest"
+runner_trust = "github-hosted-standard-ephemeral"
+credential_profile = "none"
+allowed_effects = ["dependency-downloads", "github-actions-logs"]
+skip_policy = "never"
+branch_protection_required = true
+control_plane_fixtures_forbidden = true
+credential_scope_is_job_local = false
+runner_environment_asserted = true
+effective_permissions = { "contents" = "read" }
+effective_defaults_run = { "shell" = "", "working_directory" = "" }
+github_environment = ""
+services = {  }
+container = { "image" = "", "environment" = {  }, "ports" = [], "options" = "" }
+checkout_persist_credentials = false
+secret_refs = []
+effective_environment = {  }
+[required_jobs_v1.jobs.event_selector]
+name = "pull_request"
+branches = ["master"]
+branches_ignore = []
+tags = []
+tags_ignore = []
+paths = []
+paths_ignore = []
+types = []
+dispatch_inputs = []
+[[required_jobs_v1.jobs.steps]]
+kind = "uses"
+name = "Checkout exact source"
+condition = ""
+continue_on_error = false
+uses = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+run = ""
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+[required_jobs_v1.jobs.steps.with]
+"persist-credentials" = false
+[[required_jobs_v1.jobs.steps]]
+kind = "uses"
+name = "Set up Java 21"
+condition = ""
+continue_on_error = false
+uses = "actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00"
+run = ""
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+[required_jobs_v1.jobs.steps.with]
+"java-version" = "21"
+"distribution" = "temurin"
+[[required_jobs_v1.jobs.steps]]
+kind = "run"
+name = "Assert GitHub-hosted runner"
+condition = ""
+continue_on_error = false
+uses = ""
+with = {  }
+run = "test \"${RUNNER_ENVIRONMENT:-github-hosted}\" = github-hosted"
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+[[required_jobs_v1.jobs.steps]]
+kind = "run"
+name = "Build debug APK"
+condition = ""
+continue_on_error = false
+uses = ""
+with = {  }
+run = "./gradlew :app:assembleProdDebug"
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = true
+
+[qualification_jobs_v1]
+schema = "qualification_jobs_v1"
+jobs = []
+
+[effect_jobs_v1]
+schema = "effect_jobs_v1"
+
+[[effect_jobs_v1.jobs]]
+contract_key = "release_contract"
+workflow_path = ".github/workflows/release.yml"
+job_key = "release"
+job_display_name = "Build & Publish"
+needs = []
+matrix = {  }
+condition = ""
+continue_on_error = false
+runs_on = "ubuntu-latest"
+runner_trust = "github-hosted-standard-ephemeral-effect"
+credential_profile = "github-platform-contents-write"
+allowed_effects = ["git-tag-create", "publish"]
+skip_policy = "event-gated"
+branch_protection_required = false
+control_plane_fixtures_forbidden = true
+credential_scope_is_job_local = true
+runner_environment_asserted = true
+effective_permissions = { "contents" = "write" }
+effective_defaults_run = { "shell" = "", "working_directory" = "" }
+github_environment = ""
+services = {  }
+container = { "image" = "", "environment" = {  }, "ports" = [], "options" = "" }
+checkout_persist_credentials = false
+secret_refs = []
+effective_environment = {  }
+[effect_jobs_v1.jobs.event_selector]
+name = "push"
+branches = []
+branches_ignore = []
+tags = ["v*"]
+tags_ignore = []
+paths = []
+paths_ignore = []
+types = []
+dispatch_inputs = []
+[[effect_jobs_v1.jobs.steps]]
+kind = "uses"
+name = "Checkout exact tagged source"
+condition = ""
+continue_on_error = false
+uses = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+run = ""
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = false
+[effect_jobs_v1.jobs.steps.with]
+"persist-credentials" = false
+"ref" = "${{ github.ref }}"
+[[effect_jobs_v1.jobs.steps]]
+kind = "uses"
+name = "Set up Java 21"
+condition = ""
+continue_on_error = false
+uses = "actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00"
+run = ""
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = false
+[effect_jobs_v1.jobs.steps.with]
+"java-version" = "21"
+"distribution" = "temurin"
+[[effect_jobs_v1.jobs.steps]]
+kind = "run"
+name = "Build release APK"
+condition = ""
+continue_on_error = false
+uses = ""
+with = {  }
+run = "./gradlew :app:assembleProdRelease"
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = false
+[[effect_jobs_v1.jobs.steps]]
+kind = "run"
+name = "Prepare APK checksum"
+condition = ""
+continue_on_error = false
+uses = ""
+with = {  }
+run = "sha256sum app/build/outputs/apk/prod/release/*.apk > release.sha256"
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = false
+[[effect_jobs_v1.jobs.steps]]
+kind = "uses"
+name = "Upload APK"
+condition = ""
+continue_on_error = false
+uses = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+run = ""
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = false
+[effect_jobs_v1.jobs.steps.with]
+"name" = "puber-${{ github.ref_name }}"
+"path" = "app/build/outputs/apk/prod/release/*.apk\nrelease.sha256"
+[[effect_jobs_v1.jobs.steps]]
+kind = "run"
+name = "Create empty GitHub Release"
+condition = ""
+continue_on_error = false
+uses = ""
+with = {  }
+run = "gh release create \"$GITHUB_REF_NAME\" --verify-tag --title \"Puber $GITHUB_REF_NAME\" --notes \"\" --generate-notes=false release.sha256 app/build/outputs/apk/prod/release/*.apk"
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = { "GH_TOKEN" = "${{ github.token }}" }
+secret_refs = []
+validation_required = false
+
+[[operation_variants]]
+key = "publish_after_merge"
+operation_kind = "publish"
+authority_transitions = ["publish_after_merge"]
+required_job_contract_keys = ["build_contract", "detekt_contract", "unit-tests_contract"]
+qualification_job_contract_keys = []
+effect_job_contract_keys = ["release_contract"]
+approval_required = true
+project_fields = [
+  { name = "release_tag", type = "string", nullable = false, approval_renderable = true },
+  { name = "target_commit", type = "string", nullable = false, approval_renderable = true },
+  { name = "release_version", type = "string", nullable = false, approval_renderable = true },
+]
+
+[operation_variants.authority_kind]
+kind = "kent_transition_template"
+workflow_id = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
+project_id = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
+approval_authority = "publish-release"
+
+[[operation_variants]]
+key = "observe_release"
+operation_kind = "observe"
+authority_transitions = []
+required_job_contract_keys = ["build_contract", "detekt_contract", "unit-tests_contract"]
+qualification_job_contract_keys = []
+effect_job_contract_keys = []
+approval_required = false
+project_fields = [
+  { name = "release_tag", type = "string", nullable = false, approval_renderable = true },
+]
+
+[operation_variants.authority_kind]
+kind = "github_run_template"
+workflow_path = ".github/workflows/release.yml"
+workflow_name = "Release"
+event = "push"
+[operation_variants.authority_kind.ref_policy]
+kind = "prefix_project_field"
+prefix = "refs/tags/"
+project_field = "release_tag"
+
+[[approval_materializations]]
+variant_key = "publish_after_merge"
+source_path = ".kent/scripts/workflow-puber-release-publish"
+source_node_key = "publish"
+source_node_kind = "script"
+authority_transition_parameter = "authority_transition"
+summary_language = "ru"
+summary_sections = ["Нужно от вас", "Почему", "После подтверждения"]
+materialized_before_pending_approval = true
+commentary_equals_summary = true
+decision_may_select_approval = false
+required_fields = ["release_tag", "release_version", "target_commit"]
+[approval_materializations.templates.publish_after_merge]
+"Нужно от вас" = "Подтвердите публикацию релиза {{release_tag}} версии {{release_version}}."
+"Почему" = "Только слитый коммит {{target_commit}} может быть опубликован."
+"После подтверждения" = "Будет создан и отправлен только лёгкий тег {{release_tag}}."

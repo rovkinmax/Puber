@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-import json, os, subprocess
+import json,subprocess
 from pathlib import Path
-ROOT = Path(__file__).resolve().parents[3]
-payload = {"release_tag": "v1.2.3", "target_commit": "abc123", "release_state": {"published": False}}
-env = {**os.environ, "PUBER_RELEASE_TEST_MODE": "1"}
-result = subprocess.run(
-    [str(ROOT / ".kent/scripts/workflow-wait-github-release")],
-    cwd=ROOT, input=json.dumps(payload), text=True, capture_output=True, env=env,
-)
-out = json.loads(result.stdout)
-assert result.returncode == 0 and out["transition"] == "release_watch_reported"
-assert out["no_live_apply"] is True
-print("workflow-wait-github-release: passed")
+ROOT=Path(__file__).resolve().parents[3]
+r=subprocess.run([str(ROOT/'.kent/scripts/workflow-wait-github-release')],cwd=ROOT,input=json.dumps({'release_tag':'v1.2.3','target_commit':'a'*40}),text=True,capture_output=True); out=json.loads(r.stdout); assert out['transition']=='release_watch_blocked'; print('workflow-wait-github-release: passed')

@@ -1,31 +1,71 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-
-import re
-import sys
+import json, os, re, subprocess, sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from workflow_runtime_contracts import ContractError, emit, git, operation, read_object, repository_root
+SCHEMA_VERSION = 4
+for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
+    os.environ.pop(_name, None)
+WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
+NODE = 'release_intent_gate'
+EXPECTED_TRANSITION = "start_release_intent_gate"
+KENT_KEYS = {"task_short_id", "project_id", "workflow_id", "workflow_revision", "current_node_key", "execution_commit", "worktree_path", "incoming_transition", "authority_transition"}
+class ContractError(ValueError): pass
+def read_object():
+    raw=sys.stdin.read()
+    if not raw.strip(): raise ContractError("stdin must contain exactly one JSON object")
+    try: value=json.loads(raw)
+    except json.JSONDecodeError as e: raise ContractError(f"stdin is invalid JSON: {e}") from e
+    if not isinstance(value,dict): raise ContractError("stdin must contain one JSON object")
+    if os.environ.get("KENT_SESSION_ID") or os.environ.get("KENT_RUN_ID") or os.environ.get("KENT_STEP_ID"):
+        raise ContractError("inherited Kent identity must be cleared before child reads")
+    return value
+def required(p,k):
+    v=p.get(k)
+    if not isinstance(v,str) or not v.strip(): raise ContractError(f"{k} must be a non-empty string")
+    return v.strip()
+def authority(p):
+    a=p.get("_kent")
+    if not isinstance(a,dict) or set(a)!=KENT_KEYS: raise ContractError("_kent authority shape is missing, extra, or stale")
+    if a["workflow_id"]!=WORKFLOW_ID or a["workflow_revision"]!=88 or a["current_node_key"]!=NODE or a["incoming_transition"]!=EXPECTED_TRANSITION:
+        raise ContractError("_kent authority does not match this node and revision")
+    for k in ("task_short_id","project_id","execution_commit","worktree_path","authority_transition"):
+        required(a,k)
+    return a
+def operation(p):
+    a=authority(p); return {"workflow_id":WORKFLOW_ID,"workflow_revision":88,"node_key":NODE,"task_short_id":a["task_short_id"],"authority_transition":a["authority_transition"]}
+def emit(transition, **fields):
+    print(json.dumps({"schema_version":SCHEMA_VERSION,"transition":transition,**fields},ensure_ascii=False,sort_keys=True))
+def root(path):
+    r=Path(path).expanduser().resolve()
+    if not r.is_dir(): raise ContractError(f"workspace does not exist: {r}")
+    result=subprocess.run(["git","rev-parse","--show-toplevel"],cwd=r,text=True,capture_output=True,check=False)
+    if result.returncode or Path(result.stdout.strip()).resolve()!=r: raise ContractError("workspace must be the exact repository root")
+    return r
+def git(r,*args):
+    x=subprocess.run(["git",*args],cwd=r,text=True,capture_output=True,check=False)
+    if x.returncode: raise ContractError(x.stderr.strip() or x.stdout.strip() or "git failed")
+    return x.stdout.strip()
 
-VERSION = re.compile(r"currentVersion\s*=\s*['\"](?P<version>\d+\.\d+\.\d+)['\"]")
+VERSION = re.compile(r"currentVersion\s*=\s*[\'\"](?P<version>\d+\.\d+\.\d+)[\'\"]")
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
-
-
-def next_version(current: str, release_type: str) -> str:
+def next_version(current, release_type):
     major, minor, patch = (int(part) for part in current.split("."))
-    if release_type == "major":
-        return f"{major + 1}.0.0"
-    if release_type == "patch":
-        return f"{major}.{minor}.{patch + 1}"
-    return f"{major}.{minor + 1}.0"
-
+    if release_type == "major": return f"{major+1}.0.0"
+    if release_type == "patch": return f"{major}.{minor}.{patch+1}"
+    return f"{major}.{minor+1}.0"
 
 def main() -> int:
     try:
         payload = read_object()
-        workspace = repository_root(str(payload.get("workspace_path") or Path.cwd()))
-        op = operation(payload, "release_intent_gate")
+        op = operation(payload)
+        workspace = root(str(payload.get("workspace_path") or Path.cwd()))
+        authority_data = authority(payload)
+        if authority_data["worktree_path"] != str(workspace):
+            raise ContractError("_kent worktree_path does not match workspace_path")
+        if authority_data["execution_commit"] != git(workspace, "rev-parse", "HEAD"):
+            raise ContractError("_kent execution_commit does not match selected revision")
+
         branch = git(workspace, "branch", "--show-current")
         requested_branch = str(payload.get("branch_name") or branch).strip()
         if requested_branch != branch:
@@ -47,7 +87,7 @@ def main() -> int:
             raise ContractError("release_tag must match release_version")
         emit(
             "release_intent_passed",
-            operation_data=op,
+            operation=op,
             workspace_path=str(workspace),
             branch_name=branch,
             release_type=release_type,

@@ -64,31 +64,28 @@
       "id": "7ab29a1a-9ab5-40c4-ae91-1c6f47c12941",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "publish",
-      "kind": "agent",
+      "kind": "script",
       "display_name": "Publish Tag",
       "group_id": null,
-      "subagent_role": "release-manager",
-      "completion_mode": "shell_command"
+      "script_path": ".kent/scripts/workflow-puber-release-publish"
     },
     {
       "id": "ac6c3970-99e4-4b40-841b-9dc7da036159",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "monitor",
-      "kind": "agent",
+      "kind": "script",
       "display_name": "Monitor Release",
       "group_id": null,
-      "subagent_role": "ci-monitor",
-      "completion_mode": "shell_command"
+      "script_path": ".kent/scripts/workflow-wait-github-release"
     },
     {
       "id": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "cleanup",
-      "kind": "agent",
+      "kind": "script",
       "display_name": "Cleanup",
       "group_id": null,
-      "subagent_role": "delivery-operator",
-      "completion_mode": "shell_command"
+      "script_path": ".kent/scripts/workflow-release-cleanup"
     },
     {
       "id": "dd3e4e97-a974-4e6a-bafe-da1d891bb5ce",

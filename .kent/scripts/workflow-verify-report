@@ -1,93 +1,1182 @@
-#!/usr/bin/env bash
-set -uo pipefail
+#!/usr/bin/env python3
+"""Run the project verifier and emit a bounded, content-addressed report."""
 
-verify_script="${KENT_WORKFLOW_VERIFY_SCRIPT:-./.kent/scripts/workflow-compile-verify}"
-verify_log="${KENT_WORKFLOW_VERIFY_LOG:-build/kent-workflow/compile-dev-debug.log}"
-input="$(jq -c . 2>/dev/null || true)"
+from __future__ import annotations
 
-emit_report() {
-  local status="$1"
-  local commentary="$2"
-  local report="$3"
+import hashlib
+import errno
+import json
+import os
+from pathlib import Path
+import selectors
+import signal
+import stat
+import subprocess
+import sys
+import time
+from typing import Any
 
-  jq -nc \
-    --arg transition "deterministic_verify_reported" \
-    --arg commentary "$commentary" \
-    --arg verification_status "$status" \
-    --arg verification_report "$report" \
-    --arg verification_schema_version "4" \
-    '{
-      transition: $transition,
-      commentary: $commentary,
-      verification_status: $verification_status,
-      verification_report: $verification_report,
-      verification_schema_version: ($verification_schema_version | tonumber)
-    }'
+
+INPUT_LIMIT = 1024 * 1024
+TIMEOUT_SECONDS = 7200
+OUTPUT_LIMIT = 4 * 1024 * 1024
+REPORT_SCHEMA = "workflow-verification-report-v2"
+CHILD_NAME = "workflow-compile-verify"
+REPORT_CODES = {
+    "passed",
+    "verification_failed",
+    "verification_blocked",
+    "input_invalid",
+    "workspace_invalid",
+    "verifier_missing",
+    "verifier_unsafe",
+    "log_path_unsafe",
+    "child_timeout",
+    "child_exit_nonzero",
+    "child_output_invalid",
+    "log_limit_exceeded",
+    "internal_error",
 }
+OPTIONAL_ENVIRONMENT = (
+    "HOME",
+    "JAVA_HOME",
+    "ANDROID_HOME",
+    "ANDROID_SDK_ROOT",
+    "GRADLE_USER_HOME",
+    "GOROOT",
+    "GOPATH",
+    "GOMODCACHE",
+    "GOCACHE",
+    "XDG_CACHE_HOME",
+)
+FIXED_PATHS = (
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/home/linuxbrew/.linuxbrew/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+)
 
-if [[ -z "$input" ]]; then
-  emit_report "blocked" \
-    "Verification wrapper received invalid workflow input." \
-    "Input was not valid JSON."
-  exit 0
-fi
 
-if [[ ! -x "$verify_script" ]]; then
-  emit_report "blocked" \
-    "Verification executable is unavailable." \
-    "Command unavailable: $verify_script"
-  exit 0
-fi
+class VerificationFailure(ValueError):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
 
-stdout_file="$(mktemp)"
-stderr_file="$(mktemp)"
-trap 'rm -f "$stdout_file" "$stderr_file"' EXIT
 
-if ! "$verify_script" <<<"$input" >"$stdout_file" 2>"$stderr_file"; then
-  result="$(cat "$stdout_file")"
-  diagnostics="$(cat "$stderr_file")"
-  emit_report "blocked" \
-    "Verification executable exited without a valid workflow report." \
-    "Command failed: $verify_script; stdout: ${result:0:1000}; stderr: ${diagnostics:0:1000}"
-  exit 0
-fi
+def runtime_contracts():
+    import importlib.util
 
-result="$(cat "$stdout_file")"
-diagnostics="$(cat "$stderr_file")"
-if ! jq -e 'type == "object"' <<<"$result" >/dev/null 2>&1; then
-  emit_report "blocked" \
-    "Verification executable returned malformed output." \
-    "Invalid JSON from $verify_script: ${result:0:1500}; stderr: ${diagnostics:0:500}"
-  exit 0
-fi
+    sibling = Path(__file__).with_name("workflow_runtime_contracts.py")
+    if sibling.is_symlink() or not sibling.is_file():
+        raise ValueError("runtime contract support module is unsafe")
+    spec = importlib.util.spec_from_file_location(
+        "workflow_runtime_contracts",
+        sibling,
+    )
+    if spec is None or spec.loader is None:
+        raise ValueError("runtime contract support module is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-raw_status="$(jq -r '.transition // ""' <<<"$result")"
-commentary="$(jq -r '.commentary // "Verification completed."' <<<"$result")"
-verification_report="$(jq -r '.verification_report // "No report provided."' <<<"$result")"
 
-case "$raw_status" in
-  passed)
-    verification_status="passed"
-    ;;
-  blocked)
-    verification_status="blocked"
-    ;;
-  failed)
-    environment_pattern='SDK location not found|JAVA_HOME|Network is unreachable'
-    environment_pattern+='|Could not resolve|No space left|Permission denied'
-    environment_pattern+='|daemon disappeared|Timeout waiting to lock'
-    environment_pattern+='|could not find executable|Command unavailable'
-    classification_text="$commentary $verification_report $diagnostics"
-    if grep -Eqi "$environment_pattern" <<<"$classification_text" ||
-      grep -Eqi "$environment_pattern" "$verify_log" 2>/dev/null; then
-      verification_status="blocked"
-    else
-      verification_status="needs_changes"
-    fi
-    ;;
-  *)
-    verification_status="blocked"
-    ;;
-esac
+def _unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON field")
+        result[key] = value
+    return result
 
-emit_report "$verification_status" "$commentary" "$verification_report"
+
+def _report(
+    runtime,
+    code: str,
+    *,
+    log_path: str | None = None,
+    log_sha256: str | None = None,
+    exit_code: int | None = None,
+) -> dict[str, Any]:
+    value = runtime.validate_verification_report(
+        {
+            "schema": REPORT_SCHEMA,
+            "code": code if code in REPORT_CODES else "internal_error",
+            "log_path": log_path,
+            "log_sha256": log_sha256,
+            "exit_code": exit_code,
+        }
+    )
+    return value
+
+
+def _emit(runtime, report: dict[str, Any]) -> int:
+    status = runtime.classify_verification_report(report)
+    print(
+        json.dumps(
+            {
+                "transition": "deterministic_verify_reported",
+                "verification_status": status,
+                "verification_report": json.dumps(
+                    report,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+    return 0
+
+
+def _check_directory(
+    metadata: os.stat_result,
+    *,
+    failure_code: str = "verifier_unsafe",
+) -> None:
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o022
+    ):
+        raise VerificationFailure(failure_code)
+
+
+def _check_file(
+    metadata: os.stat_result,
+    *,
+    executable: bool = False,
+    owner_only: bool = False,
+    failure_code: str = "verifier_unsafe",
+) -> None:
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or metadata.st_nlink != 1
+        or metadata.st_mode & 0o022
+        or (owner_only and metadata.st_mode & 0o077)
+        or (executable and not metadata.st_mode & stat.S_IXUSR)
+    ):
+        raise VerificationFailure(failure_code)
+
+
+def _revalidate_directory(
+    parent: int,
+    name: str,
+    descriptor: int,
+    *,
+    failure_code: str = "verifier_unsafe",
+) -> None:
+    opened = os.fstat(descriptor)
+    try:
+        current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    except OSError as error:
+        raise VerificationFailure(failure_code) from error
+    if (
+        not stat.S_ISDIR(current.st_mode)
+        or current.st_dev != opened.st_dev
+        or current.st_ino != opened.st_ino
+        or current.st_uid != os.getuid()
+        or current.st_mode & 0o022
+    ):
+        raise VerificationFailure(failure_code)
+
+
+def _revalidate_file(
+    parent: int,
+    name: str,
+    descriptor: int,
+    *,
+    executable: bool = False,
+    owner_only: bool = False,
+    failure_code: str = "verifier_unsafe",
+) -> None:
+    opened = os.fstat(descriptor)
+    try:
+        current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    except OSError as error:
+        raise VerificationFailure(failure_code) from error
+    _check_file(
+        current,
+        executable=executable,
+        owner_only=owner_only,
+        failure_code=failure_code,
+    )
+    if current.st_dev != opened.st_dev or current.st_ino != opened.st_ino:
+        raise VerificationFailure(failure_code)
+
+
+def _open_directory(
+    parent: int,
+    name: str,
+    *,
+    create: bool,
+    failure_code: str | None = None,
+) -> int:
+    flags = (
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    if create:
+        try:
+            os.mkdir(name, 0o700, dir_fd=parent)
+            os.fsync(parent)
+        except FileExistsError:
+            pass
+        except OSError as error:
+            if failure_code is None:
+                raise
+            raise VerificationFailure(failure_code) from error
+    try:
+        return_descriptor = os.open(name, flags, dir_fd=parent)
+    except OSError as error:
+        if failure_code is None:
+            raise
+        raise VerificationFailure(failure_code) from error
+    try:
+        _check_directory(
+            os.fstat(return_descriptor),
+            failure_code=failure_code or "verifier_unsafe",
+        )
+        return return_descriptor
+    except BaseException:
+        os.close(return_descriptor)
+        raise
+
+
+def _revalidate_log_chain(
+    root_fd: int,
+    build_fd: int,
+    workflow_fd: int,
+) -> None:
+    try:
+        _revalidate_directory(
+            root_fd,
+            "build",
+            build_fd,
+            failure_code="log_path_unsafe",
+        )
+        _revalidate_directory(
+            build_fd,
+            "kent-workflow",
+            workflow_fd,
+            failure_code="log_path_unsafe",
+        )
+    except OSError as error:
+        raise VerificationFailure("log_path_unsafe") from error
+
+
+def _fd_path(descriptor: int) -> str:
+    if not os.path.isdir("/dev/fd"):
+        raise VerificationFailure("verifier_unsafe")
+    path = f"/dev/fd/{descriptor}"
+    try:
+        opened = os.fstat(descriptor)
+    except OSError as error:
+        raise VerificationFailure("verifier_unsafe") from error
+    opened_identity = (opened.st_dev, opened.st_ino)
+    try:
+        resolved = os.stat(path)
+    except OSError as error:
+        if error.errno != errno.EBADF:
+            raise VerificationFailure("verifier_unsafe") from error
+        try:
+            current = os.fstat(descriptor)
+        except OSError as current_error:
+            raise VerificationFailure("verifier_unsafe") from current_error
+        if (current.st_dev, current.st_ino) != opened_identity:
+            raise VerificationFailure("verifier_unsafe")
+        try:
+            resolved = os.stat(path)
+        except OSError as retry_error:
+            raise VerificationFailure("verifier_unsafe") from retry_error
+    try:
+        final = os.fstat(descriptor)
+    except OSError as error:
+        raise VerificationFailure("verifier_unsafe") from error
+    if (final.st_dev, final.st_ino) != opened_identity:
+        raise VerificationFailure("verifier_unsafe")
+    if resolved.st_ino != opened.st_ino:
+        raise VerificationFailure("verifier_unsafe")
+    return path
+
+
+def _open_verifier(workspace_fd: int) -> tuple[int, int, int]:
+    descriptors: list[int] = []
+    try:
+        try:
+            kent_fd = _open_directory(workspace_fd, ".kent", create=False)
+            descriptors.append(kent_fd)
+            scripts_fd = _open_directory(kent_fd, "scripts", create=False)
+            descriptors.append(scripts_fd)
+        except FileNotFoundError as error:
+            raise VerificationFailure("verifier_missing") from error
+        except OSError as error:
+            raise VerificationFailure("verifier_unsafe") from error
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        try:
+            child_fd = os.open(CHILD_NAME, flags, dir_fd=scripts_fd)
+        except FileNotFoundError as error:
+            raise VerificationFailure("verifier_missing") from error
+        except OSError as error:
+            raise VerificationFailure("verifier_unsafe") from error
+        descriptors.append(child_fd)
+        _check_file(os.fstat(child_fd), executable=True)
+        _revalidate_file(
+            scripts_fd,
+            CHILD_NAME,
+            child_fd,
+            executable=True,
+        )
+        return kent_fd, scripts_fd, child_fd
+    except BaseException:
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        raise
+
+
+def _valid_environment_value(value: str) -> bool:
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return (
+        bool(value)
+        and b"\x00" not in encoded
+        and len(encoded) <= 4096
+        and Path(value).is_absolute()
+        and Path(value).is_dir()
+    )
+
+
+def _git_command() -> str:
+    for directory in FIXED_PATHS:
+        candidate = Path(directory) / "git"
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    raise VerificationFailure("internal_error")
+
+
+def replacement_environment(tmp_fd: int) -> dict[str, str]:
+    environment = {
+        "CI": "1",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "GIT_TERMINAL_PROMPT": "0",
+        "GCM_INTERACTIVE": "never",
+        "TMPDIR": _fd_path(tmp_fd),
+    }
+    valid: dict[str, str] = {}
+    for name in OPTIONAL_ENVIRONMENT:
+        value = os.environ.get(name)
+        if value is not None and _valid_environment_value(value):
+            valid[name] = value
+    path_entries: list[str] = []
+    for name in ("JAVA_HOME", "GOROOT", "GOPATH"):
+        value = valid.get(name)
+        if value:
+            candidate = str(Path(value) / "bin")
+            if Path(candidate).is_dir():
+                path_entries.append(candidate)
+    path_entries.extend(
+        candidate for candidate in FIXED_PATHS if Path(candidate).is_dir()
+    )
+    environment["PATH"] = os.pathsep.join(dict.fromkeys(path_entries))
+    environment.update(valid)
+    return environment
+
+
+def _write_all(descriptor: int, content: bytes) -> None:
+    view = memoryview(content)
+    while view:
+        written = os.write(descriptor, view)
+        if written <= 0:
+            raise VerificationFailure("internal_error")
+        view = view[written:]
+
+
+def _frame(stdout: bytes, stderr: bytes, limit: int) -> tuple[bytes, bool]:
+    def make(out: bytes, err: bytes) -> bytes:
+        return (
+            b"stdout:"
+            + str(len(out)).encode("ascii")
+            + b"\n"
+            + out
+            + b"stderr:"
+            + str(len(err)).encode("ascii")
+            + b"\n"
+            + err
+        )
+
+    full = make(stdout, stderr)
+    if len(full) <= limit:
+        return full, False
+    low, high = 0, len(stdout) + len(stderr)
+    best = b"stdout:0\nstderr:0\n"
+    while low <= high:
+        total = (low + high) // 2
+        out_length = min(len(stdout), total)
+        err_length = min(len(stderr), total - out_length)
+        candidate = make(stdout[:out_length], stderr[:err_length])
+        if len(candidate) <= limit:
+            best = candidate
+            low = total + 1
+        else:
+            high = total - 1
+    return best, True
+
+
+def _terminate_group(process: subprocess.Popen[bytes]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+
+
+def _child_command(child_path: str, child_fd: int) -> list[str]:
+    try:
+        sample = os.pread(child_fd, 128, 0)
+    except OSError:
+        sample = b""
+    if os.access(child_path, os.X_OK):
+        return [child_path]
+    if sample.startswith(b"#!") and b"python" in sample.splitlines()[0]:
+        return [sys.executable, child_path]
+    if sample.startswith(b"#!") and any(
+        shell in sample.splitlines()[0]
+        for shell in (b"/sh", b"/bash", b"/zsh")
+    ):
+        return ["/bin/sh", child_path]
+    return [child_path]
+
+
+def _child_descriptor(descriptor: int) -> int:
+    duplicate = os.dup(descriptor)
+    while duplicate < 3:
+        next_duplicate = os.dup(descriptor)
+        os.close(duplicate)
+        duplicate = next_duplicate
+    return duplicate
+
+
+def _run_child_fd(
+    child_fd: int,
+    child_parent_fd: int | None,
+    child_name: str | None,
+    workspace: Path,
+    tmp_fd: int,
+    input_payload: bytes,
+    *,
+    _phase_hook=None,
+) -> tuple[int | None, bytes, bytes, str | None]:
+    _fd_path(child_fd)
+    _fd_path(tmp_fd)
+    input_fd = os.open(
+        ".verification-input",
+        os.O_RDWR
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+        dir_fd=tmp_fd,
+    )
+    child_exec_fd = -1
+    tmp_exec_fd = -1
+    try:
+        _write_all(input_fd, input_payload)
+        os.fsync(input_fd)
+        os.lseek(input_fd, 0, os.SEEK_SET)
+        if child_parent_fd is not None and child_name is not None:
+            _revalidate_file(
+                child_parent_fd,
+                child_name,
+                child_fd,
+                executable=True,
+            )
+        _check_file(os.fstat(child_fd), executable=True)
+        if _phase_hook is not None:
+            _phase_hook("after_verifier_open_before_child")
+        if child_parent_fd is not None and child_name is not None:
+            _revalidate_file(
+                child_parent_fd,
+                child_name,
+                child_fd,
+                executable=True,
+            )
+        child_exec_fd = _child_descriptor(child_fd)
+        tmp_exec_fd = _child_descriptor(tmp_fd)
+        child_path = _fd_path(child_exec_fd)
+        _fd_path(tmp_exec_fd)
+        environment = replacement_environment(tmp_exec_fd)
+        input_stream = os.fdopen(os.dup(input_fd), "rb")
+        try:
+            process = subprocess.Popen(
+                _child_command(child_path, child_exec_fd),
+                cwd=str(workspace),
+                env=environment,
+                stdin=input_stream,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                pass_fds=(child_exec_fd, tmp_exec_fd),
+                start_new_session=True,
+            )
+        finally:
+            input_stream.close()
+        assert process.stdout is not None
+        assert process.stderr is not None
+        for stream in (process.stdout, process.stderr):
+            os.set_blocking(stream.fileno(), False)
+        selector = selectors.DefaultSelector()
+        selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+        selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+        buffers = {"stdout": bytearray(), "stderr": bytearray()}
+        failure: str | None = None
+        deadline = time.monotonic() + TIMEOUT_SECONDS
+        while selector.get_map() or process.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 and failure is None:
+                failure = "timeout"
+                _terminate_group(process)
+            timeout = max(0.0, min(remaining, 0.25))
+            for key, _ in selector.select(timeout):
+                chunk = os.read(key.fileobj.fileno(), 65536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    key.fileobj.close()
+                    continue
+                total = sum(len(value) for value in buffers.values())
+                remaining_output = OUTPUT_LIMIT - total
+                if len(chunk) > remaining_output:
+                    if remaining_output > 0:
+                        buffers[key.data].extend(chunk[:remaining_output])
+                    failure = "output_limit"
+                    _terminate_group(process)
+                    break
+                buffers[key.data].extend(chunk)
+            if failure is not None:
+                for key in list(selector.get_map().values()):
+                    selector.unregister(key.fileobj)
+                    key.fileobj.close()
+                break
+        if failure is None:
+            process.wait()
+        return (
+            process.returncode,
+            bytes(buffers["stdout"]),
+            bytes(buffers["stderr"]),
+            failure,
+        )
+    except VerificationFailure:
+        raise
+    except (OSError, ValueError):
+        return None, b"", b"", "internal"
+    finally:
+        try:
+            os.unlink(".verification-input", dir_fd=tmp_fd)
+        except OSError:
+            pass
+        try:
+            os.close(input_fd)
+        except OSError:
+            pass
+        for descriptor in (child_exec_fd, tmp_exec_fd):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def bounded_child(
+    executable: Path,
+    workspace: Path,
+    payload: bytes,
+    *,
+    _phase_hook=None,
+) -> tuple[int | None, bytes, bytes, str | None]:
+    root_fd = os.open(
+        workspace,
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
+    descriptors = [root_fd]
+    tmp_name = ""
+    kent_fd = -1
+    try:
+        build_fd = _open_directory(root_fd, "build", create=True)
+        kent_fd = _open_directory(build_fd, "kent-workflow", create=True)
+        tmp_name = f".verify-tmp-{os.getpid()}-{time.time_ns()}"
+        os.mkdir(tmp_name, 0o700, dir_fd=kent_fd)
+        os.fsync(kent_fd)
+        tmp_fd = _open_directory(kent_fd, tmp_name, create=False)
+        descriptors.extend((build_fd, kent_fd, tmp_fd))
+        child_parent_fd = os.open(
+            executable.parent,
+            os.O_RDONLY
+            | os.O_DIRECTORY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        descriptors.append(child_parent_fd)
+        child_fd = os.open(
+            executable,
+            os.O_RDONLY
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        descriptors.append(child_fd)
+        _check_file(os.fstat(child_fd), executable=True)
+        if _phase_hook is not None:
+            _phase_hook("after_log_temp_open_before_child")
+        return _run_child_fd(
+            child_fd,
+            child_parent_fd,
+            executable.name,
+            workspace,
+            tmp_fd,
+            payload,
+            _phase_hook=_phase_hook,
+        )
+    finally:
+        if tmp_name and kent_fd >= 0:
+            try:
+                os.rmdir(tmp_name, dir_fd=kent_fd)
+                os.fsync(kent_fd)
+            except OSError:
+                pass
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _prechild_log_gate(
+    workspace: Path,
+    final_relative: str | None = None,
+) -> None:
+    probe = "build/kent-workflow/.verification-report-probe"
+    git = _git_command()
+    paths = [probe]
+    if final_relative is not None:
+        paths.append(final_relative)
+    for path in paths:
+        ignored = subprocess.run(
+            [
+                git,
+                "-C",
+                str(workspace),
+                "check-ignore",
+                "-q",
+                "--no-index",
+                "--",
+                path,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        tracked_path = subprocess.run(
+            [
+                git,
+                "-C",
+                str(workspace),
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                path,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if ignored.returncode != 0 or tracked_path.returncode == 0:
+            raise VerificationFailure("log_path_unsafe")
+    tracked = subprocess.run(
+        [
+            git,
+            "-C",
+            str(workspace),
+            "ls-files",
+            "--error-unmatch",
+            "--",
+            "build/kent-workflow",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if tracked.returncode == 0:
+        raise VerificationFailure("log_path_unsafe")
+
+
+def _open_log_temp(kent_fd: int) -> tuple[int, str]:
+    name = f".verification-report-{os.getpid()}-{time.time_ns()}.tmp"
+    try:
+        descriptor = os.open(
+            name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=kent_fd,
+        )
+    except OSError as error:
+        raise VerificationFailure("log_path_unsafe") from error
+    try:
+        _check_file(
+            os.fstat(descriptor),
+            owner_only=True,
+            failure_code="log_path_unsafe",
+        )
+        os.fsync(kent_fd)
+        _revalidate_file(
+            kent_fd,
+            name,
+            descriptor,
+            owner_only=True,
+            failure_code="log_path_unsafe",
+        )
+        return descriptor, name
+    except VerificationFailure:
+        os.close(descriptor)
+        raise
+    except OSError as error:
+        os.close(descriptor)
+        raise VerificationFailure("log_path_unsafe") from error
+
+
+def _install_log(
+    workspace: Path,
+    root_fd: int,
+    build_fd: int,
+    kent_fd: int,
+    temporary_fd: int,
+    temporary_name: str,
+    content: bytes,
+) -> tuple[str, str]:
+    digest = hashlib.sha256(content).hexdigest()
+    filename = f"verification-report-{digest}.log"
+    relative = f"build/kent-workflow/{filename}"
+    _revalidate_log_chain(root_fd, build_fd, kent_fd)
+    _prechild_log_gate(workspace, relative)
+    _revalidate_log_chain(root_fd, build_fd, kent_fd)
+    _revalidate_file(
+        kent_fd,
+        temporary_name,
+        temporary_fd,
+        failure_code="log_path_unsafe",
+    )
+    _write_all(temporary_fd, content)
+    os.fsync(temporary_fd)
+    _revalidate_log_chain(root_fd, build_fd, kent_fd)
+    _revalidate_file(
+        kent_fd,
+        temporary_name,
+        temporary_fd,
+        failure_code="log_path_unsafe",
+    )
+    _revalidate_log_chain(root_fd, build_fd, kent_fd)
+    try:
+        existing_fd = os.open(
+            filename,
+            os.O_RDONLY
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=kent_fd,
+        )
+    except FileNotFoundError:
+        existing_fd = -1
+    except OSError as error:
+        raise VerificationFailure("log_path_unsafe") from error
+    if existing_fd >= 0:
+        try:
+            _revalidate_log_chain(root_fd, build_fd, kent_fd)
+            _check_file(
+                os.fstat(existing_fd),
+                owner_only=True,
+                failure_code="log_path_unsafe",
+            )
+            if os.fstat(existing_fd).st_mode & 0o777 != 0o600:
+                raise VerificationFailure("log_path_unsafe")
+            _revalidate_file(
+                kent_fd,
+                filename,
+                existing_fd,
+                owner_only=True,
+                failure_code="log_path_unsafe",
+            )
+            os.lseek(existing_fd, 0, os.SEEK_SET)
+            existing = os.read(existing_fd, len(content) + 1)
+            if existing != content:
+                raise VerificationFailure("log_path_unsafe")
+        finally:
+            os.close(existing_fd)
+        _revalidate_log_chain(root_fd, build_fd, kent_fd)
+        try:
+            os.unlink(temporary_name, dir_fd=kent_fd)
+            os.fsync(kent_fd)
+        except OSError as error:
+            raise VerificationFailure("log_path_unsafe") from error
+        _revalidate_log_chain(root_fd, build_fd, kent_fd)
+        return relative, digest
+    try:
+        _revalidate_log_chain(root_fd, build_fd, kent_fd)
+        os.rename(
+            temporary_name,
+            filename,
+            src_dir_fd=kent_fd,
+            dst_dir_fd=kent_fd,
+        )
+        os.fsync(kent_fd)
+    except OSError as error:
+        raise VerificationFailure("log_path_unsafe") from error
+    _revalidate_log_chain(root_fd, build_fd, kent_fd)
+    final_fd = -1
+    try:
+        final_fd = os.open(
+            filename,
+            os.O_RDONLY
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=kent_fd,
+        )
+        _check_file(
+            os.fstat(final_fd),
+            owner_only=True,
+            failure_code="log_path_unsafe",
+        )
+        if os.fstat(final_fd).st_mode & 0o777 != 0o600:
+            raise VerificationFailure("log_path_unsafe")
+        _revalidate_file(
+            kent_fd,
+            filename,
+            final_fd,
+            owner_only=True,
+            failure_code="log_path_unsafe",
+        )
+        os.lseek(final_fd, 0, os.SEEK_SET)
+        if os.read(final_fd, len(content) + 1) != content:
+            raise VerificationFailure("log_path_unsafe")
+    except VerificationFailure:
+        raise
+    except OSError as error:
+        raise VerificationFailure("log_path_unsafe") from error
+    finally:
+        if final_fd >= 0:
+            os.close(final_fd)
+    _revalidate_log_chain(root_fd, build_fd, kent_fd)
+    return relative, digest
+
+
+def write_log(
+    workspace: Path,
+    content: bytes,
+    *,
+    _phase_hook=None,
+) -> tuple[str, str]:
+    root_fd = os.open(
+        workspace,
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
+    descriptors = [root_fd]
+    temporary_name = ""
+    try:
+        build_fd = _open_directory(
+            root_fd,
+            "build",
+            create=True,
+            failure_code="log_path_unsafe",
+        )
+        kent_fd = _open_directory(
+            build_fd,
+            "kent-workflow",
+            create=True,
+            failure_code="log_path_unsafe",
+        )
+        descriptors.extend((build_fd, kent_fd))
+        if _phase_hook is not None:
+            _phase_hook("after_log_dir_open_before_revalidation")
+        _revalidate_log_chain(root_fd, build_fd, kent_fd)
+        _prechild_log_gate(workspace)
+        temporary_fd, temporary_name = _open_log_temp(kent_fd)
+        descriptors.append(temporary_fd)
+        return _install_log(
+            workspace,
+            root_fd,
+            build_fd,
+            kent_fd,
+            temporary_fd,
+            temporary_name,
+            content,
+        )
+    finally:
+        if temporary_name:
+            try:
+                os.unlink(temporary_name, dir_fd=descriptors[2])
+                os.fsync(descriptors[2])
+            except (IndexError, OSError):
+                pass
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _workspace_root(configured: Any) -> Path:
+    if not isinstance(configured, str) or not configured:
+        raise VerificationFailure("input_invalid")
+    try:
+        requested = Path(configured).expanduser().resolve()
+        current = Path.cwd().resolve()
+    except (OSError, RuntimeError, ValueError) as error:
+        raise VerificationFailure("workspace_invalid") from error
+    if requested != current:
+        raise VerificationFailure("workspace_invalid")
+    result = subprocess.run(
+        [_git_command(), "-C", str(current), "rev-parse", "--show-toplevel"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise VerificationFailure("workspace_invalid")
+    try:
+        git_root = Path(result.stdout.strip()).resolve()
+    except (OSError, RuntimeError, ValueError) as error:
+        raise VerificationFailure("workspace_invalid") from error
+    if git_root != current:
+        raise VerificationFailure("workspace_invalid")
+    return current
+
+
+def _parse_child(stdout: bytes) -> str:
+    try:
+        value = json.loads(
+            stdout.decode("utf-8"),
+            object_pairs_hook=_unique_pairs,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise VerificationFailure("child_output_invalid") from error
+    if not isinstance(value, dict) or set(value) != {"transition"}:
+        raise VerificationFailure("child_output_invalid")
+    transition = value["transition"]
+    if transition not in {"passed", "failed", "blocked"}:
+        raise VerificationFailure("child_output_invalid")
+    return transition
+
+
+def run_verification(payload: dict[str, Any], *, _phase_hook=None) -> dict[str, Any]:
+    runtime = runtime_contracts()
+    try:
+        workspace = _workspace_root(payload.get("workspace_path"))
+        root_fd = os.open(
+            workspace,
+            os.O_RDONLY
+            | os.O_DIRECTORY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except VerificationFailure as error:
+        return _report(runtime, error.code)
+    except OSError:
+        return _report(runtime, "internal_error")
+    descriptors = [root_fd]
+    temporary_name = ""
+    workflow_fd = -1
+    tmp_name = ""
+    try:
+        kent_fd, scripts_fd, child_fd = _open_verifier(root_fd)
+        descriptors.extend((kent_fd, scripts_fd, child_fd))
+        build_fd = _open_directory(
+            root_fd,
+            "build",
+            create=True,
+            failure_code="log_path_unsafe",
+        )
+        workflow_fd = _open_directory(
+            build_fd,
+            "kent-workflow",
+            create=True,
+            failure_code="log_path_unsafe",
+        )
+        tmp_name = f".verify-tmp-{os.getpid()}-{time.time_ns()}"
+        try:
+            os.mkdir(tmp_name, 0o700, dir_fd=workflow_fd)
+            os.fsync(workflow_fd)
+        except OSError as error:
+            raise VerificationFailure("log_path_unsafe") from error
+        tmp_fd = _open_directory(
+            workflow_fd,
+            tmp_name,
+            create=False,
+            failure_code="log_path_unsafe",
+        )
+        descriptors.extend((build_fd, workflow_fd, tmp_fd))
+        if _phase_hook is not None:
+            _phase_hook("after_log_dir_open_before_revalidation")
+        _revalidate_log_chain(root_fd, build_fd, workflow_fd)
+        _prechild_log_gate(workspace)
+        temporary_fd, temporary_name = _open_log_temp(workflow_fd)
+        descriptors.append(temporary_fd)
+        if _phase_hook is not None:
+            _phase_hook("after_log_temp_open_before_child")
+        try:
+            _revalidate_log_chain(root_fd, build_fd, workflow_fd)
+        except VerificationFailure as error:
+            raise VerificationFailure("log_path_unsafe") from error
+        exit_code, stdout, stderr, failure = _run_child_fd(
+            child_fd,
+            scripts_fd,
+            CHILD_NAME,
+            workspace,
+            tmp_fd,
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8"),
+            _phase_hook=_phase_hook,
+        )
+        _revalidate_log_chain(root_fd, build_fd, workflow_fd)
+        framed, frame_overflow = _frame(stdout, stderr, OUTPUT_LIMIT)
+        if failure == "internal":
+            raise VerificationFailure("internal_error")
+        log_path, log_digest = _install_log(
+            workspace,
+            root_fd,
+            build_fd,
+            workflow_fd,
+            temporary_fd,
+            temporary_name,
+            framed,
+        )
+        temporary_name = ""
+        if failure == "timeout":
+            code = "child_timeout"
+        elif failure == "output_limit" or frame_overflow:
+            code = "log_limit_exceeded"
+        elif exit_code not in (0, None):
+            code = "child_exit_nonzero"
+        else:
+            transition = _parse_child(stdout)
+            code = {
+                "passed": "passed",
+                "failed": "verification_failed",
+                "blocked": "verification_blocked",
+            }[transition]
+        return _report(
+            runtime,
+            code,
+            log_path=log_path,
+            log_sha256=log_digest,
+            exit_code=exit_code,
+        )
+    except VerificationFailure as error:
+        return _report(runtime, error.code)
+    except FileNotFoundError:
+        return _report(runtime, "verifier_missing")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return _report(runtime, "internal_error")
+    finally:
+        if temporary_name:
+            try:
+                os.unlink(temporary_name, dir_fd=workflow_fd)
+                os.fsync(workflow_fd)
+            except (IndexError, OSError):
+                pass
+        if tmp_name and workflow_fd >= 0:
+            try:
+                os.rmdir(tmp_name, dir_fd=workflow_fd)
+                os.fsync(workflow_fd)
+            except OSError:
+                pass
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def main() -> int:
+    try:
+        runtime = runtime_contracts()
+    except Exception:
+        print(
+            json.dumps(
+                {
+                    "transition": "deterministic_verify_reported",
+                    "verification_status": "blocked",
+                    "verification_report": json.dumps(
+                        {
+                            "schema": REPORT_SCHEMA,
+                            "code": "internal_error",
+                            "log_path": None,
+                            "log_sha256": None,
+                            "exit_code": None,
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                },
+                separators=(",", ":"),
+            )
+        )
+        return 0
+    try:
+        raw = sys.stdin.buffer.read(INPUT_LIMIT + 1)
+        if len(raw) > INPUT_LIMIT:
+            raise VerificationFailure("input_invalid")
+        payload = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_unique_pairs,
+        )
+        if not isinstance(payload, dict):
+            raise VerificationFailure("input_invalid")
+        return _emit(runtime, run_verification(payload))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return _emit(runtime, _report(runtime, "input_invalid"))
+    except VerificationFailure as error:
+        return _emit(runtime, _report(runtime, error.code))
+    except Exception:
+        return _emit(runtime, _report(runtime, "internal_error"))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -17,12 +17,18 @@ import time
 from typing import Any, Dict, List, Optional
 
 
-RUNTIME_SCHEMA_VERSION = 4
-
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 NODE_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
 JSON_INPUT_TIMEOUT_SECONDS = 2.0
 MAX_JSON_INPUT_BYTES = 1024 * 1024
+
+
+def runtime_state_names(task: str) -> tuple[str, str]:
+    digest = hashlib.sha256(task.encode("utf-8")).hexdigest()
+    return (
+        ".evidence-lock-{}".format(digest),
+        ".evidence-terminal-{}".format(digest),
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,6 +40,9 @@ def parse_args() -> argparse.Namespace:
         subparser = subparsers.add_parser(command)
         subparser.add_argument("--task", required=True)
         subparser.add_argument("--workspace", type=Path, default=Path.cwd())
+    seal_parser = subparsers.add_parser("seal")
+    seal_parser.add_argument("--task", required=True)
+    seal_parser.add_argument("--workspace", type=Path, default=Path.cwd())
     return parser.parse_args()
 
 
@@ -306,19 +315,193 @@ def load_entries(stream: Any, *, task: str) -> List[Dict[str, Any]]:
     return entries
 
 
-def open_ledger(path: Path, *, create: bool) -> Any:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    flags = os.O_RDWR | os.O_APPEND
+def _open_directory(parent: int, name: str, *, create: bool = False) -> int:
+    flags = (
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    if create:
+        try:
+            os.mkdir(name, 0o700, dir_fd=parent)
+            os.fsync(parent)
+        except FileExistsError:
+            pass
+    descriptor = os.open(name, flags, dir_fd=parent)
+    metadata = os.fstat(descriptor)
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o022
+    ):
+        os.close(descriptor)
+        raise ValueError("runtime directory is unsafe: {}".format(name))
+    return descriptor
+
+
+def _open_runtime_file(
+    parent: int,
+    name: str,
+    *,
+    create: bool,
+    append: bool = False,
+) -> int:
+    flags = (
+        os.O_RDWR
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
     if create:
         flags |= os.O_CREAT
+    if append:
+        flags |= os.O_APPEND
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(path, flags, 0o600)
+    created = False
+    if create:
+        flags |= getattr(os, "O_EXCL", 0)
+        try:
+            descriptor = os.open(name, flags, 0o600, dir_fd=parent)
+            created = True
+        except FileExistsError:
+            flags &= ~getattr(os, "O_EXCL", 0)
+            descriptor = os.open(name, flags, 0o600, dir_fd=parent)
+    else:
+        descriptor = os.open(name, flags, 0o600, dir_fd=parent)
+    if created:
+        os.fsync(parent)
     metadata = os.fstat(descriptor)
-    if not stat.S_ISREG(metadata.st_mode):
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o077
+    ):
         os.close(descriptor)
-        raise ValueError("evidence ledger is not a regular file: {}".format(path))
-    return os.fdopen(descriptor, "r+", encoding="utf-8")
+        raise ValueError("runtime file is unsafe: {}".format(name))
+    return descriptor
+
+
+def _revalidate_directory_link(parent: int, name: str, descriptor: int) -> None:
+    opened = os.fstat(descriptor)
+    current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    if (
+        not stat.S_ISDIR(current.st_mode)
+        or current.st_dev != opened.st_dev
+        or current.st_ino != opened.st_ino
+        or current.st_uid != os.getuid()
+        or current.st_mode & 0o022
+    ):
+        raise ValueError("runtime directory changed during admission")
+
+
+def _revalidate_file_link(parent: int, name: str, descriptor: int) -> None:
+    opened = os.fstat(descriptor)
+    current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    if (
+        not stat.S_ISREG(current.st_mode)
+        or current.st_dev != opened.st_dev
+        or current.st_ino != opened.st_ino
+        or current.st_uid != os.getuid()
+        or current.st_nlink != 1
+        or current.st_mode & 0o077
+    ):
+        raise ValueError("runtime file changed during admission")
+
+
+def _runtime_conflicts(runtime_fd: int, task: str) -> list[str]:
+    _, sentinel_name = runtime_state_names(task)
+    names = os.listdir(runtime_fd)
+    conflicts = [
+        name for name in names
+        if name.startswith(".evidence-cleanup-") or name == sentinel_name
+    ]
+    return sorted(conflicts)
+
+
+def _open_runtime_fds(
+    root: Path,
+    task: str,
+    *,
+    create_task: bool,
+    lock_operation: int = fcntl.LOCK_EX,
+    _phase_hook=None,
+) -> tuple[list[int], int, int, int, int]:
+    root_fd = os.open(
+        root,
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
+    descriptors = [root_fd]
+    try:
+        kent_fd = _open_directory(root_fd, ".kent")
+        descriptors.append(kent_fd)
+        runtime_fd = _open_directory(kent_fd, "runtime", create=True)
+        descriptors.append(runtime_fd)
+        if _phase_hook is not None:
+            _phase_hook("after_runtime_fd_before_lock_open")
+        _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+        lock_name, sentinel_name = runtime_state_names(task)
+        lock_fd = _open_runtime_file(
+            runtime_fd,
+            lock_name,
+            create=True,
+        )
+        descriptors.append(lock_fd)
+        fcntl.flock(lock_fd, lock_operation)
+        if _phase_hook is not None:
+            _phase_hook("after_lock_before_state_read")
+        _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+        _revalidate_file_link(runtime_fd, lock_name, lock_fd)
+        conflicts = _runtime_conflicts(runtime_fd, task)
+        if conflicts:
+            if sentinel_name in conflicts:
+                raise ValueError("evidence ledger is sealed")
+            if any(name.startswith(".evidence-cleanup-") for name in conflicts):
+                raise ValueError(
+                    "terminal cleanup tombstone conflicts with active ledger"
+                )
+        try:
+            sentinel_fd = _open_runtime_file(
+                runtime_fd,
+                sentinel_name,
+                create=False,
+            )
+        except FileNotFoundError:
+            sentinel_fd = -1
+        else:
+            _revalidate_file_link(runtime_fd, sentinel_name, sentinel_fd)
+            if os.read(sentinel_fd, 1):
+                os.close(sentinel_fd)
+                raise ValueError("terminal sentinel is unsafe")
+            os.close(sentinel_fd)
+            raise ValueError("evidence ledger is sealed")
+        try:
+            task_fd = _open_directory(runtime_fd, task, create=False)
+        except FileNotFoundError:
+            if not create_task:
+                raise
+            try:
+                os.mkdir(task, 0o700, dir_fd=runtime_fd)
+            except FileExistsError:
+                pass
+            os.fsync(runtime_fd)
+            task_fd = _open_directory(runtime_fd, task)
+        descriptors.append(task_fd)
+        if _phase_hook is not None:
+            _phase_hook("after_task_fd_before_link_revalidation")
+        _revalidate_directory_link(runtime_fd, task, task_fd)
+        return descriptors, root_fd, runtime_fd, lock_fd, task_fd
+    except BaseException:
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        raise
 
 
 def kent_identity(name: str) -> str:
@@ -330,6 +513,7 @@ def append_entry(
     path: Path,
     *,
     task: str,
+    _phase_hook=None,
 ) -> tuple[Dict[str, Any], bool]:
     raw = read_json_input("evidence")
     if not isinstance(raw, dict):
@@ -348,48 +532,97 @@ def append_entry(
     run_id = kent_identity("KENT_RUN_ID")
     step_id = kent_identity("KENT_STEP_ID")
 
-    with open_ledger(path, create=True) as stream:
-        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
-        entries = load_entries(stream, task=task)
-        if run_id != "unknown":
-            for existing in reversed(entries):
-                if existing.get("run_id") == run_id:
-                    return existing, True
-        previous_hash = entries[-1]["event_hash"] if entries else ""
-        entry = {
-            "schema_version": 1,
-            "sequence": len(entries) + 1,
-            "task_short_id": task,
-            "node_key": node_key,
-            "evidence_type": evidence_type,
-            "summary": summary,
-            "artifacts": artifacts,
-            "checks": checks,
-            "decisions": decisions,
-            "context": metrics,
-            "workspace_path": str(root),
-            "git_head": git_head,
-            "session_id": session_id,
-            "run_id": run_id,
-            "step_id": step_id,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "previous_hash": previous_hash,
-        }
-        entry["event_hash"] = entry_hash(entry)
-        stream.seek(0, os.SEEK_END)
-        stream.write(json.dumps(entry, ensure_ascii=False, separators=(",", ":")))
-        stream.write("\n")
-        stream.flush()
-        os.fsync(stream.fileno())
-        return entry, False
+    descriptors, _, _, _, task_fd = _open_runtime_fds(
+        root,
+        task,
+        create_task=True,
+        _phase_hook=_phase_hook,
+    )
+    try:
+        ledger_fd = _open_runtime_file(
+            task_fd,
+            "evidence-ledger.jsonl",
+            create=True,
+            append=True,
+        )
+        descriptors.append(ledger_fd)
+        with os.fdopen(os.dup(ledger_fd), "r+", encoding="utf-8") as stream:
+            entries = load_entries(stream, task=task)
+            if entries and entries[-1].get("record_kind") == (
+                "terminal_evidence_seal_v1"
+            ):
+                raise ValueError("evidence ledger is sealed")
+            if run_id != "unknown":
+                for existing in reversed(entries):
+                    if existing.get("run_id") == run_id:
+                        return existing, True
+            previous_hash = entries[-1]["event_hash"] if entries else ""
+            entry = {
+                "schema_version": 1,
+                "sequence": len(entries) + 1,
+                "task_short_id": task,
+                "node_key": node_key,
+                "evidence_type": evidence_type,
+                "summary": summary,
+                "artifacts": artifacts,
+                "checks": checks,
+                "decisions": decisions,
+                "context": metrics,
+                "workspace_path": str(root),
+                "git_head": git_head,
+                "session_id": session_id,
+                "run_id": run_id,
+                "step_id": step_id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "previous_hash": previous_hash,
+            }
+            entry["event_hash"] = entry_hash(entry)
+            line = (
+                json.dumps(
+                    entry,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            ).encode("utf-8")
+            view = memoryview(line)
+            while view:
+                written = os.write(ledger_fd, view)
+                view = view[written:]
+            os.fsync(ledger_fd)
+            return entry, False
+    finally:
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
 
 def read_entries(path: Path, *, task: str) -> List[Dict[str, Any]]:
-    if not path.exists():
-        raise ValueError("evidence ledger does not exist: {}".format(path))
-    with open_ledger(path, create=False) as stream:
-        fcntl.flock(stream.fileno(), fcntl.LOCK_SH)
-        return load_entries(stream, task=task)
+    root = repository_root(path.parents[3])
+    descriptors, _, _, _, task_fd = _open_runtime_fds(
+        root,
+        task,
+        create_task=False,
+        lock_operation=fcntl.LOCK_SH,
+    )
+    try:
+        lock_fd = descriptors[3]
+        ledger_fd = _open_runtime_file(
+            task_fd,
+            "evidence-ledger.jsonl",
+            create=False,
+        )
+        descriptors.append(ledger_fd)
+        with os.fdopen(os.dup(ledger_fd), "r+", encoding="utf-8") as stream:
+            return load_entries(stream, task=task)
+    finally:
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
 
 def summarize(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -423,6 +656,185 @@ def summarize(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _runtime_module():
+    import importlib.util
+
+    sibling = Path(__file__).with_name("workflow_runtime_contracts.py")
+    if sibling.is_symlink() or not sibling.is_file():
+        raise ValueError("runtime contract support module is unsafe")
+    spec = importlib.util.spec_from_file_location(
+        "workflow_runtime_contracts",
+        sibling,
+    )
+    if spec is None or spec.loader is None:
+        raise ValueError("runtime contract support module is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _open_runtime_component(parent: int, name: str, *, directory: bool) -> int:
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    if directory:
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(name, flags, dir_fd=parent)
+    metadata = os.fstat(descriptor)
+    if directory and (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o022
+    ):
+        os.close(descriptor)
+        raise ValueError("runtime component is not a directory: {}".format(name))
+    if not directory and not stat.S_ISREG(metadata.st_mode):
+        os.close(descriptor)
+        raise ValueError("runtime component is not a regular file: {}".format(name))
+    if not directory and (
+        metadata.st_nlink != 1
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o077
+    ):
+        os.close(descriptor)
+        raise ValueError("runtime component is unsafe: {}".format(name))
+    if not directory:
+        _revalidate_file_link(parent, name, descriptor)
+    return descriptor
+
+
+def seal_terminal(
+    root: Path,
+    *,
+    task: str,
+    _phase_hook=None,
+) -> Dict[str, Any]:
+    """Append a terminal seal and install its sentinel under one stable lock."""
+
+    request = read_json_input("terminal seal")
+    if not isinstance(request, dict):
+        raise ValueError("terminal seal input must be one JSON object")
+    runtime = _runtime_module()
+    descriptors: list[int] = []
+    try:
+        descriptors, root_fd, runtime_fd, lock_fd, task_fd = _open_runtime_fds(
+            root,
+            task,
+            create_task=False,
+            lock_operation=fcntl.LOCK_EX,
+            _phase_hook=_phase_hook,
+        )
+        lock_name, sentinel_name = runtime_state_names(task)
+        sentinel_present = False
+        try:
+            sentinel_fd = _open_runtime_component(
+                runtime_fd,
+                sentinel_name,
+                directory=False,
+            )
+        except FileNotFoundError:
+            pass
+        else:
+            os.close(sentinel_fd)
+            sentinel_present = True
+        ledger_fd = _open_runtime_file(
+            task_fd,
+            "evidence-ledger.jsonl",
+            create=False,
+            append=True,
+        )
+        descriptors.append(ledger_fd)
+        _revalidate_file_link(task_fd, "evidence-ledger.jsonl", ledger_fd)
+        original_end = os.lseek(ledger_fd, 0, os.SEEK_END)
+        os.lseek(ledger_fd, 0, os.SEEK_SET)
+        with os.fdopen(os.dup(ledger_fd), "r+", encoding="utf-8") as stream:
+            entries = load_entries(stream, task=task)
+        if not entries:
+            raise ValueError("terminal seal requires an ordinary ledger entry")
+        if any(
+            entry.get("record_kind") == runtime.TERMINAL_SEAL_SCHEMA
+            for entry in entries[:-1]
+        ):
+            raise ValueError("terminal seal is not the final ledger record")
+        last = entries[-1]
+        if last.get("record_kind") == runtime.TERMINAL_SEAL_SCHEMA:
+            marker = runtime.validate_terminal_chain(
+                entries,
+                task_short_id=task,
+            )
+            supplied = runtime.validate_terminal_seal_request(request)
+            recorded = {
+                "schema": runtime.TERMINAL_SEAL_REQUEST_SCHEMA,
+                "operation_report_digests": last["operation_report_digests"],
+                "redaction": last["redaction"],
+                "retention_class": last["retention_class"],
+            }
+            if supplied != runtime.validate_terminal_seal_request(recorded):
+                raise ValueError("terminal seal request conflicts with existing seal")
+            return {
+                "ledger_path": str(
+                    root / ".kent" / "runtime" / task / "evidence-ledger.jsonl"
+                ),
+                "terminal_marker": runtime.terminal_marker_line(marker),
+                "event_hash": last["event_hash"],
+            }
+        if sentinel_present:
+            raise ValueError("terminal sentinel has no valid terminal seal")
+        seal = runtime.build_terminal_seal_record(
+            request,
+            sequence=len(entries) + 1,
+            task_short_id=task,
+            previous_hash=entries[-1]["event_hash"],
+        )
+        line = json.dumps(
+            seal,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8") + b"\n"
+        try:
+            view = memoryview(line)
+            while view:
+                written = os.write(ledger_fd, view)
+                if written <= 0:
+                    raise OSError("terminal seal write made no progress")
+                view = view[written:]
+            os.fsync(ledger_fd)
+            os.lseek(ledger_fd, 0, os.SEEK_SET)
+            with os.fdopen(os.dup(ledger_fd), "r+", encoding="utf-8") as stream:
+                reread = load_entries(stream, task=task)
+            if not reread or reread[-1].get("record_kind") != runtime.TERMINAL_SEAL_SCHEMA:
+                raise ValueError("terminal seal reread is not terminal")
+            marker = runtime.validate_terminal_chain(
+                reread,
+                task_short_id=task,
+            )
+        except BaseException:
+            os.ftruncate(ledger_fd, original_end)
+            os.fsync(ledger_fd)
+            os.lseek(ledger_fd, 0, os.SEEK_SET)
+            with os.fdopen(os.dup(ledger_fd), "r+", encoding="utf-8") as stream:
+                load_entries(stream, task=task)
+            raise
+        seal = reread[-1]
+        marker_line = runtime.terminal_marker_line(marker)
+        return {
+            "ledger_path": str(root / ".kent" / "runtime" / task / "evidence-ledger.jsonl"),
+            "terminal_marker": marker_line,
+            "event_hash": seal["event_hash"],
+        }
+    finally:
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
 def main() -> int:
     args = parse_args()
     root = repository_root(args.workspace)
@@ -440,6 +852,10 @@ def main() -> int:
                 }
             )
         )
+        return 0
+    if args.command == "seal":
+        result = seal_terminal(root, task=args.task)
+        print(json.dumps(result, ensure_ascii=False))
         return 0
     entries = read_entries(path, task=args.task)
     if args.command == "read":
