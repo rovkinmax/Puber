@@ -12,6 +12,8 @@ from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 
+SCHEMA_VERSION = 4
+
 PR_FIELDS = (
     "state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,"
     "baseRefOid,url"
@@ -21,7 +23,7 @@ DEFAULT_GH_PATHS = ("/opt/homebrew/bin/gh", "/usr/local/bin/gh")
 
 
 def workflow_result(transition: str, **values: str) -> None:
-    print(json.dumps({"transition": transition, **values}, ensure_ascii=False))
+    print(json.dumps({"schema_version": SCHEMA_VERSION, "transition": transition, **values}, ensure_ascii=False))
 
 
 def require_string(payload: Dict[str, Any], key: str) -> str:

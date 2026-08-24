@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import json
+from pathlib import Path
+import subprocess
+ROOT = Path(__file__).resolve().parents[3]
+result = subprocess.run(
+    ["python3", str(ROOT / ".kent/workflows/builders/puber_release.py"),
+     "--check", str(ROOT / ".kent/workflows/puber-release.json")],
+    cwd=ROOT, text=True, capture_output=True,
+)
+assert result.returncode == 0, result.stderr
+payload = json.loads((ROOT / ".kent/workflows/puber-release.json").read_text())
+assert payload["workflow"]["id"] == "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
+assert payload["workflow"]["version"] == 88
+assert payload["workflow"]["schema_version"] == 4
+assert payload["workflow"]["default"] is False
+assert len(payload["nodes"]) == 15 and len(payload["transition_groups"]) == 42 and len(payload["edges"]) == 42
+assert {n["key"] for n in payload["nodes"]} >= {"release_intent_gate", "ci_watch", "merge_watch", "task_janitor"}
+print("puber-release-graph: passed")

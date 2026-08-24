@@ -12,6 +12,8 @@ import time
 from urllib.parse import urlparse
 
 
+RUNTIME_SCHEMA_VERSION = 4
+
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 GITHUB_LOOKUP_ATTEMPTS = 3
 
@@ -336,7 +338,7 @@ def remove_runtime_state(workspace: Path, task_short_id: str) -> tuple[bool, str
 
 
 def complete(transition: str, report: str, blocker: str = "") -> None:
-    payload = {"transition": transition, "cleanup_report": report}
+    payload = {"schema_version": RUNTIME_SCHEMA_VERSION, "transition": transition, "cleanup_report": report}
     if blocker:
         payload["blocker_reason"] = blocker
     print(json.dumps(payload, ensure_ascii=False))

@@ -17,6 +17,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 
+RUNTIME_SCHEMA_VERSION = 4
+
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 NODE_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
 JSON_INPUT_TIMEOUT_SECONDS = 2.0

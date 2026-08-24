@@ -3,10 +3,13 @@
     "id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
-    "version": 87,
+    "version": 88,
     "execution_target_policy": {
       "mode": "head"
-    }
+    },
+    "schema_version": 4,
+    "default": false,
+    "source_revision": 88
   },
   "nodes": [
     {
@@ -112,6 +115,42 @@
       "kind": "terminal",
       "display_name": "Done",
       "group_id": null
+    },
+    {
+      "id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "key": "release_intent_gate",
+      "kind": "script",
+      "display_name": "Release Intent Gate",
+      "group_id": null,
+      "script_path": ".kent/scripts/workflow-puber-release-intent"
+    },
+    {
+      "id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "key": "ci_watch",
+      "kind": "script",
+      "display_name": "CI Watch",
+      "group_id": null,
+      "script_path": ".kent/scripts/workflow-wait-github-ci"
+    },
+    {
+      "id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "key": "merge_watch",
+      "kind": "script",
+      "display_name": "Merge Watch",
+      "group_id": null,
+      "script_path": ".kent/scripts/workflow-wait-github-pr"
+    },
+    {
+      "id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "key": "task_janitor",
+      "kind": "script",
+      "display_name": "Task Janitor",
+      "group_id": null,
+      "script_path": ".kent/scripts/workflow-task-janitor"
     }
   ],
   "transition_groups": [
@@ -290,6 +329,166 @@
       "transition_id": "prepare_wont_do",
       "display_name": "Wont Do",
       "description": "Latest user comment explicitly cancels this task or declares it not planned; finish without treating it as a recoverable blocker."
+    },
+    {
+      "id": "c62f90e8-22af-5ae9-a700-af16fd7358bc",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "transition_id": "release_intent_passed",
+      "display_name": "Release Intent Passed",
+      "description": "Release Intent Passed."
+    },
+    {
+      "id": "868c0add-053e-5207-a223-55d90fab1967",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "transition_id": "release_intent_blocked",
+      "display_name": "Release Intent Blocked",
+      "description": "Release Intent Blocked."
+    },
+    {
+      "id": "8f760870-6c60-5782-bde0-fdb39184d229",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "transition_id": "release_intent_needs_user_action",
+      "display_name": "Release Intent Needs User Action",
+      "description": "Release Intent Needs User Action."
+    },
+    {
+      "id": "97b53af4-ba4c-51bf-8277-ffc412bc2413",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "transition_id": "release_intent_invalid",
+      "display_name": "Release Intent Invalid",
+      "description": "Release Intent Invalid."
+    },
+    {
+      "id": "a8acd841-4f94-5689-85bd-b68845441053",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "transition_id": "release_intent_cancelled",
+      "display_name": "Release Intent Cancelled",
+      "description": "Release Intent Cancelled."
+    },
+    {
+      "id": "d2d704cb-777f-5575-a30b-99bc2b79a231",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "transition_id": "ci_watch_passed",
+      "display_name": "Ci Watch Passed",
+      "description": "Ci Watch Passed."
+    },
+    {
+      "id": "8307b1c5-a70d-5de5-967c-ba09930cfed7",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "transition_id": "ci_watch_failed",
+      "display_name": "Ci Watch Failed",
+      "description": "Ci Watch Failed."
+    },
+    {
+      "id": "89f3a1c3-c27b-5d7c-90cf-d01c63e25656",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "transition_id": "ci_watch_pr_merged",
+      "display_name": "Ci Watch Pr Merged",
+      "description": "Ci Watch Pr Merged."
+    },
+    {
+      "id": "48078a7f-4468-58bd-89a1-c2d3596f411f",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "transition_id": "ci_watch_state_changed",
+      "display_name": "Ci Watch State Changed",
+      "description": "Ci Watch State Changed."
+    },
+    {
+      "id": "0dc7245c-861e-5bd1-84d1-178ad8f112c1",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "transition_id": "ci_watch_needs_user_action",
+      "display_name": "Ci Watch Needs User Action",
+      "description": "Ci Watch Needs User Action."
+    },
+    {
+      "id": "d816cb37-3add-5ba3-95c6-05970dc0dc76",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "transition_id": "merge_watch_still_waiting",
+      "display_name": "Merge Watch Still Waiting",
+      "description": "Merge Watch Still Waiting."
+    },
+    {
+      "id": "db9b1cf5-b781-57b4-bb72-988675226302",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "transition_id": "merge_watch_state_changed",
+      "display_name": "Merge Watch State Changed",
+      "description": "Merge Watch State Changed."
+    },
+    {
+      "id": "a1ae74af-1802-595d-abe2-272994d2158f",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "transition_id": "merge_watch_pr_merged",
+      "display_name": "Merge Watch Pr Merged",
+      "description": "Merge Watch Pr Merged."
+    },
+    {
+      "id": "78b2ae6e-cbf9-52fc-ac3f-91eed445d84c",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "transition_id": "merge_watch_needs_user_action",
+      "display_name": "Merge Watch Needs User Action",
+      "description": "Merge Watch Needs User Action."
+    },
+    {
+      "id": "c5f27c70-3161-5dfb-ba45-f0d3edf261a7",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "transition_id": "merge_watch_close_without_merge",
+      "display_name": "Merge Watch Close Without Merge",
+      "description": "Merge Watch Close Without Merge."
+    },
+    {
+      "id": "c8a74e5b-3cde-5c85-9174-14d9f1a6a6ee",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "transition_id": "task_janitor_done",
+      "display_name": "Task Janitor Done",
+      "description": "Task Janitor Done."
+    },
+    {
+      "id": "0797ca3b-9175-5c92-9651-1cfb6c023f5e",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "transition_id": "task_janitor_blocked",
+      "display_name": "Task Janitor Blocked",
+      "description": "Task Janitor Blocked."
+    },
+    {
+      "id": "c53be4e6-1737-56d1-9225-6bab7e95e602",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "transition_id": "task_janitor_needs_user_action",
+      "display_name": "Task Janitor Needs User Action",
+      "description": "Task Janitor Needs User Action."
+    },
+    {
+      "id": "11847159-cb8d-502c-9032-02d32383addb",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "transition_id": "task_janitor_retry",
+      "display_name": "Task Janitor Retry",
+      "description": "Task Janitor Retry."
+    },
+    {
+      "id": "c5ac02b3-81c3-542b-909a-23f52804f111",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "source_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "transition_id": "task_janitor_preserved",
+      "display_name": "Task Janitor Preserved",
+      "description": "Task Janitor Preserved."
     }
   ],
   "edges": [
@@ -297,8 +496,8 @@
       "id": "716994a0-cc95-4c94-a841-ffe624e4ba78",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "0986cf0c-3ef2-40dd-a811-a3217844bdf4",
-      "key": "start_prepare",
-      "target_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
+      "key": "start_release_intent_gate",
+      "target_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
       "assignee_selection": "configured",
       "thinking_selection": "configured",
       "requires_approval": false,
@@ -457,8 +656,8 @@
       "id": "5d2e05be-6bc1-4835-8bfb-415b2b313068",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "9ff7e6f2-968b-4407-ad27-da6a475a4be6",
-      "key": "monitor_ci",
-      "target_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
+      "key": "ship_pr_ci_watch",
+      "target_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
       "assignee_selection": "configured",
       "thinking_selection": "configured",
       "requires_approval": false,
@@ -730,8 +929,8 @@
       "id": "2dd80b36-fe09-4244-a35d-8cf0b6c2aa2b",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "0c461a27-a313-464d-b3a6-f2ba22ed60ed",
-      "key": "cleanup_done",
-      "target_node_id": "7dfc3956-53ec-4307-ae59-daf1a3dd1151",
+      "key": "cleanup_task_janitor",
+      "target_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
       "assignee_selection": "configured",
       "thinking_selection": "configured",
       "requires_approval": false,
@@ -798,8 +997,8 @@
       "id": "ff859e0d-eb11-4dde-b67d-21800fc2b25c",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "0173072c-5be0-41f7-8596-a8010a81e0b6",
-      "key": "publish_after_merge",
-      "target_node_id": "7ab29a1a-9ab5-40c4-ae91-1c6f47c12941",
+      "key": "waiting_pr_merge_watch",
+      "target_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
       "assignee_selection": "configured",
       "thinking_selection": "configured",
       "requires_approval": true,
@@ -979,6 +1178,776 @@
         {
           "key": "closure_reason",
           "description": "Explicit latest user instruction explaining why this task should be closed as not planned or canceled.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "2e877228-6c17-58bb-8bb3-1edca7769167",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "c62f90e8-22af-5ae9-a700-af16fd7358bc",
+      "key": "release_intent_passed",
+      "target_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Task identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_type",
+          "description": "minor, patch, or major.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_version",
+          "description": "Resolved release version.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "f567096a-aae6-5dda-b38a-6003097ca401",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "868c0add-053e-5207-a223-55d90fab1967",
+      "key": "release_intent_blocked",
+      "target_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Task identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_type",
+          "description": "minor, patch, or major.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_version",
+          "description": "Resolved release version.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "fe0b548d-e26c-5ae9-9041-2c34f10c7747",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "8f760870-6c60-5782-bde0-fdb39184d229",
+      "key": "release_intent_needs_user_action",
+      "target_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Task identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_type",
+          "description": "minor, patch, or major.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_version",
+          "description": "Resolved release version.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "171dd520-6c41-576a-bd4f-d983b9a250b4",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "97b53af4-ba4c-51bf-8277-ffc412bc2413",
+      "key": "release_intent_invalid",
+      "target_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Task identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_type",
+          "description": "minor, patch, or major.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_version",
+          "description": "Resolved release version.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "31a0d095-e8fd-5612-a71b-29943b15236e",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "a8acd841-4f94-5689-85bd-b68845441053",
+      "key": "release_intent_cancelled",
+      "target_node_id": "dd3e4e97-a974-4e6a-bafe-da1d891bb5ce",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Task identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_type",
+          "description": "minor, patch, or major.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_version",
+          "description": "Resolved release version.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "1a6e3320-15b8-52d3-8ef2-815d28d2e103",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "d2d704cb-777f-5575-a30b-99bc2b79a231",
+      "key": "ci_watch_passed",
+      "target_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved merge strategy.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "0af286ab-0947-5d5e-bafc-ef50e36b1bdb",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "8307b1c5-a70d-5de5-967c-ba09930cfed7",
+      "key": "ci_watch_failed",
+      "target_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved merge strategy.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "63994e8e-0c64-5d53-8ef6-49502140d376",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "89f3a1c3-c27b-5d7c-90cf-d01c63e25656",
+      "key": "ci_watch_pr_merged",
+      "target_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved merge strategy.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "f1538be9-2e6f-5101-a81a-2d9cd44770ac",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "48078a7f-4468-58bd-89a1-c2d3596f411f",
+      "key": "ci_watch_state_changed",
+      "target_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved merge strategy.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "f9a5a1a0-6f6c-5080-bb97-4768e5632e2d",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "0dc7245c-861e-5bd1-84d1-178ad8f112c1",
+      "key": "ci_watch_needs_user_action",
+      "target_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved merge strategy.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "7266a1be-77ac-5fa1-b67b-649a37b8b427",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "d816cb37-3add-5ba3-95c6-05970dc0dc76",
+      "key": "merge_watch_still_waiting",
+      "target_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved merge strategy.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_head_oid",
+          "description": "Observed PR head.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_base_oid",
+          "description": "Observed PR base.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "0b59a861-42d3-5023-b483-da3e95c77ef9",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "db9b1cf5-b781-57b4-bb72-988675226302",
+      "key": "merge_watch_state_changed",
+      "target_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved merge strategy.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_head_oid",
+          "description": "Observed PR head.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_base_oid",
+          "description": "Observed PR base.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "1a301e9e-9b57-5353-8a9f-b9ff356a8f8e",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "a1ae74af-1802-595d-abe2-272994d2158f",
+      "key": "merge_watch_pr_merged",
+      "target_node_id": "7ab29a1a-9ab5-40c4-ae91-1c6f47c12941",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved merge strategy.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_head_oid",
+          "description": "Observed PR head.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_base_oid",
+          "description": "Observed PR base.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "b083e744-5e67-5f7c-a407-193b7917f13c",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "78b2ae6e-cbf9-52fc-ac3f-91eed445d84c",
+      "key": "merge_watch_needs_user_action",
+      "target_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved merge strategy.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_head_oid",
+          "description": "Observed PR head.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_base_oid",
+          "description": "Observed PR base.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "7bf41c49-f537-578e-a081-b0b7e7ee4dab",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "c5f27c70-3161-5dfb-ba45-f0d3edf261a7",
+      "key": "merge_watch_close_without_merge",
+      "target_node_id": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
+      "requires_approval": true,
+      "context_mode": "new_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved merge strategy.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_head_oid",
+          "description": "Observed PR head.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_base_oid",
+          "description": "Observed PR base.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "ece2bd8b-3446-56a8-9da3-e3a789815c12",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "c8a74e5b-3cde-5c85-9174-14d9f1a6a6ee",
+      "key": "task_janitor_done",
+      "target_node_id": "7dfc3956-53ec-4307-ae59-daf1a3dd1151",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_mode",
+          "description": "Conservative cleanup mode.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_report",
+          "description": "Previous cleanup report.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "494f7c12-23b2-529d-b8da-fd7bbd3eca14",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "0797ca3b-9175-5c92-9651-1cfb6c023f5e",
+      "key": "task_janitor_blocked",
+      "target_node_id": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
+      "requires_approval": false,
+      "context_mode": "compact_and_continue_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_mode",
+          "description": "Conservative cleanup mode.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_report",
+          "description": "Previous cleanup report.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "a775abcd-af8d-5199-b8a4-8fb9ddbc4164",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "c53be4e6-1737-56d1-9225-6bab7e95e602",
+      "key": "task_janitor_needs_user_action",
+      "target_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "requires_approval": true,
+      "context_mode": "compact_and_continue_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_mode",
+          "description": "Conservative cleanup mode.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_report",
+          "description": "Previous cleanup report.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "e052b00a-4e46-55b4-b168-af6cd138baa4",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "11847159-cb8d-502c-9032-02d32383addb",
+      "key": "task_janitor_retry",
+      "target_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_mode",
+          "description": "Conservative cleanup mode.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_report",
+          "description": "Previous cleanup report.",
+          "purpose": "ordinary"
+        }
+      ]
+    },
+    {
+      "id": "c8028f79-f3e7-57da-bb6c-1b6984b2a5ca",
+      "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+      "transition_group_id": "c5ac02b3-81c3-542b-909a-23f52804f111",
+      "key": "task_janitor_preserved",
+      "target_node_id": "7dfc3956-53ec-4307-ae59-daf1a3dd1151",
+      "requires_approval": false,
+      "context_mode": "new_session",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Stable operation identity.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact task branch.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_mode",
+          "description": "Conservative cleanup mode.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_report",
+          "description": "Previous cleanup report.",
           "purpose": "ordinary"
         }
       ]

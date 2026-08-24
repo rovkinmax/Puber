@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
+# S05 local source acceptance defers this Gradle verifier to final natural PR CI.
 # Kent script nodes provide transition inputs on stdin. This verifier currently
 # needs only the task execution root, but consuming stdin keeps the contract explicit.
 IFS= read -r _kent_input || true

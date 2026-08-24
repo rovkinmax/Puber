@@ -15,11 +15,13 @@ emit_report() {
     --arg commentary "$commentary" \
     --arg verification_status "$status" \
     --arg verification_report "$report" \
+    --arg verification_schema_version "4" \
     '{
       transition: $transition,
       commentary: $commentary,
       verification_status: $verification_status,
-      verification_report: $verification_report
+      verification_report: $verification_report,
+      verification_schema_version: ($verification_schema_version | tonumber)
     }'
 }
 

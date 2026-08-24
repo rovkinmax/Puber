@@ -1,0 +1,10 @@
+schema_version = 4
+workflow_id = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
+name = "Puber Release"
+default = false
+source_revision = 88
+nodes = 15
+transition_groups = 42
+edges = 42
+required_node_keys = ["release_intent_gate", "ci_watch", "merge_watch", "task_janitor"]
+required_script_paths = [".kent/scripts/workflow-puber-release-intent", ".kent/scripts/workflow-wait-github-ci", ".kent/scripts/workflow-wait-github-pr", ".kent/scripts/workflow-task-janitor"]

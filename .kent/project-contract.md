@@ -71,3 +71,20 @@ trigger matches the current node and task.
 - Release remains a separate workflow: version PR, merge, tag approval,
   Russian user-facing notes, automation monitoring, and GitHub Release
   verification.
+
+## S05 Release Control Plane
+
+The non-default `Puber Release` graph is tracked at revision 88 with schema 4.
+Its canonical identity is `10d8adb2-c74c-4ef0-8b5c-311cb5cd0459`; source
+updates preserve that UUID and name. `release_intent_gate`, `ci_watch`,
+`merge_watch`, and `task_janitor` are deterministic script nodes. They emit
+versioned operation carriers and fail closed on missing or stale authority.
+
+Release intent, tag publication, GitHub Release watching, and cleanup are
+separate operations. Publication requires an explicit approved transition and
+never runs from pull-request CI. The PR workflow is source-only Gradle CI: it
+uses Java 21, pinned actions, and only `detekt`, `unit-tests`, and `build`; it
+has no signing, release, tag, publication, deployment, or credential effect.
+
+The tracked graph is a source artifact only. S05 never applies, relinks, or
+mutates a live Kent Workflow, Task, default, canonical state, or project link.
