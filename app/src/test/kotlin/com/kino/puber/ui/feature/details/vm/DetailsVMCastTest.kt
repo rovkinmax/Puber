@@ -15,6 +15,8 @@ import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.Trailer
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.details.DetailsInteractor
+import com.kino.puber.domain.interactor.schedule.EpisodeScheduleInteractor
+import com.kino.puber.domain.model.EpisodeScheduleResult
 import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsCastMemberUIState
 import com.kino.puber.ui.feature.details.model.DetailsInfoUIState
@@ -48,6 +50,7 @@ class DetailsVMCastTest {
     private lateinit var screens: Screens
     private lateinit var mapper: DetailsScreenUIMapper
     private lateinit var interactor: DetailsInteractor
+    private lateinit var episodeScheduleInteractor: EpisodeScheduleInteractor
     private lateinit var savedItemInteractor: SavedItemInteractor
     private lateinit var errorHandler: ErrorHandler
 
@@ -59,6 +62,7 @@ class DetailsVMCastTest {
         }
         mapper = mockk(relaxed = true)
         interactor = mockk(relaxed = true)
+        episodeScheduleInteractor = mockk(relaxed = true)
         savedItemInteractor = mockk(relaxed = true)
         errorHandler = mockk {
             every { proceed(any()) } returns { }
@@ -69,6 +73,8 @@ class DetailsVMCastTest {
         coEvery { interactor.refreshItemDetails(42) } returns testItem
         coEvery { interactor.isInWatchLaterFolder(any()) } returns false
         coEvery { interactor.getSimilarItems(42) } returns emptyList()
+        coEvery { episodeScheduleInteractor.getSchedule(any()) } returns
+            EpisodeScheduleResult.MissingCredentials
         every { mapper.map(any(), any()) } returns content()
         every { mapper.mapSimilarItems(any()) } returns emptyList()
     }
@@ -212,6 +218,7 @@ class DetailsVMCastTest {
         params = DetailsScreenParams(itemId = 42),
         mapper = mapper,
         interactor = interactor,
+        episodeScheduleInteractor = episodeScheduleInteractor,
         savedItemInteractor = savedItemInteractor,
         resources = FakeResourceProvider(),
         errorHandler = errorHandler,

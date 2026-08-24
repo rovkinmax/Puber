@@ -149,6 +149,38 @@ internal class TmdbCastRepositoryTest {
         assertEquals(listOf("Actor One" to null), repository.getCast("tt0002001").map { it.name to it.profileUrl })
     }
 
+    @Test
+    fun configuredProfileUrl_preservesAbsolutePathAndUsesSharedPreferredSize() = runTest {
+        val client = configuredClient()
+        coEvery { client.findMediaByImdbId("tt0003001") } returns Result.success(
+            TmdbMediaRef(id = 12, kind = TmdbMediaKind.MOVIE),
+        )
+        coEvery { client.getMovieCredits(12) } returns Result.success(
+            TmdbCreditsResponse(
+                cast = listOf(
+                    TmdbCastCredit(name = "Absolute", profilePath = "https://cdn.example/actor.jpg"),
+                    TmdbCastCredit(name = "Relative", profilePath = "/relative.jpg"),
+                ),
+            ),
+        )
+        coEvery { client.getConfiguration() } returns Result.success(
+            TmdbConfigurationResponse(
+                images = TmdbImageConfiguration(
+                    secureBaseUrl = "https://image.tmdb.org/t/p/",
+                    profileSizes = listOf("w500", "w185"),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                "https://cdn.example/actor.jpg",
+                "https://image.tmdb.org/t/p/w185/relative.jpg",
+            ),
+            TmdbCastRepository(client).getCast("tt0003001").map { it.profileUrl },
+        )
+    }
+
     private fun configuredClient(): TmdbApiClient {
         val client = mockk<TmdbApiClient>()
         every { client.isConfigured } returns true

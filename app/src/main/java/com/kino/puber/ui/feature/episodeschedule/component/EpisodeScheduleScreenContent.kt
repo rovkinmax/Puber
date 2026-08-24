@@ -21,6 +21,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.component.FullScreenProgressIndicator
+import com.kino.puber.core.ui.uikit.component.TmdbSourceNotice
 import com.kino.puber.core.ui.uikit.component.TvSafeButton
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGrid
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -75,7 +76,7 @@ private fun ScheduleContent(
             state = state.grid,
             initialFocusedItemId = state.initialFocusedItemId,
         )
-        ScheduleSourceFooter(
+        TmdbSourceNotice(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
     }
@@ -112,7 +113,7 @@ private fun ScheduleEmptyContent(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            ScheduleSourceFooter()
+            TmdbSourceNotice()
         }
     }
 }
@@ -153,28 +154,8 @@ private fun ScheduleErrorContent(
                 primary = true,
                 modifier = Modifier.focusRequester(retryFocusRequester),
             )
+            TmdbSourceNotice()
         }
-    }
-}
-
-@Composable
-private fun ScheduleSourceFooter(
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(
-            text = stringResource(R.string.episode_schedule_source_notice),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = stringResource(R.string.episode_schedule_disclaimer),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

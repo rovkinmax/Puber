@@ -3,8 +3,10 @@ package com.kino.puber.data.repository
 import com.kino.puber.core.collections.TypedTtlCache
 import com.kino.puber.core.collections.TypedTtlCacheImpl
 import com.kino.puber.data.api.TmdbApiClient
+import com.kino.puber.data.api.config.TmdbImageConfig
 import com.kino.puber.data.api.models.TmdbCastCredit
 import com.kino.puber.data.api.models.TmdbCastMember
+import com.kino.puber.data.api.models.TmdbImageConfiguration
 import com.kino.puber.data.api.models.TmdbMediaKind
 import com.kino.puber.data.api.normalizedImdbTitleIdOrNull
 import kotlin.time.Duration.Companion.minutes
@@ -15,7 +17,7 @@ class TmdbCastRepository(
 
     private val castCache: TypedTtlCache<String, List<TmdbCastMember>> =
         TypedTtlCacheImpl(defaultTtl = CAST_CACHE_TTL)
-    private val configurationCache: TypedTtlCache<Unit, ImageConfiguration> =
+    private val configurationCache: TypedTtlCache<Unit, TmdbImageConfiguration> =
         TypedTtlCacheImpl(defaultTtl = CONFIGURATION_CACHE_TTL)
 
     suspend fun getCast(imdbId: String): List<TmdbCastMember> {
@@ -56,57 +58,32 @@ class TmdbCastRepository(
                 .orEmpty()
         }
 
-    private suspend fun loadImageConfiguration(): ImageConfiguration =
+    private suspend fun loadImageConfiguration(): TmdbImageConfiguration =
         configurationCache.getOrPut(Unit) {
             apiClient.getConfiguration()
                 .getOrNull()
                 ?.images
-                ?.let { images ->
-                    ImageConfiguration(
-                        secureBaseUrl = images.secureBaseUrl,
-                        profileSize = images.profileSizes.firstSupportedProfileSize(),
-                    )
-                }
-                ?: ImageConfiguration()
+                ?: TmdbImageConfiguration()
         }
 
     private fun List<TmdbCastCredit>.mapToCastMembers(
-        imageConfiguration: ImageConfiguration,
+        imageConfiguration: TmdbImageConfiguration,
     ): List<TmdbCastMember> =
         mapNotNull { credit ->
             credit.name?.trim()?.takeIf(String::isNotEmpty)?.let { name ->
                 TmdbCastMember(
                     name = name,
-                    profileUrl = imageConfiguration.profileUrl(credit.profilePath),
+                    profileUrl = TmdbImageConfig.resolveProfileUrl(
+                        secureBaseUrl = imageConfiguration.secureBaseUrl,
+                        profileSizes = imageConfiguration.profileSizes,
+                        profilePath = credit.profilePath,
+                    ),
                 )
             }
         }
 
-    private data class ImageConfiguration(
-        val secureBaseUrl: String? = null,
-        val profileSize: String? = null,
-    ) {
-        fun profileUrl(profilePath: String?): String? {
-            val baseUrl = secureBaseUrl?.trim()?.trimEnd('/')
-            val path = profilePath?.trim()?.trimStart('/')
-            return if (baseUrl == null || profileSize == null || path.isNullOrEmpty()) {
-                null
-            } else {
-                "$baseUrl/$profileSize/$path"
-            }
-        }
-    }
-
     private companion object {
         val CAST_CACHE_TTL = 30.minutes
         val CONFIGURATION_CACHE_TTL = 30.minutes
-
-        fun List<String>.firstSupportedProfileSize(): String? {
-            val nonBlankSizes = filter(String::isNotBlank)
-            return PREFERRED_PROFILE_SIZES.firstOrNull(nonBlankSizes::contains)
-                ?: nonBlankSizes.firstOrNull()
-        }
-
-        val PREFERRED_PROFILE_SIZES = listOf("w185", "w342", "h632", "w500", "original")
     }
 }

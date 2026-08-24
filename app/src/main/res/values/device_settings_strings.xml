@@ -13,4 +13,5 @@
     <string name="device_settings_tmdb_attribution_title">О TMDB</string>
     <string name="device_settings_tmdb_logo_description">Логотип TMDB</string>
     <string name="device_settings_tmdb_attribution_notice">This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
+    <string name="tmdb_source_notice">Источник данных и изображений — TMDB; даты могут измениться.</string>
 </resources>

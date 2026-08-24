@@ -438,7 +438,7 @@ class DetailsVMScheduleTest {
                 ratings = emptyList(),
                 primaryRows = emptyList(),
                 secondaryRows = emptyList(),
-                castMembers = emptyList(),
+                castCards = emptyList(),
             ),
             buttons = emptyList(),
             isInWatchlist = isInWatchlist,

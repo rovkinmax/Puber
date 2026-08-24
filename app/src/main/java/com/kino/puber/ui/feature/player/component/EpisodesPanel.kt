@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.focusGroup
@@ -16,6 +17,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
+import com.kino.puber.core.ui.uikit.component.TmdbSourceNotice
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGrid
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
@@ -30,6 +32,7 @@ internal fun EpisodesPanel(
     onEpisodeContextMenu: ((VideoItemUIState) -> Unit)? = null,
     onBackPressed: (() -> Unit)? = null,
     allowFocusExit: Boolean = false,
+    showTmdbSourceNotice: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     AnimatedVisibility(
@@ -53,13 +56,21 @@ internal fun EpisodesPanel(
                 .focusGroup(),
         ) {
             if (episodes != null) {
-                VideoGrid(
-                    state = episodes,
-                    initialFocusedItemId = initialFocusedItemId,
-                    onItemClick = onEpisodeSelected,
-                    onItemContextMenu = onEpisodeContextMenu,
-                    enableTopSideGradient = true,
-                )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    VideoGrid(
+                        modifier = Modifier.weight(1F),
+                        state = episodes,
+                        initialFocusedItemId = initialFocusedItemId,
+                        onItemClick = onEpisodeSelected,
+                        onItemContextMenu = onEpisodeContextMenu,
+                        enableTopSideGradient = true,
+                    )
+                    if (showTmdbSourceNotice) {
+                        TmdbSourceNotice(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
             }
         }
     }
