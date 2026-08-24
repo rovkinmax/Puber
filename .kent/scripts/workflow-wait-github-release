@@ -1,20 +1,67 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-
-import json
-import os
-import subprocess
-import sys
+import json, os, re, subprocess, sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from workflow_runtime_contracts import ContractError, emit, operation, read_object, required
-
+SCHEMA_VERSION = 4
+for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
+    os.environ.pop(_name, None)
+WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
+NODE = 'monitor'
+EXPECTED_TRANSITION = 'publish_monitor'
+KENT_KEYS = {"task_short_id", "project_id", "workflow_id", "workflow_revision", "current_node_key", "execution_commit", "worktree_path", "incoming_transition", "authority_transition"}
+class ContractError(ValueError): pass
+def read_object():
+    raw=sys.stdin.read()
+    if not raw.strip(): raise ContractError("stdin must contain exactly one JSON object")
+    try: value=json.loads(raw)
+    except json.JSONDecodeError as e: raise ContractError(f"stdin is invalid JSON: {e}") from e
+    if not isinstance(value,dict): raise ContractError("stdin must contain one JSON object")
+    if os.environ.get("KENT_SESSION_ID") or os.environ.get("KENT_RUN_ID") or os.environ.get("KENT_STEP_ID"):
+        raise ContractError("inherited Kent identity must be cleared before child reads")
+    return value
+def required(p,k):
+    v=p.get(k)
+    if not isinstance(v,str) or not v.strip(): raise ContractError(f"{k} must be a non-empty string")
+    return v.strip()
+def authority(p):
+    a=p.get("_kent")
+    if not isinstance(a,dict) or set(a)!=KENT_KEYS: raise ContractError("_kent authority shape is missing, extra, or stale")
+    if a["workflow_id"]!=WORKFLOW_ID or a["workflow_revision"]!=88 or a["current_node_key"]!=NODE or a["incoming_transition"]!=EXPECTED_TRANSITION:
+        raise ContractError("_kent authority does not match this node and revision")
+    for k in ("task_short_id","project_id","execution_commit","worktree_path","authority_transition"):
+        required(a,k)
+    return a
+def operation(p):
+    a=authority(p); return {"workflow_id":WORKFLOW_ID,"workflow_revision":88,"node_key":NODE,"task_short_id":a["task_short_id"],"authority_transition":a["authority_transition"]}
+def emit(transition, **fields):
+    print(json.dumps({"schema_version":SCHEMA_VERSION,"transition":transition,**fields},ensure_ascii=False,sort_keys=True))
+def root(path):
+    r=Path(path).expanduser().resolve()
+    if not r.is_dir(): raise ContractError(f"workspace does not exist: {r}")
+    result=subprocess.run(["git","rev-parse","--show-toplevel"],cwd=r,text=True,capture_output=True,check=False)
+    if result.returncode or Path(result.stdout.strip()).resolve()!=r: raise ContractError("workspace must be the exact repository root")
+    return r
+def git(r,*args):
+    x=subprocess.run(["git",*args],cwd=r,text=True,capture_output=True,check=False)
+    if x.returncode: raise ContractError(x.stderr.strip() or x.stdout.strip() or "git failed")
+    return x.stdout.strip()
 
 def main() -> int:
     try:
         payload = read_object()
-        op = operation(payload, "monitor")
+        op = operation(payload)
+        workspace = root(required(payload, "workspace_path"))
+        authority_data = authority(payload)
+        if authority_data["worktree_path"] != str(workspace):
+            raise ContractError("_kent worktree_path does not match workspace_path")
+        if authority_data["execution_commit"] != git(workspace, "rev-parse", "HEAD"):
+            raise ContractError("_kent execution_commit does not match selected revision")
+        run_tuple = payload.get("release_run")
+        if not isinstance(run_tuple, dict) or set(run_tuple) != {"repository", "workflow_path", "workflow_name", "event", "run_id", "attempt", "head_sha", "ref"}:
+            raise ContractError("release_run must be one immutable exact GitHub run tuple")
+        if run_tuple["repository"] != "rovkinmax/Puber" or run_tuple["workflow_path"] != ".github/workflows/release.yml" or run_tuple["workflow_name"] != "Release" or run_tuple["event"] != "push":
+            raise ContractError("release_run workflow identity drifted")
         tag = required(payload, "release_tag")
         target = required(payload, "target_commit")
         if not tag.startswith("v"):
@@ -23,7 +70,7 @@ def main() -> int:
         if os.environ.get("PUBER_RELEASE_TEST_MODE") == "1" or fixture is not None:
             state = fixture if isinstance(fixture, dict) else {"tag": tag, "target_commit": target, "published": False}
             emit(
-                "release_watch_reported", operation_data=op, release_tag=tag,
+                "release_watch_reported", operation=op, release_tag=tag,
                 target_commit=target, release_report=json.dumps(state, sort_keys=True),
                 no_live_apply=True,
             )
@@ -36,7 +83,7 @@ def main() -> int:
         if result.returncode != 0:
             raise ContractError(result.stderr.strip() or "GitHub Release lookup failed")
         emit(
-            "release_watch_reported", operation_data=op, release_tag=tag,
+            "release_watch_reported", operation=op, release_tag=tag,
             target_commit=target, release_report=result.stdout.strip(), no_live_apply=True,
         )
     except (ContractError, OSError) as error:

@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json
+import copy, json, subprocess, tempfile
 from pathlib import Path
-import subprocess
 ROOT = Path(__file__).resolve().parents[3]
-result = subprocess.run(
-    ["python3", str(ROOT / ".kent/workflows/builders/puber_release.py"),
-     "--check", str(ROOT / ".kent/workflows/puber-release.json")],
-    cwd=ROOT, text=True, capture_output=True,
-)
-assert result.returncode == 0, result.stderr
-payload = json.loads((ROOT / ".kent/workflows/puber-release.json").read_text())
-assert payload["workflow"]["id"] == "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
-assert payload["workflow"]["version"] == 88
-assert payload["workflow"]["schema_version"] == 4
-assert payload["workflow"]["default"] is False
-assert len(payload["nodes"]) == 15 and len(payload["transition_groups"]) == 42 and len(payload["edges"]) == 42
-assert {n["key"] for n in payload["nodes"]} >= {"release_intent_gate", "ci_watch", "merge_watch", "task_janitor"}
+GRAPH = ROOT / ".kent/workflows/puber-release.json"
+def run(value):
+    with tempfile.TemporaryDirectory() as d:
+        path=Path(d)/"graph.json"; path.write_text(json.dumps(value))
+        return subprocess.run(["python3",str(ROOT/".kent/workflows/builders/puber_release.py"),"--check",str(path)],cwd=ROOT,text=True,capture_output=True)
+source=json.loads(GRAPH.read_text())
+ok=subprocess.run(["python3",str(ROOT/".kent/workflows/builders/puber_release.py"),"--check",str(GRAPH)],cwd=ROOT,text=True,capture_output=True)
+assert ok.returncode==0, ok.stderr
+bad=copy.deepcopy(source); bad["workflow"]["default"]=True
+assert run(bad).returncode != 0
+bad=copy.deepcopy(source); next(n for n in bad["nodes"] if n["key"]=="publish")["kind"]="agent"
+assert run(bad).returncode != 0
+bad=copy.deepcopy(source); publish=next(n["id"] for n in bad["nodes"] if n["key"]=="publish"); next(e for e in bad["edges"] if e.get("target_node_id")==publish)["requires_approval"]=False
+assert run(bad).returncode != 0
 print("puber-release-graph: passed")

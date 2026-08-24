@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-import importlib.util
 from pathlib import Path
-import stat
-ROOT = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_file_location("runtime", ROOT / ".kent/scripts/workflow_runtime_contracts.py")
-module = importlib.util.module_from_spec(spec)
-assert spec.loader
-spec.loader.exec_module(module)
-assert module.RUNTIME_SCHEMA_VERSION == 4
-assert module.WORKFLOW_ID == "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
-for relative in (
-    "workflow-puber-release-intent", "workflow-puber-release-publish",
-    "workflow-wait-github-release", "workflow-release-cleanup",
-):
-    assert (ROOT / ".kent/scripts" / relative).stat().st_mode & stat.S_IXUSR
-print("runtime-v2-command-closure: passed")
+import hashlib, subprocess
+ROOT=Path(__file__).resolve().parents[3]
+KIT=Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
+pairs=[(".kent/scripts/workflow_runtime_contracts.py","workflowkit/runtime.py"),(".kent/scripts/workflow-verify-report","templates/project/workflow-verify-report"),(".kent/scripts/workflow-evidence-ledger","templates/project/workflow-evidence-ledger"),(".kent/scripts/workflow-task-janitor","templates/project/workflow-task-janitor"),(".kent/scripts/workflow-wait-github-pr","templates/project/workflow-wait-github-pr"),(".kent/scripts/workflow-wait-github-ci","templates/project/workflow-wait-github-ci")]
+for target,source in pairs: assert hashlib.sha256((ROOT/target).read_bytes()).digest()==hashlib.sha256((KIT/source).read_bytes()).digest(), target
+profile=(ROOT/'.kent/workflow-profile.toml').read_text(); assert 'runtime_contracts = "2.0.0"' in profile and 'topology_kind = "puber-release"' in profile
+print('runtime-v2-command-closure: passed')

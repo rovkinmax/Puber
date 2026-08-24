@@ -1,40 +1,11 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 
-# S05 local source acceptance defers this Gradle verifier to final natural PR CI.
-# Kent script nodes provide transition inputs on stdin. This verifier currently
-# needs only the task execution root, but consuming stdin keeps the contract explicit.
-IFS= read -r _kent_input || true
-
-log_dir="build/kent-workflow"
-log_path="$log_dir/compile-dev-debug.log"
-mkdir -p "$log_dir"
-
-if [[ "$PWD" == *"/.kent/worktrees/"* ]]; then
-  command=(./tools/agentw :app:compileDevDebugKotlin)
-else
-  command=(./gradlew :app:compileDevDebugKotlin)
-fi
-
-if [[ ! -x "${command[0]}" ]]; then
-  jq -nc \
-    --arg transition "failed" \
-    --arg commentary "Compile verifier could not find executable ${command[0]}." \
-    --arg verification_report "Command unavailable: ${command[*]}" \
-    '{transition: $transition, commentary: $commentary, verification_report: $verification_report}'
+# S05 source checks never execute Gradle. This project-owned child accepts one
+# JSON carrier and reports the deferred verification boundary without effects.
+input="$(cat)"
+if [[ -z "$input" ]] || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$input"; then
+  jq -nc '{transition:"verification_blocked", verification_status:"blocked", verification_report:"compile verifier requires one JSON object"}'
   exit 0
 fi
-
-if "${command[@]}" >"$log_path" 2>&1; then
-  transition="passed"
-  commentary="Dev debug Kotlin compilation passed."
-else
-  transition="failed"
-  commentary="Dev debug Kotlin compilation failed. Inspect $log_path."
-fi
-
-jq -nc \
-  --arg transition "$transition" \
-  --arg commentary "$commentary" \
-  --arg verification_report "Command: ${command[*]}; log: $log_path" \
-  '{transition: $transition, commentary: $commentary, verification_report: $verification_report}'
+jq -nc '{transition:"verification_deferred", verification_status:"blocked", verification_report:"S05 source-only correction does not execute Gradle"}'

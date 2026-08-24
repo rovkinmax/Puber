@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 from pathlib import Path
-ROOT = Path(__file__).resolve().parents[3]
-profile = (ROOT / ".kent/workflow-profile.toml").read_text()
-verify = (ROOT / ".kent/scripts/workflow-verify-report").read_text()
-assert "schema_version = 4" in profile
-assert "verification_status" in verify and "deterministic_verify_reported" in verify
-print("workflow-verify-report: passed")
+import hashlib
+ROOT=Path(__file__).resolve().parents[3]
+profile=(ROOT/'.kent/workflow-profile.toml').read_text(); verify=(ROOT/'.kent/scripts/workflow-verify-report').read_bytes()
+assert 'schema_version = 4' in profile and 'runtime_contracts = "2.0.0"' in profile
+assert hashlib.sha256(verify).hexdigest()==hashlib.sha256(Path('/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile/templates/project/workflow-verify-report').read_bytes()).hexdigest()
+print('workflow-verify-report: passed')

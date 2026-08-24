@@ -17,7 +17,29 @@ kit_managed_adapters = [
 ]
 source_control = "github"
 issue_tracker = "none"
-release_topology = "tag-after-merged-release-pr"
+kit_managed_commands = [
+  "runtime_contracts",
+  "verify",
+  "evidence",
+  "janitor",
+  "wait_pr",
+  "wait_ci",
+]
+
+[command_versions]
+runtime_contracts = "2.0.0"
+verify = "2.0.0"
+evidence = "2.0.0"
+janitor = "2.0.0"
+wait_pr = "2.0.0"
+wait_ci = "2.0.0"
+
+[release]
+topology_kind = "puber-release"
+adoption_mode = "managed-in-place"
+spec_path = ".kent/workflows/specs/puber-release.toml"
+builder_path = ".kent/workflows/builders/puber_release.py"
+snapshot_path = ".kent/workflows/puber-release.json"
 
 [execution]
 default_target = "ask-on-first-execution"
@@ -45,7 +67,9 @@ spec_review = true
 [commands]
 branch_identity = ".kent/scripts/workflow-branch-identity"
 dispatch = ".kent/scripts/workflow-verification-dispatch"
+runtime_contracts = ".kent/scripts/workflow_runtime_contracts.py"
 verify = ".kent/scripts/workflow-verify-report"
+compile_verify = ".kent/scripts/workflow-compile-verify"
 checkpoint = ".kent/scripts/workflow-checkpoint"
 evidence = ".kent/scripts/workflow-evidence-ledger"
 plan_contract = ".kent/scripts/workflow-plan-contract"

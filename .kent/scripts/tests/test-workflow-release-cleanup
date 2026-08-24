@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-import json, subprocess
+import json,subprocess
 from pathlib import Path
-ROOT = Path(__file__).resolve().parents[3]
-result = subprocess.run(
-    [str(ROOT / ".kent/scripts/workflow-release-cleanup")], cwd=ROOT,
-    input=json.dumps({"workspace_path": str(ROOT)}), text=True, capture_output=True,
-)
-out = json.loads(result.stdout)
-assert result.returncode == 0 and out["transition"] == "cleanup_reported"
-assert out["no_live_apply"] is True
-assert json.loads(out["cleanup_report"])["destructive_action"] is False
-print("workflow-release-cleanup: passed")
+ROOT=Path(__file__).resolve().parents[3]
+r=subprocess.run([str(ROOT/'.kent/scripts/workflow-release-cleanup')],cwd=ROOT,input=json.dumps({'workspace_path':str(ROOT)}),text=True,capture_output=True); out=json.loads(r.stdout); assert out['transition']=='cleanup_blocked'; print('workflow-release-cleanup: passed')

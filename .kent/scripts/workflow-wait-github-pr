@@ -2,16 +2,39 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
+import selectors
+import signal
 import shutil
 import subprocess
 import sys
 import time
+import tomllib
 from urllib.parse import urlparse
 
 
-SCHEMA_VERSION = 4
+MAX_QUERY_OUTPUT_BYTES = 4 * 1024 * 1024
+MAX_FEEDBACK_BODY_BYTES = 64 * 1024
+MAX_PROFILE_BYTES = 64 * 1024
+
+
+class QueryError(RuntimeError):
+    def __init__(
+        self,
+        code: str,
+        *,
+        exit_code: int | None,
+        stdout: bytes = b"",
+        stderr: bytes = b"",
+    ) -> None:
+        super().__init__(code)
+        self.code = code
+        self.exit_code = exit_code
+        self.stdout = stdout
+        self.stderr = stderr
+
 
 FIELDS = (
     "state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,baseRefOid,"
@@ -32,8 +55,8 @@ DEFAULT_GH_PATHS = (
 )
 
 
-def workflow_result(transition: str, **values: str) -> None:
-    print(json.dumps({"schema_version": SCHEMA_VERSION, "transition": transition, **values}, ensure_ascii=False))
+def workflow_result(transition: str, **values: object) -> None:
+    print(json.dumps({"transition": transition, **values}, ensure_ascii=False))
 
 
 def require_string(payload: dict[str, object], key: str) -> str:
@@ -43,6 +66,48 @@ def require_string(payload: dict[str, object], key: str) -> str:
     return value.strip()
 
 
+def _terminate_and_reap(
+    process: subprocess.Popen[bytes],
+    *,
+    process_group_id: int,
+    deadline: float,
+) -> None:
+    try:
+        os.killpg(process_group_id, signal.SIGTERM)
+    except OSError:
+        pass
+    remaining = max(0.0, deadline - time.monotonic())
+    if process.poll() is None and remaining:
+        try:
+            process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            pass
+    try:
+        os.killpg(process_group_id, signal.SIGKILL)
+    except OSError:
+        pass
+    if process.returncode is None:
+        try:
+            process.kill()
+        except OSError:
+            pass
+    # The recorded group was signaled; wait to reap the direct parent.
+    if process.returncode is None:
+        process.wait()
+
+
+def _process_group_exists(process_group_id: int) -> bool:
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return True
+    return True
+
+
 def validate_pr_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"}:
@@ -50,6 +115,780 @@ def validate_pr_url(url: str) -> None:
     parts = [part for part in parsed.path.split("/") if part]
     if len(parts) != 4 or parts[2] != "pull" or not parts[3].isdigit():
         raise ValueError("pr_url must identify one GitHub pull request")
+
+
+def profile_schema3_legacy(workspace: Path) -> bool:
+    profile = workspace / ".kent" / "workflow-profile.toml"
+    try:
+        raw = profile.read_bytes()
+    except OSError:
+        return False
+    if len(raw) > MAX_PROFILE_BYTES:
+        return False
+    try:
+        value = tomllib.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return False
+    schema = value.get("schema_version") if isinstance(value, dict) else None
+    return type(schema) is int and schema == 3
+
+
+def runtime_contracts():
+    import importlib.util
+
+    sibling = Path(__file__).with_name("workflow_runtime_contracts.py")
+    if sibling.is_symlink() or not sibling.is_file():
+        raise ValueError("runtime contract support module is unsafe")
+    spec = importlib.util.spec_from_file_location(
+        "workflow_runtime_contracts",
+        sibling,
+    )
+    if spec is None or spec.loader is None:
+        raise ValueError("runtime contract support module is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def feedback_cursor(payload: dict[str, object]) -> object:
+    value = payload.get("pr_feedback_cursor")
+    if value is None:
+        return None
+    if value == "uninitialized":
+        return value
+    runtime = runtime_contracts()
+    if isinstance(value, str):
+        decoded = runtime.parse_canonical_json(
+            value,
+            label="PR feedback cursor",
+            max_bytes=runtime.MAX_FEEDBACK_BYTES,
+        )
+        if not isinstance(decoded, dict):
+            raise ValueError("PR feedback cursor must encode an object")
+        value = decoded
+    return runtime.validate_pr_feedback_cursor(value)
+
+
+def serialize_cursor(value: object) -> str:
+    return runtime_contracts().canonical_bytes(value).decode("utf-8")
+
+
+def cursor_values(payload: dict[str, object]) -> dict[str, object]:
+    value = feedback_cursor(payload)
+    if value is None:
+        return {}
+    if value == "uninitialized":
+        return {"pr_feedback_cursor": value}
+    return {
+        "pr_feedback_cursor": serialize_cursor(value)
+    }
+
+
+def materialize_cursor(
+    payload: dict[str, object],
+    state: dict[str, object],
+    pr_url: str,
+) -> object:
+    previous = feedback_cursor(payload)
+    if previous is None:
+        return None
+    if "feedback_items" not in state and "feedback_checks" not in state:
+        return previous
+    parsed = urlparse(pr_url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if parsed.hostname not in {"github.com", "www.github.com"} or len(parts) != 4:
+        raise ValueError("cannot derive GitHub repository from pr_url")
+    checks = state.get("feedback_checks", [])
+    if not isinstance(checks, list):
+        raise ValueError("feedback_checks must be an array")
+    items = state.get("feedback_items", [])
+    if not isinstance(items, list):
+        raise ValueError("feedback_items must be an array")
+    return runtime_contracts().make_pr_feedback_cursor(
+        repository="{}/{}".format(parts[0], parts[1]),
+        pull_number=int(parts[3]),
+        head_oid=str(state.get("headRefOid") or ""),
+        base_oid=str(state.get("baseRefOid") or ""),
+        pr_state=str(state.get("state") or "").upper(),
+        review_decision=str(state.get("reviewDecision") or "").upper(),
+        merge_state_status=str(state.get("mergeStateStatus") or "").upper(),
+        checks=checks,
+        items=items,
+    )
+
+
+def _body_digest(value: object) -> tuple[int, str]:
+    if value is not None and not isinstance(value, str):
+        raise ValueError("GitHub feedback item body must be text or null")
+    body = "" if value is None else value
+    encoded = body.encode("utf-8")
+    if len(encoded) > MAX_FEEDBACK_BODY_BYTES:
+        raise ValueError("feedback_body_hard_limit")
+    return len(encoded), hashlib.sha256(encoded).hexdigest()
+
+
+def _timestamp(value: object, fallback: str = "") -> str:
+    candidate = str(value or fallback)
+    if not candidate:
+        raise ValueError("GitHub feedback item has no timestamp")
+    return candidate
+
+
+def _feedback_item(kind: str, raw: dict[str, object]) -> dict[str, object]:
+    body_bytes, body_sha256 = _body_digest(raw.get("body"))
+    author = raw.get("author")
+    if isinstance(author, dict):
+        author_login = author.get("login")
+    else:
+        author_login = raw.get("user", {}).get("login") if isinstance(
+            raw.get("user"), dict
+        ) else raw.get("author_login")
+    if author_login is not None:
+        if not isinstance(author_login, str):
+            raise ValueError("GitHub feedback item author is malformed")
+        author_login = author_login.strip()
+        if not author_login:
+            author_login = None
+    identifier = raw.get("id") or raw.get("node_id")
+    if not isinstance(identifier, (str, int)) or not str(identifier).strip():
+        raise ValueError("GitHub feedback item has no stable ID")
+    if kind == "issue_comment":
+        return {
+            "kind": kind,
+            "id": str(identifier),
+            "author_login": author_login,
+            "created_at": _timestamp(
+                raw.get("created_at") or raw.get("createdAt"),
+                "",
+            ),
+            "updated_at": _timestamp(
+                raw.get("updated_at") or raw.get("updatedAt"),
+                "",
+            ),
+            "body_bytes": body_bytes,
+            "body_sha256": body_sha256,
+        }
+    if kind == "review":
+        commit = raw.get("commit_id") or raw.get("commitId")
+        return {
+            "kind": kind,
+            "id": str(identifier),
+            "author_login": author_login,
+            "state": str(raw.get("state") or "").upper(),
+            "submitted_at": (
+                None
+                if raw.get("submitted_at", raw.get("submittedAt")) is None
+                else _timestamp(
+                    raw.get("submitted_at") or raw.get("submittedAt")
+                )
+            ),
+            "updated_at": _timestamp(
+                raw.get("updated_at")
+                or raw.get("updatedAt")
+                or raw.get("submitted_at")
+                or raw.get("submittedAt"),
+                "",
+            ),
+            "commit_oid": None if commit is None else str(commit),
+            "body_bytes": body_bytes,
+            "body_sha256": body_sha256,
+        }
+    if kind == "review_comment":
+        current = raw.get("commit_id") or raw.get("current_commit_oid")
+        original = raw.get("original_commit_id") or raw.get(
+            "original_commit_oid"
+        )
+        return {
+            "kind": kind,
+            "id": str(identifier),
+            "thread_id": str(
+                raw.get("pull_request_review_thread_id")
+                or raw.get("thread_id")
+                or raw.get("in_reply_to_id")
+                or raw.get("id")
+                or ""
+            ),
+            "author_login": author_login,
+            "created_at": _timestamp(
+                raw.get("created_at") or raw.get("createdAt"),
+                "",
+            ),
+            "updated_at": _timestamp(
+                raw.get("updated_at")
+                or raw.get("updatedAt")
+                or raw.get("created_at")
+                or raw.get("createdAt"),
+                "",
+            ),
+            "current_commit_oid": None if current is None else str(current),
+            "original_commit_oid": None if original is None else str(original),
+            "body_bytes": body_bytes,
+            "body_sha256": body_sha256,
+        }
+    raise ValueError("unsupported feedback kind")
+
+
+def _query_bytes(value: object) -> bytes:
+    return value if isinstance(value, bytes) else b""
+
+
+def _run_query(
+    command: list[str],
+    workspace: Path,
+    *,
+    timeout: int,
+) -> tuple[bytes, bytes, int]:
+    process = subprocess.Popen(
+        command,
+        cwd=workspace,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    process_group_id = os.getpgid(process.pid)
+    assert process.stdout is not None
+    assert process.stderr is not None
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+    selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+    captured = {"stdout": bytearray(), "stderr": bytearray()}
+    deadline = time.monotonic() + timeout
+    failure_code: str | None = None
+    try:
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                failure_code = "github_query_failed"
+                break
+            events = selector.select(remaining)
+            if not events:
+                failure_code = "github_query_failed"
+                break
+            for key, _ in events:
+                data = os.read(key.fileobj.fileno(), 65536)
+                if not data:
+                    selector.unregister(key.fileobj)
+                    continue
+                buffer = captured[key.data]
+                if len(buffer) < MAX_QUERY_OUTPUT_BYTES + 1:
+                    buffer.extend(
+                        data[: MAX_QUERY_OUTPUT_BYTES + 1 - len(buffer)]
+                    )
+                if len(buffer) > MAX_QUERY_OUTPUT_BYTES:
+                    failure_code = "hard_limit"
+                    break
+            if failure_code is not None:
+                break
+    finally:
+        selector.close()
+    if failure_code is None and process.poll() is None:
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            try:
+                process.wait(timeout=remaining)
+            except subprocess.TimeoutExpired:
+                failure_code = "github_query_failed"
+        else:
+            failure_code = "github_query_failed"
+    if failure_code is not None:
+        _terminate_and_reap(
+            process,
+            process_group_id=process_group_id,
+            deadline=(
+                deadline
+                if failure_code == "github_query_failed"
+                else time.monotonic()
+            ),
+        )
+    else:
+        process.wait(timeout=0)
+        direct_exit_code = process.returncode
+        if _process_group_exists(process_group_id):
+            _terminate_and_reap(
+                process,
+                process_group_id=process_group_id,
+                deadline=time.monotonic(),
+            )
+            if direct_exit_code == 0:
+                failure_code = "github_query_failed"
+    stdout = bytes(captured["stdout"])
+    stderr = bytes(captured["stderr"])
+    try:
+        process.stdout.close()
+    finally:
+        process.stderr.close()
+    if failure_code == "github_query_failed":
+        raise QueryError(
+            "github_query_failed",
+            exit_code=None,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    if failure_code == "hard_limit":
+        raise QueryError(
+            "hard_limit",
+            exit_code=process.returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    if process.returncode != 0:
+        raise QueryError(
+            "github_query_failed",
+            exit_code=process.returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    return stdout, stderr, process.returncode
+
+
+def _json_output(
+    stdout: bytes,
+    *,
+    label: str,
+    fallback: str = "",
+    stderr: bytes = b"",
+) -> object:
+    try:
+        text = stdout.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise QueryError(
+            "github_output_invalid",
+            exit_code=0,
+            stdout=stdout,
+            stderr=stderr,
+        ) from error
+    try:
+        return json.loads(text or fallback)
+    except json.JSONDecodeError as error:
+        raise QueryError(
+            "github_output_invalid",
+            exit_code=0,
+            stdout=stdout,
+            stderr=stderr,
+        ) from error
+
+
+def _paginate_feedback(
+    gh_bin: str,
+    workspace: Path,
+    endpoint: str,
+    *,
+    timeout: int,
+) -> list[dict[str, object]]:
+    stdout, stderr, _exit_code = _run_query(
+        [
+            gh_bin,
+            "api",
+            "--paginate",
+            "--slurp",
+            endpoint,
+        ],
+        workspace,
+        timeout=timeout,
+    )
+    value = _json_output(
+        stdout,
+        label="GitHub feedback query",
+        fallback="[]",
+        stderr=stderr,
+    )
+    if not isinstance(value, list):
+        raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+    if value and all(isinstance(page, list) for page in value):
+        pages = value
+    else:
+        pages = [value]
+    flattened: list[dict[str, object]] = []
+    for page in pages:
+        if not isinstance(page, list):
+            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+        if len(flattened) + len(page) > 1000:
+            raise ValueError("feedback_hard_limit")
+        for item in page:
+            if not isinstance(item, dict):
+                raise QueryError(
+                    "github_output_invalid",
+                    exit_code=0,
+                    stdout=stdout,
+                )
+            flattened.append(item)
+    return flattened
+
+
+def _read_review_threads(
+    gh_bin: str,
+    workspace: Path,
+    repository: str,
+    number: str,
+    *,
+    timeout: int,
+) -> list[dict[str, object]]:
+    query = """
+query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
+  repository(owner:$owner, name:$name) {
+    pullRequest(number:$number) {
+      reviewThreads(first:100, after:$endCursor) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          startLine
+          originalLine
+          originalStartLine
+          subjectType
+          comments(first:100) {
+            nodes { id }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
+    owner, name = repository.split("/", 1)
+    stdout, stderr, _exit_code = _run_query(
+        [
+            gh_bin,
+            "api",
+            "graphql",
+            "--paginate",
+            "--slurp",
+            "-f",
+            "query=" + query,
+            "-F",
+            "owner=" + owner,
+            "-F",
+            "name=" + name,
+            "-F",
+            "number=" + number,
+            "-F",
+            "endCursor=null",
+        ],
+        workspace,
+        timeout=timeout,
+    )
+    payload = _json_output(
+        stdout,
+        label="GitHub review-thread query",
+        fallback="[]",
+        stderr=stderr,
+    )
+    if not isinstance(payload, list):
+        raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+    pages = payload
+    threads: list[dict[str, object]] = []
+    observation_count = 0
+    for page in pages:
+        if not isinstance(page, dict):
+            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+        data = page.get("data")
+        if not isinstance(data, dict):
+            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+        repository_data = data.get("repository")
+        if not isinstance(repository_data, dict):
+            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+        pull = repository_data.get("pullRequest")
+        if not isinstance(pull, dict):
+            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+        connection = pull.get("reviewThreads")
+        if not isinstance(connection, dict):
+            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+        nodes = connection.get("nodes")
+        page_info = connection.get("pageInfo")
+        if not isinstance(nodes, list) or not isinstance(page_info, dict):
+            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+        if not isinstance(page_info.get("hasNextPage"), bool):
+            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+        end_cursor = page_info.get("endCursor")
+        if end_cursor is not None and not isinstance(end_cursor, str):
+            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+        if page_info["hasNextPage"] and not end_cursor:
+            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+        for node in nodes:
+            if not isinstance(node, dict):
+                raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+            for required in ("id", "path", "subjectType"):
+                if not isinstance(node.get(required), str) or not node[required]:
+                    raise QueryError(
+                        "github_output_invalid",
+                        exit_code=0,
+                        stdout=stdout,
+                    )
+            comments = node.get("comments")
+            if not isinstance(comments, dict):
+                raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+            comment_nodes = comments.get("nodes")
+            comment_page_info = comments.get("pageInfo")
+            if not isinstance(comment_nodes, list) or not isinstance(
+                comment_page_info,
+                dict,
+            ):
+                raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+            if not isinstance(comment_page_info.get("hasNextPage"), bool):
+                raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
+            comment_ids: list[str] = []
+            for item in comment_nodes:
+                if (
+                    not isinstance(item, dict)
+                    or not isinstance(item.get("id"), str)
+                    or not item["id"]
+                ):
+                    raise QueryError(
+                        "github_output_invalid",
+                        exit_code=0,
+                        stdout=stdout,
+                    )
+                comment_ids.append(item["id"])
+            observation_count += 1 + len(comment_ids)
+            if observation_count > 1000:
+                raise ValueError("feedback_hard_limit")
+            if comment_page_info["hasNextPage"]:
+                cursor = comment_page_info.get("endCursor")
+                if not isinstance(cursor, str) or not cursor:
+                    raise QueryError(
+                        "github_output_invalid",
+                        exit_code=0,
+                        stdout=stdout,
+                    )
+                continuation = """
+query($threadId:ID!, $endCursor:String) {
+  node(id:$threadId) {
+    ... on PullRequestReviewThread {
+      comments(first:100, after:$endCursor) {
+        nodes { id }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
+                while True:
+                    continuation_stdout, continuation_stderr, _exit_code = _run_query(
+                        [
+                            gh_bin,
+                            "api",
+                            "graphql",
+                            "-f",
+                            "query=" + continuation,
+                            "-F",
+                            "threadId=" + node["id"],
+                            "-F",
+                            "endCursor=" + cursor,
+                        ],
+                        workspace,
+                        timeout=timeout,
+                    )
+                    continuation_value = _json_output(
+                        continuation_stdout,
+                        label="GitHub review-thread continuation",
+                        stderr=continuation_stderr,
+                    )
+                    if not isinstance(continuation_value, dict):
+                        raise QueryError(
+                            "github_output_invalid",
+                            exit_code=0,
+                            stdout=continuation_stdout,
+                        )
+                    continuation_data = continuation_value.get("data")
+                    continuation_node = (
+                        continuation_data.get("node")
+                        if isinstance(continuation_data, dict)
+                        else None
+                    )
+                    continuation_comments = (
+                        continuation_node.get("comments")
+                        if isinstance(continuation_node, dict)
+                        else None
+                    )
+                    if not isinstance(continuation_comments, dict):
+                        raise QueryError(
+                            "github_output_invalid",
+                            exit_code=0,
+                            stdout=continuation_stdout,
+                        )
+                    continuation_nodes = continuation_comments.get("nodes")
+                    continuation_info = continuation_comments.get("pageInfo")
+                    if not isinstance(continuation_nodes, list) or not isinstance(
+                        continuation_info,
+                        dict,
+                    ):
+                        raise QueryError(
+                            "github_output_invalid",
+                            exit_code=0,
+                            stdout=continuation_stdout,
+                        )
+                    for item in continuation_nodes:
+                        if (
+                            not isinstance(item, dict)
+                            or not isinstance(item.get("id"), str)
+                            or not item["id"]
+                        ):
+                            raise QueryError(
+                                "github_output_invalid",
+                                exit_code=0,
+                                stdout=continuation_stdout,
+                            )
+                        comment_ids.append(item["id"])
+                        observation_count += 1
+                        if observation_count > 1000:
+                            raise ValueError("feedback_hard_limit")
+                    if not isinstance(
+                        continuation_info.get("hasNextPage"),
+                        bool,
+                    ):
+                        raise QueryError(
+                            "github_output_invalid",
+                            exit_code=0,
+                            stdout=continuation_stdout,
+                        )
+                    if not continuation_info["hasNextPage"]:
+                        break
+                    cursor = continuation_info.get("endCursor")
+                    if not isinstance(cursor, str) or not cursor:
+                        raise QueryError(
+                            "github_output_invalid",
+                            exit_code=0,
+                            stdout=continuation_stdout,
+                        )
+            threads.append(
+                {
+                    "kind": "review_thread",
+                    "id": node["id"],
+                    "resolved": node.get("isResolved"),
+                    "outdated": node.get("isOutdated"),
+                    "path": node["path"],
+                    "current_line": node.get("line"),
+                    "current_start_line": node.get("startLine"),
+                    "original_line": node.get("originalLine"),
+                    "original_start_line": node.get("originalStartLine"),
+                    "subject_type": node["subjectType"],
+                    "comment_ids": comment_ids,
+                }
+            )
+            if len(threads) > 1000:
+                raise ValueError("feedback_hard_limit")
+    return threads
+
+
+def read_feedback(
+    workspace: Path,
+    pr_url: str,
+    gh_bin: str,
+    *,
+    timeout: int,
+) -> list[dict[str, object]]:
+    parsed = urlparse(pr_url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if parsed.hostname not in {"github.com", "www.github.com"} or len(parts) != 4:
+        raise ValueError("cannot derive GitHub repository from pr_url")
+    repository = "{}/{}".format(parts[0], parts[1])
+    number = parts[3]
+    issue_comments = _paginate_feedback(
+        gh_bin,
+        workspace,
+        f"repos/{repository}/issues/{number}/comments?per_page=100",
+        timeout=timeout,
+    )
+    reviews = _paginate_feedback(
+        gh_bin,
+        workspace,
+        f"repos/{repository}/pulls/{number}/reviews?per_page=100",
+        timeout=timeout,
+    )
+    review_comments = _paginate_feedback(
+        gh_bin,
+        workspace,
+        f"repos/{repository}/pulls/{number}/comments?per_page=100",
+        timeout=timeout,
+    )
+    review_threads = _read_review_threads(
+        gh_bin,
+        workspace,
+        repository,
+        number,
+        timeout=timeout,
+    )
+    if (
+        len(issue_comments)
+        + len(reviews)
+        + len(review_comments)
+        + len(review_threads)
+        + sum(len(item["comment_ids"]) for item in review_threads)
+        > 1000
+    ):
+        raise ValueError("feedback_hard_limit")
+    items = [
+        _feedback_item("issue_comment", item) for item in issue_comments
+    ]
+    items.extend(_feedback_item("review", item) for item in reviews)
+    items.extend(
+        _feedback_item("review_comment", item) for item in review_comments
+    )
+    items.extend(review_threads)
+    runtime = runtime_contracts()
+    normalized = [
+        runtime.validate_pr_feedback_item(item) for item in items
+    ]
+    identities = [(item["kind"], item["id"]) for item in normalized]
+    if len(identities) != len(set(identities)):
+        raise RuntimeError("duplicate_feedback_item")
+    normalized.sort(key=lambda item: (item["kind"], item["id"]))
+    return normalized
+
+
+def feedback_checks(state: dict[str, object]) -> list[dict[str, object]]:
+    raw_checks = state.get("statusCheckRollup")
+    if not isinstance(raw_checks, list):
+        return []
+    if len(raw_checks) > 1000:
+        raise ValueError("feedback_hard_limit")
+    rows: list[dict[str, object]] = []
+    for item in raw_checks:
+        if not isinstance(item, dict):
+            raise ValueError("malformed_feedback_check")
+        bucket = str(
+            item.get("bucket")
+            or item.get("conclusion")
+            or item.get("status")
+            or ""
+        ).lower()
+        if bucket in {"success", "completed", "pass"}:
+            bucket = "pass"
+        elif bucket in {"failure", "failed", "fail", "error"}:
+            bucket = "fail"
+        elif bucket in {"cancelled", "cancel"}:
+            bucket = "cancel"
+        elif bucket in {"skipped", "skipping"}:
+            bucket = "skipping"
+        else:
+            bucket = "pending"
+        rows.append(
+            {
+                "workflow_name": str(
+                    item.get("workflow")
+                    or item.get("workflow_name")
+                    or ""
+                ),
+                "check_name": str(
+                    item.get("name")
+                    or item.get("context")
+                    or ""
+                ),
+                "bucket": bucket,
+                "state": str(
+                    item.get("state")
+                    or item.get("conclusion")
+                    or item.get("status")
+                    or "UNKNOWN"
+                ).upper(),
+                "link": item.get("detailsUrl") or item.get("link"),
+            }
+        )
+    return rows
 
 
 def resolve_gh_bin() -> str:
@@ -74,40 +913,46 @@ def read_state(
     *,
     timeout: int,
 ) -> dict[str, object]:
-    try:
-        result = subprocess.run(
-            [
-                gh_bin,
-                "pr",
-                "view",
-                pr_url,
-                "--json",
-                FIELDS,
-            ],
-            cwd=workspace,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as error:
-        raise RuntimeError(
-            f"GitHub PR query exceeded {timeout} seconds"
-        ) from error
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or "no output"
-        raise RuntimeError(detail)
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as error:
-        raise RuntimeError(f"gh returned invalid JSON: {error}") from error
+    stdout, stderr, _exit_code = _run_query(
+        [
+            gh_bin,
+            "pr",
+            "view",
+            pr_url,
+            "--json",
+            FIELDS,
+        ],
+        workspace,
+        timeout=timeout,
+    )
+    payload = _json_output(stdout, label="GitHub PR query", stderr=stderr)
     if not isinstance(payload, dict):
-        raise RuntimeError("gh returned a non-object PR payload")
+        raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
     return payload
 
 
-def state_report(state: dict[str, object], reason: str) -> str:
+def _safe_error(error: Exception) -> dict[str, object]:
+    if isinstance(error, QueryError):
+        return {
+            "code": error.code,
+            "exit_code": error.exit_code,
+            "stdout_sha256": hashlib.sha256(error.stdout).hexdigest(),
+            "stderr_sha256": hashlib.sha256(error.stderr).hexdigest(),
+        }
+    return {
+        "code": "github_output_invalid",
+        "exit_code": None,
+        "stdout_sha256": hashlib.sha256(b"").hexdigest(),
+        "stderr_sha256": hashlib.sha256(b"").hexdigest(),
+    }
+
+
+def state_report(
+    state: dict[str, object],
+    reason: str,
+    *,
+    feedback_error: Exception | None = None,
+) -> str:
     checks = []
     raw_checks = state.get("statusCheckRollup")
     if isinstance(raw_checks, list):
@@ -121,17 +966,20 @@ def state_report(state: dict[str, object], reason: str) -> str:
                     "conclusion": check.get("conclusion"),
                 }
             )
+    report: dict[str, object] = {
+        "reason": reason,
+        "state": state.get("state"),
+        "headRefOid": state.get("headRefOid"),
+        "baseRefOid": state.get("baseRefOid"),
+        "reviewDecision": state.get("reviewDecision"),
+        "mergeStateStatus": state.get("mergeStateStatus"),
+        "checks": checks,
+        "url": state.get("url"),
+    }
+    if feedback_error is not None:
+        report["safe_error"] = _safe_error(feedback_error)
     return json.dumps(
-        {
-            "reason": reason,
-            "state": state.get("state"),
-            "headRefOid": state.get("headRefOid"),
-            "baseRefOid": state.get("baseRefOid"),
-            "reviewDecision": state.get("reviewDecision"),
-            "mergeStateStatus": state.get("mergeStateStatus"),
-            "checks": checks,
-            "url": state.get("url"),
-        },
+        report,
         ensure_ascii=False,
         sort_keys=True,
     )
@@ -151,6 +999,18 @@ def main() -> int:
     merge_strategy = require_string(raw, "merge_strategy")
     initial_head = require_string(raw, "pr_head_oid")
     initial_base = require_string(raw, "pr_base_oid")
+    v2_mode = not (
+        profile_schema3_legacy(workspace) and "ci_report" not in raw
+    )
+    prevalidation_error: Exception | None = None
+    cursor: dict[str, object] = {}
+    if v2_mode:
+        try:
+            cursor = cursor_values(raw)
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+            prevalidation_error = error
+    else:
+        cursor = cursor_values(raw)
     validate_pr_url(pr_url)
     if not workspace.is_dir():
         raise ValueError(f"workspace does not exist: {workspace}")
@@ -182,6 +1042,21 @@ def main() -> int:
         1,
         int(os.environ.get("KENT_PR_WATCH_MAX_ERRORS", "5")),
     )
+    if v2_mode and prevalidation_error is not None:
+        workflow_result(
+            "merge_watch_state_changed",
+            workspace_path=str(workspace),
+            pr_url=pr_url,
+            branch_name=branch_name,
+            merge_strategy=merge_strategy,
+            pr_report=state_report(
+                {},
+                "pull_request_feedback_invalid",
+                feedback_error=prevalidation_error,
+            ),
+            pr_feedback_cursor="uninitialized",
+        )
+        return 0
     gh_bin = resolve_gh_bin()
     consecutive_errors = 0
     poll = 0
@@ -196,23 +1071,32 @@ def main() -> int:
                 timeout=query_timeout,
             )
             consecutive_errors = 0
-        except RuntimeError as error:
+        except (QueryError, RuntimeError, ValueError) as error:
             consecutive_errors += 1
             if consecutive_errors >= max_errors:
+                if cursor:
+                    safe = {
+                        "reason": "github_query_failed",
+                        "safe_error": _safe_error(error),
+                    }
+                    report = json.dumps(safe, ensure_ascii=False, sort_keys=True)
+                else:
+                    report = json.dumps(
+                        {
+                            "reason": "github_query_failed",
+                            "attempts": consecutive_errors,
+                            "safe_error": _safe_error(error),
+                        },
+                        ensure_ascii=False,
+                    )
                 workflow_result(
                     "merge_watch_state_changed",
                     workspace_path=str(workspace),
                     pr_url=pr_url,
                     branch_name=branch_name,
                     merge_strategy=merge_strategy,
-                    pr_report=json.dumps(
-                        {
-                            "reason": "github_query_failed",
-                            "attempts": consecutive_errors,
-                            "error": str(error),
-                        },
-                        ensure_ascii=False,
-                    ),
+                    pr_report=report,
+                    **cursor,
                 )
                 return 0
             print(
@@ -228,6 +1112,45 @@ def main() -> int:
         base_oid = str(state.get("baseRefOid") or "")
         review_decision = str(state.get("reviewDecision") or "").upper()
         merge_state = str(state.get("mergeStateStatus") or "").upper()
+        feedback_reason = ""
+        feedback_error: Exception | None = None
+        if cursor:
+            try:
+                previous_cursor = feedback_cursor(raw)
+                state["feedback_items"] = read_feedback(
+                    workspace,
+                    pr_url,
+                    gh_bin,
+                    timeout=query_timeout,
+                )
+                state["feedback_checks"] = feedback_checks(state)
+                current_cursor = materialize_cursor(raw, state, pr_url)
+                cursor = {
+                    "pr_feedback_cursor": serialize_cursor(current_cursor)
+                }
+                if current_cursor != previous_cursor:
+                    feedback_transition = runtime_contracts().classify_pr_feedback(
+                        previous_cursor,
+                        current_cursor,
+                    )["transition"]
+                    if feedback_transition == "state_changed":
+                        feedback_reason = "pull_request_feedback_changed"
+                    elif feedback_transition == "feedback_hard_limit":
+                        feedback_reason = "pull_request_feedback_hard_limit"
+            except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+                feedback_error = error
+                feedback_reason = (
+                    "pull_request_feedback_hard_limit"
+                    if (
+                        str(error)
+                        in {"feedback_hard_limit", "feedback_body_hard_limit"}
+                        or (
+                            isinstance(error, QueryError)
+                            and error.code == "hard_limit"
+                        )
+                    )
+                    else "pull_request_feedback_invalid"
+                )
         checks = state.get("statusCheckRollup")
         failed_checks = []
         if isinstance(checks, list):
@@ -263,6 +1186,7 @@ def main() -> int:
                     ensure_ascii=False,
                     sort_keys=True,
                 ),
+                **cursor,
             )
             return 0
 
@@ -281,6 +1205,8 @@ def main() -> int:
             reason = "merge_conflict"
         elif state_name not in {"OPEN", ""}:
             reason = "unexpected_pull_request_state"
+        elif feedback_reason:
+            reason = feedback_reason
 
         if reason:
             workflow_result(
@@ -289,7 +1215,12 @@ def main() -> int:
                 pr_url=pr_url,
                 branch_name=branch_name,
                 merge_strategy=merge_strategy,
-                pr_report=state_report(state, reason),
+                pr_report=state_report(
+                    state,
+                    reason,
+                    feedback_error=feedback_error,
+                ),
+                **cursor,
             )
             return 0
 
@@ -302,6 +1233,7 @@ def main() -> int:
                 merge_strategy=merge_strategy,
                 pr_head_oid=initial_head,
                 pr_base_oid=initial_base,
+                **cursor,
             )
             return 0
 
