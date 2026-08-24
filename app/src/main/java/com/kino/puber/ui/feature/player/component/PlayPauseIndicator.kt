@@ -38,7 +38,7 @@ internal fun PlayPauseIndicator(
     ) {
         lastState.value?.let {
             Icon(
-                imageVector = if (it.isPlaying) Icons.Default.PlayArrow else Icons.Default.Pause,
+                imageVector = if (it.isPlayRequested) Icons.Default.PlayArrow else Icons.Default.Pause,
                 contentDescription = null,
                 modifier = Modifier.size(72.dp),
                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),

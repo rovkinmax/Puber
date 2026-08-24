@@ -6,6 +6,7 @@ import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.feature.player.model.FocusTarget
 import com.kino.puber.ui.feature.player.vm.PlaybackController
+import com.kino.puber.ui.feature.player.vm.PlaybackIntent
 
 @Immutable
 internal sealed class PlayerViewState {
@@ -22,6 +23,8 @@ internal data class PlayerContentState(
 
     // Playback
     val isPlaying: Boolean,
+    val playbackIntent: PlaybackIntent,
+    val shouldKeepScreenOn: Boolean,
     val isBuffering: Boolean = false,
     val currentPosition: Long,
     val duration: Long,

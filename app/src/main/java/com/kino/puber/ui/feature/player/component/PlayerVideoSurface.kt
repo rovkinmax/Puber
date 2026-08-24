@@ -1,9 +1,16 @@
 package com.kino.puber.ui.feature.player.component
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.view.KeyEvent
+import android.view.View
+import android.view.Window
+import android.view.WindowManager
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -25,20 +32,37 @@ internal fun PlayerVideoSurface(
     exoPlayer: () -> ExoPlayer?,
     onAction: (UIAction) -> Unit,
     focusRequester: FocusRequester,
+    playerViewFactory: (Context) -> PlayerView = { context -> PlayerView(context) },
 ) {
+    val windowKeepScreenOnBinding = remember { WindowKeepScreenOnBinding() }
     AndroidView(
         factory = { context ->
-            PlayerView(context).apply {
+            playerViewFactory(context).apply {
                 useController = false
+                updateKeepScreenOn(
+                    shouldKeepScreenOn = content.shouldKeepScreenOn,
+                    window = context.findActivity()?.window,
+                    windowBinding = windowKeepScreenOnBinding,
+                )
                 player = exoPlayer()
             }
         },
         update = { view ->
+            view.updateKeepScreenOn(
+                shouldKeepScreenOn = content.shouldKeepScreenOn,
+                window = view.context.findActivity()?.window,
+                windowBinding = windowKeepScreenOnBinding,
+            )
             val currentPlayer = exoPlayer()
             if (view.player != currentPlayer) {
                 view.player = currentPlayer
             }
             currentPlayer?.let { view.resizeMode = content.resizeMode() }
+        },
+        onRelease = { view ->
+            view.keepScreenOn = false
+            windowKeepScreenOnBinding.release(view)
+            view.player = null
         },
         modifier = Modifier
             .fillMaxSize()
@@ -52,6 +76,87 @@ internal fun PlayerVideoSurface(
                 )
             },
     )
+}
+
+private fun PlayerView.updateKeepScreenOn(
+    shouldKeepScreenOn: Boolean,
+    window: Window?,
+    windowBinding: WindowKeepScreenOnBinding,
+) {
+    keepScreenOn = shouldKeepScreenOn
+    windowBinding.update(this, window, shouldKeepScreenOn)
+}
+
+private class WindowKeepScreenOnBinding : View.OnAttachStateChangeListener {
+    private var boundView: View? = null
+    private var requestedWindow: Window? = null
+    private var shouldKeepScreenOn = false
+    private var ownedWindow: Window? = null
+
+    fun update(view: View, window: Window?, shouldKeepScreenOn: Boolean) {
+        if (boundView !== view) {
+            boundView?.removeOnAttachStateChangeListener(this)
+            releaseOwnedWindow()
+            boundView = view
+            view.addOnAttachStateChangeListener(this)
+        }
+
+        requestedWindow = window
+        this.shouldKeepScreenOn = shouldKeepScreenOn
+        synchronizeOwnership()
+    }
+
+    fun release(view: View) {
+        if (boundView === view) {
+            view.removeOnAttachStateChangeListener(this)
+            boundView = null
+            requestedWindow = null
+            shouldKeepScreenOn = false
+            releaseOwnedWindow()
+        }
+    }
+
+    override fun onViewAttachedToWindow(view: View) {
+        if (boundView === view) synchronizeOwnership()
+    }
+
+    override fun onViewDetachedFromWindow(view: View) {
+        if (boundView === view) releaseOwnedWindow()
+    }
+
+    private fun synchronizeOwnership() {
+        val view = boundView
+        val window = requestedWindow
+        if (!shouldKeepScreenOn || view?.isAttachedToWindow != true || window == null) {
+            releaseOwnedWindow()
+            return
+        }
+        if (
+            ownedWindow === window &&
+            window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
+        ) {
+            return
+        }
+
+        releaseOwnedWindow()
+        if (window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON == 0) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            ownedWindow = window
+        }
+    }
+
+    private fun releaseOwnedWindow() {
+        ownedWindow?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        ownedWindow = null
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? {
+    return when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 }
 
 private fun handlePlayerKeyEvent(

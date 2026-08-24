@@ -56,14 +56,14 @@ class ControlsStateMachineTest {
 
     @Test
     fun `openPanel_setsActivePanel`() {
-        machine.openPanel(ActivePanel.AudioSubtitles, isPlaying = false)
+        machine.openPanel(ActivePanel.AudioSubtitles, playbackIntent = PlaybackIntent.Paused)
 
         assertEquals(ActivePanel.AudioSubtitles, machine.state.activePanel)
     }
 
     @Test
     fun `openPanel_episodes_pausesPlayback_whenPlaying`() {
-        val effects = machine.openPanel(ActivePanel.Episodes, isPlaying = true)
+        val effects = machine.openPanel(ActivePanel.Episodes, playbackIntent = PlaybackIntent.PlayRequested)
 
         assertTrue(effects.contains(ControlsStateMachine.Effect.PausePlayback))
     }
@@ -72,14 +72,14 @@ class ControlsStateMachineTest {
     fun `openPanel_episodes_alwaysEmitsPausePlayback_evenWhenNotPlaying`() {
         // PausePlayback is always emitted for Episodes panel; wasPlayingBeforePanel
         // controls whether ResumePlayback is emitted on close.
-        val effects = machine.openPanel(ActivePanel.Episodes, isPlaying = false)
+        val effects = machine.openPanel(ActivePanel.Episodes, playbackIntent = PlaybackIntent.Paused)
 
         assertTrue(effects.contains(ControlsStateMachine.Effect.PausePlayback))
     }
 
     @Test
     fun `closePanel_afterEpisodes_doesNotResume_whenWasNotPlaying`() {
-        machine.openPanel(ActivePanel.Episodes, isPlaying = false)
+        machine.openPanel(ActivePanel.Episodes, playbackIntent = PlaybackIntent.Paused)
 
         val effects = machine.closePanel()
 
@@ -92,7 +92,7 @@ class ControlsStateMachineTest {
 
     @Test
     fun `closePanel_afterEpisodes_resumesPlayback_whenWasPlaying`() {
-        machine.openPanel(ActivePanel.Episodes, isPlaying = true)
+        machine.openPanel(ActivePanel.Episodes, playbackIntent = PlaybackIntent.PlayRequested)
 
         val effects = machine.closePanel()
 
@@ -101,7 +101,7 @@ class ControlsStateMachineTest {
 
     @Test
     fun `closePanel_afterNonEpisodesPanel_doesNotResumePlayback`() {
-        machine.openPanel(ActivePanel.AudioSubtitles, isPlaying = true)
+        machine.openPanel(ActivePanel.AudioSubtitles, playbackIntent = PlaybackIntent.PlayRequested)
 
         val effects = machine.closePanel()
 
@@ -110,7 +110,7 @@ class ControlsStateMachineTest {
 
     @Test
     fun `closePanel_restoresFocusTarget`() {
-        machine.openPanel(ActivePanel.Episodes, isPlaying = false)
+        machine.openPanel(ActivePanel.Episodes, playbackIntent = PlaybackIntent.Paused)
 
         machine.closePanel()
 
@@ -123,7 +123,7 @@ class ControlsStateMachineTest {
 
     @Test
     fun `handleBack_withOpenPanel_closesPanel`() {
-        machine.openPanel(ActivePanel.VideoSettings, isPlaying = false)
+        machine.openPanel(ActivePanel.VideoSettings, playbackIntent = PlaybackIntent.Paused)
 
         machine.handleBack()
 
@@ -154,7 +154,7 @@ class ControlsStateMachineTest {
     @Test
     fun `applyControlsVisibility_false_withOpenPanel_doesNotHide`() {
         machine.showControls(FocusTarget.Buttons)
-        machine.openPanel(ActivePanel.AudioSubtitles, isPlaying = false)
+        machine.openPanel(ActivePanel.AudioSubtitles, playbackIntent = PlaybackIntent.Paused)
         // After openPanel, controlsVisible is already false; set it manually via
         // a fresh showControls call is not possible while panel is open, so we
         // verify the guard: calling applyControlsVisibility(false) when panel is

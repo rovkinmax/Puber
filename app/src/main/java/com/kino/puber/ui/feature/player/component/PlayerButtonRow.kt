@@ -63,7 +63,7 @@ internal fun PlayerButtonRow(
 
 internal data class PlayerButtonRowState(
     val isMovie: Boolean,
-    val isPlaying: Boolean,
+    val isPlayRequested: Boolean,
     val hasNextEpisode: Boolean,
     val hasPreviousEpisode: Boolean,
     val canMarkCurrentWatched: Boolean,
@@ -79,7 +79,7 @@ private fun PrimaryControls(
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         PlayPauseButton(
-            isPlaying = state.isPlaying,
+            isPlayRequested = state.isPlayRequested,
             onClick = actions.onTogglePlayPause,
             focusRequester = focusRequesters.firstButton,
         )
@@ -128,7 +128,7 @@ private fun PrimaryControls(
 
 @Composable
 private fun PlayPauseButton(
-    isPlaying: Boolean,
+    isPlayRequested: Boolean,
     onClick: () -> Unit,
     focusRequester: FocusRequester,
 ) {
@@ -138,7 +138,7 @@ private fun PlayPauseButton(
         colors = transparentButtonColors(),
     ) {
         Icon(
-            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+            imageVector = if (isPlayRequested) Icons.Default.Pause else Icons.Default.PlayArrow,
             contentDescription = null,
             modifier = Modifier.size(24.dp),
         )

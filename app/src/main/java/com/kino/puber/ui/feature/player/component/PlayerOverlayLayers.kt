@@ -17,6 +17,7 @@ import androidx.tv.material3.MaterialTheme
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.ui.feature.player.model.PlayerContentState
+import com.kino.puber.ui.feature.player.vm.PlaybackIntent
 
 private const val TRANSPARENT_SCRIM_STOP = 0.7f
 private const val BOTTOM_SCRIM_ALPHA = 0.5f
@@ -72,7 +73,7 @@ internal fun PlayerControlsLayer(
         bufferedPosition = content.bufferedPosition,
         isBuffering = content.isBuffering,
         isMovie = content.isMovie,
-        isPlaying = content.isPlaying,
+        isPlayRequested = content.playbackIntent == PlaybackIntent.PlayRequested,
         hasNextEpisode = content.hasNextEpisode,
         hasPreviousEpisode = content.hasPreviousEpisode,
         canMarkCurrentWatched = content.canMarkCurrentWatched,

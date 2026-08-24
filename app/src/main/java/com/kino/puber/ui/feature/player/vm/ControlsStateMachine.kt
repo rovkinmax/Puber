@@ -23,7 +23,7 @@ internal class ControlsStateMachine {
         private set
 
     private var lastPanelOpener: FocusTarget = FocusTarget.Buttons
-    private var wasPlayingBeforePanel = false
+    private var wasPlayRequestedBeforePanel = false
 
     fun showControls(focusTarget: FocusTarget): List<Effect> {
         state = state.copy(controlsVisible = true, focusTarget = focusTarget)
@@ -35,7 +35,7 @@ internal class ControlsStateMachine {
         return listOf(Effect.CancelHide)
     }
 
-    fun openPanel(panel: ActivePanel, isPlaying: Boolean): List<Effect> {
+    fun openPanel(panel: ActivePanel, playbackIntent: PlaybackIntent): List<Effect> {
         lastPanelOpener = when (panel) {
             ActivePanel.Episodes -> FocusTarget.EpisodesButton
             ActivePanel.AudioSubtitles -> FocusTarget.AudioSubtitlesButton
@@ -46,7 +46,7 @@ internal class ControlsStateMachine {
         val effects = mutableListOf<Effect>(Effect.CancelHide)
 
         if (panel == ActivePanel.Episodes) {
-            wasPlayingBeforePanel = isPlaying
+            wasPlayRequestedBeforePanel = playbackIntent == PlaybackIntent.PlayRequested
             effects.add(Effect.PausePlayback)
         }
 
@@ -57,7 +57,7 @@ internal class ControlsStateMachine {
     fun closePanel(): List<Effect> {
         val effects = mutableListOf<Effect>()
 
-        if (state.activePanel == ActivePanel.Episodes && wasPlayingBeforePanel) {
+        if (state.activePanel == ActivePanel.Episodes && wasPlayRequestedBeforePanel) {
             effects.add(Effect.ResumePlayback)
         }
 

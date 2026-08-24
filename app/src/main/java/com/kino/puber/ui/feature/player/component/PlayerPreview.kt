@@ -28,6 +28,7 @@ import com.kino.puber.ui.feature.player.model.SeekIndicatorState
 import com.kino.puber.ui.feature.player.model.SoundModeUIState
 import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
+import com.kino.puber.ui.feature.player.vm.PlaybackIntent
 
 // region Preview Data
 
@@ -101,6 +102,8 @@ private fun previewSeriesContent(
     title = "Кибердеревня",
     subtitle = "2 сезон, 6 серия, Что там, за железным занавесом?",
     isPlaying = true,
+    playbackIntent = PlaybackIntent.PlayRequested,
+    shouldKeepScreenOn = true,
     currentPosition = 630_000L,
     duration = 1_647_000L,
     bufferedPosition = 900_000L,
@@ -147,6 +150,8 @@ private fun previewMovieContent(
     title = "Граф Монте-Кристо",
     subtitle = null,
     isPlaying = true,
+    playbackIntent = PlaybackIntent.PlayRequested,
+    shouldKeepScreenOn = true,
     currentPosition = 240_000L,
     duration = 10_679_000L,
     bufferedPosition = 600_000L,
@@ -404,7 +409,11 @@ private fun BufferingWithControlsPreview() = PuberTheme {
 private fun SeriesPausedPreview() = PuberTheme {
     PlayerScreenContent(
         state = PlayerViewState.Content(
-            previewSeriesContent().copy(isPlaying = false)
+            previewSeriesContent().copy(
+                isPlaying = false,
+                playbackIntent = PlaybackIntent.Paused,
+                shouldKeepScreenOn = false,
+            )
         ),
         onAction = {},
         exoPlayer = { null },
@@ -416,7 +425,11 @@ private fun SeriesPausedPreview() = PuberTheme {
 private fun MoviePausedPreview() = PuberTheme {
     PlayerScreenContent(
         state = PlayerViewState.Content(
-            previewMovieContent().copy(isPlaying = false)
+            previewMovieContent().copy(
+                isPlaying = false,
+                playbackIntent = PlaybackIntent.Paused,
+                shouldKeepScreenOn = false,
+            )
         ),
         onAction = {},
         exoPlayer = { null },

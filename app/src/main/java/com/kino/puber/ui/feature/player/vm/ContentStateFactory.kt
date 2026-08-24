@@ -23,7 +23,13 @@ internal class ContentStateFactory(private val mapper: PlayerUIMapper) {
     ): PlayerContentState = PlayerContentState(
         title = mapper.buildTitle(item, resolved.seasonNumber, resolved.episodeNumber),
         subtitle = mapper.buildSubtitle(item, resolved.seasonNumber, resolved.episodeNumber, resolved.episodeTitle),
-        isPlaying = resumeDialog == null,
+        isPlaying = false,
+        playbackIntent = if (resumeDialog == null) {
+            PlaybackIntent.PlayRequested
+        } else {
+            PlaybackIntent.Paused
+        },
+        shouldKeepScreenOn = false,
         currentPosition = 0L,
         duration = resolved.duration?.toLong()?.times(1000) ?: 0L,
         bufferedPosition = 0L,

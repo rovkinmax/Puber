@@ -287,14 +287,14 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
 
     @Test
     fun togglePause_whenPlaying() {
-        every { playbackController.isPlaying } returns true
+        every { playbackController.playbackIntent } returns PlaybackIntent.PlayRequested
         startedVM().onAction(PlayerAction.TogglePlayPause)
         verify { playbackController.pause() }
     }
 
     @Test
     fun togglePlay_whenPaused() {
-        every { playbackController.isPlaying } returns false
+        every { playbackController.playbackIntent } returns PlaybackIntent.Paused
         startedVM().onAction(PlayerAction.TogglePlayPause)
         verify { playbackController.play() }
     }
@@ -587,19 +587,19 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
 
     @Test
     fun pauseForBackground_pausesAndSavesPosition() {
-        every { playbackController.isPlaying } returns true
+        every { playbackController.playbackIntent } returns PlaybackIntent.PlayRequested
         val vm = startedVM()
 
         vm.onAction(PlayerAction.OnBackground)
 
         verify { playbackController.pause() }
         verify(exactly = 0) { router.back(any(), any()) }
-        assertEquals(false, contentState(vm).isPlaying)
+        assertEquals(PlaybackIntent.Paused, contentState(vm).playbackIntent)
     }
 
     @Test
     fun pauseForBackground_savesPosition_whenAlreadyPaused() {
-        every { playbackController.isPlaying } returns false
+        every { playbackController.playbackIntent } returns PlaybackIntent.Paused
         startedVM().onAction(PlayerAction.OnBackground)
 
         verify(exactly = 0) { playbackController.pause() }
@@ -707,7 +707,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         verify { playbackController.seekTo(120_000L) }
         verify { playbackController.play() }
         assertNull(contentState(vm).resumeDialog)
-        assertTrue(contentState(vm).isPlaying)
+        assertEquals(PlaybackIntent.PlayRequested, contentState(vm).playbackIntent)
     }
 
     @Test
