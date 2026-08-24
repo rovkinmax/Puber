@@ -287,6 +287,13 @@ private fun LazyListScope.applicationItems(
     state: DeviceSettingsState.Success,
     onAction: (UIAction) -> Unit,
 ) {
+    item {
+        LocalActionItem(
+            label = stringResource(R.string.speed_test_launcher),
+            onClick = { onAction(DeviceSettingsActions.OpenSpeedTest) },
+        )
+    }
+
     // App updates section
     item {
         Spacer(modifier = Modifier.height(16.dp))
@@ -454,7 +461,7 @@ private fun LazyListScope.media3PlaybackItems(
 @Composable
 private fun LocalActionItem(
     label: String,
-    value: String,
+    value: String? = null,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -478,11 +485,13 @@ private fun LocalActionItem(
             color = MaterialTheme.colorScheme.secondary,
             modifier = Modifier.weight(1f),
         )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (value != null) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

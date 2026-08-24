@@ -24,6 +24,7 @@ internal sealed class DeviceSettingsActions : UIAction {
     data object ToggleShowAnime : DeviceSettingsActions()
     data object ToggleAutoUpdateCheck : DeviceSettingsActions()
     data object OpenApiDomainDialog : DeviceSettingsActions()
+    data object OpenSpeedTest : DeviceSettingsActions()
     data object CloseApiDomainDialog : DeviceSettingsActions()
     data class SaveApiDomain(val domain: String) : DeviceSettingsActions()
     data object DetectApiDomain : DeviceSettingsActions()

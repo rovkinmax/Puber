@@ -27,6 +27,7 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsViewState
+import com.kino.puber.ui.feature.device.speedtest.SpeedTestScreen
 
 internal class DeviceSettingsVM(
     private val deviceSettingInteractor: IDeviceSettingInteractor,
@@ -118,6 +119,7 @@ internal class DeviceSettingsVM(
             DeviceSettingsActions.ToggleShowAnime -> toggleShowAnime()
             DeviceSettingsActions.ToggleAutoUpdateCheck -> toggleAutoUpdateCheck()
             DeviceSettingsActions.OpenApiDomainDialog -> openApiDomainDialog()
+            DeviceSettingsActions.OpenSpeedTest -> router.navigateTo(SpeedTestScreen())
             DeviceSettingsActions.CloseApiDomainDialog -> closeApiDomainDialog()
             is DeviceSettingsActions.SaveApiDomain -> saveApiDomain(action.domain)
             DeviceSettingsActions.DetectApiDomain -> detectApiDomain()

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="speed_test_title">Тест скорости</string>
+    <string name="speed_test_connection">Подключение: %1$s</string>
+    <string name="speed_test_transport_wifi">Wi-Fi</string>
+    <string name="speed_test_transport_ethernet">Ethernet</string>
+    <string name="speed_test_transport_cellular">Сотовая сеть</string>
+    <string name="speed_test_transport_unknown">Неизвестно</string>
+    <string name="speed_test_server_amsterdam">Амстердам</string>
+    <string name="speed_test_server_moscow">Москва</string>
+    <string name="speed_test_current_server">Текущий сервер</string>
+    <string name="speed_test_status_idle">Ожидание</string>
+    <string name="speed_test_status_running">Тестирование</string>
+    <string name="speed_test_status_completed">Завершено</string>
+    <string name="speed_test_status_failed">Ошибка</string>
+    <string name="speed_test_status_canceled">Остановлено</string>
+    <string name="speed_test_byte_progress">%1$s / %2$s</string>
+    <string name="speed_test_result">%1$.1f Мбит/с</string>
+    <string name="speed_test_failure">Тест не выполнен</string>
+    <string name="speed_test_canceled">Тест остановлен</string>
+    <string name="speed_test_launcher">Запустить тест скорости</string>
+    <string name="speed_test_start">Запустить тест</string>
+    <string name="speed_test_stop">Остановить</string>
+</resources>

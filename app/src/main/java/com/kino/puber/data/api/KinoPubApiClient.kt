@@ -48,6 +48,10 @@ import com.kino.puber.data.api.models.VoteResult
 import com.kino.puber.data.api.models.WatchingStatus
 import com.kino.puber.data.api.models.WatchingToggleResponse
 import com.kino.puber.data.api.models.WatchlistToggleResponse
+import com.kino.puber.domain.interactor.speedtest.SPEED_TEST_EXPECTED_BYTES
+import com.kino.puber.domain.interactor.speedtest.SpeedTestProgress
+import com.kino.puber.domain.interactor.speedtest.SpeedTestResult
+import com.kino.puber.domain.interactor.speedtest.SpeedTestServer
 import android.net.ConnectivityManager
 import com.kino.puber.data.api.network.createConnectivityPlugin
 import com.kino.puber.data.repository.ICryptoPreferenceRepository
@@ -67,7 +71,6 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -75,7 +78,6 @@ import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
-import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -101,6 +103,7 @@ class KinoPubApiClient(
         prettyPrint = true
     }
     private val httpClient: HttpClient = createHttpClient()
+    private val transferTransport = KinoPubTransferTransport(httpClient, okHttpClient, connectivityManager)
 
     private fun createHttpClient(): HttpClient = HttpClient(OkHttp) {
 
@@ -843,76 +846,14 @@ class KinoPubApiClient(
         }
     }
 
-    suspend fun downloadUpdateAsset(
-        url: String,
-        targetFile: File,
-        onProgress: (Int) -> Unit,
-    ): Result<File> = withContext(Dispatchers.IO) {
-        val tempFile = File("${targetFile.absolutePath}.download")
-        try {
-            targetFile.parentFile?.mkdirs()
-            if (tempFile.exists() && !tempFile.delete()) {
-                throw IllegalStateException("Unable to delete stale update download")
-            }
+    suspend fun downloadUpdateAsset(url: String, targetFile: File, onProgress: (Int) -> Unit): Result<File> =
+        transferTransport.downloadUpdateAsset(url, targetFile, onProgress)
 
-            val response = httpClient.get(url)
-            if (!response.status.isSuccess()) {
-                throw IllegalStateException("Update download failed with HTTP ${response.status.value}")
-            }
-
-            val totalBytes = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
-            val channel = response.bodyAsChannel()
-            val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
-            var downloadedBytes = 0L
-            var lastProgress = -1
-
-            fun dispatchProgress(percent: Int) {
-                val coercedPercent = percent.coerceIn(0, 100)
-                if (coercedPercent != lastProgress) {
-                    lastProgress = coercedPercent
-                    onProgress(coercedPercent)
-                }
-            }
-
-            if (totalBytes != null && totalBytes > 0L) {
-                dispatchProgress(0)
-            }
-
-            tempFile.outputStream().buffered().use { output ->
-                while (!channel.isClosedForRead) {
-                    val bytesRead = channel.readAvailable(buffer)
-                    if (bytesRead == -1) {
-                        break
-                    }
-
-                    output.write(buffer, 0, bytesRead)
-                    downloadedBytes += bytesRead
-
-                    if (totalBytes != null && totalBytes > 0L) {
-                        dispatchProgress(((downloadedBytes * 100L) / totalBytes).toInt())
-                    }
-                }
-            }
-
-            if (!tempFile.renameTo(targetFile)) {
-                if (targetFile.exists() && !targetFile.delete()) {
-                    throw IllegalStateException("Unable to replace existing update download")
-                }
-                if (!tempFile.renameTo(targetFile)) {
-                    throw IllegalStateException("Unable to finalize update download")
-                }
-            }
-
-            dispatchProgress(100)
-            Result.success(targetFile)
-        } catch (error: CancellationException) {
-            tempFile.delete()
-            throw error
-        } catch (error: Exception) {
-            tempFile.delete()
-            Result.failure(error)
-        }
-    }
+    suspend fun streamSpeedTest(
+        server: SpeedTestServer, url: String,
+        onProgress: suspend (SpeedTestProgress) -> Unit = {},
+        expectedBytes: Long = SPEED_TEST_EXPECTED_BYTES,
+    ): Result<SpeedTestResult> = transferTransport.streamSpeedTest(server, url, onProgress, expectedBytes)
 
     suspend fun getUpdateChecksum(url: String): Result<String> = withContext(Dispatchers.IO) {
         try {
@@ -1046,6 +987,7 @@ class KinoPubApiClient(
 
     fun close() {
         httpClient.close()
+        transferTransport.close()
     }
 
     /**
@@ -1090,6 +1032,5 @@ class KinoPubApiClient(
         private const val CONNECT_TIMEOUT = 60_000L
         private const val READ_TIMEOUT = 120_000L
         private const val CACHE_SIZE = 50L * 1024 * 1024 // 50 MB
-        private const val DOWNLOAD_BUFFER_SIZE = 8 * 1024
     }
 }
