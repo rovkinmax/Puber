@@ -21,6 +21,7 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
 import com.kino.puber.ui.feature.device.settings.model.DeviceUi
+import com.kino.puber.ui.feature.device.speedtest.SpeedTestScreen
 import com.kino.puber.util.FakeResourceProvider
 import com.kino.puber.util.MainDispatcherExtension
 import io.mockk.Called
@@ -143,6 +144,17 @@ class DeviceSettingsVMMirrorNavigationTest {
         assertTrue(updatedState.hagcPlaybackEnabled)
         verify { playerPreferencesRepository.discardEmbeddedArtworkMetadata = false }
         verify { playerPreferencesRepository.hagcPlaybackEnabled = true }
+    }
+
+    @Test
+    fun openSpeedTest_navigatesToSpeedTest() {
+        val vm = createVM()
+
+        vm.onAction(DeviceSettingsActions.OpenSpeedTest)
+
+        verify(exactly = 1) {
+            router.navigateTo(match { it is SpeedTestScreen })
+        }
     }
 
     private fun stubSuccessfulDeviceLoad() {

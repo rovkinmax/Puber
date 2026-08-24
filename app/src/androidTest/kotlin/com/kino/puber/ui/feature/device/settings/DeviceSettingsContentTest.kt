@@ -10,8 +10,11 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performClick
 import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
+import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
+import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsListUi
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
 import com.kino.puber.ui.feature.device.settings.model.DeviceUi
@@ -59,6 +62,40 @@ internal class DeviceSettingsContentTest {
             .assertIsDisplayed()
             .assertRendersTmdbGradient()
         composeRule.onNodeWithText(TMDB_ATTRIBUTION_NOTICE).assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsRenderAndDispatchSpeedTestLauncher() {
+        val actions = mutableListOf<UIAction>()
+        composeRule.setContent {
+            PuberTheme {
+                DeviceSettingsContent(
+                    state = DeviceSettingsState.Success(
+                        settings = DeviceSettingsListUi(emptyList()),
+                        device = DeviceUi(
+                            title = "Android TV",
+                            hardware = "Test hardware",
+                            software = "Test software",
+                        ),
+                    ),
+                    apiDomain = ApiDomainDialogState(
+                        currentDomain = "service-kp.com",
+                        customDomain = null,
+                    ),
+                    onAction = actions::add,
+                )
+            }
+        }
+
+        composeRule
+            .onNodeWithTag(DEVICE_SETTINGS_LIST_TEST_TAG)
+            .performScrollToNode(hasText("Запустить тест скорости"))
+        composeRule
+            .onNodeWithText("Запустить тест скорости")
+            .assertIsDisplayed()
+            .performClick()
+
+        assertTrue(actions.single() == DeviceSettingsActions.OpenSpeedTest)
     }
 }
 
