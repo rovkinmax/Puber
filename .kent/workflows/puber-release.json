@@ -853,6 +853,16 @@
           "key": "release_notes_path",
           "description": "Task-local path to the prepared non-empty Russian release notes file.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "publication_report",
+          "description": "Immutable S05 carrier field: publication_report.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_run",
+          "description": "Immutable S05 carrier field: release_run.",
+          "purpose": "ordinary"
         }
       ]
     },
@@ -874,6 +884,66 @@
         {
           "key": "blocker_reason",
           "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "workspace_path",
+          "description": "Immutable S05 carrier field: workspace_path.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Immutable S05 carrier field: operation_id.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Immutable S05 carrier field: pr_url.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Immutable S05 carrier field: branch_name.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Immutable S05 carrier field: merge_strategy.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_head_oid",
+          "description": "Immutable S05 carrier field: pr_head_oid.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_base_oid",
+          "description": "Immutable S05 carrier field: pr_base_oid.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_version",
+          "description": "Immutable S05 carrier field: release_version.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_tag",
+          "description": "Immutable S05 carrier field: release_tag.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "target_commit",
+          "description": "Immutable S05 carrier field: target_commit.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_notes_path",
+          "description": "Immutable S05 carrier field: release_notes_path.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "publication_report",
+          "description": "Immutable S05 carrier field: publication_report.",
           "purpose": "ordinary"
         }
       ]
@@ -897,6 +967,21 @@
           "key": "release_report",
           "description": "Release publication and automation monitoring report.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "publication_report",
+          "description": "Immutable S05 carrier field: publication_report.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_notes_path",
+          "description": "Immutable S05 carrier field: release_notes_path.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_run",
+          "description": "Immutable S05 carrier field: release_run.",
+          "purpose": "ordinary"
         }
       ]
     },
@@ -919,6 +1004,61 @@
           "key": "blocker_reason",
           "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "workspace_path",
+          "description": "Immutable S05 carrier field: workspace_path.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "operation_id",
+          "description": "Immutable S05 carrier field: operation_id.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Immutable S05 carrier field: pr_url.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Immutable S05 carrier field: branch_name.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_version",
+          "description": "Immutable S05 carrier field: release_version.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_tag",
+          "description": "Immutable S05 carrier field: release_tag.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "target_commit",
+          "description": "Immutable S05 carrier field: target_commit.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "tag_push_status",
+          "description": "Immutable S05 carrier field: tag_push_status.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_notes_path",
+          "description": "Immutable S05 carrier field: release_notes_path.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "publication_report",
+          "description": "Immutable S05 carrier field: publication_report.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_run",
+          "description": "Immutable S05 carrier field: release_run.",
+          "purpose": "ordinary"
         }
       ]
     },
@@ -939,6 +1079,51 @@
         {
           "key": "cleanup_report",
           "description": "Summary of cleanup performed or deliberately skipped.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "workspace_path",
+          "description": "Immutable S05 carrier field: workspace_path.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Immutable S05 carrier field: branch_name.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Immutable S05 carrier field: pr_url.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_mode",
+          "description": "Immutable S05 carrier field: cleanup_mode.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "cleanup_session_id",
+          "description": "Immutable S05 carrier field: cleanup_session_id.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Immutable S05 carrier field: task_short_id.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "publication_report",
+          "description": "Immutable S05 carrier field: publication_report.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_report",
+          "description": "Immutable S05 carrier field: release_report.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_notes_path",
+          "description": "Immutable S05 carrier field: release_notes_path.",
           "purpose": "ordinary"
         }
       ]

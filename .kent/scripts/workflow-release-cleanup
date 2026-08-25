@@ -1,78 +1,25 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, os, re, subprocess, sys
+import importlib.util, json
+from importlib.machinery import SourceFileLoader
+import sys
 from pathlib import Path
-
-SCHEMA_VERSION = 4
-for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
-    os.environ.pop(_name, None)
-WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
-NODE = 'cleanup'
-EXPECTED_TRANSITION = 'publish_monitor'
-KENT_KEYS = {"task_short_id", "project_id", "workflow_id", "workflow_revision", "current_node_key", "execution_commit", "worktree_path", "incoming_transition", "authority_transition"}
-class ContractError(ValueError): pass
-def read_object():
-    raw=sys.stdin.read()
-    if not raw.strip(): raise ContractError("stdin must contain exactly one JSON object")
-    try: value=json.loads(raw)
-    except json.JSONDecodeError as e: raise ContractError(f"stdin is invalid JSON: {e}") from e
-    if not isinstance(value,dict): raise ContractError("stdin must contain one JSON object")
-    if os.environ.get("KENT_SESSION_ID") or os.environ.get("KENT_RUN_ID") or os.environ.get("KENT_STEP_ID"):
-        raise ContractError("inherited Kent identity must be cleared before child reads")
-    return value
-def required(p,k):
-    v=p.get(k)
-    if not isinstance(v,str) or not v.strip(): raise ContractError(f"{k} must be a non-empty string")
-    return v.strip()
-def authority(p):
-    a=p.get("_kent")
-    if not isinstance(a,dict) or set(a)!=KENT_KEYS: raise ContractError("_kent authority shape is missing, extra, or stale")
-    if a["workflow_id"]!=WORKFLOW_ID or a["workflow_revision"]!=88 or a["current_node_key"]!=NODE or a["incoming_transition"]!=EXPECTED_TRANSITION:
-        raise ContractError("_kent authority does not match this node and revision")
-    for k in ("task_short_id","project_id","execution_commit","worktree_path","authority_transition"):
-        required(a,k)
-    return a
-def operation(p):
-    a=authority(p); return {"workflow_id":WORKFLOW_ID,"workflow_revision":88,"node_key":NODE,"task_short_id":a["task_short_id"],"authority_transition":a["authority_transition"]}
-def emit(transition, **fields):
-    print(json.dumps({"schema_version":SCHEMA_VERSION,"transition":transition,**fields},ensure_ascii=False,sort_keys=True))
-def root(path):
-    r=Path(path).expanduser().resolve()
-    if not r.is_dir(): raise ContractError(f"workspace does not exist: {r}")
-    result=subprocess.run(["git","rev-parse","--show-toplevel"],cwd=r,text=True,capture_output=True,check=False)
-    if result.returncode or Path(result.stdout.strip()).resolve()!=r: raise ContractError("workspace must be the exact repository root")
-    return r
-def git(r,*args):
-    x=subprocess.run(["git",*args],cwd=r,text=True,capture_output=True,check=False)
-    if x.returncode: raise ContractError(x.stderr.strip() or x.stdout.strip() or "git failed")
-    return x.stdout.strip()
+sys.dont_write_bytecode = True
+_helper_path = Path(__file__).with_name("workflow-puber-release-intent")
+spec = importlib.util.spec_from_loader("puber_release_runtime", SourceFileLoader("puber_release_runtime", str(_helper_path))); helper = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(helper)
+ROOT=helper.ROOT
 
 def main() -> int:
+    payload=None
     try:
-        payload = read_object()
-        op = operation(payload)
-        workspace = root(required(payload, "workspace_path"))
-        authority_data = authority(payload)
-        if authority_data["worktree_path"] != str(workspace):
-            raise ContractError("_kent worktree_path does not match workspace_path")
-        if authority_data["execution_commit"] != git(workspace, "rev-parse", "HEAD"):
-            raise ContractError("_kent execution_commit does not match selected revision")
-
-        status = git(workspace, "status", "--porcelain=v1", "--untracked-files=all")
-        report = {
-            "workspace": str(workspace),
-            "dirty": bool(status),
-            "preserved": bool(status),
-            "destructive_action": False,
-        }
-        emit(
-            "cleanup_reported", operation=op, workspace_path=str(workspace),
-            cleanup_report=json.dumps(report, sort_keys=True), no_live_apply=True,
-        )
-    except (ContractError, OSError) as error:
-        emit("cleanup_blocked", blocker_reason=str(error), no_live_apply=True)
+        payload,state,edge=helper.validate_envelope(helper.read_zero_argument(),ROOT,"cleanup")
+        attested=helper.attest(ROOT,state,"cleanup",edge["key"])
+        sessions=state["task"].get("live_sessions"); ids=[item.get("session_id") or item.get("id") for item in sessions if isinstance(item,dict)] if isinstance(sessions,list) else []
+        ids=[item for item in ids if isinstance(item,str) and item]
+        if len(ids)!=1: raise helper.ContractError("cleanup requires one exact live Kent session identity")
+        body=helper.declarations(state["task"].get("body")); report={"schema":"puber_cleanup_report_v1","operation_digest":attested["binding"].provenance_fingerprint,"publication_report":payload.get("publication_report",""),"release_report":payload.get("release_report",""),"release_notes_path":payload.get("release_notes_path",""),"unresolved":bool(payload.get("blocker_reason")),"destructive_action":False}
+        helper.emit("cleanup_task_janitor",workspace_path=str(ROOT),branch_name=body.get("release_branch",helper.git(ROOT,"branch","--show-current")),pr_url=payload.get("pr_url",""),cleanup_mode="report_only",cleanup_session_id=ids[0],task_short_id=state["task_short_id"],cleanup_report=helper.report_json(report),publication_report=payload.get("publication_report",""),release_report=payload.get("release_report",""),release_notes_path=payload.get("release_notes_path",""),no_live_apply=True)
+    except Exception as error:
+        helper.emit("cleanup_task_janitor",workspace_path=str(ROOT),branch_name=helper.git(ROOT,"branch","--show-current",check=False),pr_url=payload.get("pr_url","") if isinstance(payload,dict) else "",cleanup_mode="report_only",cleanup_session_id="",task_short_id=state["task_short_id"] if isinstance(locals().get("state"),dict) else "",cleanup_report=helper.report_json({"schema":"puber_cleanup_report_v1","unresolved":True,"destructive_action":False,"blocker_reason":str(error)}),no_live_apply=True)
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__ == "__main__": raise SystemExit(main())

@@ -1,95 +1,54 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, os, re, subprocess, sys
+import importlib.util, json
+from importlib.machinery import SourceFileLoader
+import sys
 from pathlib import Path
+sys.dont_write_bytecode = True
+_helper_path = Path(__file__).with_name("workflow-puber-release-intent")
+spec = importlib.util.spec_from_loader("puber_release_runtime", SourceFileLoader("puber_release_runtime", str(_helper_path))); helper = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(helper)
+ROOT = helper.ROOT
 
-SCHEMA_VERSION = 4
-for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
-    os.environ.pop(_name, None)
-WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
-NODE = 'monitor'
-EXPECTED_TRANSITION = 'publish_monitor'
-KENT_KEYS = {"task_short_id", "project_id", "workflow_id", "workflow_revision", "current_node_key", "execution_commit", "worktree_path", "incoming_transition", "authority_transition"}
-class ContractError(ValueError): pass
-def read_object():
-    raw=sys.stdin.read()
-    if not raw.strip(): raise ContractError("stdin must contain exactly one JSON object")
-    try: value=json.loads(raw)
-    except json.JSONDecodeError as e: raise ContractError(f"stdin is invalid JSON: {e}") from e
-    if not isinstance(value,dict): raise ContractError("stdin must contain one JSON object")
-    if os.environ.get("KENT_SESSION_ID") or os.environ.get("KENT_RUN_ID") or os.environ.get("KENT_STEP_ID"):
-        raise ContractError("inherited Kent identity must be cleared before child reads")
-    return value
-def required(p,k):
-    v=p.get(k)
-    if not isinstance(v,str) or not v.strip(): raise ContractError(f"{k} must be a non-empty string")
-    return v.strip()
-def authority(p):
-    a=p.get("_kent")
-    if not isinstance(a,dict) or set(a)!=KENT_KEYS: raise ContractError("_kent authority shape is missing, extra, or stale")
-    if a["workflow_id"]!=WORKFLOW_ID or a["workflow_revision"]!=88 or a["current_node_key"]!=NODE or a["incoming_transition"]!=EXPECTED_TRANSITION:
-        raise ContractError("_kent authority does not match this node and revision")
-    for k in ("task_short_id","project_id","execution_commit","worktree_path","authority_transition"):
-        required(a,k)
-    return a
-def operation(p):
-    a=authority(p); return {"workflow_id":WORKFLOW_ID,"workflow_revision":88,"node_key":NODE,"task_short_id":a["task_short_id"],"authority_transition":a["authority_transition"]}
-def emit(transition, **fields):
-    print(json.dumps({"schema_version":SCHEMA_VERSION,"transition":transition,**fields},ensure_ascii=False,sort_keys=True))
-def root(path):
-    r=Path(path).expanduser().resolve()
-    if not r.is_dir(): raise ContractError(f"workspace does not exist: {r}")
-    result=subprocess.run(["git","rev-parse","--show-toplevel"],cwd=r,text=True,capture_output=True,check=False)
-    if result.returncode or Path(result.stdout.strip()).resolve()!=r: raise ContractError("workspace must be the exact repository root")
-    return r
-def git(r,*args):
-    x=subprocess.run(["git",*args],cwd=r,text=True,capture_output=True,check=False)
-    if x.returncode: raise ContractError(x.stderr.strip() or x.stdout.strip() or "git failed")
-    return x.stdout.strip()
+def run_tuple(payload, tag, target):
+    existing = payload.get("release_run")
+    if existing is None:
+        result = helper.gh(ROOT, ["run","list","--workflow",".github/workflows/release.yml","--event","push","--json","databaseId,attempt,headSha,ref,event,workflowName,workflowPath"])
+        if result.returncode != 0: raise helper.ContractError("release run discovery failed")
+        rows = json.loads(result.stdout or "[]")
+        matches = [row for row in rows if isinstance(row,dict) and row.get("event")=="push" and row.get("workflowName")=="Release" and row.get("workflowPath")==".github/workflows/release.yml" and row.get("headSha")==target and row.get("ref")==f"refs/tags/{tag}"]
+        if len(matches) != 1: raise helper.ContractError("release run is missing or ambiguous")
+        row = matches[0]; existing = {"repository":"rovkinmax/Puber","workflow_path":".github/workflows/release.yml","workflow_name":"Release","event":"push","run_id":row.get("databaseId"),"attempt":row.get("attempt"),"head_sha":row.get("headSha"),"ref":row.get("ref")}
+    if not isinstance(existing,dict) or set(existing)!={"repository","workflow_path","workflow_name","event","run_id","attempt","head_sha","ref"} or existing["repository"]!="rovkinmax/Puber" or existing["workflow_path"]!=".github/workflows/release.yml" or existing["workflow_name"]!="Release" or existing["event"]!="push" or existing["head_sha"]!=target or existing["ref"]!=f"refs/tags/{tag}" or not isinstance(existing["run_id"],int) or existing["run_id"]<=0 or not isinstance(existing["attempt"],int) or existing["attempt"]<=0:
+        raise helper.ContractError("release run identity is foreign, stale, or switched")
+    return existing
 
 def main() -> int:
+    payload = None
     try:
-        payload = read_object()
-        op = operation(payload)
-        workspace = root(required(payload, "workspace_path"))
-        authority_data = authority(payload)
-        if authority_data["worktree_path"] != str(workspace):
-            raise ContractError("_kent worktree_path does not match workspace_path")
-        if authority_data["execution_commit"] != git(workspace, "rev-parse", "HEAD"):
-            raise ContractError("_kent execution_commit does not match selected revision")
-        run_tuple = payload.get("release_run")
-        if not isinstance(run_tuple, dict) or set(run_tuple) != {"repository", "workflow_path", "workflow_name", "event", "run_id", "attempt", "head_sha", "ref"}:
-            raise ContractError("release_run must be one immutable exact GitHub run tuple")
-        if run_tuple["repository"] != "rovkinmax/Puber" or run_tuple["workflow_path"] != ".github/workflows/release.yml" or run_tuple["workflow_name"] != "Release" or run_tuple["event"] != "push":
-            raise ContractError("release_run workflow identity drifted")
-        tag = required(payload, "release_tag")
-        target = required(payload, "target_commit")
-        if not tag.startswith("v"):
-            raise ContractError("release_tag must start with v")
-        fixture = payload.get("release_state")
-        if os.environ.get("PUBER_RELEASE_TEST_MODE") == "1" or fixture is not None:
-            state = fixture if isinstance(fixture, dict) else {"tag": tag, "target_commit": target, "published": False}
-            emit(
-                "release_watch_reported", operation=op, release_tag=tag,
-                target_commit=target, release_report=json.dumps(state, sort_keys=True),
-                no_live_apply=True,
-            )
-            return 0
-        result = subprocess.run(
-            ["gh", "release", "view", tag, "--json",
-             "tagName,targetCommitish,isDraft,isPrerelease,url"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-        )
-        if result.returncode != 0:
-            raise ContractError(result.stderr.strip() or "GitHub Release lookup failed")
-        emit(
-            "release_watch_reported", operation=op, release_tag=tag,
-            target_commit=target, release_report=result.stdout.strip(), no_live_apply=True,
-        )
-    except (ContractError, OSError) as error:
-        emit("release_watch_blocked", blocker_reason=str(error), no_live_apply=True)
+        payload, state, edge = helper.validate_envelope(helper.read_zero_argument(), ROOT, "monitor")
+        tag = helper.require_string(payload["release_tag"], "release_tag"); target = helper.require_string(payload["target_commit"], "target_commit"); notes_path = helper.require_string(payload["release_notes_path"], "release_notes_path")
+        notes_bytes = (ROOT / notes_path).read_bytes(); notes_digest = helper.sha256_bytes(notes_bytes)
+        run = run_tuple(payload, tag, target)
+        attested = helper.attest(ROOT, state, "monitor", edge["key"], kind="observe_release", run_tuple=run, project_fields={"release_tag":tag})
+        checked = helper.gh(ROOT, ["run","view",str(run["run_id"]),"--attempt",str(run["attempt"]),"--json","databaseId,attempt,workflowName,workflowPath,event,headSha,ref,status,conclusion,jobs"])
+        if checked.returncode != 0: raise helper.ContractError("exact release run read failed")
+        run_state=json.loads(checked.stdout)
+        if run_state.get("databaseId")!=run["run_id"] or run_state.get("attempt")!=run["attempt"] or run_state.get("workflowPath")!=".github/workflows/release.yml" or run_state.get("headSha")!=target or run_state.get("status")!="completed" or run_state.get("conclusion")!="success": raise helper.ContractError("exact release run failed or switched")
+        jobs=run_state.get("jobs")
+        if not isinstance(jobs,list) or not jobs or any(isinstance(job,dict) and (job.get("status") not in {None,"completed"} or job.get("conclusion")!="success") for job in jobs): raise helper.ContractError("exact release jobs are not successful")
+        viewed=helper.gh(ROOT,["release","view",tag,"--json","tagName,targetCommitish,name,isDraft,isPrerelease,assets,body,url"])
+        if viewed.returncode != 0: raise helper.ContractError("GitHub Release is missing")
+        release=json.loads(viewed.stdout); names={a.get("name") for a in release.get("assets",[]) if isinstance(a,dict)}
+        if release.get("tagName")!=tag or release.get("targetCommitish") not in {target,target[:7]} or release.get("name")!=f"Puber {tag}" or release.get("isDraft") or release.get("isPrerelease") or not any(str(name).endswith(".apk") for name in names) or not any(str(name).endswith(".sha256") for name in names): raise helper.ContractError("Release identity/assets/checksum are not exact")
+        expected=notes_bytes.decode("utf-8")
+        if release.get("body") != expected:
+            edited=helper.gh(ROOT,["release","edit",tag,"--notes-file","-"],input_text=expected)
+            if edited.returncode != 0: raise helper.ContractError("release notes edit failed")
+            reread=helper.gh(ROOT,["release","view",tag,"--json","tagName,targetCommitish,name,isDraft,isPrerelease,assets,body,url"])
+            if reread.returncode != 0 or json.loads(reread.stdout).get("body") != expected: raise helper.ContractError("release notes body readback mismatch")
+        report={"schema":"puber_release_report_v1","run":run,"release":release,"notes_sha256":notes_digest,"publication_report":payload.get("publication_report",""),"unresolved":False}
+        helper.emit("release_release_published",release_report=helper.report_json(report),publication_report=payload.get("publication_report",""),release_notes_path=notes_path,release_run=json.dumps(run,sort_keys=True),no_live_apply=False)
+    except Exception as error:
+        preserved={key:payload[key] for key in payload if key!="_kent"} if isinstance(payload,dict) else {}; preserved["blocker_reason"]=str(error); helper.emit("monitor_needs_user_action",**preserved,no_live_apply=True)
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__ == "__main__": raise SystemExit(main())

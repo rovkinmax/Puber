@@ -1,92 +1,49 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, os, re, subprocess, sys
+import importlib.util
+from importlib.machinery import SourceFileLoader
+import sys
 from pathlib import Path
-
-SCHEMA_VERSION = 4
-for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
-    os.environ.pop(_name, None)
-WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
-NODE = 'publish'
-EXPECTED_TRANSITION = 'publish_after_merge'
-KENT_KEYS = {"task_short_id", "project_id", "workflow_id", "workflow_revision", "current_node_key", "execution_commit", "worktree_path", "incoming_transition", "authority_transition"}
-class ContractError(ValueError): pass
-def read_object():
-    raw=sys.stdin.read()
-    if not raw.strip(): raise ContractError("stdin must contain exactly one JSON object")
-    try: value=json.loads(raw)
-    except json.JSONDecodeError as e: raise ContractError(f"stdin is invalid JSON: {e}") from e
-    if not isinstance(value,dict): raise ContractError("stdin must contain one JSON object")
-    if os.environ.get("KENT_SESSION_ID") or os.environ.get("KENT_RUN_ID") or os.environ.get("KENT_STEP_ID"):
-        raise ContractError("inherited Kent identity must be cleared before child reads")
-    return value
-def required(p,k):
-    v=p.get(k)
-    if not isinstance(v,str) or not v.strip(): raise ContractError(f"{k} must be a non-empty string")
-    return v.strip()
-def authority(p):
-    a=p.get("_kent")
-    if not isinstance(a,dict) or set(a)!=KENT_KEYS: raise ContractError("_kent authority shape is missing, extra, or stale")
-    if a["workflow_id"]!=WORKFLOW_ID or a["workflow_revision"]!=88 or a["current_node_key"]!=NODE or a["incoming_transition"]!=EXPECTED_TRANSITION:
-        raise ContractError("_kent authority does not match this node and revision")
-    for k in ("task_short_id","project_id","execution_commit","worktree_path","authority_transition"):
-        required(a,k)
-    return a
-def operation(p):
-    a=authority(p); return {"workflow_id":WORKFLOW_ID,"workflow_revision":88,"node_key":NODE,"task_short_id":a["task_short_id"],"authority_transition":a["authority_transition"]}
-def emit(transition, **fields):
-    print(json.dumps({"schema_version":SCHEMA_VERSION,"transition":transition,**fields},ensure_ascii=False,sort_keys=True))
-def root(path):
-    r=Path(path).expanduser().resolve()
-    if not r.is_dir(): raise ContractError(f"workspace does not exist: {r}")
-    result=subprocess.run(["git","rev-parse","--show-toplevel"],cwd=r,text=True,capture_output=True,check=False)
-    if result.returncode or Path(result.stdout.strip()).resolve()!=r: raise ContractError("workspace must be the exact repository root")
-    return r
-def git(r,*args):
-    x=subprocess.run(["git",*args],cwd=r,text=True,capture_output=True,check=False)
-    if x.returncode: raise ContractError(x.stderr.strip() or x.stdout.strip() or "git failed")
-    return x.stdout.strip()
+sys.dont_write_bytecode = True
+_helper_path = Path(__file__).with_name("workflow-puber-release-intent")
+spec = importlib.util.spec_from_loader("puber_release_runtime", SourceFileLoader("puber_release_runtime", str(_helper_path))); helper = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(helper)
+ROOT = helper.ROOT
 
 def main() -> int:
+    payload = None
+    derived = {}
     try:
-        payload = read_object()
-        op = operation(payload)
-        workspace = root(required(payload, "workspace_path"))
-        authority_data = authority(payload)
-        if authority_data["worktree_path"] != str(workspace):
-            raise ContractError("_kent worktree_path does not match workspace_path")
-        if authority_data["execution_commit"] != git(workspace, "rev-parse", "HEAD"):
-            raise ContractError("_kent execution_commit does not match selected revision")
-
-        if payload.get("incoming_transition") != "publish_after_merge":
-            raise ContractError("publication requires incoming transition publish_after_merge")
-        if payload.get("authorized") is not True:
-            raise ContractError("publication requires explicit authorized=true")
-        target = required(payload, "target_commit")
-        head = git(workspace, "rev-parse", "HEAD")
-        if target != head:
-            raise ContractError(f"target commit mismatch: expected {target}, found {head}")
-        tag = required(payload, "release_tag")
-        if not tag.startswith("v"):
-            raise ContractError("release_tag must start with v")
-        if git(workspace, "tag", "--list", tag):
-            raise ContractError(f"tag already exists locally: {tag}")
-        if os.environ.get("PUBER_RELEASE_TEST_MODE") == "1" or payload.get("dry_run") is True:
-            emit(
-                "publish_monitor", operation=op, release_tag=tag,
-                target_commit=head, tag_push_status="dry_run", no_live_apply=True,
-            )
+        payload, state, edge = helper.validate_envelope(helper.read_zero_argument(), ROOT, "publish")
+        branch = edge["key"]
+        values = helper.declarations(state["task"].get("body"))
+        if branch == "publish_needs_user_action":
+            helper.emit("publish_needs_user_action", **{key: payload[key] for key in payload if key != "_kent"}, no_live_apply=True)
             return 0
-        git(workspace, "tag", tag, head)
-        git(workspace, "push", "origin", tag)
-        emit(
-            "publish_monitor", operation=op, release_tag=tag,
-            target_commit=head, tag_push_status="pushed", no_live_apply=False,
-        )
-    except (ContractError, OSError) as error:
-        emit("publish_blocked", blocker_reason=str(error), no_live_apply=True)
+        pr_url = helper.canonical_pr_url(payload["pr_url"])
+        version = values.get("release_version"); tag = values.get("release_tag") or (f"v{version}" if version else "")
+        derived.update({"release_version": version or "", "release_tag": tag})
+        pr = helper.pr_state(ROOT, pr_url)
+        if pr.get("headRefName") != payload["branch_name"] or pr.get("headRefOid") != payload["pr_head_oid"] or pr.get("baseRefOid") != payload["pr_base_oid"]:
+            raise helper.ContractError("merged PR head/base identity drifted")
+        merge_commit = pr.get("mergeCommit"); target = merge_commit.get("oid") if isinstance(merge_commit, dict) else merge_commit
+        if not isinstance(target, str) or not helper.SHA1.fullmatch(target) or helper.remote_master(ROOT) != target or helper.git(ROOT, "rev-parse", "HEAD") != target:
+            raise helper.ContractError("merged target is not exact current remote master and local checkout")
+        derived["target_commit"] = target
+        if not version or not helper.SEMVER.fullmatch(version) or tag != f"v{version}":
+            raise helper.ContractError("release version/tag is not an immutable Task declaration")
+        derived.update({"release_version": version, "release_tag": tag})
+        attested = helper.attest(ROOT, state, "publish", branch, kind="publish", project_fields={"release_tag":tag,"target_commit":target,"release_version":version})
+        notes = helper.notes_report(ROOT, state["task_short_id"], tag, target)
+        derived["release_notes_path"] = notes["path"]
+        tag_status = helper.publish_tag(ROOT, tag, target)
+        publication = {"schema":"puber_publication_report_v1","operation_digest":attested["operation"].operation_digest,"target_commit":target,"release_tag":tag,"tag_status":tag_status,"notes":notes,"unresolved":False}
+        helper.emit("monitor_release", workspace_path=str(ROOT), operation_id=attested["operation"].operation_digest, release_version=version, release_tag=tag, target_commit=target, pr_url=pr_url, tag_push_status=tag_status, release_notes_path=notes["path"], publication_report=helper.report_json(publication), no_live_apply=False)
+    except Exception as error:
+        preserved = {key: payload[key] for key in payload if key != "_kent"} if isinstance(payload, dict) else {}
+        preserved.update({key: value for key, value in derived.items() if value})
+        for key in ("workspace_path", "operation_id", "pr_url", "branch_name", "merge_strategy", "pr_head_oid", "pr_base_oid", "release_version", "release_tag", "target_commit", "release_notes_path", "publication_report"):
+            preserved.setdefault(key, "")
+        preserved["blocker_reason"] = str(error)
+        helper.emit("publish_needs_user_action", **preserved, no_live_apply=True)
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__ == "__main__": raise SystemExit(main())

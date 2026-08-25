@@ -1,108 +1,349 @@
 #!/usr/bin/env python3
+"""Fail-closed Puber release runtime shared by all S05 Script nodes."""
 from __future__ import annotations
-import json, os, re, subprocess, sys
+import hashlib, importlib, json, os, re, shutil, subprocess, sys, tempfile
 from pathlib import Path
+from typing import Any, Mapping
+from urllib.parse import urlsplit
 
-SCHEMA_VERSION = 4
+sys.dont_write_bytecode = True
 for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
     os.environ.pop(_name, None)
+ROOT = Path(__file__).resolve().parents[2]
+KIT_COMMIT = "349267977781ce0cf6991f96c4e738b594cda4d4"
+PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
-NODE = 'release_intent_gate'
-EXPECTED_TRANSITION = "start_release_intent_gate"
-KENT_KEYS = {"task_short_id", "project_id", "workflow_id", "workflow_revision", "current_node_key", "execution_commit", "worktree_path", "incoming_transition", "authority_transition"}
-class ContractError(ValueError): pass
-def read_object():
-    raw=sys.stdin.read()
-    if not raw.strip(): raise ContractError("stdin must contain exactly one JSON object")
-    try: value=json.loads(raw)
-    except json.JSONDecodeError as e: raise ContractError(f"stdin is invalid JSON: {e}") from e
-    if not isinstance(value,dict): raise ContractError("stdin must contain one JSON object")
-    if os.environ.get("KENT_SESSION_ID") or os.environ.get("KENT_RUN_ID") or os.environ.get("KENT_STEP_ID"):
-        raise ContractError("inherited Kent identity must be cleared before child reads")
-    return value
-def required(p,k):
-    v=p.get(k)
-    if not isinstance(v,str) or not v.strip(): raise ContractError(f"{k} must be a non-empty string")
-    return v.strip()
-def authority(p):
-    a=p.get("_kent")
-    if not isinstance(a,dict) or set(a)!=KENT_KEYS: raise ContractError("_kent authority shape is missing, extra, or stale")
-    if a["workflow_id"]!=WORKFLOW_ID or a["workflow_revision"]!=88 or a["current_node_key"]!=NODE or a["incoming_transition"]!=EXPECTED_TRANSITION:
-        raise ContractError("_kent authority does not match this node and revision")
-    for k in ("task_short_id","project_id","execution_commit","worktree_path","authority_transition"):
-        required(a,k)
-    return a
-def operation(p):
-    a=authority(p); return {"workflow_id":WORKFLOW_ID,"workflow_revision":88,"node_key":NODE,"task_short_id":a["task_short_id"],"authority_transition":a["authority_transition"]}
-def emit(transition, **fields):
-    print(json.dumps({"schema_version":SCHEMA_VERSION,"transition":transition,**fields},ensure_ascii=False,sort_keys=True))
-def root(path):
-    r=Path(path).expanduser().resolve()
-    if not r.is_dir(): raise ContractError(f"workspace does not exist: {r}")
-    result=subprocess.run(["git","rev-parse","--show-toplevel"],cwd=r,text=True,capture_output=True,check=False)
-    if result.returncode or Path(result.stdout.strip()).resolve()!=r: raise ContractError("workspace must be the exact repository root")
-    return r
-def git(r,*args):
-    x=subprocess.run(["git",*args],cwd=r,text=True,capture_output=True,check=False)
-    if x.returncode: raise ContractError(x.stderr.strip() or x.stdout.strip() or "git failed")
-    return x.stdout.strip()
-
-VERSION = re.compile(r"currentVersion\s*=\s*[\'\"](?P<version>\d+\.\d+\.\d+)[\'\"]")
+WORKFLOW_NAME = "Puber Release"
+WORKFLOW_REVISION = 88
+SCRIPT_PATHS = {
+    "release_intent_gate": ".kent/scripts/workflow-puber-release-intent",
+    "publish": ".kent/scripts/workflow-puber-release-publish",
+    "monitor": ".kent/scripts/workflow-wait-github-release",
+    "cleanup": ".kent/scripts/workflow-release-cleanup",
+}
+TASK_ROOT_KEYS = {"actions","attention_count","body","current_nodes","current_scripts","execution_target","label_ids","live_sessions","project","retained_session_count","source_workspace","status","summary","workflow","worktree_path"}
+KENT_KEYS = {"task_id","node_id","transition_branch_key"}
+SHA1 = re.compile(r"^[0-9a-f]{40}$")
+TASK_ID = re.compile(r"^task-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
-def next_version(current, release_type):
-    major, minor, patch = (int(part) for part in current.split("."))
-    if release_type == "major": return f"{major+1}.0.0"
-    if release_type == "patch": return f"{major}.{minor}.{patch+1}"
-    return f"{major}.{minor+1}.0"
+
+class ContractError(ValueError):
+    pass
+
+def _json_one(raw: bytes) -> dict[str, Any]:
+    if not raw or len(raw) > 8 * 1024 * 1024:
+        raise ContractError("stdin must contain exactly one bounded JSON object")
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ContractError(f"invalid JSON input: {error}") from error
+    if not isinstance(value, dict):
+        raise ContractError("stdin must contain one JSON object")
+    return value
+
+def read_zero_argument() -> dict[str, Any]:
+    return _json_one(sys.stdin.buffer.read())
+
+def require_string(value: Any, label: str, *, empty: bool = False) -> str:
+    if not isinstance(value, str) or (not empty and not value.strip()):
+        raise ContractError(f"{label} must be a non-empty string")
+    return value if empty else value.strip()
+
+def sha256_bytes(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+def child_env() -> dict[str, str]:
+    env = dict(os.environ)
+    for key in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
+        env.pop(key, None)
+    return env
+
+def run(command: list[str], *, cwd: Path, env: Mapping[str, str] | None = None, check: bool = True, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(command, cwd=cwd, env=dict(env) if env is not None else None, input=input_text, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if check and result.returncode != 0:
+        raise ContractError(result.stderr.strip() or result.stdout.strip() or f"command failed: {' '.join(command)}")
+    return result
+
+def git(root: Path, *args: str, check: bool = True) -> str:
+    return run(["git", *args], cwd=root, check=check).stdout.strip()
+
+def _node_id(root: Path, node_key: str) -> str:
+    graph = json.loads((root / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
+    for node in graph.get("nodes", []):
+        if node.get("key") == node_key:
+            return require_string(node.get("id"), "graph node id")
+    raise ContractError(f"graph node missing: {node_key}")
+
+def graph_edge(root: Path, branch: str, node_key: str) -> dict[str, Any]:
+    graph = json.loads((root / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
+    node_id = _node_id(root, node_key)
+    matches = [edge for edge in graph.get("edges", []) if edge.get("key") == branch and edge.get("target_node_id") == node_id]
+    if len(matches) != 1 or matches[0].get("workflow_id") != WORKFLOW_ID:
+        raise ContractError(f"incoming transition is not an exact graph edge: {branch}")
+    return matches[0]
+
+def _kent_bin(root: Path) -> str:
+    candidate = os.environ.get("PUBER_KENT_BIN", "") or shutil.which("kent") or str(Path.home() / ".kent/bin/kent")
+    if not Path(candidate).is_file() or not os.access(candidate, os.X_OK):
+        raise ContractError("stock Kent executable is unavailable")
+    return candidate
+
+def task_show(root: Path, task_id: str) -> dict[str, Any]:
+    result = run([_kent_bin(root), "task", "show", task_id, "--project", PROJECT_ID, "--json"], cwd=root, env=child_env(), check=False)
+    if result.returncode != 0:
+        raise ContractError("Kent task show failed")
+    return _json_one(result.stdout.encode("utf-8"))
+
+def validate_task(root: Path, task_id: str, node_key: str, task: dict[str, Any] | None = None) -> dict[str, Any]:
+    if not TASK_ID.fullmatch(task_id):
+        raise ContractError("_kent.task_id is invalid")
+    task = task if task is not None else task_show(root, task_id)
+    if set(task) != TASK_ROOT_KEYS:
+        raise ContractError("Kent task root fields are not the exact stock shape")
+    summary, workflow, status, execution = (task.get(key) for key in ("summary","workflow","status","execution_target"))
+    if not all(isinstance(value, dict) for value in (summary, workflow, status, execution)):
+        raise ContractError("Kent task state is incomplete")
+    node_id = _node_id(root, node_key)
+    if summary.get("id") != task_id or summary.get("project_id") != PROJECT_ID or summary.get("workflow_id") != WORKFLOW_ID:
+        raise ContractError("Kent task/project/workflow identity drifted")
+    if workflow.get("workflow_id") != WORKFLOW_ID or workflow.get("version") != WORKFLOW_REVISION or workflow.get("name", WORKFLOW_NAME) != WORKFLOW_NAME:
+        raise ContractError("Kent workflow identity or revision drifted")
+    if status.get("node_ids") != [node_id]:
+        raise ContractError("Kent current node is not the selected Script")
+    nodes, scripts = task.get("current_nodes"), task.get("current_scripts")
+    if not isinstance(nodes, list) or len(nodes) != 1 or nodes[0].get("node_id") != node_id:
+        raise ContractError("Kent current node state is ambiguous")
+    if not isinstance(scripts, list) or len(scripts) != 1 or scripts[0].get("path") != SCRIPT_PATHS[node_key] or scripts[0].get("current_node", {}).get("node_id") != node_id:
+        raise ContractError("Kent current Script path or node drifted")
+    worktree = require_string(task.get("worktree_path"), "worktree_path")
+    if Path(worktree).expanduser().resolve() != root:
+        raise ContractError("Kent task worktree is not the selected repository root")
+    commit = require_string(execution.get("commit_oid"), "execution_target.commit_oid")
+    if not SHA1.fullmatch(commit) or git(root, "rev-parse", "HEAD") != commit:
+        raise ContractError("selected checkout is not the exact Task execution commit")
+    if git(root, "status", "--porcelain=v1", "--untracked-files=all"):
+        raise ContractError("selected checkout is not clean")
+    return {"task": task, "task_id": task_id, "task_short_id": require_string(summary.get("short_id"), "task short id"), "node_id": node_id, "commit": commit}
+
+def validate_envelope(payload: Mapping[str, Any], root: Path, node_key: str, *, task: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    if not isinstance(payload, Mapping):
+        raise ContractError("Script input must be one object")
+    metadata = payload.get("_kent")
+    if not isinstance(metadata, dict) or set(metadata) != KENT_KEYS:
+        raise ContractError("_kent must contain exactly task_id, node_id, transition_branch_key")
+    task_id = require_string(metadata.get("task_id"), "_kent.task_id")
+    if metadata.get("node_id") != _node_id(root, node_key):
+        raise ContractError("_kent.node_id does not match the current Script")
+    branch = require_string(metadata.get("transition_branch_key"), "_kent.transition_branch_key")
+    edge = graph_edge(root, branch, node_key)
+    expected = {"_kent", *(item.get("key") for item in edge.get("parameters", []))}
+    if None in expected or set(payload) != expected:
+        raise ContractError(f"input fields do not exactly match graph edge {branch}")
+    return dict(payload), validate_task(root, task_id, node_key, task), edge
+
+def _kit_modules() -> dict[str, Any]:
+    configured = os.environ.get("KENT_ENGINEERING_KIT_ROOT", "")
+    if not configured:
+        raise ContractError("KENT_ENGINEERING_KIT_ROOT is required")
+    kit_root = Path(configured).expanduser().resolve()
+    if git(kit_root, "rev-parse", "HEAD") != KIT_COMMIT or git(kit_root, "status", "--porcelain=v1", "--untracked-files=all") or not (kit_root / "workflowkit").is_dir():
+        raise ContractError("Kent Engineering Kit is not the exact clean published revision")
+    sys.path.insert(0, str(kit_root))
+    importlib.invalidate_caches()
+    workflowkit = importlib.import_module("workflowkit")
+    for name in ("workflowkit", "workflowkit.release", "workflowkit.runtime"):
+        path = Path(importlib.import_module(name).__file__).resolve()
+        if kit_root not in path.parents:
+            raise ContractError("Kit import escaped the selected root")
+    return {name: getattr(workflowkit, name) for name in ("ProjectProfile","ReleaseSpec","NormalizedGitHubWorkflowSourceV1","preflight_project_revision","capture_runtime_execution_context","capture_runtime_authority_binding","validate_operation_jobs","canonicalize_publication_operation")}
+
+def _external_captures(root: Path, profile: Any, selected: Any) -> list[tuple[str, str, bytes]]:
+    captures = []
+    for external in selected.external_roots:
+        if external.kind == "builder-sha256":
+            path, digest = root / profile.release.builder_path, external.key
+        elif external.kind == "source-sha256" and "=" in external.key:
+            relative, digest = external.key.split("=", 1)
+            path = root / relative
+        else:
+            raise ContractError("runtime external root descriptor is unsupported")
+        raw = path.read_bytes()
+        if sha256_bytes(raw) != digest:
+            raise ContractError(f"runtime external source drifted: {external.kind}")
+        captures.append((external.kind, external.key, raw))
+    return captures
+
+def _normalized_sources(root: Path, kit: dict[str, Any], spec: Any) -> list[Any]:
+    rows = list(spec.required_jobs_v1.jobs) + list(spec.effect_jobs_v1.jobs)
+    output = []
+    for path in sorted({row["workflow_path"] for row in rows}):
+        text = (root / path).read_text(encoding="utf-8")
+        selected = [row for row in rows if row["workflow_path"] == path]
+        if path.endswith("pr-checks.yml"):
+            if "name: PR Checks" not in text or "workflow_dispatch:" in text or any(command not in text for command in (":app:detektAll",":app:testProdDebugUnitTest",":app:assembleProdDebug")):
+                raise ContractError("PR Checks source/job identity drifted")
+            if "pull_request:" not in text or "branches: [ master ]" not in text or "permissions:\n  contents: read" not in text:
+                raise ContractError("PR Checks event or permission source drifted")
+            name, permissions = "PR Checks", {"contents":"read"}
+        elif path.endswith("release.yml"):
+            if "name: Release" not in text or "workflow_dispatch:" in text or "--generate-notes=false" not in text or '--notes ""' not in text:
+                raise ContractError("Release source/job identity drifted")
+            if "push:" not in text or "tags:" not in text or "permissions:\n  contents: write" not in text:
+                raise ContractError("Release event or permission source drifted")
+            name, permissions = "Release", {"contents":"write"}
+        else:
+            raise ContractError(f"unexpected workflow source: {path}")
+        jobs, events = [], []
+        for row in selected:
+            if f"  {row['job_key']}:" not in text or f"name: {row['job_display_name']}" not in text or f"runs-on: {row['runs_on']}" not in text:
+                raise ContractError(f"workflow job identity drifted: {row['job_key']}")
+            for step in row["steps"]:
+                if step["kind"] == "uses" and f"uses: {step['uses']}" not in text:
+                    raise ContractError(f"workflow action drifted: {row['job_key']}:{step['name']}")
+                if step["kind"] == "run" and step["run"] and step["run"] not in text:
+                    raise ContractError(f"workflow command drifted: {row['job_key']}:{step['name']}")
+                if step["name"] and step["name"] not in text:
+                    raise ContractError(f"workflow step drifted: {row['job_key']}:{step['name']}")
+            job = {key: row[key] for key in ("job_key","job_display_name","needs","matrix","condition","continue_on_error","runs_on","runner_environment_asserted","effective_permissions","effective_defaults_run","github_environment","services","container","checkout_persist_credentials","secret_refs","effective_environment","steps")}
+            job["steps"] = [{key: step[key] for key in ("kind","name","condition","continue_on_error","uses","with","run","effective_shell","effective_working_directory","effective_environment","secret_refs")} for step in row["steps"]]
+            jobs.append(job)
+            if row["event_selector"] not in events:
+                events.append(row["event_selector"])
+        output.append(kit["NormalizedGitHubWorkflowSourceV1"].from_dict({"schema":"normalized_github_workflow_source_v1","workflow_path":path,"workflow_display_name":name,"events":events,"permissions":permissions,"environment":{},"defaults_run":{"shell":"","working_directory":""},"jobs":jobs}))
+    return output
+
+def attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, kind: str | None = None, run_tuple: Mapping[str, Any] | None = None, project_fields: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    kit = _kit_modules()
+    revision = kit["preflight_project_revision"](root, state["commit"])
+    selected = revision.selected_runtime_source_inputs
+    if selected is None or selected.project_commit != state["commit"]:
+        raise ContractError("selected sealed RuntimeSourceInputs are missing or stale")
+    profile = kit["ProjectProfile"].from_toml(root, (root / ".kent/workflow-profile.toml").read_text(encoding="utf-8"), source=".kent/workflow-profile.toml", check_files=False)
+    spec = kit["ReleaseSpec"].from_toml((root / profile.release.spec_path).read_text(encoding="utf-8"), profile=profile)
+    captures = _external_captures(root, profile, selected)
+    if run_tuple is None:
+        execution = {"kind":"kent_transition","task_id":state["task_id"],"task_short_id":state["task_short_id"],"workflow_id":WORKFLOW_ID,"workflow_revision":WORKFLOW_REVISION,"project_id":PROJECT_ID,"project_commit":state["commit"],"authority_transition":branch}
+        authority = {"kind":"kent_transition","task_short_id":state["task_short_id"],"workflow_id":WORKFLOW_ID,"workflow_revision":WORKFLOW_REVISION,"project_id":PROJECT_ID,"approval_authority":"publish-release","authority_transition":branch}
+    else:
+        execution = {"kind":"github_run", **dict(run_tuple)}
+        authority = {"kind":"github_run", **dict(run_tuple)}
+    context = kit["capture_runtime_execution_context"](selected, execution)
+    binding = kit["capture_runtime_authority_binding"](selected, captures, context, authority)
+    canonicalized = None
+    if kind:
+        variant_key = "publish_after_merge" if kind == "publish" else "observe_release"
+        variant = next((item for item in spec.operation_variants if item.key == variant_key), None)
+        if variant is None:
+            raise ContractError(f"missing ReleaseSpec operation variant: {variant_key}")
+        jobs = kit["validate_operation_jobs"](variant, _normalized_sources(root, kit, spec), required=spec.required_jobs_v1, qualification=spec.qualification_jobs_v1, effect=spec.effect_jobs_v1)
+        operation = {"schema_version":1,"variant_key":variant_key,"operation_kind":variant.operation_kind,"repository":"rovkinmax/Puber","runtime_source_envelope_digest":binding.runtime_source_envelope_digest,"operation_jobs_manifest_digest":jobs.operation_jobs_manifest_digest,"authority":authority,"project_fields":dict(project_fields or {})}
+        canonicalized = kit["canonicalize_publication_operation"](operation, variant, jobs, spec=spec, runtime_execution_context=context, runtime_authority_binding=binding)
+    return {"kit":kit,"profile":profile,"spec":spec,"selected":selected,"context":context,"binding":binding,"operation":canonicalized}
+
+def declarations(body: Any) -> dict[str, str]:
+    values = {}
+    if isinstance(body, str):
+        for line in body.splitlines():
+            match = re.match(r"^\s*(?:[-*]\s+)?([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$", line)
+            if match and match.group(1) in {"release_type","release_version","release_tag","release_branch"}:
+                key, value = match.group(1), match.group(2).strip().strip("`\"'")
+                if key in values and values[key] != value:
+                    raise ContractError("Task release declarations are ambiguous")
+                values[key] = value
+    return values
+
+def canonical_pr_url(value: Any) -> str:
+    url = require_string(value, "pr_url")
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or parsed.netloc != "github.com" or parsed.query or parsed.fragment or not re.fullmatch(r"/rovkinmax/Puber/pull/[1-9][0-9]*", parsed.path):
+        raise ContractError("pr_url is not canonical")
+    return url
+
+def remote_master(root: Path) -> str:
+    value = git(root, "rev-parse", "refs/remotes/origin/master", check=False)
+    if not SHA1.fullmatch(value):
+        raise ContractError("current remote master is unavailable")
+    return value
+
+def gh(root: Path, args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    return run([os.environ.get("PUBER_GH_BIN", shutil.which("gh") or "gh"), *args], cwd=root, env=child_env(), check=False, input_text=input_text)
+
+def pr_state(root: Path, url: str) -> dict[str, Any]:
+    result = gh(root, ["pr","view",url,"--json","state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,baseRefOid,isCrossRepository,url"])
+    if result.returncode != 0:
+        raise ContractError("GitHub PR query failed")
+    value = _json_one(result.stdout.encode("utf-8"))
+    if value.get("state") != "MERGED" or not value.get("mergedAt") or value.get("baseRefName") != "master" or value.get("isCrossRepository") is not False or value.get("url") != url:
+        raise ContractError("PR is not exact merged same-repository master evidence")
+    return value
+
+def local_tag(root: Path, tag: str) -> str:
+    value = git(root, "rev-parse", f"refs/tags/{tag}^{{commit}}", check=False)
+    return value if SHA1.fullmatch(value) else ""
+
+def remote_tag(root: Path, tag: str) -> str:
+    output = git(root, "ls-remote", "--tags", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}", check=False)
+    values = [line.split()[0] for line in output.splitlines() if line.split() and SHA1.fullmatch(line.split()[0])]
+    return values[-1] if values else ""
+
+def notes_report(root: Path, task_short_id: str, tag: str, target: str) -> dict[str, Any]:
+    path = root / ".todo" / task_short_id / "release-notes-ru.md"
+    previous = next((item for item in git(root, "tag", "--sort=-v:refname", check=False).splitlines() if item != tag and re.fullmatch(r"v\d+\.\d+\.\d+", item)), "")
+    revision = f"{previous}..{target}" if previous else target
+    subjects = git(root, "log", "--format=%s", revision, check=False).splitlines()[:100]
+    body = ("puber_release_notes_v1\n\n# Изменения\n\n" + "\n".join(f"- {subject}" for subject in subjects) + "\n").encode("utf-8")
+    if path.exists():
+        if path.read_bytes() != body:
+            raise ContractError("existing canonical release notes conflict")
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(body); stream.flush(); os.fsync(stream.fileno())
+            os.replace(temp, path)
+        finally:
+            Path(temp).unlink(missing_ok=True)
+    readback = path.read_bytes()
+    if readback != body or b"\r" in readback or not readback.endswith(b"\n") or not readback.decode("utf-8"):
+        raise ContractError("canonical notes readback failed")
+    return {"schema":"puber_release_notes_v1","path":str(path.relative_to(root)),"bytes":len(readback),"sha256":sha256_bytes(readback),"encoding":"UTF-8","line_endings":"LF","final_newline":True,"producer":".kent/scripts/workflow-puber-release-publish","previous_tag":previous,"range":revision,"target_commit":target}
+
+def publish_tag(root: Path, tag: str, target: str) -> str:
+    remote = remote_tag(root, tag)
+    if remote:
+        if remote != target:
+            raise ContractError("remote tag conflicts with exact target")
+        return "already_present_exact"
+    if local_tag(root, tag):
+        raise ContractError("local tag exists while remote tag is absent")
+    git(root, "tag", tag, target)
+    git(root, "push", "origin", f"refs/tags/{tag}")
+    if local_tag(root, tag) != target or remote_tag(root, tag) != target:
+        raise ContractError("tag readback mismatch")
+    return "created_and_pushed"
+
+def report_json(value: Mapping[str, Any]) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+def emit(transition: str, **fields: Any) -> None:
+    print(json.dumps({"transition":transition, **fields}, ensure_ascii=False, sort_keys=True))
 
 def main() -> int:
     try:
-        payload = read_object()
-        op = operation(payload)
-        workspace = root(str(payload.get("workspace_path") or Path.cwd()))
-        authority_data = authority(payload)
-        if authority_data["worktree_path"] != str(workspace):
-            raise ContractError("_kent worktree_path does not match workspace_path")
-        if authority_data["execution_commit"] != git(workspace, "rev-parse", "HEAD"):
-            raise ContractError("_kent execution_commit does not match selected revision")
-
-        branch = git(workspace, "branch", "--show-current")
-        requested_branch = str(payload.get("branch_name") or branch).strip()
-        if requested_branch != branch:
-            raise ContractError(f"branch mismatch: expected {requested_branch}, found {branch}")
-        if not branch or branch in {"master", "main"}:
-            raise ContractError("release intent requires a non-default task branch")
-        match = VERSION.search((workspace / "app/build.gradle.kts").read_text())
-        if not match:
-            raise ContractError("app/build.gradle.kts has no currentVersion")
-        current = match.group("version")
-        release_type = str(payload.get("release_type") or "minor").strip().lower()
-        if release_type not in {"minor", "patch", "major"}:
-            raise ContractError("release_type must be minor, patch, or major")
-        release_version = str(payload.get("release_version") or next_version(current, release_type)).strip()
-        if not SEMVER.fullmatch(release_version):
-            raise ContractError("release_version must be semantic version text")
-        release_tag = str(payload.get("release_tag") or f"v{release_version}").strip()
-        if release_tag != f"v{release_version}":
-            raise ContractError("release_tag must match release_version")
-        emit(
-            "release_intent_passed",
-            operation=op,
-            workspace_path=str(workspace),
-            branch_name=branch,
-            release_type=release_type,
-            current_version=current,
-            release_version=release_version,
-            release_branch=branch,
-            release_tag=release_tag,
-            target_commit=git(workspace, "rev-parse", "HEAD"),
-            source_revision=88,
-            no_live_apply=True,
-        )
-    except (ContractError, OSError) as error:
+        payload, state, edge = validate_envelope(read_zero_argument(), ROOT, "release_intent_gate")
+        attested = attest(ROOT, state, "release_intent_gate", edge["key"])
+        current = re.search(r"currentVersion\s*=\s*[\"'](\d+\.\d+\.\d+)[\"']", (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8"))
+        if not current: raise ContractError("currentVersion is missing")
+        values = declarations(state["task"].get("body")); kind = values.get("release_type", "minor")
+        major, minor, patch = (int(item) for item in current.group(1).split("."))
+        version = values.get("release_version") or (f"{major+1}.0.0" if kind == "major" else f"{major}.{minor}.{patch+1}" if kind == "patch" else f"{major}.{minor+1}.0")
+        tag = values.get("release_tag", f"v{version}")
+        if not SEMVER.fullmatch(version) or tag != f"v{version}": raise ContractError("release intent version/tag is not exact")
+        emit("release_intent_passed", workspace_path=str(ROOT), operation_id=attested["binding"].provenance_fingerprint, task_short_id=state["task_short_id"], release_type=kind, release_version=version, release_tag=tag, source_revision=WORKFLOW_REVISION, no_live_apply=True)
+    except Exception as error:
         emit("release_intent_blocked", blocker_reason=str(error), no_live_apply=True)
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

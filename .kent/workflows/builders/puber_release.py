@@ -40,6 +40,88 @@ SCRIPT_NODES = {
     "monitor": ".kent/scripts/workflow-wait-github-release",
     "cleanup": ".kent/scripts/workflow-release-cleanup",
 }
+SCRIPT_EDGE_PARAMETERS = {
+    "start_release_intent_gate": ("release_intent_gate", ()),
+    "merge_watch_pr_merged": (
+        "publish",
+        (
+            "workspace_path",
+            "operation_id",
+            "pr_url",
+            "branch_name",
+            "merge_strategy",
+            "pr_head_oid",
+            "pr_base_oid",
+        ),
+    ),
+    "publish_needs_user_action": (
+        "publish",
+        (
+            "blocker_reason",
+            "workspace_path",
+            "operation_id",
+            "pr_url",
+            "branch_name",
+            "merge_strategy",
+            "pr_head_oid",
+            "pr_base_oid",
+            "release_version",
+            "release_tag",
+            "target_commit",
+            "release_notes_path",
+            "publication_report",
+        ),
+    ),
+    "monitor_release": (
+        "monitor",
+        (
+            "release_version",
+            "release_tag",
+            "target_commit",
+            "pr_url",
+            "tag_push_status",
+            "release_notes_path",
+            "publication_report",
+            "release_run",
+        ),
+    ),
+    "monitor_needs_user_action": (
+        "monitor",
+        (
+            "blocker_reason",
+            "workspace_path",
+            "operation_id",
+            "pr_url",
+            "branch_name",
+            "release_version",
+            "release_tag",
+            "target_commit",
+            "tag_push_status",
+            "release_notes_path",
+            "publication_report",
+            "release_run",
+        ),
+    ),
+    "release_release_published": (
+        "cleanup",
+        ("release_report", "publication_report", "release_notes_path", "release_run"),
+    ),
+    "cleanup_task_janitor": (
+        "task_janitor",
+        (
+            "cleanup_report",
+            "workspace_path",
+            "branch_name",
+            "pr_url",
+            "cleanup_mode",
+            "cleanup_session_id",
+            "task_short_id",
+            "publication_report",
+            "release_report",
+            "release_notes_path",
+        ),
+    ),
+}
 EXPECTED_NODES = set(BASE_NODE_IDS) | set(NEW_NODES)
 EXPECTED_COMMANDS = {
     ":app:detektAll",
@@ -108,6 +190,23 @@ def check_graph(path: Path) -> list[str]:
     for edge in edges:
         if edge.get("workflow_id") != WORKFLOW_ID:
             errors.append("edge workflow identity drifted")
+        key = edge.get("key")
+        if key in SCRIPT_EDGE_PARAMETERS:
+            target_key, parameters = SCRIPT_EDGE_PARAMETERS[key]
+            target_id = by_key.get(target_key, {}).get("id")
+            if edge.get("target_node_id") != target_id:
+                errors.append(f"script transition target drifted: {key}")
+            actual = tuple(item.get("key") for item in edge.get("parameters", []))
+            if actual != parameters or len(set(actual)) != len(actual):
+                errors.append(f"script transition parameters drifted: {key}")
+            if target_key in {"publish", "monitor"}:
+                expected_approval = not (target_key == "monitor" and key == "monitor_release")
+                if edge.get("requires_approval") is not expected_approval:
+                    errors.append(f"script transition approval policy drifted: {key}")
+    for key, (target_key, parameters) in SCRIPT_EDGE_PARAMETERS.items():
+        matches = [edge for edge in edges if edge.get("key") == key]
+        if len(matches) != 1:
+            errors.append(f"required script transition missing or duplicated: {key}")
     return errors
 
 
@@ -199,6 +298,14 @@ def check_spec() -> list[str]:
         errors.append("release spec lacks approval-required publication variant")
     if not any(v.get("authority_kind", {}).get("kind") == "github_run_template" for v in variants):
         errors.append("release spec lacks exact github_run operation variant")
+    publish = next((v for v in variants if v.get("key") == "publish_after_merge"), {})
+    if publish.get("authority_transitions") != ["merge_watch_pr_merged", "publish_needs_user_action"]:
+        errors.append("publish variant must bind the real publication entry transitions")
+    materializations = raw.get("approval_materializations", [])
+    if len(materializations) != 1:
+        errors.append("release spec must contain one approval materialization")
+    elif materializations[0].get("variant_key") != "publish_after_merge" or set(materializations[0].get("templates", {})) != {"merge_watch_pr_merged", "publish_needs_user_action"}:
+        errors.append("approval materialization templates must bind both real publication transitions")
     return errors
 
 

@@ -1,5 +1,34 @@
 #!/usr/bin/env python3
-import json,subprocess
+from __future__ import annotations
+import importlib.util
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[3]
-r=subprocess.run([str(ROOT/'.kent/scripts/workflow-puber-release-publish')],cwd=ROOT,input=json.dumps({'workspace_path':str(ROOT),'release_tag':'v99.0.0','target_commit':'deadbeef'}),text=True,capture_output=True); out=json.loads(r.stdout); assert out['transition']=='publish_blocked'; assert out['no_live_apply']; print('workflow-puber-release-publish: passed')
+from types import SimpleNamespace
+
+ROOT = Path(__file__).resolve().parents[3]
+spec = importlib.util.spec_from_loader("publish_test", SourceFileLoader("publish_test", str(ROOT / ".kent/scripts/workflow-puber-release-publish")))
+mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
+node_id = mod.helper._node_id(ROOT, "publish")
+payload = {"_kent": {"task_id": "task-12345678-1234-4234-8234-123456789abc", "node_id": node_id, "transition_branch_key": "merge_watch_pr_merged"},
+           "workspace_path": str(ROOT), "operation_id": "op-1", "pr_url": "https://github.com/rovkinmax/Puber/pull/7",
+           "branch_name": "release/1.2.3", "merge_strategy": "auto", "pr_head_oid": "b"*40, "pr_base_oid": "c"*40}
+state = {"task": {"body": "release_version: 1.2.3\nrelease_tag: v1.2.3"}, "task_short_id": "PUBER-1", "commit": "a"*40}
+edge = {"key": "merge_watch_pr_merged"}
+mod.helper.read_zero_argument = lambda: payload
+mod.helper.validate_envelope = lambda value, root, node: (value, state, edge)
+mod.helper.canonical_pr_url = lambda value: value
+mod.helper.pr_state = lambda root, url: {"headRefName":"release/1.2.3","headRefOid":"b"*40,"baseRefOid":"c"*40,"mergeCommit":{"oid":"d"*40}}
+mod.helper.remote_master = lambda root: "d"*40
+mod.helper.git = lambda *args, **kwargs: "d"*40
+mod.helper.attest = lambda *args, **kwargs: {"operation": SimpleNamespace(operation_digest="op-digest")}
+mod.helper.notes_report = lambda *args: {"path": ".todo/PUBER-1/release-notes-ru.md"}
+mod.helper.publish_tag = lambda *args: "created_and_pushed"
+seen = []
+mod.helper.emit = lambda transition, **fields: seen.append((transition, fields))
+assert mod.main() == 0 and seen[0][0] == "monitor_release" and seen[0][1]["tag_push_status"] == "created_and_pushed"
+
+seen.clear()
+mod.helper.publish_tag = lambda *args: (_ for _ in ()).throw(mod.helper.ContractError("conflicting remote tag"))
+assert mod.main() == 0 and seen[0][0] == "publish_needs_user_action"
+assert seen[0][1]["target_commit"] == "d"*40 and "conflicting remote tag" in seen[0][1]["blocker_reason"]
+print("workflow-puber-release-publish: passed")
