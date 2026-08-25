@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import stat
 import sys
 from importlib.machinery import SourceFileLoader
@@ -175,14 +176,24 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
     if not active_present and not tombstone_present:
         raise helper.ContractError("terminal evidence task ledger/tombstone is missing")
     selected_dir = active_dir if active_present else tombstone_dir
-    ledger = selected_dir / "evidence-ledger.jsonl"
-    component(ledger, "evidence ledger", False)
+    allowed_entries = {"evidence-ledger.jsonl", "fix-checkpoint.json", "smoke-checkpoint.json"}
+    def safe_file(path: Path, label: str) -> None:
+        try:
+            metadata = path.lstat()
+        except (OSError, ValueError) as error:
+            raise helper.ContractError(f"terminal evidence {label} is unreadable") from error
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_size > 8 * 1024 * 1024:
+            raise helper.ContractError(f"terminal evidence {label} is unsafe")
     try:
         entries = list(selected_dir.iterdir())
     except (OSError, ValueError) as error:
         raise helper.ContractError("terminal evidence ledger directory is unreadable") from error
-    if any(entry.name != "evidence-ledger.jsonl" for entry in entries):
+    if any(entry.name not in allowed_entries for entry in entries):
         raise helper.ContractError("terminal evidence ledger directory has unexpected entries")
+    for entry in entries:
+        safe_file(entry, entry.name)
+    ledger = selected_dir / "evidence-ledger.jsonl"
+    component(ledger, "evidence ledger", False)
     try:
         raw_lines = ledger.read_text(encoding="utf-8").splitlines()
         if not raw_lines or any(not line.strip() or "\x00" in line for line in raw_lines):

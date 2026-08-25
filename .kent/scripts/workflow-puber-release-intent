@@ -203,7 +203,7 @@ def _resolved_status_path(value: Any, label: str) -> Path:
         raise ContractError(f"{label} is not a safe path") from error
 
 def _status_string(value: Any, label: str) -> str:
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str) or not value.strip() or value != value.strip():
         raise ContractError(f"{label} must be a non-empty string")
     return value
 
@@ -647,7 +647,7 @@ def parse_run_carrier(raw: Any) -> dict[str, Any]:
         raise ContractError("release_run carrier is not closed")
     if value.get("repository") != REPOSITORY or value.get("workflow_path") != ".github/workflows/release.yml" or value.get("workflow_name") != "Release" or value.get("event") != "push":
         raise ContractError("release_run carrier workflow identity drifted")
-    if not isinstance(value.get("run_id"), int) or value["run_id"] <= 0 or not isinstance(value.get("attempt"), int) or value["attempt"] <= 0:
+    if isinstance(value.get("run_id"), bool) or not isinstance(value.get("run_id"), int) or value["run_id"] <= 0 or isinstance(value.get("attempt"), bool) or not isinstance(value.get("attempt"), int) or value["attempt"] <= 0:
         raise ContractError("release_run carrier IDs are invalid")
     if not SHA1.fullmatch(str(value.get("head_sha", ""))) or not TAG.fullmatch(str(value.get("head_branch", ""))) or value.get("ref") != f"refs/tags/{value['head_branch']}":
         raise ContractError("release_run carrier ref/head is invalid")
@@ -695,7 +695,7 @@ def parse_publication_report(raw: Any, digest: Any, *, expected_pr: str | None =
     value = raw if isinstance(raw, dict) else parse_closed_json(raw, "puber_publication_report_v1", PUBLICATION_KEYS)
     if set(value) != PUBLICATION_KEYS or value.get("schema") != "puber_publication_report_v1":
         raise ContractError("publication report is not closed")
-    if not isinstance(digest, str) or digest != sha256_bytes(canonical_json(value).encode("utf-8")) or not HEX64.fullmatch(digest):
+    if not isinstance(digest, str) or digest != sha256_bytes(canonical_json(value).encode("utf-8")) or not HEX64.fullmatch(digest) or not HEX64.fullmatch(str(value.get("operation_digest", ""))):
         raise ContractError("publication report digest mismatch")
     safe_version_tag(value.get("release_version"), value.get("release_tag"))
     if expected_version and value["release_version"] != expected_version or expected_tag and value["release_tag"] != expected_tag:
@@ -729,14 +729,14 @@ def parse_publication_report(raw: Any, digest: Any, *, expected_pr: str | None =
 def parse_run_api(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != RUN_API_KEYS:
         raise ContractError("release run API evidence is not closed")
-    if not isinstance(value["run_id"], int) or value["run_id"] <= 0 or not isinstance(value["attempt"], int) or value["attempt"] <= 0:
+    if isinstance(value["run_id"], bool) or not isinstance(value["run_id"], int) or value["run_id"] <= 0 or isinstance(value["attempt"], bool) or not isinstance(value["attempt"], int) or value["attempt"] <= 0:
         raise ContractError("release run API IDs are invalid")
     if value["path"] != ".github/workflows/release.yml" or value["name"] != "Release" or value["event"] != "push" or not SHA1.fullmatch(str(value["head_sha"])) or not TAG.fullmatch(str(value["head_branch"])) or value["status"] != "completed" or value["conclusion"] != "success":
         raise ContractError("release run API identity/outcome is invalid")
     return dict(value)
 
 def parse_job(value: Any, attempt: int) -> dict[str, Any]:
-    if not isinstance(value, dict) or set(value) != JOB_KEYS or value.get("name") != "Build & Publish" or value.get("status") != "completed" or value.get("conclusion") != "success" or not isinstance(value.get("id"), int) or value["id"] <= 0 or value.get("attempt") != attempt:
+    if not isinstance(value, dict) or set(value) != JOB_KEYS or value.get("name") != "Build & Publish" or value.get("status") != "completed" or value.get("conclusion") != "success" or isinstance(value.get("id"), bool) or not isinstance(value.get("id"), int) or value["id"] <= 0 or isinstance(value.get("attempt"), bool) or value.get("attempt") != attempt:
         raise ContractError("release job evidence is not exact")
     return dict(value)
 
@@ -794,8 +794,10 @@ def parse_release_report(raw: Any, digest: Any, *, expected_publication_digest: 
     if {asset["name"] for asset in assets} != {f"puber-{metadata['tag_name']}.apk", f"puber-{metadata['tag_name']}.apk.sha256"}:
         raise ContractError("release report asset names are not exact")
     for asset in assets:
-        if not isinstance(asset["id"], int) or asset["id"] <= 0 or not isinstance(asset["size"], int) or asset["size"] <= 0 or not HEX64.fullmatch(str(asset["download_sha256"])) or not isinstance(asset["browser_download_url"], str) or not asset["browser_download_url"].startswith("https://"):
+        if isinstance(asset["id"], bool) or not isinstance(asset["id"], int) or asset["id"] <= 0 or isinstance(asset["size"], bool) or not isinstance(asset["size"], int) or asset["size"] <= 0 or not HEX64.fullmatch(str(asset["download_sha256"])) or not isinstance(asset["browser_download_url"], str) or not asset["browser_download_url"].startswith("https://"):
             raise ContractError("release report asset evidence is invalid")
+    if len({asset["id"] for asset in assets}) != len(assets):
+        raise ContractError("release report asset IDs are duplicated")
     checksum = parse_checksum_proof(value["checksum"], assets)
     if expected_target and metadata["remote_tag_target"] != expected_target or metadata.get("tag_name") != (expected_tag or metadata.get("tag_name")) or metadata.get("body") is None:
         raise ContractError("release report metadata proof is incomplete")
