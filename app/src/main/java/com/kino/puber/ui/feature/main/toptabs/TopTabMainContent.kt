@@ -56,8 +56,6 @@ internal fun TopTabMainContent(
     onAction: (UIAction) -> Unit,
     tabRouter: TabRouter,
     tabAppRouterHolder: TabAppRouterHolder,
-    onSearchClick: () -> Unit,
-    onSettingsClick: () -> Unit,
 ) {
     val tabRowFocus = remember { FocusRequester() }
     val contentFocus = remember { FocusRequester() }
@@ -135,8 +133,8 @@ internal fun TopTabMainContent(
                     onTabFocused = tabFocusState.onTabFocused,
                     onTabClick = requestContentFocus,
                     onTabContextMenu = { index -> contextMenuTabIndex = index },
-                    onSearchClick = onSearchClick,
-                    onSettingsClick = onSettingsClick,
+                    onSearchClick = { onAction(MainAction.SearchClicked) },
+                    onSettingsClick = { onAction(MainAction.SettingsClicked) },
                     modifier = Modifier
                         .onFocusChanged {
                             if (it.hasFocus) {

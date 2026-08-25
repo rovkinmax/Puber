@@ -41,6 +41,8 @@ internal class MainVM(
         when (action) {
             is CommonAction.ItemSelected<*> -> onTabSelected(action.item as MainTab)
             is MainAction.RefreshTab -> onTabRefresh(action.tab)
+            MainAction.SearchClicked -> navigateToSearch()
+            MainAction.SettingsClicked -> navigateToSettings()
             else -> super.onAction(action)
         }
     }
@@ -92,11 +94,11 @@ internal class MainVM(
         }
     }
 
-    fun onSearchClick() {
+    private fun navigateToSearch() {
         router.navigateTo(router.screens.search())
     }
 
-    fun onSettingsClick() {
+    private fun navigateToSettings() {
         router.navigateTo(router.screens.deviceSettings())
     }
 

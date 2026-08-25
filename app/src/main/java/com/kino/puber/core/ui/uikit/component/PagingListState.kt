@@ -63,6 +63,7 @@ data class PagingListPageError(
 fun <Item> PagingColumn(
     modifier: Modifier = Modifier,
     pagingListState: PagingListState<Item>,
+    itemKey: (Item) -> Any,
     item: @Composable LazyItemScope.(index: Int, item: Item) -> Unit,
     listState: LazyListState = rememberLazyListState(),
     headers: LazyListScope.() -> Unit = {},
@@ -95,7 +96,12 @@ fun <Item> PagingColumn(
             }
         }
         headers()
-        items(pagingListState.items.size) { index ->
+        items(
+            count = pagingListState.items.size,
+            key = { index ->
+                resolvePagingColumnItemKey(pagingListState.items[index], itemKey)
+            },
+        ) { index ->
             item(index, pagingListState.items[index])
         }
         footer()
@@ -122,3 +128,8 @@ fun <Item> PagingColumn(
         loadMoreAtStart = loadMoreAtStart,
     )
 }
+
+internal fun <Item> resolvePagingColumnItemKey(
+    item: Item,
+    itemKey: (Item) -> Any,
+): Any = itemKey(item)

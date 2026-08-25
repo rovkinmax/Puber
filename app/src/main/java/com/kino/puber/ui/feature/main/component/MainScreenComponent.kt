@@ -57,7 +57,7 @@ import com.kino.puber.core.di.puberViewModel
 internal fun MainScreenComponent() {
     val vm = puberViewModel<MainVM>()
     val state by vm.collectViewState()
-    val onAction: (UIAction) -> Unit = remember { vm::onAction }
+    val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
     when (state.navigationMode) {
         NavigationMode.SideDrawer -> DrawerMainContent(
             state = state,
@@ -70,8 +70,6 @@ internal fun MainScreenComponent() {
             onAction = onAction,
             tabRouter = vm.tabRouter,
             tabAppRouterHolder = vm.tabAppRouterHolder,
-            onSearchClick = vm::onSearchClick,
-            onSettingsClick = vm::onSettingsClick,
         )
     }
 }
