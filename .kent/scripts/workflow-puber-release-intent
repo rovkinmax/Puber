@@ -16,8 +16,6 @@ WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
 WORKFLOW_REVISION = 88
 REPOSITORY = "rovkinmax/Puber"
-PUBER_WORKSPACE_ID = "workspace-fd8bc75f-ff8c-43b5-832f-fa14f7fa7459"
-PUBER_PRIMARY_ROOT = "/Users/rovkinmax/dev/android/Puber"
 SCRIPT_PATHS = {
     "release_intent_gate": ".kent/scripts/workflow-puber-release-intent",
     "publish": ".kent/scripts/workflow-puber-release-publish",
@@ -38,7 +36,7 @@ NOT_SELECTED_RUN = {"schema": "puber_release_run_v1", "state": "not_selected"}
 RUN_KEYS = {"schema", "state", "repository", "workflow_path", "workflow_name", "event", "run_id", "attempt", "head_sha", "ref", "head_branch"}
 PUBLICATION_KEYS = {"schema", "operation_digest", "previous_operation_digest", "pr_url", "release_version", "release_tag", "target_commit", "notes_report", "notes_digest", "tag_phase", "tag_status", "unresolved"}
 RELEASE_KEYS = {"schema", "observation_operation_digest", "observation_provenance_fingerprint", "run", "jobs", "release", "assets", "checksum", "notes_digest", "publication_report_digest", "unresolved"}
-CLEANUP_KEYS = {"schema", "operation_digest", "cleanup_session_id", "cleanup_mode", "publication_report", "publication_report_digest", "release_report", "release_report_digest", "release_notes_path", "release_notes_digest", "unresolved", "destructive_action", "blocker_reason"}
+CLEANUP_KEYS = {"schema", "operation_digest", "cleanup_session_id", "cleanup_mode", "session_identity", "publication_report", "publication_report_digest", "release_report", "release_report_digest", "release_notes_path", "release_notes_digest", "unresolved", "destructive_action", "blocker_reason"}
 NOTES_KEYS = {"schema", "path", "mode", "bytes", "sha256", "encoding", "line_endings", "final_newline", "producer", "previous_tag", "range", "target_commit"}
 RUN_API_KEYS = {"run_id", "attempt", "path", "name", "event", "head_sha", "head_branch", "status", "conclusion"}
 JOB_KEYS = {"id", "name", "status", "conclusion", "attempt"}
@@ -165,16 +163,21 @@ def session_worktree_status(root: Path, session_id: str) -> dict[str, Any]:
         raise ContractError(result.stderr.strip() or result.stdout.strip() or "Kent worktree status failed")
     return _json_one(result.stdout.encode("utf-8"))
 
-def _expected_primary_identity() -> tuple[str, Path]:
-    test_id = os.environ.get("PUBER_TEST_PRIMARY_WORKSPACE_ID", "")
-    test_root = os.environ.get("PUBER_TEST_PRIMARY_WORKSPACE_ROOT", "")
-    if bool(test_id) != bool(test_root):
-        raise ContractError("test primary workspace identity must be paired")
-    if test_id or test_root:
-        if not os.environ.get("PUBER_TEST_MODE") == "1":
-            raise ContractError("test primary workspace identity is not allowed")
-        return require_string(test_id, "test primary workspace id"), Path(require_string(test_root, "test primary workspace root")).expanduser().resolve()
-    return PUBER_WORKSPACE_ID, Path(PUBER_PRIMARY_ROOT).resolve()
+def git_common_root(root: Path) -> Path:
+    common = Path(git(root, "rev-parse", "--git-common-dir"))
+    if not common.is_absolute():
+        common = root / common
+    common = common.expanduser().resolve()
+    if common.name != ".git":
+        raise ContractError("Git common directory is not a .git directory")
+    primary = common.parent
+    if git(primary, "rev-parse", "--show-toplevel") != str(primary) or git(primary, "status", "--porcelain=v1", "--untracked-files=all"):
+        raise ContractError("primary checkout is not the exact clean Git root")
+    return primary
+
+def current_branch_ref(root: Path) -> str:
+    branch = require_string(git(root, "symbolic-ref", "--quiet", "--short", "HEAD"), "current branch")
+    return f"refs/heads/{branch}"
 
 def _validate_session_status(root: Path, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], Path]:
     if set(payload) != {"target", "worktree", "problems"} or payload.get("problems") != []:
@@ -183,32 +186,56 @@ def _validate_session_status(root: Path, payload: dict[str, Any]) -> tuple[dict[
     worktree = payload.get("worktree")
     if not isinstance(target, dict) or set(target) != {"WorkspaceID", "WorkspaceName", "WorkspaceRoot", "WorkspaceAvailability", "Worktree", "CwdRelpath", "EffectiveWorkdir"}:
         raise ContractError("Kent worktree status target is not the stock closed shape")
-    if not isinstance(worktree, dict) or set(worktree) != {"recorded_root", "observed_root"}:
+    if not isinstance(worktree, dict) or set(worktree) not in ({"recorded_root", "observed_root", "display_name", "recorded_branch_ref"}, {"recorded_root", "observed_root"}):
         raise ContractError("Kent worktree status roots are not the stock closed shape")
-    workspace_id, primary = _expected_primary_identity()
-    if target["WorkspaceID"] != workspace_id or target["WorkspaceName"] != "Puber" or not all(isinstance(target.get(key), str) and target[key].strip() for key in ("WorkspaceRoot", "EffectiveWorkdir")) or target["WorkspaceAvailability"] != "available" or target["CwdRelpath"] != "." or Path(target["WorkspaceRoot"]).expanduser().resolve() != primary:
+    primary = git_common_root(root)
+    if not isinstance(target["WorkspaceID"], str) or not target["WorkspaceID"].strip() or not all(isinstance(target.get(key), str) and target[key].strip() for key in ("WorkspaceName", "WorkspaceRoot", "EffectiveWorkdir")) or target["WorkspaceAvailability"] != "available" or target["CwdRelpath"] != "." or Path(target["WorkspaceRoot"]).expanduser().resolve() != primary:
         raise ContractError("Kent worktree status workspace identity drifted")
     for key in ("recorded_root", "observed_root"):
         if not isinstance(worktree[key], str) or not worktree[key].strip():
             raise ContractError("Kent worktree status root is incomplete")
+    if set(worktree) == {"recorded_root", "observed_root", "display_name", "recorded_branch_ref"}:
+        if worktree["display_name"] != target.get("Worktree", {}).get("Name") or worktree["recorded_branch_ref"] != current_branch_ref(root):
+            raise ContractError("Kent worktree status display or branch identity drifted")
     return target, worktree, primary
 
-def session_targets_worktree(root: Path, session_id: str) -> bool:
-    payload = session_worktree_status(root, session_id)
-    target, roots, _ = _validate_session_status(root, payload)
-    task_worktree = target.get("Worktree")
-    if not isinstance(task_worktree, dict) or set(task_worktree) != {"ID", "Name", "Root", "Availability"}:
-        raise ContractError("Kent worktree status target Worktree is not the stock shape")
-    if not all(isinstance(task_worktree.get(key), str) and task_worktree[key].strip() for key in ("ID", "Name", "Root")) or task_worktree["Availability"] != "available":
-        raise ContractError("Kent worktree status target Worktree is incomplete")
-    return Path(target["EffectiveWorkdir"]).expanduser().resolve() == root and Path(task_worktree["Root"]).expanduser().resolve() == root and all(Path(roots[key]).expanduser().resolve() == root for key in ("recorded_root", "observed_root"))
-
-def session_preserves_worktree_identity(root: Path, session_id: str) -> bool:
+def session_identity(root: Path, session_id: str, *, moved: bool = False) -> dict[str, str]:
     payload = session_worktree_status(root, session_id)
     target, roots, primary = _validate_session_status(root, payload)
-    if target["Worktree"] is not None:
-        return False
-    return Path(target["EffectiveWorkdir"]).expanduser().resolve() == primary and all(Path(roots[key]).expanduser().resolve() == primary for key in ("recorded_root", "observed_root"))
+    if moved:
+        if set(roots) != {"recorded_root", "observed_root"} or target["Worktree"] is not None or Path(target["EffectiveWorkdir"]).expanduser().resolve() != primary or any(Path(roots[key]).expanduser().resolve() != primary for key in ("recorded_root", "observed_root")):
+            raise ContractError("Kent post-leave Session identity is not exact")
+        return {
+            "workspace_id": target["WorkspaceID"],
+            "workspace_name": target["WorkspaceName"],
+            "workspace_root": str(primary),
+            "worktree_id": "",
+            "worktree_name": "",
+            "worktree_root": str(primary),
+            "recorded_branch_ref": "",
+        }
+    task_worktree = target.get("Worktree")
+    if set(roots) != {"recorded_root", "observed_root", "display_name", "recorded_branch_ref"} or not isinstance(task_worktree, dict) or set(task_worktree) != {"ID", "Name", "Root", "Availability"} or task_worktree["Availability"] != "available":
+        raise ContractError("Kent active Session Worktree is not exact")
+    if Path(target["EffectiveWorkdir"]).expanduser().resolve() != root or Path(task_worktree["Root"]).expanduser().resolve() != root or any(Path(roots[key]).expanduser().resolve() != root for key in ("recorded_root", "observed_root")):
+        raise ContractError("Kent active Session roots do not match the selected worktree")
+    return {
+        "workspace_id": target["WorkspaceID"],
+        "workspace_name": target["WorkspaceName"],
+        "workspace_root": str(primary),
+        "worktree_id": task_worktree["ID"],
+        "worktree_name": task_worktree["Name"],
+        "worktree_root": str(root),
+        "recorded_branch_ref": roots["recorded_branch_ref"],
+    }
+
+def session_targets_worktree(root: Path, session_id: str) -> bool:
+    session_identity(root, session_id)
+    return True
+
+def session_preserves_worktree_identity(root: Path, session_id: str) -> bool:
+    session_identity(root, session_id, moved=True)
+    return True
 
 def task_show(root: Path, task_id: str) -> dict[str, Any]:
     result = run([_kent_bin(root), "task", "show", task_id, "--project", PROJECT_ID, "--json"], cwd=root, env=child_env(), check=False)
@@ -311,7 +338,7 @@ def _kit_modules() -> dict[str, Any]:
             raise ContractError("Kit import escaped the selected root")
     runtime = importlib.import_module("workflowkit.runtime")
     result = {name: getattr(workflowkit, name) for name in ("ProjectProfile","ReleaseSpec","NormalizedGitHubWorkflowSourceV1","preflight_project_revision","capture_runtime_execution_context","capture_runtime_authority_binding","validate_operation_jobs","canonicalize_publication_operation")}
-    result.update({name: getattr(runtime, name) for name in ("validate_terminal_seal_request","validate_terminal_marker","parse_terminal_marker_line","terminal_marker_line","validate_cleanup_report","validate_terminal_chain")})
+    result.update({name: getattr(runtime, name) for name in ("validate_terminal_seal_request","validate_terminal_marker","parse_terminal_marker_line","terminal_marker_line","validate_cleanup_report","validate_terminal_chain","canonical_sha256")})
     return result
 
 def _external_captures(root: Path, profile: Any, selected: Any) -> list[tuple[str, str, bytes]]:
