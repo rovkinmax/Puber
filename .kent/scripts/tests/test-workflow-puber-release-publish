@@ -94,6 +94,7 @@ with tempfile.TemporaryDirectory() as directory:
     payload = {"_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "merge_watch_pr_merged"}, "workspace_path": str(work), "operation_id": "a"*64, "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "branch_name": "release/99.0.0", "merge_strategy": "auto", "pr_head_oid": "c"*40, "pr_base_oid": "b"*40}
     env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(fake_task := root / "fake-task.json"), "PUBER_GH_LOG": str(log), "PUBER_TARGET": target, "PUBER_BARE": bare_path}
     fake_task.write_text(json.dumps(task), encoding="utf-8")
+    os.environ.update({key: env[key] for key in ("KENT_ENGINEERING_KIT_ROOT", "PUBER_KENT_BIN", "PUBER_GH_BIN", "PUBER_GH_LOG", "PUBER_TARGET", "PUBER_BARE")})
     result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert result.returncode == 0, result.stderr
     output = json.loads(result.stdout)
@@ -154,4 +155,80 @@ with tempfile.TemporaryDirectory() as directory:
         pass
     else:
         raise AssertionError("conflicting canonical notes were accepted")
-print("workflow-puber-release-publish: passed")
+
+    local_only = "v99.0.2"
+    sh(["git", "tag", local_only, target], work)
+    assert helper.publish_tag(work, local_only, target) == "local_tag_pushed"
+    assert sh(["git", "--git-dir", bare_path, "rev-parse", f"refs/tags/{local_only}"], work).stdout.strip() == target
+
+    lost_ack = "v99.0.3"
+    git_wrapper = root / "git"
+    real_git = shutil.which("git")
+    assert real_git
+    git_wrapper.write_text(f"#!/bin/sh\nif test \"$1\" = push; then '{real_git}' \"$@\"; exit 1; fi\nexec '{real_git}' \"$@\"\n", encoding="utf-8")
+    git_wrapper.chmod(0o755)
+    original_path = os.environ["PATH"]
+    os.environ["PATH"] = f"{root}:{original_path}"
+    lost_ack_status = helper.publish_tag(work, lost_ack, target)
+    assert lost_ack_status == "push_ack_recovered", lost_ack_status
+    os.environ["PATH"] = original_path
+
+    strict_cases = [
+        ("prepared_published", {"tag_phase": "prepared", "tag_status": "created_and_pushed", "unresolved": True}),
+        ("prepared_resolved", {"tag_phase": "prepared", "tag_status": "prepared", "unresolved": False}),
+        ("published_prepared", {"tag_phase": "tag_published", "tag_status": "prepared", "unresolved": True}),
+        ("published_unknown", {"tag_phase": "tag_published", "tag_status": "unknown", "unresolved": True}),
+    ]
+    for label, changes in strict_cases:
+        candidate = dict(report)
+        candidate.update(changes)
+        encoded = helper.canonical_json(candidate)
+        try:
+            helper.parse_publication_report(encoded, __import__("hashlib").sha256(encoded.encode()).hexdigest(), expected_tag="v99.0.0", expected_target=target, task_short_id="PUB-99", root=work)
+        except helper.ContractError:
+            pass
+        else:
+            raise AssertionError(label)
+
+    def refs() -> tuple[str, str]:
+        local = sh(["git", "show-ref", "--tags"], work).stdout
+        remote = sh(["git", "--git-dir", bare_path, "show-ref", "--tags"], work).stdout
+        return local, remote
+
+    def rejected_gate(label: str, *, task_changes=None, payload_changes=None, gate_env=None) -> None:
+        before = refs()
+        if task_changes:
+            changed_task = json.loads(fake_task.read_text(encoding="utf-8"))
+            changed_task.update(task_changes)
+            fake_task.write_text(json.dumps(changed_task), encoding="utf-8")
+        bad = dict(payload)
+        if payload_changes:
+            bad.update(payload_changes)
+        run_env = gate_env or env
+        result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(bad), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=run_env)
+        if result.returncode == 0:
+            assert json.loads(result.stdout)["transition"] == "publish_needs_user_action", label
+        else:
+            assert result.stdout == "" and "error" in result.stderr, label
+        assert refs() == before, label
+        fake_task.write_text(json.dumps(task), encoding="utf-8")
+
+    rejected_gate("task_id", task_changes={"summary": {**task["summary"], "id": "task-00000000-0000-4000-8000-000000000000"}})
+    rejected_gate("workflow_revision", task_changes={"workflow": {**task["workflow"], "version": 87}})
+    rejected_gate("current_script", task_changes={"current_scripts": [{"path": ".kent/scripts/workflow-wait-github-release", "current_node": {"node_id": publish_node["id"]}}]})
+    rejected_gate("execution_commit", task_changes={"execution_target": {"commit_oid": "f" * 40}})
+    rejected_gate("worktree_path", task_changes={"worktree_path": str(root / "foreign")})
+    rejected_gate("pr_identity", payload_changes={"pr_head_oid": "d" * 40})
+    rejected_gate("transition", payload_changes={"_kent": {**payload["_kent"], "transition_branch_key": "not-a-real-edge"}})
+    source = work / ".kent/scripts/workflow-puber-release-intent"
+    original_source = source.read_bytes()
+    source.write_bytes(original_source + b"\n")
+    rejected_gate("source_drift")
+    source.write_bytes(original_source)
+    bad_kit = root / "bad-kit"; bad_kit.mkdir()
+    bad_env = {**env, "KENT_ENGINEERING_KIT_ROOT": str(bad_kit)}
+    before = refs()
+    bad_result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=bad_env)
+    assert bad_result.returncode == 0 and json.loads(bad_result.stdout)["transition"] == "publish_needs_user_action" and refs() == before
+
+print("workflow-puber-release-publish: passed scenarios=happy,retry,local_tag_only,lost_ack,conflicts,strict_phase_status,zero_effect_task_pr_kit_source_transition_gates")

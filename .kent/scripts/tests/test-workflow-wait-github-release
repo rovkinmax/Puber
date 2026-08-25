@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from importlib.machinery import SourceFileLoader
@@ -12,6 +13,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[3]
 publish_spec = importlib.util.spec_from_loader("publish_fixture", SourceFileLoader("publish_fixture", str(ROOT / ".kent/scripts/tests/test-workflow-puber-release-publish")))
 publish_fixture = importlib.util.module_from_spec(publish_spec); assert publish_spec and publish_spec.loader; publish_spec.loader.exec_module(publish_fixture)
+
+def sh(args, cwd, **kwargs):
+    return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
 
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory); bare = root / "origin.git"
@@ -31,15 +35,19 @@ with tempfile.TemporaryDirectory() as directory:
     task_path = fake / "task.json"; task_path.write_text(json.dumps(task), encoding="utf-8")
     kent = fake / "kent"; kent.write_text("#!/bin/sh\ncat \"$PUBER_FAKE_TASK\"\n", encoding="utf-8"); kent.chmod(0o755)
     body_file = fake / "body"; body_file.write_text("", encoding="utf-8")
+    calls_file = fake / "calls"
     apk_file = fake / "apk"; apk_file.write_bytes(b"test-apk-bytes")
     checksum_file = fake / "checksum"; checksum_file.write_text(__import__("hashlib").sha256(apk_file.read_bytes()).hexdigest() + "  puber-v99.0.0.apk\n", encoding="utf-8")
     gh = fake / "gh"
     gh.write_text(
         """#!/usr/bin/env python3
 import json,os,subprocess,sys
-args=sys.argv[1:]; target=os.environ["PUBER_TARGET"]; tag="v99.0.0"
+args=sys.argv[1:]; target=os.environ["PUBER_TARGET"]; tag="v99.0.0"; mode=os.environ.get("PUBER_MODE","normal")
+with open(os.environ["PUBER_CALLS"], "a", encoding="utf-8") as calls: calls.write(json.dumps(args)+"\\n")
 if args[:2] == ["release","edit"]:
- open(os.environ["PUBER_BODY"],"w",encoding="utf-8").write(sys.stdin.read()); sys.exit(0)
+ body=sys.stdin.read()
+ if mode != "edit_mismatch": open(os.environ["PUBER_BODY"],"w",encoding="utf-8").write(body)
+ sys.exit(1 if mode == "edit_lost_ack" else 0)
 if args[0] != "api": sys.exit(2)
 endpoint=args[1]
 if endpoint.endswith("/git/ref/heads/master"):
@@ -51,10 +59,23 @@ if "/git/ref/tags/" in endpoint:
  except subprocess.CalledProcessError: print("404",file=sys.stderr); sys.exit(1)
  print(json.dumps({"ref":"refs/tags/"+tag,"node_id":"tag","url":"https://api.github.com/ref","object":{"type":"commit","sha":sha}})); sys.exit(0)
 if "/actions/runs?" in endpoint:
+ if mode == "no_discovery": sys.exit(9)
+ if mode == "foreign":
+  print(json.dumps({"workflow_runs":[{"id":42,"run_attempt":1,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":target,"head_branch":tag,"repository":{"full_name":"foreign/Puber"}}]})); sys.exit(0)
+ if mode == "extra_run":
+  rows=[{"id":42,"run_attempt":1,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":target,"head_branch":tag,"repository":{"full_name":"rovkinmax/Puber"}},{"id":43,"run_attempt":1,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":target,"head_branch":tag,"repository":{"full_name":"rovkinmax/Puber"}}]
+  print(json.dumps({"workflow_runs":rows})); sys.exit(0)
+ if mode == "missing_run":
+  print(json.dumps({"workflow_runs":[]})); sys.exit(0)
  print(json.dumps({"workflow_runs":[{"id":42,"run_attempt":1,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":target,"head_branch":tag,"repository":{"full_name":"rovkinmax/Puber"}}]})); sys.exit(0)
 if "/actions/runs/42/attempts/1/jobs" in endpoint:
+ if mode == "extra_job": print(json.dumps({"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"},{"id":778,"name":"extra","status":"completed","conclusion":"success"}]})); sys.exit(0)
+ if mode == "missing_job": print(json.dumps({"jobs":[]})); sys.exit(0)
+ if mode == "failed_job": print(json.dumps({"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"failure"}]})); sys.exit(0)
  print(json.dumps({"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"}]})); sys.exit(0)
 if "/actions/runs/42/attempts/1" in endpoint:
+ if mode == "block": sys.exit(9)
+ if mode == "failed_run": print(json.dumps({"id":42,"run_attempt":1,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":target,"head_branch":tag,"repository":{"full_name":"rovkinmax/Puber"},"status":"completed","conclusion":"failure"})); sys.exit(0)
  print(json.dumps({"id":42,"run_attempt":1,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":target,"head_branch":tag,"repository":{"full_name":"rovkinmax/Puber"},"status":"completed","conclusion":"success"})); sys.exit(0)
 if "/releases/assets/1" in endpoint:
  sys.stdout.buffer.write(open(os.environ["PUBER_APK"],"rb").read()); sys.exit(0)
@@ -67,9 +88,15 @@ sys.exit(3)
 """,
         encoding="utf-8",
     ); gh.chmod(0o755)
-    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(publish_fixture.KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(task_path), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_BODY": str(body_file), "PUBER_APK": str(apk_file), "PUBER_CHECKSUM": str(checksum_file)}
+    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(publish_fixture.KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(task_path), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_BODY": str(body_file), "PUBER_APK": str(apk_file), "PUBER_CHECKSUM": str(checksum_file), "PUBER_CALLS": str(calls_file)}
+    os.environ.update({key: env[key] for key in ("KENT_ENGINEERING_KIT_ROOT", "PUBER_KENT_BIN", "PUBER_GH_BIN", "PUBER_FAKE_TASK", "PUBER_TARGET", "PUBER_BARE", "PUBER_BODY", "PUBER_APK", "PUBER_CHECKSUM", "PUBER_CALLS")})
+    probe = subprocess.run([str(gh), "api", "repos/rovkinmax/Puber/pulls/7"], cwd=work, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert probe.returncode == 0, probe.stderr
     publish_payload = {"_kent":{"task_id":task_id,"node_id":publish_node["id"],"transition_branch_key":"merge_watch_pr_merged"},"workspace_path":str(work),"operation_id":"a"*64,"pr_url":"https://github.com/rovkinmax/Puber/pull/7","branch_name":"release/99.0.0","merge_strategy":"auto","pr_head_oid":"c"*40,"pr_base_oid":"b"*40}
-    published = json.loads(subprocess.run([str(work/".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(publish_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env).stdout)
+    published_result = subprocess.run([str(work/".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(publish_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert published_result.returncode == 0, published_result.stderr
+    published = json.loads(published_result.stdout)
+    assert published["transition"] == "monitor_release", (published, published_result.stderr)
     task.update({"current_nodes":[{"node_id":monitor_node["id"]}],"current_scripts":[{"path":".kent/scripts/workflow-wait-github-release","current_node":{"node_id":monitor_node["id"]}}],"status":{"node_ids":[monitor_node["id"]]}})
     task_path.write_text(json.dumps(task), encoding="utf-8")
     monitor_payload = {"_kent":{"task_id":task_id,"node_id":monitor_node["id"],"transition_branch_key":"monitor_release"}}
@@ -77,7 +104,7 @@ sys.exit(3)
     result = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert result.returncode == 0, result.stderr
     output = json.loads(result.stdout)
-    assert output["transition"] == "release_release_published"
+    assert output["transition"] == "release_release_published", output
     assert json.loads(output["publication_report"])["unresolved"] is False
     release_report = json.loads(output["release_report"])
     assert release_report["unresolved"] is False
@@ -88,4 +115,88 @@ sys.exit(3)
     assert release_report["checksum"]["checksum_asset_id"] == 2
     assert release_report["checksum"]["apk_checksum_equal"] is True
     assert body_file.read_text(encoding="utf-8").startswith("puber_release_notes_v1")
-print("workflow-wait-github-release: passed")
+
+    def rejected(label: str, action) -> None:
+        try:
+            action()
+        except publish_fixture.helper.ContractError:
+            return
+        raise AssertionError(label)
+
+    selected_run = publish_fixture.helper.parse_run_carrier(output["release_run"])
+    for field, value in (("head_sha", "b" * 40), ("head_branch", "v99.0.4"), ("ref", "refs/tags/v99.0.4")):
+        candidate = json.loads(json.dumps(release_report))
+        candidate["run"][field] = value
+        encoded = publish_fixture.helper.canonical_json(candidate)
+        rejected(f"selected run {field} mismatch", lambda encoded=encoded, candidate=candidate: publish_fixture.helper.parse_release_report(encoded, hashlib.sha256(encoded.encode()).hexdigest(), expected_publication_digest=candidate["publication_report_digest"], expected_notes_digest=candidate["notes_digest"], expected_tag="v99.0.0", expected_target=target))
+
+    for mode in ("foreign", "extra_run", "missing_run"):
+        os.environ["PUBER_MODE"] = mode
+        rejected(f"discovery {mode}", lambda mode=mode: publish_fixture.helper.discover_release_run(work, "v99.0.0", target))
+    for mode in ("failed_run", "extra_job", "missing_job", "failed_job"):
+        os.environ["PUBER_MODE"] = mode
+        rejected(f"readback {mode}", lambda mode=mode: publish_fixture.helper.read_release_run(work, selected_run, target, "v99.0.0"))
+
+    wrong = sh(["git", "rev-parse", f"{target}^"], work).stdout.strip()
+    sh(["git", "update-ref", "refs/tags/v99.0.0", wrong], Path(bare_path))
+    os.environ["PUBER_MODE"] = "normal"
+    rejected("remote tag mismatch", lambda: publish_fixture.helper.read_release(work, "v99.0.0", target))
+    sh(["git", "update-ref", "refs/tags/v99.0.0", target], Path(bare_path))
+
+    checksum_file.write_bytes(b"\xff\xfe")
+    rejected("invalid UTF-8 checksum", lambda: publish_fixture.helper.read_release(work, "v99.0.0", target))
+    checksum_file.write_text(hashlib.sha256(apk_file.read_bytes()).hexdigest() + "  puber-v99.0.0.apk\n", encoding="utf-8")
+
+    for mutation in ("asset_cardinality", "asset_id", "asset_size", "checksum_digest"):
+        candidate = json.loads(json.dumps(release_report))
+        if mutation == "asset_cardinality":
+            candidate["assets"] = candidate["assets"][:1]
+        elif mutation == "asset_id":
+            candidate["assets"][0]["id"] = 99
+        elif mutation == "asset_size":
+            candidate["assets"][0]["size"] += 1
+        else:
+            candidate["checksum"]["parsed_checksum_digest"] = "b" * 64
+        encoded = publish_fixture.helper.canonical_json(candidate)
+        rejected(mutation, lambda encoded=encoded, candidate=candidate: publish_fixture.helper.parse_release_report(encoded, hashlib.sha256(encoded.encode()).hexdigest(), expected_publication_digest=candidate["publication_report_digest"], expected_notes_digest=candidate["notes_digest"], expected_tag="v99.0.0", expected_target=target))
+
+    body_file.write_text((work / published["release_notes_path"]).read_text(encoding="utf-8"), encoding="utf-8")
+    calls_file.write_text("", encoding="utf-8")
+    os.environ["PUBER_MODE"] = "normal"
+    env["PUBER_MODE"] = "normal"
+    already_correct = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert already_correct.returncode == 0 and json.loads(already_correct.stdout)["transition"] == "release_release_published"
+    assert not any("release" in line and "edit" in line for line in calls_file.read_text(encoding="utf-8").splitlines())
+
+    body_file.write_text("", encoding="utf-8")
+    calls_file.write_text("", encoding="utf-8")
+    os.environ["PUBER_MODE"] = "block"
+    env["PUBER_MODE"] = "block"
+    blocked_result = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert blocked_result.returncode == 0
+    blocked = json.loads(blocked_result.stdout)
+    assert blocked["transition"] == "monitor_needs_user_action", blocked
+    assert blocked["release_run"] != monitor_payload["release_run"]
+
+    retry = {"_kent": {**monitor_payload["_kent"], "transition_branch_key": "monitor_needs_user_action"}}
+    retry.update({key: blocked[key] for key in ("blocker_reason", "workspace_path", "operation_id", "pr_url", "branch_name", "release_version", "release_tag", "target_commit", "tag_push_status", "release_notes_path", "publication_report", "publication_report_digest", "release_run")})
+    calls_file.write_text("", encoding="utf-8")
+    os.environ["PUBER_MODE"] = "no_discovery"
+    env["PUBER_MODE"] = "no_discovery"
+    body_file.write_text((work / published["release_notes_path"]).read_text(encoding="utf-8"), encoding="utf-8")
+    retry_result = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert retry_result.returncode == 0 and json.loads(retry_result.stdout)["transition"] == "release_release_published"
+    assert not any("/actions/runs?" in line for line in calls_file.read_text(encoding="utf-8").splitlines())
+
+    os.environ["PUBER_MODE"] = "edit_lost_ack"
+    env["PUBER_MODE"] = "edit_lost_ack"
+    body_file.write_text("", encoding="utf-8")
+    lost_ack = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert lost_ack.returncode == 0 and json.loads(lost_ack.stdout)["transition"] == "release_release_published"
+
+    os.environ["PUBER_MODE"] = "normal"
+    env["PUBER_MODE"] = "edit_mismatch"
+    body_file.write_text("", encoding="utf-8")
+    mismatch = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert mismatch.returncode == 0 and json.loads(mismatch.stdout)["transition"] == "monitor_needs_user_action"
+print("workflow-wait-github-release: passed scenarios=happy,selected_run_binding,run_job_rows,remote_tag,invalid_utf8,asset_checksum,body_correct,block_retry_no_discovery,edit_lost_ack,post_edit_readback")
