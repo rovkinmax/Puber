@@ -5,6 +5,8 @@ import hashlib
 import importlib.util
 import json
 import os
+import sys
+sys.dont_write_bytecode = True
 from pathlib import Path
 import shutil
 import subprocess
@@ -106,7 +108,8 @@ def make_edge_fixture(base: Path, short_id: str, version: str, cleanup_node: dic
     sh(["git", "config", "user.email", "test@example.invalid"], worktree)
     sh(["git", "config", "user.name", "Puber Test"], worktree)
     sh(["git", "add", "."], worktree)
-    sh(["git", "commit", "--quiet", "-m", "cleanup edge fixture"], worktree)
+    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=worktree).returncode != 0:
+        sh(["git", "commit", "--quiet", "-m", "cleanup edge fixture"], worktree)
     target = sh(["git", "rev-parse", "HEAD"], worktree).stdout.strip()
     sh(["git", "push", "--quiet", "-u", "origin", branch], worktree)
 
@@ -453,23 +456,31 @@ with tempfile.TemporaryDirectory() as directory:
     cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
     runtime_root = managed / ".kent/runtime"
     expected_tombstone = runtime_root / f".evidence-cleanup-{ledger_kit['canonical_sha256'](marker)}"
-    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
-        checkpoint_path = runtime_root / "PUB-99" / checkpoint
-        checkpoint_path.write_text("{}", encoding="utf-8")
-        checkpoint_path.chmod(0o600)
-    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
-    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
-        (runtime_root / "PUB-99" / checkpoint).unlink()
-    unexpected = runtime_root / "PUB-99" / "unexpected.txt"
-    unexpected.write_text("unexpected", encoding="utf-8")
-    unexpected.chmod(0o600)
-
     def expect_ledger_rejected(label: str) -> None:
         try:
             cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
         except cleanup_mod.helper.ContractError:
             return
         raise AssertionError(label)
+
+    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
+        checkpoint_path = runtime_root / "PUB-99" / checkpoint
+        checkpoint_path.write_text("{}", encoding="utf-8")
+        checkpoint_path.chmod(0o600)
+    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
+    read_only_checkpoint = runtime_root / "PUB-99" / "fix-checkpoint.json"
+    read_only_checkpoint.chmod(0o400)
+    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
+    unsafe_checkpoint = runtime_root / "PUB-99" / "smoke-checkpoint.json"
+    unsafe_checkpoint.chmod(0o640)
+    expect_ledger_rejected("group-accessible checkpoint")
+    unsafe_checkpoint.chmod(0o600)
+    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
+        (runtime_root / "PUB-99" / checkpoint).unlink()
+    unexpected = runtime_root / "PUB-99" / "unexpected.txt"
+    unexpected.write_text("unexpected", encoding="utf-8")
+    unexpected.chmod(0o600)
+
     expect_ledger_rejected("unexpected active task entry")
     unexpected.unlink()
 
@@ -609,6 +620,8 @@ with tempfile.TemporaryDirectory() as directory:
         checkpoint_path = expected_tombstone / checkpoint
         checkpoint_path.write_text("{}", encoding="utf-8")
         checkpoint_path.chmod(0o600)
+    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
+    (expected_tombstone / "fix-checkpoint.json").chmod(0o400)
     cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
     for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
         (expected_tombstone / checkpoint).unlink()
