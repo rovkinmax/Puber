@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory() as directory:
     gh = fake / "gh"
     gh.write_text(
         """#!/usr/bin/env python3
-import json,os,subprocess,sys
+import hashlib,json,os,subprocess,sys
 args=sys.argv[1:]; target=os.environ["PUBER_TARGET"]; tag="v99.0.0"; mode=os.environ.get("PUBER_MODE","normal")
 with open(os.environ["PUBER_CALLS"], "a", encoding="utf-8") as calls: calls.write(json.dumps(args)+"\\n")
 if args[:2] == ["release","edit"]:
@@ -82,10 +82,11 @@ if "/actions/runs/42/attempts/1" in endpoint:
  run_conclusion="failure" if mode == "failed_run" else "success"
  print(json.dumps({"id":run_id,"run_attempt":run_attempt,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":run_sha,"head_branch":run_branch,"repository":{"full_name":"rovkinmax/Puber"},"status":"completed","conclusion":run_conclusion})); sys.exit(0)
 if "/releases/assets/1" in endpoint:
- if mode == "invalid_utf8": sys.stdout.buffer.write(bytes((255,254))); sys.exit(0)
  sys.stdout.buffer.write(open(os.environ["PUBER_APK"],"rb").read()); sys.exit(0)
 if "/releases/assets/2" in endpoint:
  if mode == "invalid_utf8": sys.stdout.buffer.write(bytes((255,254))); sys.exit(0)
+ if mode == "checksum_filename_mismatch":
+  sys.stdout.write(hashlib.sha256(open(os.environ["PUBER_APK"],"rb").read()).hexdigest() + "  wrong.apk\\n"); sys.exit(0)
  if mode == "checksum_digest_mismatch":
   sys.stdout.write("0"*64 + "  puber-v99.0.0.apk\\n"); sys.exit(0)
  sys.stdout.buffer.write(open(os.environ["PUBER_CHECKSUM"],"rb").read()); sys.exit(0)
@@ -98,7 +99,8 @@ if "/releases/tags/" in endpoint:
  if mode == "zero_asset_size": assets[0]["size"]=0
  if mode == "invalid_asset_size": assets[0]["size"]="invalid"
  if mode == "download_size_mismatch": assets[0]["size"] += 1
- if mode == "checksum_filename_mismatch": assets[1]["name"]="wrong.sha256"
+ if mode == "invalid_utf8": assets[1]["size"]=2
+ if mode == "checksum_filename_mismatch": assets[1]["size"]=len(hashlib.sha256(apk).hexdigest() + "  wrong.apk\\n")
  print(json.dumps({"tag_name":tag,"target_commitish":"master","name":"Puber "+tag,"draft":False,"prerelease":False,"html_url":"https://github.com/rovkinmax/Puber/releases/tag/"+tag,"body":open(os.environ["PUBER_BODY"],encoding="utf-8").read(),"assets":assets})); sys.exit(0)
 sys.exit(3)
 """,
@@ -132,10 +134,12 @@ sys.exit(3)
     assert release_report["checksum"]["apk_checksum_equal"] is True
     assert body_file.read_text(encoding="utf-8").startswith("puber_release_notes_v1")
 
-    def rejected(label: str, action) -> None:
+    def rejected(label: str, action, expected_message: str | None = None) -> None:
         try:
             action()
-        except publish_fixture.helper.ContractError:
+        except publish_fixture.helper.ContractError as error:
+            if expected_message and expected_message not in str(error):
+                raise AssertionError(f"{label}: unexpected ContractError: {error}")
             return
         raise AssertionError(label)
 
@@ -162,7 +166,7 @@ sys.exit(3)
     for mode in ("missing_assets", "extra_assets", "duplicate_asset_id", "zero_asset_size", "invalid_asset_size", "download_size_mismatch", "checksum_filename_mismatch", "checksum_digest_mismatch", "invalid_utf8"):
         os.environ["PUBER_MODE"] = mode
         env["PUBER_MODE"] = mode
-        rejected(f"API release {mode}", lambda mode=mode: publish_fixture.helper.read_release(work, "v99.0.0", target))
+        rejected(f"API release {mode}", lambda mode=mode: publish_fixture.helper.read_release(work, "v99.0.0", target), {"invalid_utf8": "checksum asset is not valid UTF-8", "checksum_filename_mismatch": "checksum asset does not match APK bytes"}.get(mode))
     os.environ["PUBER_MODE"] = "normal"
     env["PUBER_MODE"] = "normal"
 

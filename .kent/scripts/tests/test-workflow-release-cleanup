@@ -382,6 +382,12 @@ with tempfile.TemporaryDirectory() as directory:
         ("wrong branch", lambda value: value["worktree"].__setitem__("recorded_branch_ref", "refs/heads/foreign")),
         ("wrong display", lambda value: value["worktree"].__setitem__("display_name", "foreign")),
         ("foreign Workspace", lambda value: value["target"].__setitem__("WorkspaceRoot", str(root / "foreign-primary"))),
+        ("WorkspaceID whitespace", lambda value: value["target"].__setitem__("WorkspaceID", " workspace-fixture")),
+        ("WorkspaceName whitespace", lambda value: value["target"].__setitem__("WorkspaceName", "Puber ")),
+        ("WorktreeID whitespace", lambda value: value["target"]["Worktree"].__setitem__("ID", " worktree-fixture")),
+        ("WorktreeName whitespace", lambda value: value["target"]["Worktree"].__setitem__("Name", "PUB-99 ")),
+        ("display whitespace", lambda value: value["worktree"].__setitem__("display_name", "PUB-99 ")),
+        ("branch whitespace", lambda value: value["worktree"].__setitem__("recorded_branch_ref", "refs/heads/release/99.0.0 ")),
     ):
         candidate = json.loads(json.dumps(active_status))
         mutation(candidate)
@@ -447,6 +453,16 @@ with tempfile.TemporaryDirectory() as directory:
     cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
     runtime_root = managed / ".kent/runtime"
     expected_tombstone = runtime_root / f".evidence-cleanup-{ledger_kit['canonical_sha256'](marker)}"
+    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
+        checkpoint_path = runtime_root / "PUB-99" / checkpoint
+        checkpoint_path.write_text("{}", encoding="utf-8")
+        checkpoint_path.chmod(0o600)
+    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
+    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
+        (runtime_root / "PUB-99" / checkpoint).unlink()
+    unexpected = runtime_root / "PUB-99" / "unexpected.txt"
+    unexpected.write_text("unexpected", encoding="utf-8")
+    unexpected.chmod(0o600)
 
     def expect_ledger_rejected(label: str) -> None:
         try:
@@ -454,6 +470,8 @@ with tempfile.TemporaryDirectory() as directory:
         except cleanup_mod.helper.ContractError:
             return
         raise AssertionError(label)
+    expect_ledger_rejected("unexpected active task entry")
+    unexpected.unlink()
 
     wrong_tombstone = runtime_root / (".evidence-cleanup-" + "0" * 64)
     wrong_tombstone.mkdir()
@@ -509,6 +527,32 @@ with tempfile.TemporaryDirectory() as directory:
     release_digest = hashlib.sha256(release_report.encode()).hexdigest()
     valid_carrier = {"publication_report": publication, "publication_report_digest": publication_digest, "release_report": release_report, "release_report_digest": release_digest, "release_notes_path": carrier_notes["path"], "release_notes_digest": carrier_notes["sha256"]}
     assert cleanup_mod._validate_carriers({"task_short_id": "PUB-99"}, valid_carrier)[0] is not None
+    def reject_parser(label: str, action) -> None:
+        try:
+            action()
+        except cleanup_mod.helper.ContractError:
+            return
+        raise AssertionError(label)
+
+    for label, mutation in (
+        ("boolean run id", lambda value: value["run"].__setitem__("run_id", True)),
+        ("boolean run attempt", lambda value: value["run"].__setitem__("attempt", True)),
+        ("boolean API run id", lambda value: value["jobs"]["run"].__setitem__("run_id", True)),
+        ("boolean API run attempt", lambda value: value["jobs"]["run"].__setitem__("attempt", True)),
+        ("boolean job id", lambda value: value["jobs"]["job"].__setitem__("id", True)),
+        ("boolean job attempt", lambda value: value["jobs"]["job"].__setitem__("attempt", True)),
+        ("boolean asset id", lambda value: value["assets"][0].__setitem__("id", True)),
+        ("boolean asset size", lambda value: value["assets"][0].__setitem__("size", True)),
+        ("duplicate asset ids", lambda value: value["assets"][1].__setitem__("id", value["assets"][0]["id"])),
+    ):
+        candidate = json.loads(release_report)
+        mutation(candidate)
+        encoded = cleanup_mod.helper.canonical_json(candidate)
+        reject_parser(label, lambda encoded=encoded: cleanup_mod.helper.parse_release_report(encoded, hashlib.sha256(encoded.encode()).hexdigest(), expected_publication_digest=publication_digest, expected_notes_digest=carrier_notes["sha256"], expected_tag="v99.0.0", expected_target=target))
+    malformed_publication = json.loads(publication)
+    malformed_publication["operation_digest"] = "A" * 64
+    malformed_publication_encoded = cleanup_mod.helper.canonical_json(malformed_publication)
+    reject_parser("malformed current publication operation digest", lambda: cleanup_mod.helper.parse_publication_report(malformed_publication_encoded, hashlib.sha256(malformed_publication_encoded.encode()).hexdigest(), task_short_id="PUB-99", root=managed))
     broken_carrier = dict(valid_carrier)
     broken_value = json.loads(release_report)
     broken_value["run"]["head_sha"] = "e" * 40
@@ -561,6 +605,13 @@ with tempfile.TemporaryDirectory() as directory:
     assert managed.exists() and (primary / ".git").exists()
     assert not active_dir.exists() and expected_tombstone.is_dir()
     cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
+    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
+        checkpoint_path = expected_tombstone / checkpoint
+        checkpoint_path.write_text("{}", encoding="utf-8")
+        checkpoint_path.chmod(0o600)
+    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
+    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
+        (expected_tombstone / checkpoint).unlink()
     tombstone_backup = expected_tombstone.with_name(expected_tombstone.name + ".backup")
     expected_tombstone.rename(tombstone_backup)
     expected_tombstone.symlink_to(tombstone_backup.name, target_is_directory=True)
@@ -736,12 +787,38 @@ with tempfile.TemporaryDirectory() as directory:
         assert release_janitor.returncode == 0, release_janitor.stderr
         assert json.loads(release_janitor.stdout)["transition"] == "task_janitor_blocked"
 
-    for index, mutation in enumerate(("head_sha", "head_branch", "ref"), start=102):
+    boundary_mutations = ("head_sha", "head_branch", "ref", "run_id", "run_attempt", "api_run_id", "api_run_attempt", "job_id", "job_attempt", "asset_id", "asset_size", "duplicate_asset_ids", "publication_operation_digest")
+    for index, mutation in enumerate(boundary_mutations, start=102):
         with tempfile.TemporaryDirectory(dir=root) as edge_directory:
             edge = make_edge_fixture(Path(edge_directory), f"PUB-{index}", f"{index}.0.0", cleanup_node)
             carrier = release_carrier_for(edge)
             value = json.loads(carrier["release_report"])
-            value["run"][mutation] = "f" * 40 if mutation == "head_sha" else f"v{index}.9.9" if mutation == "head_branch" else f"refs/tags/v{index}.9.9"
+            if mutation in {"head_sha", "head_branch", "ref"}:
+                value["run"][mutation] = "f" * 40 if mutation == "head_sha" else f"v{index}.9.9" if mutation == "head_branch" else f"refs/tags/v{index}.9.9"
+            elif mutation == "run_id":
+                value["run"]["run_id"] = True
+            elif mutation == "run_attempt":
+                value["run"]["attempt"] = True
+            elif mutation == "api_run_id":
+                value["jobs"]["run"]["run_id"] = True
+            elif mutation == "api_run_attempt":
+                value["jobs"]["run"]["attempt"] = True
+            elif mutation == "job_id":
+                value["jobs"]["job"]["id"] = True
+            elif mutation == "job_attempt":
+                value["jobs"]["job"]["attempt"] = True
+            elif mutation == "asset_id":
+                value["assets"][0]["id"] = True
+            elif mutation == "asset_size":
+                value["assets"][0]["size"] = True
+            elif mutation == "duplicate_asset_ids":
+                value["assets"][1]["id"] = value["assets"][0]["id"]
+            elif mutation == "publication_operation_digest":
+                publication_value = json.loads(carrier["publication_report"])
+                publication_value["operation_digest"] = "A" * 64
+                carrier["publication_report"] = cleanup_mod.helper.canonical_json(publication_value)
+                carrier["publication_report_digest"] = hashlib.sha256(carrier["publication_report"].encode()).hexdigest()
+                value["publication_report_digest"] = carrier["publication_report_digest"]
             invalid_report = cleanup_mod.helper.canonical_json(value)
             invalid = {**carrier, "release_report": invalid_report, "release_report_digest": hashlib.sha256(invalid_report.encode()).hexdigest(), "release_run": cleanup_mod.helper.canonical_json(value["run"])}
             invalid_payload = {"_kent": {"task_id": edge["task"]["summary"]["id"], "node_id": cleanup_node["id"], "transition_branch_key": "release_release_published"}, **{key: value for key, value in invalid.items() if not key.startswith("_")}}
@@ -765,4 +842,4 @@ with tempfile.TemporaryDirectory() as directory:
     expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_lines[0] + "\n" + marker_hash_line + "\nJanitor tampered"}, env, "tampered marker hash")
     expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_report + "\nTERMINAL_EVIDENCE_V1 extra"}, env, "extra terminal marker")
 
-print("workflow-release-cleanup: passed scenarios=one_read_session_selection,malformed_status_matrix,dirty_primary,ledger_active_tombstone_safety,cancel_edge,close_without_merge_edge,release_carrier_edge,outer_release_run_binding,selected_run_head_sha_branch_ref_boundary,janitor_active_block,multiline_repeated_retries,post_leave_block,third_retry_block,marker_adversarial,unrelated_ledger")
+print("workflow-release-cleanup: passed scenarios=one_read_session_selection,malformed_status_matrix,whitespace_status_rejection,dirty_primary,ledger_checkpoint_matrix,ledger_active_tombstone_safety,cancel_edge,close_without_merge_edge,release_carrier_edge,outer_release_run_binding,deep_parser_boundary_matrix,selected_run_head_sha_branch_ref_boundary,janitor_active_block,multiline_repeated_retries,post_leave_block,third_retry_block,marker_adversarial,unrelated_ledger")
