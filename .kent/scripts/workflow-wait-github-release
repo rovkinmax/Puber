@@ -1,54 +1,75 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import importlib.util, json
-from importlib.machinery import SourceFileLoader
+
+import importlib.util
+import json
 import sys
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
+
 sys.dont_write_bytecode = True
 _helper_path = Path(__file__).with_name("workflow-puber-release-intent")
-spec = importlib.util.spec_from_loader("puber_release_runtime", SourceFileLoader("puber_release_runtime", str(_helper_path))); helper = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(helper)
+_spec = importlib.util.spec_from_loader("puber_release_runtime", SourceFileLoader("puber_release_runtime", str(_helper_path)))
+helper = importlib.util.module_from_spec(_spec)
+assert _spec and _spec.loader
+_spec.loader.exec_module(helper)
 ROOT = helper.ROOT
 
-def run_tuple(payload, tag, target):
-    existing = payload.get("release_run")
-    if existing is None:
-        result = helper.gh(ROOT, ["run","list","--workflow",".github/workflows/release.yml","--event","push","--json","databaseId,attempt,headSha,ref,event,workflowName,workflowPath"])
-        if result.returncode != 0: raise helper.ContractError("release run discovery failed")
-        rows = json.loads(result.stdout or "[]")
-        matches = [row for row in rows if isinstance(row,dict) and row.get("event")=="push" and row.get("workflowName")=="Release" and row.get("workflowPath")==".github/workflows/release.yml" and row.get("headSha")==target and row.get("ref")==f"refs/tags/{tag}"]
-        if len(matches) != 1: raise helper.ContractError("release run is missing or ambiguous")
-        row = matches[0]; existing = {"repository":"rovkinmax/Puber","workflow_path":".github/workflows/release.yml","workflow_name":"Release","event":"push","run_id":row.get("databaseId"),"attempt":row.get("attempt"),"head_sha":row.get("headSha"),"ref":row.get("ref")}
-    if not isinstance(existing,dict) or set(existing)!={"repository","workflow_path","workflow_name","event","run_id","attempt","head_sha","ref"} or existing["repository"]!="rovkinmax/Puber" or existing["workflow_path"]!=".github/workflows/release.yml" or existing["workflow_name"]!="Release" or existing["event"]!="push" or existing["head_sha"]!=target or existing["ref"]!=f"refs/tags/{tag}" or not isinstance(existing["run_id"],int) or existing["run_id"]<=0 or not isinstance(existing["attempt"],int) or existing["attempt"]<=0:
-        raise helper.ContractError("release run identity is foreign, stale, or switched")
-    return existing
+def _report_carriers(payload: dict, state: dict) -> tuple[dict, dict]:
+    version, tag = helper.safe_version_tag(payload["release_version"], payload["release_tag"])
+    target = helper.require_string(payload["target_commit"], "target_commit")
+    if not helper.SHA1.fullmatch(target):
+        raise helper.ContractError("target_commit is not exact")
+    notes_path = helper.validate_notes_path(ROOT, payload["release_notes_path"], task_short_id=state["task_short_id"])
+    publication = helper.parse_publication_report(payload["publication_report"], payload["publication_report_digest"], expected_pr=payload.get("pr_url") or None, expected_version=version, expected_tag=tag, expected_target=target, task_short_id=state["task_short_id"], root=ROOT)
+    if publication["notes_report"]["path"] != notes_path or publication["unresolved"] is not True:
+        raise helper.ContractError("publication report is not the unresolved canonical carrier")
+    run = helper.parse_run_carrier(payload["release_run"])
+    if run != helper.NOT_SELECTED_RUN and (run["head_sha"] != target or run["head_branch"] != tag or run["ref"] != f"refs/tags/{tag}"):
+        raise helper.ContractError("release_run carrier is stale or switched")
+    return publication, run
+
+def _release_report(run: dict, jobs: dict, release: dict, publication: dict, notes_digest: str, checksum: dict) -> tuple[str, str]:
+    value = {"schema": "puber_release_report_v1", "run": run, "jobs": jobs, "release": release, "assets": release["assets"], "checksum": checksum, "notes_digest": notes_digest, "publication_report_digest": publication["digest"], "unresolved": False}
+    encoded = helper.canonical_json(value)
+    return encoded, helper.sha256_bytes(encoded.encode("utf-8"))
 
 def main() -> int:
     payload = None
     try:
         payload, state, edge = helper.validate_envelope(helper.read_zero_argument(), ROOT, "monitor")
-        tag = helper.require_string(payload["release_tag"], "release_tag"); target = helper.require_string(payload["target_commit"], "target_commit"); notes_path = helper.require_string(payload["release_notes_path"], "release_notes_path")
-        notes_bytes = (ROOT / notes_path).read_bytes(); notes_digest = helper.sha256_bytes(notes_bytes)
-        run = run_tuple(payload, tag, target)
-        attested = helper.attest(ROOT, state, "monitor", edge["key"], kind="observe_release", run_tuple=run, project_fields={"release_tag":tag})
-        checked = helper.gh(ROOT, ["run","view",str(run["run_id"]),"--attempt",str(run["attempt"]),"--json","databaseId,attempt,workflowName,workflowPath,event,headSha,ref,status,conclusion,jobs"])
-        if checked.returncode != 0: raise helper.ContractError("exact release run read failed")
-        run_state=json.loads(checked.stdout)
-        if run_state.get("databaseId")!=run["run_id"] or run_state.get("attempt")!=run["attempt"] or run_state.get("workflowPath")!=".github/workflows/release.yml" or run_state.get("headSha")!=target or run_state.get("status")!="completed" or run_state.get("conclusion")!="success": raise helper.ContractError("exact release run failed or switched")
-        jobs=run_state.get("jobs")
-        if not isinstance(jobs,list) or not jobs or any(isinstance(job,dict) and (job.get("status") not in {None,"completed"} or job.get("conclusion")!="success") for job in jobs): raise helper.ContractError("exact release jobs are not successful")
-        viewed=helper.gh(ROOT,["release","view",tag,"--json","tagName,targetCommitish,name,isDraft,isPrerelease,assets,body,url"])
-        if viewed.returncode != 0: raise helper.ContractError("GitHub Release is missing")
-        release=json.loads(viewed.stdout); names={a.get("name") for a in release.get("assets",[]) if isinstance(a,dict)}
-        if release.get("tagName")!=tag or release.get("targetCommitish") not in {target,target[:7]} or release.get("name")!=f"Puber {tag}" or release.get("isDraft") or release.get("isPrerelease") or not any(str(name).endswith(".apk") for name in names) or not any(str(name).endswith(".sha256") for name in names): raise helper.ContractError("Release identity/assets/checksum are not exact")
-        expected=notes_bytes.decode("utf-8")
-        if release.get("body") != expected:
-            edited=helper.gh(ROOT,["release","edit",tag,"--notes-file","-"],input_text=expected)
-            if edited.returncode != 0: raise helper.ContractError("release notes edit failed")
-            reread=helper.gh(ROOT,["release","view",tag,"--json","tagName,targetCommitish,name,isDraft,isPrerelease,assets,body,url"])
-            if reread.returncode != 0 or json.loads(reread.stdout).get("body") != expected: raise helper.ContractError("release notes body readback mismatch")
-        report={"schema":"puber_release_report_v1","run":run,"release":release,"notes_sha256":notes_digest,"publication_report":payload.get("publication_report",""),"unresolved":False}
-        helper.emit("release_release_published",release_report=helper.report_json(report),publication_report=payload.get("publication_report",""),release_notes_path=notes_path,release_run=json.dumps(run,sort_keys=True),no_live_apply=False)
-    except Exception as error:
-        preserved={key:payload[key] for key in payload if key!="_kent"} if isinstance(payload,dict) else {}; preserved["blocker_reason"]=str(error); helper.emit("monitor_needs_user_action",**preserved,no_live_apply=True)
-    return 0
-if __name__ == "__main__": raise SystemExit(main())
+    except helper.ContractError as error:
+        print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
+        return 2
+    try:
+        publication, run = _report_carriers(payload, state)
+        if run == helper.NOT_SELECTED_RUN:
+            run = helper.discover_release_run(ROOT, payload["release_tag"], payload["target_commit"])
+            payload["release_run"] = helper.canonical_json(run)
+        run_for_api, jobs = helper.read_release_run(ROOT, run, payload["target_commit"], payload["release_tag"])
+        release = helper.read_release(ROOT, payload["release_tag"], payload["target_commit"])
+        notes = helper.parse_notes_report(publication["notes_report"], ROOT, state["task_short_id"], expected_tag=payload["release_tag"], expected_target=payload["target_commit"])
+        notes_bytes = (ROOT / notes["path"]).read_bytes()
+        body = release.get("body", "")
+        if body != notes_bytes.decode("utf-8"):
+            edited = helper.gh(ROOT, ["release", "edit", payload["release_tag"], "--notes-file", "-"], input_text=notes_bytes.decode("utf-8"))
+            if edited.returncode:
+                raise helper.ContractError("release notes edit failed after all verification gates")
+            release = helper.read_release(ROOT, payload["release_tag"], payload["target_commit"])
+            if release.get("body") != notes_bytes.decode("utf-8"):
+                raise helper.ContractError("release notes post-edit readback mismatch")
+        final_publication, final_publication_digest = helper.publication_report(publication["operation_digest"], publication["pr_url"], publication["release_version"], publication["release_tag"], publication["target_commit"], notes, tag_phase="tag_published", tag_status=publication["tag_status"], unresolved=False)
+        publication_final = helper.parse_publication_report(final_publication, final_publication_digest, expected_pr=publication["pr_url"], expected_version=publication["release_version"], expected_tag=publication["release_tag"], expected_target=publication["target_commit"], task_short_id=state["task_short_id"], root=ROOT)
+        publication_final["digest"] = final_publication_digest
+        report, report_digest = _release_report(run, {"run": run_for_api, "job": jobs}, release, publication_final, notes["sha256"], {"apk_sha256": helper.sha256_bytes(helper.gh_api_bytes(ROOT, f"repos/{helper.REPOSITORY}/releases/assets/{next(asset['id'] for asset in release['assets'] if asset['name'].endswith('.apk'))}")), "apk_name": next(asset["name"] for asset in release["assets"] if asset["name"].endswith(".apk")), "checksum_name": next(asset["name"] for asset in release["assets"] if asset["name"].endswith(".apk.sha256"))})
+        helper.emit_exact(ROOT, "release_release_published", "cleanup", {"release_report": report, "publication_report": final_publication, "publication_report_digest": final_publication_digest, "release_notes_path": notes["path"], "release_notes_digest": notes["sha256"], "release_run": helper.canonical_json(run), "release_report_digest": report_digest})
+        return 0
+    except helper.ContractError as error:
+        preserved = dict(payload or {})
+        preserved.pop("_kent", None)
+        preserved["blocker_reason"] = str(error)
+        helper.emit_exact(ROOT, "monitor_needs_user_action", "monitor", {key: preserved.get(key, helper.canonical_json(helper.NOT_SELECTED_RUN) if key == "release_run" else "") for key in ("blocker_reason", "workspace_path", "operation_id", "pr_url", "branch_name", "release_version", "release_tag", "target_commit", "tag_push_status", "release_notes_path", "publication_report", "publication_report_digest", "release_run")})
+        return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())

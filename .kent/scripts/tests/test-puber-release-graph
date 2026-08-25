@@ -11,6 +11,10 @@ def run(value):
 source=json.loads(GRAPH.read_text())
 ok=subprocess.run(["python3",str(ROOT/".kent/workflows/builders/puber_release.py"),"--check",str(GRAPH)],cwd=ROOT,text=True,capture_output=True)
 assert ok.returncode==0, ok.stderr
+assert (len(source["nodes"]), len(source["transition_groups"]), len(source["edges"])) == (15, 42, 42)
+for key, (target, params) in __import__("runpy").run_path(str(ROOT/".kent/workflows/builders/puber_release.py"))["SCRIPT_EDGE_PARAMETERS"].items():
+    matches=[edge for edge in source["edges"] if edge["key"]==key]
+    assert len(matches)==1 and [item["key"] for item in matches[0].get("parameters",[])] == list(params)
 bad=copy.deepcopy(source); bad["workflow"]["default"]=True
 assert run(bad).returncode != 0
 bad=copy.deepcopy(source); next(n for n in bad["nodes"] if n["key"]=="publish")["kind"]="agent"

@@ -860,6 +860,11 @@
           "purpose": "ordinary"
         },
         {
+          "key": "publication_report_digest",
+          "description": "Digest of the closed publication report carrier.",
+          "purpose": "ordinary"
+        },
+        {
           "key": "release_run",
           "description": "Immutable S05 carrier field: release_run.",
           "purpose": "ordinary"
@@ -945,6 +950,16 @@
           "key": "publication_report",
           "description": "Immutable S05 carrier field: publication_report.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "publication_report_digest",
+          "description": "Digest of the closed publication report carrier.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_run",
+          "description": "Pinned release run carrier, or explicit not-selected state.",
+          "purpose": "ordinary"
         }
       ]
     },
@@ -974,13 +989,28 @@
           "purpose": "ordinary"
         },
         {
+          "key": "publication_report_digest",
+          "description": "Digest of the closed publication report carrier.",
+          "purpose": "ordinary"
+        },
+        {
           "key": "release_notes_path",
           "description": "Immutable S05 carrier field: release_notes_path.",
           "purpose": "ordinary"
         },
         {
+          "key": "release_notes_digest",
+          "description": "Digest of canonical notes bytes.",
+          "purpose": "ordinary"
+        },
+        {
           "key": "release_run",
           "description": "Immutable S05 carrier field: release_run.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_report_digest",
+          "description": "Digest of the closed release report carrier.",
           "purpose": "ordinary"
         }
       ]
@@ -1056,6 +1086,11 @@
           "purpose": "ordinary"
         },
         {
+          "key": "publication_report_digest",
+          "description": "Digest of the closed publication report carrier.",
+          "purpose": "ordinary"
+        },
+        {
           "key": "release_run",
           "description": "Immutable S05 carrier field: release_run.",
           "purpose": "ordinary"
@@ -1117,13 +1152,28 @@
           "purpose": "ordinary"
         },
         {
+          "key": "publication_report_digest",
+          "description": "Digest of the closed publication report carrier.",
+          "purpose": "ordinary"
+        },
+        {
           "key": "release_report",
           "description": "Immutable S05 carrier field: release_report.",
           "purpose": "ordinary"
         },
         {
+          "key": "release_report_digest",
+          "description": "Digest of the closed release report carrier.",
+          "purpose": "ordinary"
+        },
+        {
           "key": "release_notes_path",
           "description": "Immutable S05 carrier field: release_notes_path.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "release_notes_digest",
+          "description": "Digest of canonical notes bytes.",
           "purpose": "ordinary"
         }
       ]
@@ -1433,6 +1483,11 @@
           "key": "release_version",
           "description": "Resolved release version.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Blocker reason.",
+          "purpose": "ordinary"
         }
       ]
     },
@@ -1469,6 +1524,11 @@
           "key": "release_version",
           "description": "Resolved release version.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Blocker reason.",
+          "purpose": "ordinary"
         }
       ]
     },
@@ -1504,6 +1564,11 @@
         {
           "key": "release_version",
           "description": "Resolved release version.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "blocker_reason",
+          "description": "Blocker reason.",
           "purpose": "ordinary"
         }
       ]

@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import importlib.util, json
+
+import importlib.util
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
-from types import SimpleNamespace
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_loader("cleanup_test", SourceFileLoader("cleanup_test", str(ROOT / ".kent/scripts/workflow-release-cleanup")))
+spec = importlib.util.spec_from_loader("cleanup_runtime_test", SourceFileLoader("cleanup_runtime_test", str(ROOT / ".kent/scripts/workflow-release-cleanup")))
 mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
-node_id = mod.helper._node_id(ROOT, "cleanup")
-payload = {"_kent":{"task_id":"task-12345678-1234-4234-8234-123456789abc","node_id":node_id,"transition_branch_key":"release_release_published"},
-           "release_report":"release-report","publication_report":"publication-report","release_notes_path":"notes.md","release_run":"run"}
-state={"task":{"body":"release_branch: release/1.2.3","live_sessions":[{"session_id":"session-1"}]},"task_short_id":"PUBER-1","commit":"a"*40}
-mod.helper.read_zero_argument=lambda: payload
-mod.helper.validate_envelope=lambda value,root,node:(value,state,{"key":"release_release_published"})
-mod.helper.attest=lambda *args,**kwargs: {"binding":SimpleNamespace(provenance_fingerprint="cleanup-op")}
-mod.helper.git=lambda *args,**kwargs: "release/1.2.3"
-seen=[]; mod.helper.emit=lambda transition,**fields: seen.append((transition,fields))
-assert mod.main()==0 and seen[0][0]=="cleanup_task_janitor" and seen[0][1]["cleanup_mode"]=="report_only"
-state["task"]["live_sessions"]=[{"session_id":"one"},{"session_id":"two"}]; seen.clear()
-assert mod.main()==0 and seen[0][0]=="cleanup_task_janitor" and seen[0][1]["cleanup_session_id"]==""
-assert json.loads(seen[0][1]["cleanup_report"])["destructive_action"] is False
+state = {"task_id":"task-12345678-1234-4234-8234-123456789abc","task":{"live_sessions":[{"session_id":"session-1","task_id":"task-12345678-1234-4234-8234-123456789abc","worktree_path":str(ROOT),"status":"live"}]}}
+assert mod._eligible_session(state) == "session-1"
+state["task"]["live_sessions"] = [{"session_id":"session-1","task_id":"other","worktree_path":str(ROOT),"status":"live"}]
+try:
+    mod._eligible_session(state)
+except mod.helper.ContractError:
+    pass
+else:
+    raise AssertionError("foreign cleanup Session accepted")
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory)
+    report, digest = mod._cleanup_report(state, "session-1", {"operation_id":"a"*64}, unresolved=True, blocker="not authorized")
+    parsed = mod.helper.parse_closed_json(report, "puber_cleanup_report_v1", mod.helper.CLEANUP_KEYS)
+    assert parsed["destructive_action"] is False and digest == mod.helper.sha256_bytes(mod.helper.canonical_json(parsed).encode())
+    assert parsed["unresolved"] is True and parsed["blocker_reason"] == "not authorized"
 print("workflow-release-cleanup: passed")

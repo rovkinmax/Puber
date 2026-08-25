@@ -1,34 +1,103 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import importlib.util
-from importlib.machinery import SourceFileLoader
+
+import json
+import os
 from pathlib import Path
-from types import SimpleNamespace
+import shutil
+import subprocess
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_loader("publish_test", SourceFileLoader("publish_test", str(ROOT / ".kent/scripts/workflow-puber-release-publish")))
-mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
-node_id = mod.helper._node_id(ROOT, "publish")
-payload = {"_kent": {"task_id": "task-12345678-1234-4234-8234-123456789abc", "node_id": node_id, "transition_branch_key": "merge_watch_pr_merged"},
-           "workspace_path": str(ROOT), "operation_id": "op-1", "pr_url": "https://github.com/rovkinmax/Puber/pull/7",
-           "branch_name": "release/1.2.3", "merge_strategy": "auto", "pr_head_oid": "b"*40, "pr_base_oid": "c"*40}
-state = {"task": {"body": "release_version: 1.2.3\nrelease_tag: v1.2.3"}, "task_short_id": "PUBER-1", "commit": "a"*40}
-edge = {"key": "merge_watch_pr_merged"}
-mod.helper.read_zero_argument = lambda: payload
-mod.helper.validate_envelope = lambda value, root, node: (value, state, edge)
-mod.helper.canonical_pr_url = lambda value: value
-mod.helper.pr_state = lambda root, url: {"headRefName":"release/1.2.3","headRefOid":"b"*40,"baseRefOid":"c"*40,"mergeCommit":{"oid":"d"*40}}
-mod.helper.remote_master = lambda root: "d"*40
-mod.helper.git = lambda *args, **kwargs: "d"*40
-mod.helper.attest = lambda *args, **kwargs: {"operation": SimpleNamespace(operation_digest="op-digest")}
-mod.helper.notes_report = lambda *args: {"path": ".todo/PUBER-1/release-notes-ru.md"}
-mod.helper.publish_tag = lambda *args: "created_and_pushed"
-seen = []
-mod.helper.emit = lambda transition, **fields: seen.append((transition, fields))
-assert mod.main() == 0 and seen[0][0] == "monitor_release" and seen[0][1]["tag_push_status"] == "created_and_pushed"
+KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
+SCRIPT_PATHS = [
+    ".kent/scripts/workflow-puber-release-intent",
+    ".kent/scripts/workflow-puber-release-publish",
+    ".kent/scripts/workflow-wait-github-release",
+    ".kent/scripts/workflow-release-cleanup",
+    ".kent/workflows/puber-release.json",
+    ".kent/workflows/specs/puber-release.toml",
+    ".kent/workflows/builders/puber_release.py",
+    ".kent/workflows/puber-release.manifest.json",
+]
 
-seen.clear()
-mod.helper.publish_tag = lambda *args: (_ for _ in ()).throw(mod.helper.ContractError("conflicting remote tag"))
-assert mod.main() == 0 and seen[0][0] == "publish_needs_user_action"
-assert seen[0][1]["target_commit"] == "d"*40 and "conflicting remote tag" in seen[0][1]["blocker_reason"]
+def sh(args, cwd, **kwargs):
+    return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+
+def materialize(root: Path, bare: Path) -> tuple[Path, str, str]:
+    work = root / "work"
+    sh(["git", "clone", "--quiet", str(ROOT), str(work)], root)
+    manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text(encoding="utf-8"))
+    for relative in sorted(set(SCRIPT_PATHS) | set(manifest["additional_paths"])):
+        source = ROOT / relative
+        target = work / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    sh(["git", "config", "user.email", "test@example.invalid"], work)
+    sh(["git", "config", "user.name", "Puber Test"], work)
+    sh(["git", "add", "."], work)
+    sh(["git", "commit", "--quiet", "-m", "test fixture"], work)
+    sh(["git", "init", "--bare", str(bare)], root)
+    sh(["git", "remote", "set-url", "origin", str(bare)], work)
+    sh(["git", "push", "--quiet", "-u", "origin", "HEAD:master"], work)
+    return work, sh(["git", "rev-parse", "HEAD"], work).stdout.strip(), str(bare)
+
+def write_fake_bins(root: Path, task: dict, target: str, bare: str, log: Path) -> tuple[Path, Path]:
+    fake = root / "fake"; fake.mkdir()
+    task_path = fake / "task.json"; task_path.write_text(json.dumps(task), encoding="utf-8")
+    kent = fake / "kent"
+    kent.write_text("#!/bin/sh\ncat \"$PUBER_FAKE_TASK\"\n", encoding="utf-8"); kent.chmod(0o755)
+    gh = fake / "gh"
+    gh.write_text(
+        """#!/usr/bin/env python3
+import json, os, subprocess, sys
+args=sys.argv[1:]
+with open(os.environ["PUBER_GH_LOG"], "a", encoding="utf-8") as f: f.write(json.dumps(args)+"\\n")
+if args[0] != "api": sys.exit(2)
+endpoint=args[1]
+target=os.environ["PUBER_TARGET"]
+if endpoint.endswith("/git/ref/heads/master"):
+ print(json.dumps({"ref":"refs/heads/master","node_id":"master","url":"https://api.github.com/ref","object":{"type":"commit","sha":target}})); sys.exit(0)
+if "/pulls/" in endpoint:
+ print(json.dumps({"html_url":"https://github.com/rovkinmax/Puber/pull/7","state":"closed","merged":True,"merged_at":"2026-08-25T00:00:00Z","base":{"ref":"master","sha":"b"*40,"repo":{"full_name":"rovkinmax/Puber"}},"head":{"ref":"release/99.0.0","sha":"c"*40,"repo":{"full_name":"rovkinmax/Puber"}},"merge_commit_sha":target})); sys.exit(0)
+if "/git/ref/tags/" in endpoint:
+ tag=endpoint.rsplit("/",1)[1]
+ try: sha=subprocess.check_output(["git","--git-dir",os.environ["PUBER_BARE"],"rev-parse","refs/tags/"+tag],text=True).strip()
+ except subprocess.CalledProcessError:
+  print("404",file=sys.stderr); sys.exit(1)
+ print(json.dumps({"ref":"refs/tags/"+tag,"node_id":"tag","url":"https://api.github.com/ref","object":{"type":"commit","sha":sha}})); sys.exit(0)
+sys.exit(3)
+""",
+        encoding="utf-8",
+    ); gh.chmod(0o755)
+    return kent, gh
+
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory); bare = root / "origin.git"
+    work, target, bare_path = materialize(root, bare)
+    graph = json.loads((work / ".kent/workflows/puber-release.json").read_text())
+    publish_node = next(n for n in graph["nodes"] if n["key"] == "publish")
+    task_id = "task-12345678-1234-4234-8234-123456789abc"
+    task = {
+        "actions": [], "attention_count": 0, "body": "release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n",
+        "current_nodes": [{"node_id": publish_node["id"]}], "current_scripts": [{"path": ".kent/scripts/workflow-puber-release-publish", "current_node": {"node_id": publish_node["id"]}}],
+        "execution_target": {"commit_oid": target}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
+        "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"}, "worktree_path": str(work),
+    }
+    log = root / "gh.log"; kent, gh = write_fake_bins(root, task, target, bare_path, log)
+    payload = {"_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "merge_watch_pr_merged"}, "workspace_path": str(work), "operation_id": "a"*64, "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "branch_name": "release/99.0.0", "merge_strategy": "auto", "pr_head_oid": "c"*40, "pr_base_oid": "b"*40}
+    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(fake_task := root / "fake-task.json"), "PUBER_GH_LOG": str(log), "PUBER_TARGET": target, "PUBER_BARE": bare_path}
+    fake_task.write_text(json.dumps(task), encoding="utf-8")
+    result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert result.returncode == 0, result.stderr
+    output = json.loads(result.stdout)
+    assert output["transition"] == "monitor_release"
+    report = json.loads(output["publication_report"])
+    assert report["schema"] == "puber_publication_report_v1" and report["unresolved"] is True
+    assert output["publication_report_digest"] == __import__("hashlib").sha256(json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    assert output["release_run"] == '{"schema":"puber_release_run_v1","state":"not_selected"}'
+    assert sh(["git", "--git-dir", bare_path, "rev-parse", "refs/tags/v99.0.0"], work).stdout.strip() == target
+    assert not (ROOT / ".git/refs/tags/v99.0.0").exists()
+    assert "api" in log.read_text(encoding="utf-8") and "git/ref/heads/master" in log.read_text(encoding="utf-8")
 print("workflow-puber-release-publish: passed")

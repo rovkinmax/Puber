@@ -1,39 +1,84 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import importlib.util, json, tempfile
+
+import importlib.util
+import json
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
-from types import SimpleNamespace
+import os
 import subprocess
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_loader("monitor_test", SourceFileLoader("monitor_test", str(ROOT / ".kent/scripts/workflow-wait-github-release")))
-mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
+publish_spec = importlib.util.spec_from_loader("publish_fixture", SourceFileLoader("publish_fixture", str(ROOT / ".kent/scripts/tests/test-workflow-puber-release-publish")))
+publish_fixture = importlib.util.module_from_spec(publish_spec); assert publish_spec and publish_spec.loader; publish_spec.loader.exec_module(publish_fixture)
+
 with tempfile.TemporaryDirectory() as directory:
-    root = Path(directory); mod.ROOT = root; mod.helper.ROOT = root
-    notes = root / "release-notes.md"; notes.write_text("puber_release_notes_v1\n\n# Изменения\n\n- test\n", encoding="utf-8")
-    target, tag = "a"*40, "v1.2.3"
-    run = {"repository":"rovkinmax/Puber","workflow_path":".github/workflows/release.yml","workflow_name":"Release","event":"push","run_id":42,"attempt":1,"head_sha":target,"ref":f"refs/tags/{tag}"}
-    mod.helper.read_zero_argument = lambda: {"release_tag":tag,"target_commit":target,"release_notes_path":"release-notes.md","release_version":"1.2.3","pr_url":"","tag_push_status":"created_and_pushed","publication_report":"{}"}
-    mod.helper.validate_envelope = lambda value, root, node: (value, {"task_short_id":"PUBER-1","commit":target,"task":{"body":""}}, {"key":"monitor_release"})
-    actual_run_tuple = mod.run_tuple
-    mod.run_tuple = lambda payload, t, target: run
-    mod.helper.attest = lambda *args, **kwargs: {"operation": SimpleNamespace(operation_digest="observe")}
-    release = {"tagName":tag,"targetCommitish":target,"name":"Puber "+tag,"isDraft":False,"isPrerelease":False,
-               "assets":[{"name":"puber-v1.2.3.apk"},{"name":"puber-v1.2.3.apk.sha256"}],"body":notes.read_text(),"url":"https://github.com/rovkinmax/Puber/releases/tag/"+tag}
-    def fake_gh(root, args, input_text=None):
-        if args[0:2] == ["run","view"]:
-            return subprocess.CompletedProcess(args, 0, json.dumps({"databaseId":42,"attempt":1,"workflowPath":".github/workflows/release.yml","headSha":target,"status":"completed","conclusion":"success","jobs":[{"status":"completed","conclusion":"success"}]}), "")
-        if args[0:2] == ["release","view"]:
-            return subprocess.CompletedProcess(args, 0, json.dumps(release), "")
-        raise AssertionError(args)
-    mod.helper.gh = fake_gh
-    seen=[]; mod.helper.emit=lambda transition, **fields: seen.append((transition,fields))
-    assert mod.main() == 0 and seen[0][0] == "release_release_published"
-    try:
-        actual_run_tuple({"release_run": {**run, "head_sha":"b"*40}}, tag, target)
-    except mod.helper.ContractError:
-        pass
-    else:
-        raise AssertionError("switched release run was accepted")
+    root = Path(directory); bare = root / "origin.git"
+    work, target, bare_path = publish_fixture.materialize(root, bare)
+    graph = json.loads((work / ".kent/workflows/puber-release.json").read_text())
+    publish_node = next(n for n in graph["nodes"] if n["key"] == "publish")
+    monitor_node = next(n for n in graph["nodes"] if n["key"] == "monitor")
+    task_id = "task-12345678-1234-4234-8234-123456789abc"
+    task = {
+        "actions": [], "attention_count": 0, "body": "release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n",
+        "current_nodes": [{"node_id": publish_node["id"]}], "current_scripts": [{"path": ".kent/scripts/workflow-puber-release-publish", "current_node": {"node_id": publish_node["id"]}}],
+        "execution_target": {"commit_oid": target}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
+        "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"}, "worktree_path": str(work),
+    }
+    fake = root / "fake"; fake.mkdir()
+    task_path = fake / "task.json"; task_path.write_text(json.dumps(task), encoding="utf-8")
+    kent = fake / "kent"; kent.write_text("#!/bin/sh\ncat \"$PUBER_FAKE_TASK\"\n", encoding="utf-8"); kent.chmod(0o755)
+    body_file = fake / "body"; body_file.write_text("", encoding="utf-8")
+    apk_file = fake / "apk"; apk_file.write_bytes(b"test-apk-bytes")
+    checksum_file = fake / "checksum"; checksum_file.write_text(__import__("hashlib").sha256(apk_file.read_bytes()).hexdigest() + "  puber-v99.0.0.apk\n", encoding="utf-8")
+    gh = fake / "gh"
+    gh.write_text(
+        """#!/usr/bin/env python3
+import json,os,subprocess,sys
+args=sys.argv[1:]; target=os.environ["PUBER_TARGET"]; tag="v99.0.0"
+if args[:2] == ["release","edit"]:
+ open(os.environ["PUBER_BODY"],"w",encoding="utf-8").write(sys.stdin.read()); sys.exit(0)
+if args[0] != "api": sys.exit(2)
+endpoint=args[1]
+if endpoint.endswith("/git/ref/heads/master"):
+ print(json.dumps({"ref":"refs/heads/master","node_id":"master","url":"https://api.github.com/ref","object":{"type":"commit","sha":target}})); sys.exit(0)
+if "/pulls/" in endpoint:
+ print(json.dumps({"html_url":"https://github.com/rovkinmax/Puber/pull/7","state":"closed","merged":True,"merged_at":"2026-08-25T00:00:00Z","base":{"ref":"master","sha":"b"*40,"repo":{"full_name":"rovkinmax/Puber"}},"head":{"ref":"release/99.0.0","sha":"c"*40,"repo":{"full_name":"rovkinmax/Puber"}},"merge_commit_sha":target})); sys.exit(0)
+if "/git/ref/tags/" in endpoint:
+ try: sha=subprocess.check_output(["git","--git-dir",os.environ["PUBER_BARE"],"rev-parse","refs/tags/"+tag],text=True).strip()
+ except subprocess.CalledProcessError: print("404",file=sys.stderr); sys.exit(1)
+ print(json.dumps({"ref":"refs/tags/"+tag,"node_id":"tag","url":"https://api.github.com/ref","object":{"type":"commit","sha":sha}})); sys.exit(0)
+if "/actions/runs?" in endpoint:
+ print(json.dumps({"workflow_runs":[{"id":42,"run_attempt":1,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":target,"head_branch":tag,"repository":{"full_name":"rovkinmax/Puber"}}]})); sys.exit(0)
+if "/actions/runs/42/attempts/1/jobs" in endpoint:
+ print(json.dumps({"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"}]})); sys.exit(0)
+if "/actions/runs/42/attempts/1" in endpoint:
+ print(json.dumps({"id":42,"run_attempt":1,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":target,"head_branch":tag,"repository":{"full_name":"rovkinmax/Puber"},"status":"completed","conclusion":"success"})); sys.exit(0)
+if "/releases/assets/1" in endpoint:
+ sys.stdout.buffer.write(open(os.environ["PUBER_APK"],"rb").read()); sys.exit(0)
+if "/releases/assets/2" in endpoint:
+ sys.stdout.buffer.write(open(os.environ["PUBER_CHECKSUM"],"rb").read()); sys.exit(0)
+if "/releases/tags/" in endpoint:
+ apk=open(os.environ["PUBER_APK"],"rb").read(); checksum=open(os.environ["PUBER_CHECKSUM"],"rb").read()
+ print(json.dumps({"tag_name":tag,"target_commitish":target,"name":"Puber "+tag,"draft":False,"prerelease":False,"html_url":"https://github.com/rovkinmax/Puber/releases/tag/"+tag,"body":open(os.environ["PUBER_BODY"],encoding="utf-8").read(),"assets":[{"id":1,"name":"puber-"+tag+".apk","size":len(apk),"browser_download_url":"https://example.invalid/apk"},{"id":2,"name":"puber-"+tag+".apk.sha256","size":len(checksum),"browser_download_url":"https://example.invalid/checksum"}]})); sys.exit(0)
+sys.exit(3)
+""",
+        encoding="utf-8",
+    ); gh.chmod(0o755)
+    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(publish_fixture.KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(task_path), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_BODY": str(body_file), "PUBER_APK": str(apk_file), "PUBER_CHECKSUM": str(checksum_file)}
+    publish_payload = {"_kent":{"task_id":task_id,"node_id":publish_node["id"],"transition_branch_key":"merge_watch_pr_merged"},"workspace_path":str(work),"operation_id":"a"*64,"pr_url":"https://github.com/rovkinmax/Puber/pull/7","branch_name":"release/99.0.0","merge_strategy":"auto","pr_head_oid":"c"*40,"pr_base_oid":"b"*40}
+    published = json.loads(subprocess.run([str(work/".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(publish_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env).stdout)
+    task.update({"current_nodes":[{"node_id":monitor_node["id"]}],"current_scripts":[{"path":".kent/scripts/workflow-wait-github-release","current_node":{"node_id":monitor_node["id"]}}],"status":{"node_ids":[monitor_node["id"]]}})
+    task_path.write_text(json.dumps(task), encoding="utf-8")
+    monitor_payload = {"_kent":{"task_id":task_id,"node_id":monitor_node["id"],"transition_branch_key":"monitor_release"}}
+    monitor_payload.update({key: published[key] for key in ("release_version","release_tag","target_commit","pr_url","tag_push_status","release_notes_path","publication_report","publication_report_digest","release_run")})
+    result = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert result.returncode == 0, result.stderr
+    output = json.loads(result.stdout)
+    assert output["transition"] == "release_release_published"
+    assert json.loads(output["publication_report"])["unresolved"] is False
+    assert json.loads(output["release_report"])["unresolved"] is False
+    assert body_file.read_text(encoding="utf-8").startswith("puber_release_notes_v1")
 print("workflow-wait-github-release: passed")

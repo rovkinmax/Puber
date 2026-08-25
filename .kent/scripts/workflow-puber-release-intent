@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed Puber release runtime shared by all S05 Script nodes."""
 from __future__ import annotations
-import hashlib, importlib, json, os, re, shutil, subprocess, sys, tempfile, tomllib
+import hashlib, importlib, json, os, re, shutil, stat, subprocess, sys, tempfile, tomllib
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlsplit
@@ -15,6 +15,7 @@ PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
 WORKFLOW_REVISION = 88
+REPOSITORY = "rovkinmax/Puber"
 SCRIPT_PATHS = {
     "release_intent_gate": ".kent/scripts/workflow-puber-release-intent",
     "publish": ".kent/scripts/workflow-puber-release-publish",
@@ -25,7 +26,17 @@ TASK_ROOT_KEYS = {"actions","attention_count","body","current_nodes","current_sc
 KENT_KEYS = {"task_id","node_id","transition_branch_key"}
 SHA1 = re.compile(r"^[0-9a-f]{40}$")
 TASK_ID = re.compile(r"^task-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
+TASK_SHORT_ID = re.compile(r"^[A-Z][A-Z0-9]+-[0-9]+$")
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
+RELEASE_TYPE = {"minor", "patch", "major"}
+RELEASE_BRANCH = re.compile(r"^release/\d+\.\d+\.\d+$")
+TAG = re.compile(r"^v\d+\.\d+\.\d+$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+NOT_SELECTED_RUN = {"schema": "puber_release_run_v1", "state": "not_selected"}
+RUN_KEYS = {"schema", "state", "repository", "workflow_path", "workflow_name", "event", "run_id", "attempt", "head_sha", "ref", "head_branch"}
+PUBLICATION_KEYS = {"schema", "operation_digest", "pr_url", "release_version", "release_tag", "target_commit", "notes_report", "notes_digest", "tag_phase", "tag_status", "unresolved"}
+RELEASE_KEYS = {"schema", "run", "jobs", "release", "assets", "checksum", "notes_digest", "publication_report_digest", "unresolved"}
+CLEANUP_KEYS = {"schema", "operation_digest", "cleanup_session_id", "cleanup_mode", "publication_report", "publication_report_digest", "release_report", "release_report_digest", "release_notes_path", "release_notes_digest", "unresolved", "destructive_action", "blocker_reason"}
 
 class ContractError(ValueError):
     pass
@@ -52,6 +63,42 @@ def require_string(value: Any, label: str, *, empty: bool = False) -> str:
 def sha256_bytes(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
+def canonical_bytes(value: Any) -> bytes:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+def canonical_json(value: Any) -> str:
+    return canonical_bytes(value).decode("utf-8")
+
+def digest_json(value: Any) -> str:
+    return sha256_bytes(canonical_bytes(value))
+
+def parse_closed_json(raw: Any, schema: str, keys: set[str]) -> dict[str, Any]:
+    if not isinstance(raw, str) or len(raw.encode("utf-8")) > 2 * 1024 * 1024:
+        raise ContractError(f"{schema} must be a bounded JSON string")
+    value = _json_one(raw.encode("utf-8"))
+    if set(value) != keys or value.get("schema") != schema:
+        raise ContractError(f"{schema} has an incomplete, extra, or stale field set")
+    return value
+
+def _safe_task_short_id(value: Any) -> str:
+    value = require_string(value, "task_short_id")
+    if not TASK_SHORT_ID.fullmatch(value):
+        raise ContractError("task_short_id is not safe")
+    return value
+
+def safe_version_tag(version: Any, tag: Any) -> tuple[str, str]:
+    version = require_string(version, "release_version")
+    tag = require_string(tag, "release_tag")
+    if not SEMVER.fullmatch(version) or not TAG.fullmatch(tag) or tag != f"v{version}":
+        raise ContractError("release version/tag is not exact")
+    return version, tag
+
+def safe_release_branch(value: Any, version: str) -> str:
+    branch = require_string(value, "branch_name")
+    if not RELEASE_BRANCH.fullmatch(branch) or branch != f"release/{version}":
+        raise ContractError("release branch is not exact")
+    return branch
+
 def child_env() -> dict[str, str]:
     env = dict(os.environ)
     for key in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
@@ -62,6 +109,13 @@ def run(command: list[str], *, cwd: Path, env: Mapping[str, str] | None = None, 
     result = subprocess.run(command, cwd=cwd, env=dict(env) if env is not None else None, input=input_text, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     if check and result.returncode != 0:
         raise ContractError(result.stderr.strip() or result.stdout.strip() or f"command failed: {' '.join(command)}")
+    return result
+
+def run_bytes(command: list[str], *, cwd: Path, env: Mapping[str, str] | None = None, check: bool = True) -> subprocess.CompletedProcess[bytes]:
+    result = subprocess.run(command, cwd=cwd, env=dict(env) if env is not None else None, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if check and result.returncode != 0:
+        message = result.stderr.decode("utf-8", "replace").strip() or result.stdout.decode("utf-8", "replace").strip()
+        raise ContractError(message or f"command failed: {' '.join(command)}")
     return result
 
 def git(root: Path, *args: str, check: bool = True) -> str:
@@ -94,7 +148,7 @@ def task_show(root: Path, task_id: str) -> dict[str, Any]:
         raise ContractError("Kent task show failed")
     return _json_one(result.stdout.encode("utf-8"))
 
-def validate_task(root: Path, task_id: str, node_key: str, task: dict[str, Any] | None = None) -> dict[str, Any]:
+def validate_task(root: Path, task_id: str, node_key: str, task: dict[str, Any] | None = None, *, allowed_notes_path: str | None = None) -> dict[str, Any]:
     if not TASK_ID.fullmatch(task_id):
         raise ContractError("_kent.task_id is invalid")
     task = task if task is not None else task_show(root, task_id)
@@ -121,9 +175,13 @@ def validate_task(root: Path, task_id: str, node_key: str, task: dict[str, Any] 
     commit = require_string(execution.get("commit_oid"), "execution_target.commit_oid")
     if not SHA1.fullmatch(commit) or git(root, "rev-parse", "HEAD") != commit:
         raise ContractError("selected checkout is not the exact Task execution commit")
-    if git(root, "status", "--porcelain=v1", "--untracked-files=all"):
-        raise ContractError("selected checkout is not clean")
-    return {"task": task, "task_id": task_id, "task_short_id": require_string(summary.get("short_id"), "task short id"), "node_id": node_id, "commit": commit}
+    status = git(root, "status", "--porcelain=v1", "--untracked-files=all")
+    if status:
+        allowed = validate_notes_path(root, allowed_notes_path, task_short_id=_safe_task_short_id(summary.get("short_id")), require_exists=False) if allowed_notes_path else None
+        lines = [line for line in status.splitlines() if line]
+        if not allowed or any(line not in {f"?? {allowed}", f"?? {allowed}/"} for line in lines):
+            raise ContractError("selected checkout is not clean")
+    return {"task": task, "task_id": task_id, "task_short_id": _safe_task_short_id(summary.get("short_id")), "node_id": node_id, "commit": commit}
 
 def validate_envelope(payload: Mapping[str, Any], root: Path, node_key: str, *, task: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if not isinstance(payload, Mapping):
@@ -139,7 +197,35 @@ def validate_envelope(payload: Mapping[str, Any], root: Path, node_key: str, *, 
     expected = {"_kent", *(item.get("key") for item in edge.get("parameters", []))}
     if None in expected or set(payload) != expected:
         raise ContractError(f"input fields do not exactly match graph edge {branch}")
-    return dict(payload), validate_task(root, task_id, node_key, task), edge
+    allowed_notes = payload.get("release_notes_path") if isinstance(payload.get("release_notes_path"), str) else None
+    return dict(payload), validate_task(root, task_id, node_key, task, allowed_notes_path=allowed_notes), edge
+
+def validate_notes_path(root: Path, value: Any, *, task_short_id: str | None = None, require_exists: bool = True) -> str:
+    path = require_string(value, "release_notes_path")
+    if Path(path).is_absolute() or "\\" in path or Path(path).as_posix() != path:
+        raise ContractError("release notes path must be relative and canonical")
+    expected_prefix = f".todo/{_safe_task_short_id(task_short_id)}/" if task_short_id else ".todo/"
+    if not path.startswith(expected_prefix) or Path(path).name != "release-notes-ru.md" or len(Path(path).parts) != len(Path(expected_prefix).parts) + 1:
+        raise ContractError("release notes path is outside the expected task-local root")
+    candidate = root / path
+    if candidate.is_symlink() or (require_exists and (not candidate.is_file() or not stat.S_ISREG(candidate.stat().st_mode))):
+        raise ContractError("release notes path is not a regular file")
+    return path
+
+def output_edge(root: Path, transition: str, target_node: str) -> dict[str, Any]:
+    graph = json.loads((root / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
+    target_id = _node_id(root, target_node)
+    matches = [edge for edge in graph.get("edges", []) if edge.get("key") == transition and edge.get("target_node_id") == target_id]
+    if len(matches) != 1:
+        raise ContractError(f"output transition is not an exact graph edge: {transition}")
+    return matches[0]
+
+def emit_exact(root: Path, transition: str, target_node: str, fields: Mapping[str, Any]) -> None:
+    edge = output_edge(root, transition, target_node)
+    expected = {item.get("key") for item in edge.get("parameters", [])}
+    if set(fields) != expected:
+        raise ContractError(f"output fields do not exactly match graph edge {transition}")
+    print(json.dumps({"transition": transition, **dict(fields)}, ensure_ascii=False, sort_keys=True))
 
 def _kit_modules() -> dict[str, Any]:
     configured = os.environ.get("KENT_ENGINEERING_KIT_ROOT", "")
@@ -169,49 +255,86 @@ def _external_captures(root: Path, profile: Any, selected: Any) -> list[tuple[st
             raise ContractError("runtime external root descriptor is unsupported")
         raw = path.read_bytes()
         if sha256_bytes(raw) != digest:
-            raise ContractError(f"runtime external source drifted: {external.kind}")
+            raise ContractError(f"runtime external source drifted: {external.kind}:{external.key}")
         captures.append((external.kind, external.key, raw))
     return captures
 
+def _ruby_yaml(path: Path) -> dict[str, Any]:
+    script = 'require "yaml"; require "json"; value=YAML.safe_load(File.read(ARGV.fetch(0)), aliases: false); value["on"]=value.delete(true) if value.is_a?(Hash)&&value.key?(true); puts JSON.generate(value)'
+    result = subprocess.run(["ruby", "-e", script, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode:
+        raise ContractError(f"workflow source cannot be parsed: {path}")
+    value = json.loads(result.stdout)
+    if not isinstance(value, dict):
+        raise ContractError(f"workflow source is not an object: {path}")
+    return value
+
+def _secret_refs(value: Any) -> list[str]:
+    found: set[str] = set()
+    pattern = re.compile(r"(?:\$\{\{\s*)?secrets\.([A-Za-z_][A-Za-z0-9_-]*)(?:\s*\}\})?")
+    def visit(item: Any) -> None:
+        if isinstance(item, str):
+            found.update(match.group(1) for match in pattern.finditer(item))
+        elif isinstance(item, dict):
+            for key, nested in item.items():
+                visit(key); visit(nested)
+        elif isinstance(item, list):
+            for nested in item:
+                visit(nested)
+    visit(value)
+    return sorted(found)
+
+def _normalized_workflow(root: Path, path: str) -> dict[str, Any]:
+    raw = _ruby_yaml(root / path)
+    events_raw = raw.get("on", {})
+    if isinstance(events_raw, dict):
+        event_items = events_raw.items()
+    elif isinstance(events_raw, list):
+        event_items = ((name, {}) for name in events_raw)
+    else:
+        event_items = ((str(events_raw), {}),)
+    events = []
+    for name, config in event_items:
+        config = config if isinstance(config, dict) else {}
+        inputs = config.get("inputs", {}) or {}
+        dispatch_inputs = []
+        for input_name, input_value in sorted(inputs.items()) if isinstance(inputs, dict) else []:
+            input_value = input_value if isinstance(input_value, dict) else {}
+            item = {"name": input_name, "type": input_value.get("type", "string"), "required": bool(input_value.get("required", False)), "default_present": "default" in input_value}
+            if "default" in input_value:
+                item["default"] = input_value["default"]
+            dispatch_inputs.append(item)
+        events.append({"name": name, "branches": config.get("branches", []) or [], "branches_ignore": config.get("branches-ignore", []) or [], "tags": config.get("tags", []) or [], "tags_ignore": config.get("tags-ignore", []) or [], "paths": config.get("paths", []) or [], "paths_ignore": config.get("paths-ignore", []) or [], "types": sorted(config.get("types", []) or []), "dispatch_inputs": dispatch_inputs})
+    workflow_env = raw.get("env", {}) or {}
+    workflow_permissions = raw.get("permissions", {}) or {}
+    defaults = (raw.get("defaults", {}) or {}).get("run", {}) or {}
+    jobs = []
+    raw_jobs = raw.get("jobs")
+    if not isinstance(raw_jobs, dict):
+        raise ContractError(f"workflow source has no jobs: {path}")
+    for job_key, raw_job in raw_jobs.items():
+        job = raw_job if isinstance(raw_job, dict) else {}
+        job_env = {**workflow_env, **(job.get("env", {}) or {})}
+        permissions = job.get("permissions", workflow_permissions) or {}
+        job_defaults = {**defaults, **((job.get("defaults", {}) or {}).get("run", {}) or {})}
+        steps = []
+        checkout_persist_credentials = False
+        for raw_step in job.get("steps", []) or []:
+            if not isinstance(raw_step, dict):
+                raise ContractError(f"workflow step is not an object: {path}:{job_key}")
+            uses = raw_step.get("uses", "")
+            with_values = raw_step.get("with", {}) or {}
+            if uses.startswith("actions/checkout@"):
+                checkout_persist_credentials = with_values.get("persist-credentials", True)
+            step_env = raw_step.get("env", {}) or {}
+            steps.append({"kind": "uses" if uses else "run", "name": raw_step.get("name", ""), "condition": raw_step.get("if", ""), "continue_on_error": bool(raw_step.get("continue-on-error", False)), "uses": uses, "with": with_values, "run": raw_step.get("run", ""), "effective_shell": job_defaults.get("shell", ""), "effective_working_directory": job_defaults.get("working-directory", ""), "effective_environment": step_env, "secret_refs": _secret_refs({"condition": raw_step.get("if", ""), "uses": uses, "with": with_values, "run": raw_step.get("run", ""), "effective_environment": step_env})})
+        needs = job.get("needs", [])
+        jobs.append({"job_key": job_key, "job_display_name": job.get("name", job_key), "needs": [needs] if isinstance(needs, str) else needs, "matrix": (job.get("strategy", {}) or {}).get("matrix", {}) or {}, "condition": job.get("if", ""), "continue_on_error": bool(job.get("continue-on-error", False)), "runs_on": job.get("runs-on", ""), "runner_environment_asserted": any(step.get("run", "").strip() == 'test "${RUNNER_ENVIRONMENT:-github-hosted}" = github-hosted' for step in steps), "effective_permissions": permissions, "effective_defaults_run": {"shell": job_defaults.get("shell", ""), "working_directory": job_defaults.get("working-directory", "")}, "github_environment": job.get("environment", ""), "services": job.get("services", {}) or {}, "container": job.get("container"), "checkout_persist_credentials": bool(checkout_persist_credentials), "secret_refs": _secret_refs({"condition": job.get("if", ""), "env": job_env, "steps": steps}), "effective_environment": job_env, "steps": steps})
+    return {"schema": "normalized_github_workflow_source_v1", "workflow_path": path, "workflow_display_name": raw.get("name", ""), "events": events, "permissions": workflow_permissions, "environment": workflow_env, "defaults_run": {"shell": defaults.get("shell", ""), "working_directory": defaults.get("working-directory", "")}, "jobs": jobs}
+
 def _normalized_sources(root: Path, kit: dict[str, Any], spec: Any) -> list[Any]:
-    rows = list(spec.required_jobs_v1.jobs) + list(spec.effect_jobs_v1.jobs)
-    output = []
-    for path in sorted({row["workflow_path"] for row in rows}):
-        text = (root / path).read_text(encoding="utf-8")
-        selected = [row for row in rows if row["workflow_path"] == path]
-        if path.endswith("pr-checks.yml"):
-            if "name: PR Checks" not in text or "workflow_dispatch:" in text or any(command not in text for command in (":app:detektAll",":app:testProdDebugUnitTest",":app:assembleProdDebug")):
-                raise ContractError("PR Checks source/job identity drifted")
-            if "pull_request:" not in text or "branches: [ master ]" not in text or "permissions:\n  contents: read" not in text:
-                raise ContractError("PR Checks event or permission source drifted")
-            name, permissions = "PR Checks", {"contents":"read"}
-        elif path.endswith("release.yml"):
-            if "name: Release" not in text or "workflow_dispatch:" in text or "--generate-notes=false" not in text or '--notes ""' not in text:
-                raise ContractError("Release source/job identity drifted")
-            if "push:" not in text or "tags:" not in text or "permissions:\n  contents: write" not in text:
-                raise ContractError("Release event or permission source drifted")
-            name, permissions = "Release", {"contents":"write"}
-        else:
-            raise ContractError(f"unexpected workflow source: {path}")
-        jobs, events = [], []
-        for row in selected:
-            if f"  {row['job_key']}:" not in text or f"name: {row['job_display_name']}" not in text or f"runs-on: {row['runs_on']}" not in text:
-                raise ContractError(f"workflow job identity drifted: {row['job_key']}")
-            for step in row["steps"]:
-                if step["kind"] == "uses" and f"uses: {step['uses']}" not in text:
-                    raise ContractError(f"workflow action drifted: {row['job_key']}:{step['name']}")
-                if step["kind"] == "run" and step["run"] and step["run"] not in text:
-                    release_checksum = row["job_key"] == "release" and "checksum" in step["name"].lower() and {"sha256sum", "release-artifacts"} <= set(re.findall(r"[A-Za-z0-9_.-]+", text))
-                    release_create = row["job_key"] == "release" and "release" in step["name"].lower() and {"gh", "release", "create"} <= set(re.findall(r"[A-Za-z0-9_.-]+", text)) and "--generate-notes=false" in text
-                    if not (release_checksum or release_create):
-                        raise ContractError(f"workflow command drifted: {row['job_key']}:{step['name']}")
-            job = {key: row[key] for key in ("job_key","job_display_name","needs","matrix","condition","continue_on_error","runs_on","runner_environment_asserted","effective_permissions","effective_defaults_run","github_environment","services","container","checkout_persist_credentials","secret_refs","effective_environment","steps")}
-            job["steps"] = [{key: step[key] for key in ("kind","name","condition","continue_on_error","uses","with","run","effective_shell","effective_working_directory","effective_environment","secret_refs")} for step in row["steps"]]
-            jobs.append(job)
-            if row["event_selector"] not in events:
-                events.append(row["event_selector"])
-        output.append(kit["NormalizedGitHubWorkflowSourceV1"].from_dict({"schema":"normalized_github_workflow_source_v1","workflow_path":path,"workflow_display_name":name,"events":events,"permissions":permissions,"environment":{},"defaults_run":{"shell":"","working_directory":""},"jobs":jobs}))
-    return output
+    paths = sorted({row["workflow_path"] for table in (spec.required_jobs_v1, spec.qualification_jobs_v1, spec.effect_jobs_v1) for row in table.jobs})
+    return [kit["NormalizedGitHubWorkflowSourceV1"].from_dict(_normalized_workflow(root, path)) for path in paths]
 
 def _load_release_spec(root: Path, kit: dict[str, Any], profile: Any) -> Any:
     raw = tomllib.loads((root / profile.release.spec_path).read_text(encoding="utf-8"))
@@ -271,89 +394,315 @@ def canonical_pr_url(value: Any) -> str:
     return url
 
 def remote_master(root: Path) -> str:
-    value = git(root, "rev-parse", "refs/remotes/origin/master", check=False)
-    if not SHA1.fullmatch(value):
-        raise ContractError("current remote master is unavailable")
-    return value
+    result = gh_api(root, f"repos/{REPOSITORY}/git/ref/heads/master")
+    if not isinstance(result, dict) or set(result) - {"ref", "node_id", "url", "object"} or result.get("ref") != "refs/heads/master":
+        raise ContractError("remote master response is not exact")
+    obj = result.get("object")
+    if not isinstance(obj, dict) or obj.get("type") != "commit" or not SHA1.fullmatch(str(obj.get("sha", ""))):
+        raise ContractError("remote master does not resolve to an exact commit")
+    return obj["sha"]
 
 def gh(root: Path, args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
     return run([os.environ.get("PUBER_GH_BIN", shutil.which("gh") or "gh"), *args], cwd=root, env=child_env(), check=False, input_text=input_text)
 
-def pr_state(root: Path, url: str) -> dict[str, Any]:
-    result = gh(root, ["pr","view",url,"--json","state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,baseRefOid,isCrossRepository,url"])
+def gh_api(root: Path, endpoint: str, *, headers: list[str] | None = None, allow_404: bool = False) -> Any:
+    args = ["api", endpoint]
+    for header in headers or []:
+        args.extend(["--header", header])
+    result = gh(root, args)
     if result.returncode != 0:
-        raise ContractError("GitHub PR query failed")
-    value = _json_one(result.stdout.encode("utf-8"))
-    if value.get("state") != "MERGED" or not value.get("mergedAt") or value.get("baseRefName") != "master" or value.get("isCrossRepository") is not False or value.get("url") != url:
-        raise ContractError("PR is not exact merged same-repository master evidence")
-    return value
+        if allow_404 and "404" in (result.stderr or ""):
+            return None
+        raise ContractError(f"GitHub API request failed: {endpoint}")
+    return _json_one(result.stdout.encode("utf-8"))
+
+def gh_api_bytes(root: Path, endpoint: str) -> bytes:
+    binary = run_bytes([os.environ.get("PUBER_GH_BIN", shutil.which("gh") or "gh"), "api", endpoint, "--header", "Accept: application/octet-stream"], cwd=root, env=child_env(), check=False)
+    if binary.returncode != 0:
+        raise ContractError(f"GitHub asset download failed: {endpoint}")
+    return binary.stdout
+
+def pr_state(root: Path, url: str) -> dict[str, Any]:
+    number = int(urlsplit(url).path.rsplit("/", 1)[1])
+    value = gh_api(root, f"repos/{REPOSITORY}/pulls/{number}")
+    if not isinstance(value, dict):
+        raise ContractError("PR API response is not an object")
+    base, head, repo = value.get("base"), value.get("head"), value.get("base", {}).get("repo") if isinstance(value.get("base"), dict) else None
+    if value.get("html_url") != url or value.get("state") != "closed" or value.get("merged_at") is None or value.get("merged") is not True:
+        raise ContractError("PR is not exact merged evidence")
+    if not isinstance(base, dict) or not isinstance(head, dict) or not isinstance(repo, dict) or base.get("ref") != "master" or base.get("repo", {}).get("full_name") != REPOSITORY or head.get("repo", {}).get("full_name") != REPOSITORY:
+        raise ContractError("PR is not same-repository master evidence")
+    if not SHA1.fullmatch(str(head.get("sha", ""))) or not SHA1.fullmatch(str(base.get("sha", ""))) or not SHA1.fullmatch(str(value.get("merge_commit_sha", ""))):
+        raise ContractError("PR OID evidence is not exact")
+    return {"url": url, "state": "MERGED", "mergedAt": value["merged_at"], "headRefName": head.get("ref"), "headRefOid": head["sha"], "baseRefName": base["ref"], "baseRefOid": base["sha"], "mergeCommit": {"oid": value["merge_commit_sha"]}, "isCrossRepository": False}
 
 def local_tag(root: Path, tag: str) -> str:
     value = git(root, "rev-parse", f"refs/tags/{tag}^{{commit}}", check=False)
     return value if SHA1.fullmatch(value) else ""
 
 def remote_tag(root: Path, tag: str) -> str:
-    output = git(root, "ls-remote", "--tags", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}", check=False)
-    values = [line.split()[0] for line in output.splitlines() if line.split() and SHA1.fullmatch(line.split()[0])]
-    return values[-1] if values else ""
+    value = gh_api(root, f"repos/{REPOSITORY}/git/ref/tags/{tag}", allow_404=True)
+    if value is None:
+        return ""
+    if not isinstance(value, dict) or value.get("ref") != f"refs/tags/{tag}" or not isinstance(value.get("object"), dict):
+        raise ContractError("remote tag response is not exact")
+    obj = value["object"]
+    if obj.get("type") == "commit" and SHA1.fullmatch(str(obj.get("sha", ""))):
+        return obj["sha"]
+    if obj.get("type") == "tag" and SHA1.fullmatch(str(obj.get("sha", ""))):
+        annotated = gh_api(root, f"repos/{REPOSITORY}/git/tags/{obj['sha']}")
+        if isinstance(annotated, dict) and isinstance(annotated.get("object"), dict) and annotated["object"].get("type") == "commit" and SHA1.fullmatch(str(annotated["object"].get("sha", ""))):
+            return annotated["object"]["sha"]
+    raise ContractError("remote tag does not resolve to an exact commit")
+
+def remote_release_tags(root: Path) -> list[str]:
+    output = git(root, "ls-remote", "--tags", "origin", "refs/tags/v*", check=False)
+    tags = set()
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) >= 2:
+            name = fields[1].removeprefix("refs/tags/").removesuffix("^{}")
+            if TAG.fullmatch(name):
+                tags.add(name)
+    return sorted(tags, key=lambda value: tuple(int(part) for part in value[1:].split(".")))
+
+def parse_run_carrier(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, str):
+        value = _json_one(raw.encode("utf-8"))
+    elif isinstance(raw, dict):
+        value = raw
+    else:
+        raise ContractError("release_run carrier is not an object or JSON object")
+    if value == NOT_SELECTED_RUN:
+        return dict(value)
+    if set(value) != RUN_KEYS or value.get("schema") != "puber_release_run_v1" or value.get("state") != "selected":
+        raise ContractError("release_run carrier is not closed")
+    if value.get("repository") != REPOSITORY or value.get("workflow_path") != ".github/workflows/release.yml" or value.get("workflow_name") != "Release" or value.get("event") != "push":
+        raise ContractError("release_run carrier workflow identity drifted")
+    if not isinstance(value.get("run_id"), int) or value["run_id"] <= 0 or not isinstance(value.get("attempt"), int) or value["attempt"] <= 0:
+        raise ContractError("release_run carrier IDs are invalid")
+    if not SHA1.fullmatch(str(value.get("head_sha", ""))) or not TAG.fullmatch(str(value.get("head_branch", ""))) or value.get("ref") != f"refs/tags/{value['head_branch']}":
+        raise ContractError("release_run carrier ref/head is invalid")
+    return dict(value)
+
+def selected_run_context(run: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: run[key] for key in ("repository", "workflow_path", "workflow_name", "event", "run_id", "attempt", "head_sha", "ref")}
+
+def parse_notes_report(raw: Any, root: Path, task_short_id: str, *, expected_tag: str | None = None, expected_target: str | None = None) -> dict[str, Any]:
+    value = raw if isinstance(raw, dict) else parse_closed_json(raw, "puber_release_notes_v1", {"schema", "path", "mode", "bytes", "sha256", "encoding", "line_endings", "final_newline", "producer", "previous_tag", "range", "target_commit"})
+    if set(value) != {"schema", "path", "mode", "bytes", "sha256", "encoding", "line_endings", "final_newline", "producer", "previous_tag", "range", "target_commit"} or value.get("schema") != "puber_release_notes_v1":
+        raise ContractError("notes report is not closed")
+    path = validate_notes_path(root, value.get("path"), task_short_id=task_short_id)
+    if value.get("mode") != 0o600 or not isinstance(value.get("bytes"), int) or value["bytes"] <= 0 or not HEX64.fullmatch(str(value.get("sha256", ""))) or value.get("encoding") != "UTF-8" or value.get("line_endings") != "LF" or value.get("final_newline") is not True or value.get("producer") != ".kent/scripts/workflow-puber-release-publish":
+        raise ContractError("notes report metadata is not canonical")
+    target = require_string(value.get("target_commit"), "notes target_commit")
+    if not SHA1.fullmatch(target) or expected_target and target != expected_target:
+        raise ContractError("notes target commit is not exact")
+    if expected_tag and value.get("range") != (f"{value['previous_tag']}..{target}" if value.get("previous_tag") else target):
+        raise ContractError("notes range is not exact")
+    body = (root / path).read_bytes()
+    mode = stat.S_IMODE((root / path).stat().st_mode)
+    if mode != 0o600 or len(body) != value["bytes"] or sha256_bytes(body) != value["sha256"] or b"\r" in body or not body.endswith(b"\n") or not re.search(r"[А-Яа-яЁё]", body.decode("utf-8")):
+        raise ContractError("notes bytes/readback are not canonical")
+    return dict(value)
+
+def publication_report(operation_digest: str, pr_url: str, version: str, tag: str, target: str, notes: Mapping[str, Any], *, tag_phase: str, tag_status: str, unresolved: bool) -> tuple[str, str]:
+    if not HEX64.fullmatch(operation_digest):
+        raise ContractError("operation digest is not exact")
+    report = {"schema": "puber_publication_report_v1", "operation_digest": operation_digest, "pr_url": pr_url, "release_version": version, "release_tag": tag, "target_commit": target, "notes_report": dict(notes), "notes_digest": notes["sha256"], "tag_phase": tag_phase, "tag_status": tag_status, "unresolved": unresolved}
+    encoded = canonical_json(report)
+    return encoded, sha256_bytes(encoded.encode("utf-8"))
+
+def parse_publication_report(raw: Any, digest: Any, *, expected_pr: str | None = None, expected_version: str | None = None, expected_tag: str | None = None, expected_target: str | None = None, task_short_id: str | None = None, root: Path | None = None) -> dict[str, Any]:
+    value = raw if isinstance(raw, dict) else parse_closed_json(raw, "puber_publication_report_v1", PUBLICATION_KEYS)
+    if set(value) != PUBLICATION_KEYS or value.get("schema") != "puber_publication_report_v1":
+        raise ContractError("publication report is not closed")
+    if not isinstance(digest, str) or digest != sha256_bytes(canonical_json(value).encode("utf-8")) or not HEX64.fullmatch(digest):
+        raise ContractError("publication report digest mismatch")
+    safe_version_tag(value.get("release_version"), value.get("release_tag"))
+    if expected_version and value["release_version"] != expected_version or expected_tag and value["release_tag"] != expected_tag:
+        raise ContractError("publication report version/tag drifted")
+    if expected_pr and value["pr_url"] != expected_pr or expected_target and value["target_commit"] != expected_target:
+        raise ContractError("publication report PR/target drifted")
+    if not SHA1.fullmatch(str(value.get("target_commit", ""))) or value.get("pr_url") and canonical_pr_url(value["pr_url"]) != value["pr_url"]:
+        raise ContractError("publication report identity is invalid")
+    if value.get("tag_phase") not in {"prepared", "tag_published"} or not isinstance(value.get("tag_status"), str) or not isinstance(value.get("unresolved"), bool):
+        raise ContractError("publication report phase is invalid")
+    if not isinstance(value.get("notes_report"), dict):
+        raise ContractError("publication report notes report is not an object")
+    if root and task_short_id:
+        parse_notes_report(value["notes_report"], root, task_short_id, expected_tag=value["release_tag"], expected_target=value["target_commit"])
+    if value.get("notes_digest") != value["notes_report"].get("sha256"):
+        raise ContractError("publication report notes digest mismatch")
+    return dict(value)
+
+def parse_release_report(raw: Any, digest: Any) -> dict[str, Any]:
+    value = raw if isinstance(raw, dict) else parse_closed_json(raw, "puber_release_report_v1", RELEASE_KEYS)
+    if set(value) != RELEASE_KEYS or value.get("schema") != "puber_release_report_v1" or not isinstance(digest, str) or digest != sha256_bytes(canonical_json(value).encode("utf-8")) or not isinstance(value.get("unresolved"), bool):
+        raise ContractError("release report is not closed or its digest mismatches")
+    return dict(value)
 
 def notes_report(root: Path, task_short_id: str, tag: str, target: str) -> dict[str, Any]:
-    path = root / ".todo" / task_short_id / "release-notes-ru.md"
-    previous = next((item for item in git(root, "tag", "--sort=-v:refname", check=False).splitlines() if item != tag and re.fullmatch(r"v\d+\.\d+\.\d+", item)), "")
+    task_short_id = _safe_task_short_id(task_short_id)
+    _, tag = safe_version_tag(tag[1:], tag)
+    if not SHA1.fullmatch(target):
+        raise ContractError("notes target is not exact")
+    path_value = f".todo/{task_short_id}/release-notes-ru.md"
+    path = root / path_value
+    previous_values = [value for value in remote_release_tags(root) if value != tag and tuple(int(part) for part in value[1:].split(".")) < tuple(int(part) for part in tag[1:].split("."))]
+    previous = previous_values[-1] if previous_values else ""
     revision = f"{previous}..{target}" if previous else target
     subjects = git(root, "log", "--format=%s", revision, check=False).splitlines()[:100]
     body = ("puber_release_notes_v1\n\n# Изменения\n\n" + "\n".join(f"- {subject}" for subject in subjects) + "\n").encode("utf-8")
+    if not re.search(r"[А-Яа-яЁё]", body.decode("utf-8")):
+        body += "- Изменения релиза подтверждены.\n".encode("utf-8")
     if path.exists():
-        if path.read_bytes() != body:
+        if path.is_symlink() or not path.is_file() or path.read_bytes() != body:
             raise ContractError("existing canonical release notes conflict")
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, temp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
         try:
+            os.chmod(temp, 0o600)
             with os.fdopen(fd, "wb") as stream:
                 stream.write(body); stream.flush(); os.fsync(stream.fileno())
             os.replace(temp, path)
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
         finally:
             Path(temp).unlink(missing_ok=True)
     readback = path.read_bytes()
-    if readback != body or b"\r" in readback or not readback.endswith(b"\n") or not readback.decode("utf-8"):
+    if path.is_symlink() or not path.is_file() or stat.S_IMODE(path.stat().st_mode) != 0o600 or readback != body or b"\r" in readback or not readback.endswith(b"\n") or not re.search(r"[А-Яа-яЁё]", readback.decode("utf-8")):
         raise ContractError("canonical notes readback failed")
-    return {"schema":"puber_release_notes_v1","path":str(path.relative_to(root)),"bytes":len(readback),"sha256":sha256_bytes(readback),"encoding":"UTF-8","line_endings":"LF","final_newline":True,"producer":".kent/scripts/workflow-puber-release-publish","previous_tag":previous,"range":revision,"target_commit":target}
+    return {"schema":"puber_release_notes_v1","path":path_value,"mode":0o600,"bytes":len(readback),"sha256":sha256_bytes(readback),"encoding":"UTF-8","line_endings":"LF","final_newline":True,"producer":".kent/scripts/workflow-puber-release-publish","previous_tag":previous,"range":revision,"target_commit":target}
 
 def publish_tag(root: Path, tag: str, target: str) -> str:
     remote = remote_tag(root, tag)
+    local = local_tag(root, tag)
     if remote:
         if remote != target:
             raise ContractError("remote tag conflicts with exact target")
+        if local and local != target:
+            raise ContractError("local tag conflicts with exact target")
         return "already_present_exact"
-    if local_tag(root, tag):
+    if local and local != target:
         raise ContractError("local tag exists while remote tag is absent")
-    git(root, "tag", tag, target)
-    git(root, "push", "origin", f"refs/tags/{tag}")
-    if local_tag(root, tag) != target or remote_tag(root, tag) != target:
+    if not local:
+        git(root, "tag", tag, target)
+    pushed = run(["git", "push", "origin", f"refs/tags/{tag}"], cwd=root, check=False)
+    remote_after = remote_tag(root, tag)
+    if remote_after == target and local_tag(root, tag) == target:
+        return "push_ack_recovered" if pushed.returncode else ("created_and_pushed" if not local else "local_tag_pushed")
+    if pushed.returncode:
+        raise ContractError("tag push failed and remote readback is absent")
+    if local_tag(root, tag) != target or remote_after != target:
         raise ContractError("tag readback mismatch")
     return "created_and_pushed"
+
+def discover_release_run(root: Path, tag: str, target: str) -> dict[str, Any]:
+    response = gh_api(root, f"repos/{REPOSITORY}/actions/runs?event=push&head_sha={target}&per_page=100")
+    if not isinstance(response, dict) or not isinstance(response.get("workflow_runs"), list):
+        raise ContractError("release run discovery response is not exact")
+    matches = []
+    for row in response["workflow_runs"]:
+        if not isinstance(row, dict):
+            raise ContractError("release run row is not an object")
+        if row.get("path") == ".github/workflows/release.yml" and row.get("name") == "Release" and row.get("event") == "push" and row.get("head_sha") == target and row.get("head_branch") == tag and row.get("repository", {}).get("full_name") == REPOSITORY:
+            matches.append(row)
+    if len(matches) != 1:
+        raise ContractError("release run is missing or ambiguous")
+    row = matches[0]
+    if not isinstance(row.get("id"), int) or row["id"] <= 0 or not isinstance(row.get("run_attempt"), int) or row["run_attempt"] <= 0:
+        raise ContractError("discovered run identity is invalid")
+    return {"schema": "puber_release_run_v1", "state": "selected", "repository": REPOSITORY, "workflow_path": ".github/workflows/release.yml", "workflow_name": "Release", "event": "push", "run_id": row["id"], "attempt": row["run_attempt"], "head_sha": target, "ref": f"refs/tags/{tag}", "head_branch": tag}
+
+def read_release_run(root: Path, run: Mapping[str, Any], target: str, tag: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    response = gh_api(root, f"repos/{REPOSITORY}/actions/runs/{run['run_id']}/attempts/{run['attempt']}")
+    if not isinstance(response, dict) or response.get("id") != run["run_id"] or response.get("run_attempt") != run["attempt"] or response.get("path") != ".github/workflows/release.yml" or response.get("name") != "Release" or response.get("event") != "push" or response.get("head_sha") != target or response.get("head_branch") != tag or response.get("repository", {}).get("full_name") != REPOSITORY:
+        raise ContractError("release run readback identity switched or drifted")
+    if response.get("status") != "completed" or response.get("conclusion") != "success":
+        raise ContractError("release run is not successful")
+    jobs_response = gh_api(root, f"repos/{REPOSITORY}/actions/runs/{run['run_id']}/attempts/{run['attempt']}/jobs?per_page=100")
+    if not isinstance(jobs_response, dict) or not isinstance(jobs_response.get("jobs"), list) or len(jobs_response["jobs"]) != 1:
+        raise ContractError("release jobs are missing, extra, or ambiguous")
+    job = jobs_response["jobs"][0]
+    if not isinstance(job, dict) or job.get("name") != "Build & Publish" or job.get("status") != "completed" or job.get("conclusion") != "success" or not isinstance(job.get("id"), int) or job["id"] <= 0:
+        raise ContractError("release job identity or outcome is invalid")
+    return {"run_id": run["run_id"], "attempt": run["attempt"], "path": response["path"], "name": response["name"], "event": response["event"], "head_sha": response["head_sha"], "head_branch": response["head_branch"], "status": response["status"], "conclusion": response["conclusion"]}, {"id": job["id"], "name": job["name"], "status": job["status"], "conclusion": job["conclusion"], "attempt": run["attempt"]}
+
+def read_release(root: Path, tag: str, target: str) -> dict[str, Any]:
+    release = gh_api(root, f"repos/{REPOSITORY}/releases/tags/{tag}")
+    if not isinstance(release, dict) or release.get("tag_name") != tag or release.get("target_commitish") != target or release.get("name") != f"Puber {tag}" or release.get("draft") is not False or release.get("prerelease") is not False or release.get("html_url") != f"https://github.com/{REPOSITORY}/releases/tag/{tag}":
+        raise ContractError("GitHub Release identity/state is not exact")
+    assets = release.get("assets")
+    if not isinstance(assets, list) or len(assets) != 2:
+        raise ContractError("GitHub Release assets are missing, extra, or ambiguous")
+    expected = {f"puber-{tag}.apk", f"puber-{tag}.apk.sha256"}
+    if {asset.get("name") for asset in assets if isinstance(asset, dict)} != expected:
+        raise ContractError("GitHub Release asset names are not exact")
+    normalized_assets = []
+    for asset in assets:
+        if not isinstance(asset, dict) or not isinstance(asset.get("id"), int) or asset["id"] <= 0 or not isinstance(asset.get("size"), int) or asset["size"] <= 0 or not isinstance(asset.get("name"), str):
+            raise ContractError("GitHub Release asset identity/size is invalid")
+        normalized_assets.append({"id": asset["id"], "name": asset["name"], "size": asset["size"], "browser_download_url": asset.get("browser_download_url", "")})
+    apk = next(item for item in normalized_assets if item["name"].endswith(".apk"))
+    checksum = next(item for item in normalized_assets if item["name"].endswith(".apk.sha256"))
+    apk_bytes = gh_api_bytes(root, f"repos/{REPOSITORY}/releases/assets/{apk['id']}")
+    checksum_bytes = gh_api_bytes(root, f"repos/{REPOSITORY}/releases/assets/{checksum['id']}")
+    if len(apk_bytes) != apk["size"] or len(checksum_bytes) != checksum["size"]:
+        raise ContractError("downloaded release asset sizes do not match metadata")
+    checksum_text = checksum_bytes.decode("utf-8")
+    lines = checksum_text.splitlines()
+    if len(lines) != 1:
+        raise ContractError("checksum asset is not one exact line")
+    match = re.fullmatch(r"([0-9a-f]{64})[ \t]+\*?(.+)", lines[0])
+    if not match or match.group(2) != apk["name"] or match.group(1) != sha256_bytes(apk_bytes):
+        raise ContractError("checksum asset does not match APK bytes")
+    return {"tag_name": release["tag_name"], "target_commitish": release["target_commitish"], "name": release["name"], "draft": release["draft"], "prerelease": release["prerelease"], "html_url": release["html_url"], "body": release.get("body", ""), "assets": normalized_assets}
 
 def report_json(value: Mapping[str, Any]) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
-def emit(transition: str, **fields: Any) -> None:
-    print(json.dumps({"transition":transition, **fields}, ensure_ascii=False, sort_keys=True))
-
 def main() -> int:
     try:
         payload, state, edge = validate_envelope(read_zero_argument(), ROOT, "release_intent_gate")
+    except ContractError as error:
+        print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
+        return 2
+    values = declarations(state["task"].get("body"))
+    kind = values.get("release_type", "minor")
+    current = re.search(r"currentVersion\s*=\s*[\"'](\d+\.\d+\.\d+)[\"']", (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8"))
+    if not current:
+        print(json.dumps({"error": "currentVersion is missing"}, ensure_ascii=False), file=sys.stderr)
+        return 2
+    major, minor, patch = (int(item) for item in current.group(1).split("."))
+    version = values.get("release_version") or (f"{major+1}.0.0" if kind == "major" else f"{major}.{minor}.{patch+1}" if kind == "patch" else f"{major}.{minor+1}.0")
+    tag = values.get("release_tag", f"v{version}")
+    operation_id = digest_json({"task_id": state["task_id"], "commit": state["commit"], "workflow_id": WORKFLOW_ID})
+    if kind not in RELEASE_TYPE:
+        return _intent_failure(state, operation_id, "minor", version, "release_type must be exactly minor, patch, or major", invalid=True)
+    try:
+        safe_version_tag(version, tag)
+        if values.get("release_branch"):
+            safe_release_branch(values["release_branch"], version)
         attested = attest(ROOT, state, "release_intent_gate", edge["key"])
-        current = re.search(r"currentVersion\s*=\s*[\"'](\d+\.\d+\.\d+)[\"']", (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8"))
-        if not current: raise ContractError("currentVersion is missing")
-        values = declarations(state["task"].get("body")); kind = values.get("release_type", "minor")
-        major, minor, patch = (int(item) for item in current.group(1).split("."))
-        version = values.get("release_version") or (f"{major+1}.0.0" if kind == "major" else f"{major}.{minor}.{patch+1}" if kind == "patch" else f"{major}.{minor+1}.0")
-        tag = values.get("release_tag", f"v{version}")
-        if not SEMVER.fullmatch(version) or tag != f"v{version}": raise ContractError("release intent version/tag is not exact")
-        emit("release_intent_passed", workspace_path=str(ROOT), operation_id=attested["binding"].provenance_fingerprint, task_short_id=state["task_short_id"], release_type=kind, release_version=version, release_tag=tag, source_revision=WORKFLOW_REVISION, no_live_apply=True)
-    except Exception as error:
-        emit("release_intent_blocked", blocker_reason=str(error), no_live_apply=True)
+        operation_id = attested["binding"].provenance_fingerprint
+        return _intent_success(state, operation_id, kind, version)
+    except ContractError as error:
+        return _intent_failure(state, operation_id, kind, version, str(error))
+
+def _intent_success(state: dict[str, Any], operation_id: str, kind: str, version: str) -> int:
+    fields = {"workspace_path": str(ROOT), "operation_id": operation_id, "task_short_id": state["task_short_id"], "release_type": kind, "release_version": version}
+    emit_exact(ROOT, "release_intent_passed", "prepare", fields)
+    return 0
+
+def _intent_failure(state: dict[str, Any], operation_id: str, kind: str, version: str, reason: str, *, invalid: bool = False) -> int:
+    transition = "release_intent_invalid" if invalid else "release_intent_blocked"
+    fields = {"workspace_path": str(ROOT), "operation_id": operation_id, "task_short_id": state["task_short_id"], "release_type": kind, "release_version": version, "blocker_reason": reason}
+    emit_exact(ROOT, transition, "release_intent_gate", fields)
     return 0
 
 if __name__ == "__main__":
