@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import importlib.util
 import os
+import sys
+sys.dont_write_bytecode = True
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 import shutil
