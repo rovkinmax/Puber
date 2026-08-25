@@ -7,6 +7,8 @@ import os
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 import subprocess
+import tempfile
+import shutil
 
 ROOT = Path(__file__).resolve().parents[3]
 KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
@@ -41,4 +43,58 @@ sources = mod._normalized_sources(ROOT, kit, release_spec)
 for key in ("publish_after_merge", "observe_release"):
     variant = next(item for item in release_spec.operation_variants if item.key == key)
     kit["validate_operation_jobs"](variant, sources, required=release_spec.required_jobs_v1, qualification=release_spec.qualification_jobs_v1, effect=release_spec.effect_jobs_v1)
+
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory)
+    work = root / "work"
+    subprocess.run(["git", "clone", "--quiet", str(ROOT), str(work)], cwd=root, check=True)
+    manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text(encoding="utf-8"))
+    for relative in sorted(set(manifest["additional_paths"]) | {
+        ".kent/scripts/workflow-puber-release-intent",
+        ".kent/workflows/puber-release.json",
+        ".kent/workflows/puber-release.manifest.json",
+        ".kent/workflows/specs/puber-release.toml",
+        ".kent/workflows/builders/puber_release.py",
+    }):
+        source = ROOT / relative
+        target = work / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=work, check=True)
+    subprocess.run(["git", "config", "user.name", "Puber Test"], cwd=work, check=True)
+    subprocess.run(["git", "add", "."], cwd=work, check=True)
+    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=work).returncode != 0:
+        subprocess.run(["git", "commit", "--quiet", "-m", "intent test fixture"], cwd=work, check=True)
+    target_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=work, text=True).strip()
+    graph = json.loads((work / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
+    node = next(item for item in graph["nodes"] if item["key"] == "release_intent_gate")
+    task_id = "task-12345678-1234-4234-8234-123456789abc"
+    task = {
+        "actions": [], "attention_count": 0,
+        "body": "release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n",
+        "current_nodes": [{"node_id": node["id"]}],
+        "current_scripts": [{"path": ".kent/scripts/workflow-puber-release-intent", "current_node": {"node_id": node["id"]}}],
+        "execution_target": {"commit_oid": target_commit}, "label_ids": [], "live_sessions": [],
+        "project": {}, "retained_session_count": 0, "source_workspace": {},
+        "status": {"node_ids": [node["id"]]},
+        "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"},
+        "worktree_path": str(work),
+    }
+    fake = root / "fake"; fake.mkdir()
+    task_file = fake / "task.json"; task_file.write_text(json.dumps(task), encoding="utf-8")
+    kent = fake / "kent"; kent.write_text("#!/bin/sh\ncat \"$PUBER_FAKE_TASK\"\n", encoding="utf-8"); kent.chmod(0o755)
+    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_FAKE_TASK": str(task_file)}
+    success = {"_kent": {"task_id": task_id, "node_id": node["id"], "transition_branch_key": "start_release_intent_gate"}}
+    result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-intent")], cwd=work, input=json.dumps(success), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert result.returncode == 0, result.stderr
+    output = json.loads(result.stdout)
+    assert output["transition"] == "release_intent_passed" and output["release_version"] == "99.0.0"
+    for bad in (
+        {},
+        {"_kent": success["_kent"], "extra": "field"},
+        {"_kent": {**success["_kent"], "node_id": "wrong"}},
+    ):
+        result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-intent")], cwd=work, input=json.dumps(bad), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        assert result.returncode != 0 and result.stdout == ""
 print("workflow-puber-release-intent: passed")

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,6 +12,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
 KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
+helper_spec = importlib.util.spec_from_loader("publish_runtime_test", SourceFileLoader("publish_runtime_test", str(ROOT / ".kent/scripts/workflow-puber-release-intent")))
+helper = importlib.util.module_from_spec(helper_spec); assert helper_spec and helper_spec.loader; helper_spec.loader.exec_module(helper)
 SCRIPT_PATHS = [
     ".kent/scripts/workflow-puber-release-intent",
     ".kent/scripts/workflow-puber-release-publish",
@@ -101,4 +105,53 @@ with tempfile.TemporaryDirectory() as directory:
     assert sh(["git", "--git-dir", bare_path, "rev-parse", "refs/tags/v99.0.0"], work).stdout.strip() == target
     assert not (ROOT / ".git/refs/tags/v99.0.0").exists()
     assert "api" in log.read_text(encoding="utf-8") and "git/ref/heads/master" in log.read_text(encoding="utf-8")
+    retry = {
+        "_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "publish_needs_user_action"},
+        "blocker_reason": "retry",
+        "workspace_path": payload["workspace_path"],
+        "operation_id": payload["operation_id"],
+        "pr_url": payload["pr_url"],
+        "branch_name": payload["branch_name"],
+        "merge_strategy": payload["merge_strategy"],
+        "pr_head_oid": payload["pr_head_oid"],
+        "pr_base_oid": payload["pr_base_oid"],
+        "release_version": output["release_version"],
+        "release_tag": output["release_tag"],
+        "target_commit": output["target_commit"],
+        "release_notes_path": output["release_notes_path"],
+        "publication_report": output["publication_report"],
+        "publication_report_digest": output["publication_report_digest"],
+        "release_run": output["release_run"],
+    }
+    retry_result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert retry_result.returncode == 0, retry_result.stderr
+    retry_output = json.loads(retry_result.stdout)
+    assert retry_output["transition"] == "monitor_release"
+    retry_report = json.loads(retry_output["publication_report"])
+    assert retry_report["operation_digest"] != report["operation_digest"]
+    assert retry_report["previous_operation_digest"] == report["operation_digest"]
+    assert retry_output["tag_push_status"] == "already_present_exact"
+    wrong = sh(["git", "rev-parse", f"{target}^"], work).stdout.strip()
+    sh(["git", "tag", "v100.0.0", wrong], work)
+    try:
+        helper.publish_tag(work, "v100.0.0", target)
+    except helper.ContractError:
+        pass
+    else:
+        raise AssertionError("local conflicting tag was accepted")
+    sh(["git", "update-ref", "refs/tags/v100.0.1", wrong], Path(bare_path))
+    try:
+        helper.publish_tag(work, "v100.0.1", target)
+    except helper.ContractError:
+        pass
+    else:
+        raise AssertionError("remote conflicting tag was accepted")
+    notes_path = work / report["notes_report"]["path"]
+    notes_path.write_text("conflict\n", encoding="utf-8")
+    try:
+        helper.parse_notes_report(report["notes_report"], work, "PUB-99", expected_tag="v99.0.0", expected_target=target)
+    except helper.ContractError:
+        pass
+    else:
+        raise AssertionError("conflicting canonical notes were accepted")
 print("workflow-puber-release-publish: passed")

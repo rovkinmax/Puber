@@ -74,11 +74,13 @@ def main() -> int:
             attested = helper.attest(ROOT, state, "publish", edge["key"], kind="publish", project_fields={"release_tag": tag, "target_commit": target, "release_version": version})
             operation_digest = attested["operation"].operation_digest
             tag_status = helper.publish_tag(ROOT, tag, target)
-            report, report_digest = helper.publication_report(operation_digest, pr_url, version, tag, target, notes, tag_phase="tag_published", tag_status=tag_status, unresolved=True)
+            previous_operation_digest = ""
         else:
-            helper.attest(ROOT, state, "publish", edge["key"], kind=None)
+            attested = helper.attest(ROOT, state, "publish", edge["key"], kind="publish", project_fields={"release_tag": tag, "target_commit": target, "release_version": version})
+            operation_digest = attested["operation"].operation_digest
+            previous_operation_digest = existing_report["operation_digest"]
             tag_status = helper.publish_tag(ROOT, tag, target)
-            report, report_digest = helper.publication_report(existing_report["operation_digest"], pr_url, version, tag, target, notes, tag_phase="tag_published", tag_status=tag_status, unresolved=True)
+        report, report_digest = helper.publication_report(operation_digest, pr_url, version, tag, target, notes, tag_phase="tag_published", tag_status=tag_status, unresolved=True, previous_operation_digest=previous_operation_digest)
         fields = {
             **base,
             "pr_url": pr_url,
