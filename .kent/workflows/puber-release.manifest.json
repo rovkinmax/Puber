@@ -71,7 +71,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-release-cleanup=64c2d2ff8144ba1943fdaf53503e094c5c05c7221df0d84ef61dab104fb9d9cf",
+      "key": ".kent/scripts/tests/test-workflow-release-cleanup=6036a61f11af0d580644d12d590b4ddca2981faa2f40efe6e50919545959baf9",
       "runtime_digest_required": true
     },
     {
@@ -86,12 +86,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-puber-release-intent=6eae030ade14e6c4e310eb8e4732cbf67e41eb998f32f3700fe0a8f265bdbda0",
+      "key": ".kent/scripts/workflow-puber-release-intent=e63856f440d4525d5a1e9ce1cb7183ce55cdc76299d6710c8e59ecedd0d25919",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-release-cleanup=f2e2bb61092dde2581180e172cb37af47a46de536a0a6b2d5a1fd2d3e2f61c57",
+      "key": ".kent/scripts/workflow-release-cleanup=1521d3e59d913ca2e401718c860d4351807a51d167e407467bca377af4c1e5b1",
       "runtime_digest_required": true
     },
     {
