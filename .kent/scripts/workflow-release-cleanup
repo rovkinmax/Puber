@@ -200,6 +200,7 @@ def _cleanup_report(state: dict, session: str, session_identity: dict[str, str],
             if marker["redaction"]["report_sha256"] != helper.sha256_bytes(encoded.encode("utf-8")):
                 raise helper.ContractError("terminal evidence redaction digest does not match the canonical report line")
             kit["validate_cleanup_report"](encoded + "\n" + marker_line)
+            _validate_terminal_marker_ledger(state["task_short_id"], marker, kit)
         except helper.ContractError:
             raise
         except Exception as error:
