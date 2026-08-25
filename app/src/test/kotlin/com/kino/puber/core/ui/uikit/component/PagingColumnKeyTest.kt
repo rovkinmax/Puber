@@ -1,6 +1,7 @@
 package com.kino.puber.core.ui.uikit.component
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
 
 internal class PagingColumnKeyTest {
@@ -20,6 +21,10 @@ internal class PagingColumnKeyTest {
             item.id to resolvePagingColumnItemKey(item, itemKey)
         }
 
+        assertNotEquals(initialItems[0].payload, updatedItems[1].payload)
+        assertNotEquals(initialItems[1].payload, updatedItems[0].payload)
+        assertEquals("new first", updatedItems[1].payload)
+        assertEquals("new second", updatedItems[0].payload)
         assertEquals(
             listOf("second", "first"),
             updatedItems.map { item -> resolvePagingColumnItemKey(item, itemKey) },
