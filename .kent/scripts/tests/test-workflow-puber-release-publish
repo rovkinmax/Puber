@@ -36,7 +36,8 @@ def materialize(root: Path, bare: Path) -> tuple[Path, str, str]:
     sh(["git", "config", "user.email", "test@example.invalid"], work)
     sh(["git", "config", "user.name", "Puber Test"], work)
     sh(["git", "add", "."], work)
-    sh(["git", "commit", "--quiet", "-m", "test fixture"], work)
+    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=work).returncode != 0:
+        sh(["git", "commit", "--quiet", "-m", "test fixture"], work)
     sh(["git", "init", "--bare", str(bare)], root)
     sh(["git", "remote", "set-url", "origin", str(bare)], work)
     sh(["git", "push", "--quiet", "-u", "origin", "HEAD:master"], work)

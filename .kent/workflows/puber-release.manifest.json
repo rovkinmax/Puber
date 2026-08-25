@@ -66,7 +66,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-puber-release-publish=456ce670f0956625ac86301c4b9c43753b7a274016aee329e28e2add351161f1",
+      "key": ".kent/scripts/tests/test-workflow-puber-release-publish=f7cfa26c071638037bf5cc1c5ea6c77b2681a991721d5dffebcc3b9578f08a3a",
       "runtime_digest_required": true
     },
     {
