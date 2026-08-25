@@ -42,7 +42,7 @@ def _session_for_cleanup(state: dict, prior_session: str | None = None) -> str:
         return prior_session
     return _eligible_session(state)
 
-def _parse_janitor_report(raw: str, task_short_id: str) -> tuple[dict, str, str]:
+def _parse_janitor_report(raw: str, task_short_id: str) -> tuple[dict, str, str, str]:
     if not isinstance(raw, str) or len(raw.encode("utf-8")) > 2 * 1024 * 1024:
         raise helper.ContractError("Janitor cleanup_report is unbounded or not text")
     lines = raw.splitlines()
@@ -60,9 +60,11 @@ def _parse_janitor_report(raw: str, task_short_id: str) -> tuple[dict, str, str]
     if marker["task_short_id"] != task_short_id or marker_line != lines[1]:
         raise helper.ContractError("Janitor terminal evidence marker has the wrong task or is not canonical")
     suffix = "\n".join(lines[2:])
-    if not suffix.startswith("Janitor ") or not suffix.strip() or len(suffix.encode("utf-8")) > 512 * 1024:
+    if not suffix.startswith("Janitor ") or not suffix.strip() or len(suffix.encode("utf-8")) > 512 * 1024 or any(line.startswith("TERMINAL_EVIDENCE_V1 ") for line in lines[2:]):
         raise helper.ContractError("Janitor cleanup_report suffix is not a bounded Janitor blocker")
-    return previous, marker_line, suffix
+    if marker["redaction"]["report_sha256"] != helper.sha256_bytes(lines[0].encode("utf-8")):
+        raise helper.ContractError("Janitor terminal marker redaction digest does not match the canonical report line")
+    return previous, marker_line, suffix, "\n".join(lines[:2])
 
 def _validate_carriers(state: dict, carrier: dict) -> tuple[dict | None, dict | None]:
     publication = None
@@ -100,12 +102,59 @@ def _validate_carriers(state: dict, carrier: dict) -> tuple[dict | None, dict | 
             raise helper.ContractError("cleanup release/notes digest mismatch")
     return publication, release
 
-def _cleanup_report(state: dict, session: str, payload: dict, *, operation_digest: str, unresolved: bool, blocker: str, fresh: dict, existing_marker: str | None = None) -> tuple[str, str]:
+def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, object], kit: dict[str, object]) -> None:
+    runtime_root = ROOT / ".kent" / "runtime"
+    candidates = []
+    if runtime_root.is_dir() and not runtime_root.is_symlink():
+        for ledger in runtime_root.rglob("evidence-ledger.jsonl"):
+            if ledger.is_file() and not ledger.is_symlink():
+                candidates.append(ledger)
+    if len(candidates) != 1:
+        raise helper.ContractError("terminal evidence ledger is missing or ambiguous")
+    try:
+        records = [json.loads(line) for line in candidates[0].read_text(encoding="utf-8").splitlines() if line.strip()]
+        readback = kit["validate_terminal_chain"](records, task_short_id=task_short_id)
+    except Exception as error:
+        raise helper.ContractError(f"terminal evidence ledger readback is invalid: {error}") from error
+    if readback != marker:
+        raise helper.ContractError("terminal evidence marker does not match the sealed ledger")
+
+def _cleanup_report(state: dict, session: str, payload: dict, *, operation_digest: str, unresolved: bool, blocker: str, fresh: dict, existing_marker: str | None = None, preserved_prefix: str | None = None, preserved_suffix: str | None = None) -> tuple[str, str]:
     publication = payload.get("publication_report", "")
     release = payload.get("release_report", "")
     notes_path = payload.get("release_notes_path", "")
     value = {"schema": "puber_cleanup_report_v1", "operation_digest": operation_digest, "cleanup_session_id": session, "cleanup_mode": "report_only", "publication_report": publication, "publication_report_digest": payload.get("publication_report_digest", ""), "release_report": release, "release_report_digest": payload.get("release_report_digest", ""), "release_notes_path": notes_path, "release_notes_digest": payload.get("release_notes_digest", ""), "unresolved": unresolved, "destructive_action": False, "blocker_reason": blocker}
     encoded = helper.canonical_json(value)
+    if existing_marker is not None:
+        if preserved_prefix is None or preserved_suffix is None:
+            raise helper.ContractError("preserved terminal report context is incomplete")
+        prefix_lines = preserved_prefix.splitlines()
+        if len(prefix_lines) != 2 or prefix_lines[1] != existing_marker:
+            raise helper.ContractError("preserved terminal report prefix is not exact")
+        previous = helper.parse_closed_json(prefix_lines[0], "puber_cleanup_report_v1", helper.CLEANUP_KEYS)
+        if helper.canonical_json(previous) != prefix_lines[0]:
+            raise helper.ContractError("preserved terminal report line is not canonical")
+        try:
+            marker = fresh["kit"]["parse_terminal_marker_line"](existing_marker)
+            normalized_request = {
+                "schema": "terminal-evidence-seal-request-v1",
+                "operation_report_digests": marker["operation_report_digests"],
+                "redaction": marker["redaction"],
+                "retention_class": marker["retention_class"],
+            }
+            fresh["kit"]["validate_terminal_seal_request"](normalized_request)
+            fresh["kit"]["validate_cleanup_report"](preserved_prefix)
+            _validate_terminal_marker_ledger(state["task_short_id"], marker, fresh["kit"])
+        except Exception as error:
+            raise helper.ContractError(f"preserved terminal evidence is invalid: {error}") from error
+        if marker["task_short_id"] != state["task_short_id"] or marker["redaction"]["report_sha256"] != helper.sha256_bytes(prefix_lines[0].encode("utf-8")):
+            raise helper.ContractError("preserved terminal evidence does not bind the canonical report line")
+        report = prefix_lines[0] + "\n" + preserved_suffix + "\n" + existing_marker
+        try:
+            fresh["kit"]["validate_cleanup_report"](report)
+        except Exception as error:
+            raise helper.ContractError(f"re-emitted Janitor report is not terminally sealed: {error}") from error
+        return report, helper.sha256_bytes(report.encode("utf-8"))
     if existing_marker is None:
         operation_digests = [{"kind": "runtime_source", "sha256": fresh["binding"].runtime_source_envelope_digest}]
         publication_digest = value["publication_report_digest"]
@@ -128,10 +177,17 @@ def _cleanup_report(state: dict, session: str, payload: dict, *, operation_diges
             sealed = helper._json_one(result.stdout.encode("utf-8"))
             if set(sealed) != {"ledger_path", "terminal_marker", "event_hash"} or not helper.HEX64.fullmatch(str(sealed.get("event_hash", ""))):
                 raise helper.ContractError("terminal evidence seal response is not closed")
+            expected_ledger = ROOT / ".kent" / "runtime" / state["task_short_id"] / "evidence-ledger.jsonl"
+            if sealed["ledger_path"] != str(expected_ledger):
+                raise helper.ContractError("terminal evidence ledger path is not the exact task-local path")
             marker_line = helper.require_string(sealed.get("terminal_marker"), "terminal_marker")
             marker = kit["parse_terminal_marker_line"](marker_line)
             if marker["task_short_id"] != state["task_short_id"]:
                 raise helper.ContractError("terminal marker task identity drifted")
+            if sealed["event_hash"] != marker["final_hash"] or marker["retention_class"] != "cleanup_report_only" or marker["redaction"] != request["redaction"] or marker["operation_report_digests"] != kit["validate_terminal_seal_request"](request)["operation_report_digests"]:
+                raise helper.ContractError("terminal evidence seal response does not match the exact request")
+            if marker["redaction"]["report_sha256"] != helper.sha256_bytes(encoded.encode("utf-8")):
+                raise helper.ContractError("terminal evidence redaction digest does not match the canonical report line")
             kit["validate_cleanup_report"](encoded + "\n" + marker_line)
         except helper.ContractError:
             raise
@@ -163,8 +219,11 @@ def main() -> int:
         prior_blocker = ""
         prior_session = None
         existing_marker = None
+        preserved_prefix = None
+        preserved_suffix = None
         if edge["key"] == "task_janitor_blocked":
-            previous, existing_marker, janitor_suffix = _parse_janitor_report(payload["cleanup_report"], state["task_short_id"])
+            previous, existing_marker, janitor_suffix, preserved_prefix = _parse_janitor_report(payload["cleanup_report"], state["task_short_id"])
+            preserved_suffix = janitor_suffix
             prior_session = helper.require_string(previous["cleanup_session_id"], "cleanup_session_id")
             carrier = {
                 **payload,
@@ -196,7 +255,7 @@ def main() -> int:
             raise helper.ContractError("cleanup branch carrier is not safe")
         carrier["branch_name"] = branch
         blocker = carrier.get("blocker_reason", "") or prior_blocker
-        report, report_digest = _cleanup_report(state, session, carrier, operation_digest=operation_digest, unresolved=prior_unresolved or bool(blocker), blocker=blocker, fresh=fresh, existing_marker=existing_marker)
+        report, report_digest = _cleanup_report(state, session, carrier, operation_digest=operation_digest, unresolved=prior_unresolved or bool(blocker), blocker=blocker, fresh=fresh, existing_marker=existing_marker, preserved_prefix=preserved_prefix, preserved_suffix=preserved_suffix)
         fields = {"cleanup_report": report, "workspace_path": str(ROOT), "branch_name": branch, "pr_url": carrier.get("pr_url", ""), "cleanup_mode": "report_only", "cleanup_session_id": session, "task_short_id": state["task_short_id"], "publication_report": carrier.get("publication_report", ""), "publication_report_digest": carrier.get("publication_report_digest", ""), "release_report": carrier.get("release_report", ""), "release_report_digest": carrier.get("release_report_digest", ""), "release_notes_path": carrier.get("release_notes_path", ""), "release_notes_digest": carrier.get("release_notes_digest", "")}
         helper.emit_exact(ROOT, "cleanup_task_janitor", "task_janitor", fields)
         return 0

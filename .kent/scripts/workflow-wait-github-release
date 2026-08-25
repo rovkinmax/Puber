@@ -76,8 +76,11 @@ def main() -> int:
         if body != notes_bytes.decode("utf-8"):
             edited = helper.gh(ROOT, ["release", "edit", payload["release_tag"], "--notes-file", "-"], input_text=notes_bytes.decode("utf-8"))
             if edited.returncode:
-                raise helper.ContractError("release notes edit failed after all verification gates")
-            release = helper.read_release(ROOT, payload["release_tag"], payload["target_commit"])
+                release = helper.read_release(ROOT, payload["release_tag"], payload["target_commit"])
+                if release.get("body") != notes_bytes.decode("utf-8"):
+                    raise helper.ContractError("release notes edit failed after all verification gates")
+            else:
+                release = helper.read_release(ROOT, payload["release_tag"], payload["target_commit"])
             if release.get("body") != notes_bytes.decode("utf-8"):
                 raise helper.ContractError("release notes post-edit readback mismatch")
         final_publication, final_publication_digest = helper.publication_report(publication["operation_digest"], publication["pr_url"], publication["release_version"], publication["release_tag"], publication["target_commit"], notes, tag_phase="tag_published", tag_status=publication["tag_status"], unresolved=False, previous_operation_digest=publication.get("previous_operation_digest", ""))

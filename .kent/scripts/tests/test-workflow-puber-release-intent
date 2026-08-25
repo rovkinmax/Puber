@@ -97,4 +97,42 @@ with tempfile.TemporaryDirectory() as directory:
     ):
         result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-intent")], cwd=work, input=json.dumps(bad), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         assert result.returncode != 0 and result.stdout == ""
-print("workflow-puber-release-intent: passed")
+
+    def refs() -> str:
+        return subprocess.run(["git", "show-ref"], cwd=work, text=True, stdout=subprocess.PIPE, check=True).stdout
+
+    def rejected_case(label: str, *, task_changes=None, payload_changes=None, source_drift: bool = False, env_override=None) -> None:
+        before = refs()
+        if task_changes:
+            changed = json.loads(task_file.read_text(encoding="utf-8"))
+            changed.update(task_changes)
+            task_file.write_text(json.dumps(changed), encoding="utf-8")
+        source = work / ".kent/scripts/workflow-puber-release-intent"
+        original = source.read_bytes()
+        if source_drift:
+            source.write_bytes(original + b"\n")
+        case = dict(success)
+        if payload_changes:
+            case.update(payload_changes)
+        case_env = env_override or env
+        result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-intent")], cwd=work, input=json.dumps(case), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=case_env)
+        if result.returncode == 0:
+            assert json.loads(result.stdout)["transition"] in {"release_intent_blocked", "release_intent_invalid"}, label
+        else:
+            assert result.stdout == "" and "error" in result.stderr, label
+        assert refs() == before, label
+        source.write_bytes(original)
+        task_file.write_text(json.dumps(task), encoding="utf-8")
+
+    rejected_case("task_id", payload_changes={"_kent": {**success["_kent"], "task_id": "task-00000000-0000-4000-8000-000000000000"}})
+    rejected_case("project", task_changes={"summary": {**task["summary"], "project_id": "foreign-project"}})
+    rejected_case("workflow_revision", task_changes={"workflow": {**task["workflow"], "version": 87}})
+    rejected_case("current_node", task_changes={"status": {"node_ids": ["foreign-node"]}})
+    rejected_case("current_script", task_changes={"current_scripts": [{"path": ".kent/scripts/workflow-puber-release-publish", "current_node": {"node_id": node["id"]}}]})
+    rejected_case("execution_commit", task_changes={"execution_target": {"commit_oid": "f" * 40}})
+    rejected_case("worktree", task_changes={"worktree_path": str(root / "foreign")})
+    rejected_case("source_drift", source_drift=True)
+    bad_kit = root / "bad-kit"; bad_kit.mkdir()
+    rejected_case("kit_drift", env_override={**env, "KENT_ENGINEERING_KIT_ROOT": str(bad_kit)})
+
+print("workflow-puber-release-intent: passed scenarios=happy,malformed,task_id,project,workflow_revision,current_node,current_script,execution_commit,worktree,source_drift,kit_drift,no_effect")

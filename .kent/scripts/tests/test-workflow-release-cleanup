@@ -1,35 +1,63 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
-from importlib.machinery import SourceFileLoader
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from importlib.machinery import SourceFileLoader
 
 ROOT = Path(__file__).resolve().parents[3]
 KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
+cleanup_spec = importlib.util.spec_from_loader("cleanup_carrier_test", SourceFileLoader("cleanup_carrier_test", str(ROOT / ".kent/scripts/workflow-release-cleanup")))
+cleanup_mod = importlib.util.module_from_spec(cleanup_spec)
+assert cleanup_spec and cleanup_spec.loader
+cleanup_spec.loader.exec_module(cleanup_mod)
 
-spec = importlib.util.spec_from_loader(
-    "cleanup_runtime_test",
-    SourceFileLoader("cleanup_runtime_test", str(ROOT / ".kent/scripts/workflow-release-cleanup")),
-)
-mod = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-spec.loader.exec_module(mod)
 
 def sh(args: list[str], cwd: Path, **kwargs: object) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+    return subprocess.run(
+        args,
+        cwd=cwd,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        **kwargs,
+    )
+
+
+def expect_rejected(command: list[str], cwd: Path, payload: dict, env: dict[str, str], label: str) -> None:
+    result = subprocess.run(
+        command,
+        cwd=cwd,
+        input=json.dumps(payload),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    assert result.returncode != 0 and result.stdout == "" and "error" in result.stderr, label
+
 
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)
-    work = root / "work"
-    sh(["git", "clone", "--quiet", str(ROOT), str(work)], root)
+    primary = root / "home" / "dev" / "android" / "Puber"
+    managed = root / "home" / ".kent" / "worktrees" / "PUB-99"
+    bare = root / "origin.git"
+    primary.parent.mkdir(parents=True)
+    sh(["git", "clone", "--quiet", str(ROOT), str(primary)], root)
+    sh(["git", "init", "--bare", str(bare)], root)
+    sh(["git", "remote", "set-url", "origin", str(bare)], primary)
+    managed.parent.mkdir(parents=True)
+    sh(["git", "worktree", "add", "--quiet", "-b", "release/99.0.0", str(managed), "HEAD"], primary)
+
     manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text(encoding="utf-8"))
-    for relative in sorted(set(manifest["additional_paths"]) | {
+    copied = set(manifest["additional_paths"]) | {
         ".kent/scripts/workflow-puber-release-intent",
         ".kent/scripts/workflow-evidence-ledger",
         ".kent/scripts/workflow-release-cleanup",
@@ -39,44 +67,55 @@ with tempfile.TemporaryDirectory() as directory:
         ".kent/workflows/puber-release.manifest.json",
         ".kent/workflows/specs/puber-release.toml",
         ".kent/workflows/builders/puber_release.py",
-    }):
-        source = ROOT / relative
-        if relative == ".kent/scripts/workflow-task-janitor":
-            source = KIT / "templates/project/workflow-task-janitor"
-        target_path = work / relative
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target_path)
-    sh(["git", "config", "user.email", "test@example.invalid"], work)
-    sh(["git", "config", "user.name", "Puber Test"], work)
-    sh(["git", "add", "."], work)
-    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=work).returncode != 0:
-        sh(["git", "commit", "--quiet", "-m", "cleanup test fixture"], work)
-    evidence = {
-        "node_key": "cleanup",
-        "evidence_type": "cleanup_fixture",
-        "summary": "Cleanup fixture entered with an ordinary evidence record.",
-        "artifacts": ["cleanup-fixture"],
-        "checks": ["fixture"],
-        "decisions": ["report_only"],
-        "context": {
-            "manifest_path": ".kent/context/implement.md",
-            "files_read": [".kent/project-contract.md"],
-            "model_calls": 0,
-            "compaction_count": 0,
-            "repeated_questions": 0,
-            "verification_loops": 0,
-        },
     }
+    for relative in sorted(copied):
+        source = KIT / "templates/project/workflow-task-janitor" if relative == ".kent/scripts/workflow-task-janitor" else ROOT / relative
+        target = managed / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    carrier_notes_path = managed / ".todo/PUB-99/release-notes-ru.md"
+    carrier_notes_path.parent.mkdir(parents=True, exist_ok=True)
+    carrier_body = "puber_release_notes_v1\n\n# Изменения\n\n- Проверка релиза.\n".encode("utf-8")
+    carrier_notes_path.write_bytes(carrier_body)
+    carrier_notes_path.chmod(0o600)
+    carrier_notes_path = managed / ".todo/PUB-99/release-notes-ru.md"
+    carrier_notes_path.parent.mkdir(parents=True, exist_ok=True)
+    carrier_body = "puber_release_notes_v1\n\n# Изменения\n\n- Проверка релиза.\n".encode("utf-8")
+    carrier_notes_path.write_bytes(carrier_body)
+    carrier_notes_path.chmod(0o600)
+    sh(["git", "config", "user.email", "test@example.invalid"], managed)
+    sh(["git", "config", "user.name", "Puber Test"], managed)
+    sh(["git", "add", "."], managed)
+    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=managed).returncode != 0:
+        sh(["git", "commit", "--quiet", "-m", "cleanup test fixture"], managed)
+    target = sh(["git", "rev-parse", "HEAD"], managed).stdout.strip()
+    sh(["git", "push", "--quiet", "-u", "origin", "release/99.0.0"], managed)
     sh(
-        [str(work / ".kent/scripts/workflow-evidence-ledger"), "append", "--task", "PUB-99", "--workspace", str(work)],
-        work,
-        input=json.dumps(evidence),
+        [str(managed / ".kent/scripts/workflow-evidence-ledger"), "append", "--task", "PUB-99", "--workspace", str(managed)],
+        managed,
+        input=json.dumps({
+            "node_key": "cleanup",
+            "evidence_type": "cleanup_fixture",
+            "summary": "Cleanup fixture entered with an ordinary evidence record.",
+            "artifacts": ["cleanup-fixture"],
+            "checks": ["fixture"],
+            "decisions": ["report_only"],
+            "context": {
+                "manifest_path": ".kent/context/implement.md",
+                "files_read": [".kent/project-contract.md"],
+                "model_calls": 0,
+                "compaction_count": 0,
+                "repeated_questions": 0,
+                "verification_loops": 0,
+            },
+        }),
     )
-    target = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
-    graph = json.loads((work / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
+
+    graph = json.loads((managed / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
     cleanup_node = next(node for node in graph["nodes"] if node["key"] == "cleanup")
     task_id = "task-12345678-1234-4234-8234-123456789abc"
     session_id = "session-cleanup-1"
+    workspace_id = "workspace-fixture-1234"
     task = {
         "actions": [],
         "attention_count": 0,
@@ -92,7 +131,7 @@ with tempfile.TemporaryDirectory() as directory:
         "status": {"node_ids": [cleanup_node["id"]]},
         "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
         "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"},
-        "worktree_path": str(work),
+        "worktree_path": str(managed),
     }
     fake = root / "fake"
     fake.mkdir()
@@ -101,117 +140,184 @@ with tempfile.TemporaryDirectory() as directory:
     kent = fake / "kent"
     kent.write_text("#!/bin/sh\ncat \"$PUBER_FAKE_TASK\"\n", encoding="utf-8")
     kent.chmod(0o755)
-    wrapper = fake / "kent-worktree"
     moved = fake / "moved"
+    wrapper = fake / "kent-worktree"
     wrapper.write_text(
         "#!/bin/sh\n"
-        "test \"$1\" = status && test \"$2\" = --session && test \"$4\" = --json\n"
-        f"if test -f '{moved}'; then effective='/tmp/pub-99-moved'; else effective='{work}'; fi\n"
-        f"printf '{{\"target\":{{\"EffectiveWorkdir\":\"%s\"}},\"worktree\":{{\"recorded_root\":\"{work}\",\"observed_root\":\"{work}\"}}}}\\n' \"$effective\"\n",
+        "if test \"$1\" = status; then\n"
+        "  test \"$2\" = --session && test \"$4\" = --json || exit 2\n"
+        f"  if test -f '{moved}'; then\n"
+        f"    printf '%s\\n' '{{\"target\":{{\"WorkspaceID\":\"{workspace_id}\",\"WorkspaceName\":\"Puber\",\"WorkspaceRoot\":\"{primary}\",\"WorkspaceAvailability\":\"available\",\"Worktree\":null,\"CwdRelpath\":\".\",\"EffectiveWorkdir\":\"{primary}\"}},\"worktree\":{{\"recorded_root\":\"{primary}\",\"observed_root\":\"{primary}\"}},\"problems\":[]}}'\n"
+        "  else\n"
+        f"    printf '%s\\n' '{{\"target\":{{\"WorkspaceID\":\"{workspace_id}\",\"WorkspaceName\":\"Puber\",\"WorkspaceRoot\":\"{primary}\",\"WorkspaceAvailability\":\"available\",\"Worktree\":{{\"ID\":\"worktree-fixture\",\"Name\":\"PUB-99\",\"Root\":\"{managed}\",\"Availability\":\"available\"}},\"CwdRelpath\":\".\",\"EffectiveWorkdir\":\"{managed}\"}},\"worktree\":{{\"recorded_root\":\"{managed}\",\"observed_root\":\"{managed}\"}},\"problems\":[]}}'\n"
+        "  fi\n"
+        "  exit 0\n"
+        "fi\n"
+        "if test \"$1\" = delete; then\n"
+        "  printf '%s\\n' '{\"kind\":\"scheduled\",\"scheduled\":{\"operation_id\":\"delete-fixture\"}}'\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 2\n",
         encoding="utf-8",
     )
     wrapper.chmod(0o755)
     env = {
         **os.environ,
+        "HOME": str(root / "home"),
         "PYTHONDONTWRITEBYTECODE": "1",
+        "PUBER_TEST_MODE": "1",
+        "PUBER_TEST_PRIMARY_WORKSPACE_ID": workspace_id,
+        "PUBER_TEST_PRIMARY_WORKSPACE_ROOT": str(primary),
         "KENT_ENGINEERING_KIT_ROOT": str(KIT),
         "PUBER_KENT_BIN": str(kent),
         "PUBER_KENT_WORKTREE_BIN": str(wrapper),
+        "KENT_WORKTREE_WRAPPER": str(wrapper),
         "PUBER_FAKE_TASK": str(task_file),
     }
     cancel = {
         "_kent": {"task_id": task_id, "node_id": cleanup_node["id"], "transition_branch_key": "release_cancel_cleanup"},
         "pr_url": "",
         "branch_name": "release/99.0.0",
-        "workspace_path": str(work),
+        "workspace_path": str(managed),
         "cleanup_reason": "cancelled",
     }
-    result = subprocess.run(
-        [str(work / ".kent/scripts/workflow-release-cleanup")],
-        cwd=work,
-        input=json.dumps(cancel),
+
+    initial = subprocess.run([str(managed / ".kent/scripts/workflow-release-cleanup")], cwd=managed, input=json.dumps(cancel), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert initial.returncode == 0, initial.stderr
+    initial_output = json.loads(initial.stdout)
+    assert initial_output["transition"] == "cleanup_task_janitor" and initial_output["cleanup_session_id"] == session_id
+    initial_report = initial_output["cleanup_report"]
+    initial_lines = initial_report.splitlines()
+    assert len(initial_lines) == 2 and initial_lines[1].startswith("TERMINAL_EVIDENCE_V1 ")
+    initial_json = json.loads(initial_lines[0])
+    marker = json.loads(initial_lines[1].removeprefix("TERMINAL_EVIDENCE_V1 "))
+    assert marker["redaction"]["report_sha256"] == hashlib.sha256(initial_lines[0].encode()).hexdigest()
+    ledger = managed / ".kent/runtime/PUB-99/evidence-ledger.jsonl"
+    assert marker["final_hash"] == json.loads(ledger.read_text().splitlines()[-1])["event_hash"]
+
+    cleanup_mod.ROOT = managed
+    carrier_notes = {"schema": "puber_release_notes_v1", "path": ".todo/PUB-99/release-notes-ru.md", "mode": 0o600, "bytes": len(carrier_body), "sha256": hashlib.sha256(carrier_body).hexdigest(), "encoding": "UTF-8", "line_endings": "LF", "final_newline": True, "producer": ".kent/scripts/workflow-puber-release-publish", "previous_tag": "", "range": target, "target_commit": target}
+    publication, publication_digest = cleanup_mod.helper.publication_report("b" * 64, "https://github.com/rovkinmax/Puber/pull/7", "99.0.0", "v99.0.0", target, carrier_notes, tag_phase="tag_published", tag_status="already_present_exact", unresolved=True)
+    apk_name = "puber-v99.0.0.apk"
+    checksum_name = apk_name + ".sha256"
+    assets = [{"id": 1, "name": apk_name, "size": 4, "browser_download_url": "https://example.invalid/apk", "download_sha256": "a" * 64}, {"id": 2, "name": checksum_name, "size": 70, "browser_download_url": "https://example.invalid/checksum", "download_sha256": "b" * 64}]
+    release_value = {"schema": "puber_release_report_v1", "observation_operation_digest": "c" * 64, "observation_provenance_fingerprint": "d" * 64, "run": {"schema": "puber_release_run_v1", "state": "selected", "repository": "rovkinmax/Puber", "workflow_path": ".github/workflows/release.yml", "workflow_name": "Release", "event": "push", "run_id": 42, "attempt": 1, "head_sha": target, "ref": "refs/tags/v99.0.0", "head_branch": "v99.0.0"}, "jobs": {"run": {"run_id": 42, "attempt": 1, "path": ".github/workflows/release.yml", "name": "Release", "event": "push", "head_sha": target, "head_branch": "v99.0.0", "status": "completed", "conclusion": "success"}, "job": {"id": 777, "name": "Build & Publish", "status": "completed", "conclusion": "success", "attempt": 1}}, "release": {"tag_name": "v99.0.0", "target_commitish": "master", "name": "Puber v99.0.0", "draft": False, "prerelease": False, "html_url": "https://github.com/rovkinmax/Puber/releases/tag/v99.0.0", "body": carrier_body.decode(), "remote_tag_target": target}, "assets": assets, "checksum": {"schema": "puber_checksum_proof_v1", "apk_asset_id": 1, "apk_name": apk_name, "apk_size": 4, "apk_download_sha256": "a" * 64, "checksum_asset_id": 2, "checksum_name": checksum_name, "checksum_size": 70, "checksum_download_sha256": "b" * 64, "parsed_checksum_digest": "a" * 64, "parsed_checksum_filename": apk_name, "download_sizes_match": True, "apk_checksum_equal": True}, "notes_digest": carrier_notes["sha256"], "publication_report_digest": publication_digest, "unresolved": False}
+    release_report = cleanup_mod.helper.canonical_json(release_value)
+    release_digest = hashlib.sha256(release_report.encode()).hexdigest()
+    valid_carrier = {"publication_report": publication, "publication_report_digest": publication_digest, "release_report": release_report, "release_report_digest": release_digest, "release_notes_path": carrier_notes["path"], "release_notes_digest": carrier_notes["sha256"]}
+    assert cleanup_mod._validate_carriers({"task_short_id": "PUB-99"}, valid_carrier)[0] is not None
+    broken_carrier = dict(valid_carrier)
+    broken_value = json.loads(release_report)
+    broken_value["run"]["head_sha"] = "e" * 40
+    broken_carrier["release_report"] = cleanup_mod.helper.canonical_json(broken_value)
+    broken_carrier["release_report_digest"] = hashlib.sha256(broken_carrier["release_report"].encode()).hexdigest()
+    try:
+        cleanup_mod._validate_carriers({"task_short_id": "PUB-99"}, broken_carrier)
+    except cleanup_mod.helper.ContractError:
+        pass
+    else:
+        raise AssertionError("cleanup selected-run carrier mismatch accepted")
+
+    notes_path = managed / ".todo/PUB-99/release-notes-ru.md"
+    notes_path.parent.mkdir(parents=True, exist_ok=True)
+    notes_body = "puber_release_notes_v1\n\n# Изменения\n\n- Проверка релиза.\n".encode("utf-8")
+    notes_path.write_bytes(notes_body)
+    notes_path.chmod(0o600)
+    notes = {"schema": "puber_release_notes_v1", "path": ".todo/PUB-99/release-notes-ru.md", "mode": 0o600, "bytes": len(notes_body), "sha256": hashlib.sha256(notes_body).hexdigest(), "encoding": "UTF-8", "line_endings": "LF", "final_newline": True, "producer": ".kent/scripts/workflow-puber-release-publish", "previous_tag": "", "range": target, "target_commit": target}
+    publication, publication_digest = cleanup_mod.helper.publication_report("b" * 64, "https://github.com/rovkinmax/Puber/pull/7", "99.0.0", "v99.0.0", target, notes, tag_phase="tag_published", tag_status="already_present_exact", unresolved=True)
+    apk_name = "puber-v99.0.0.apk"
+    checksum_name = apk_name + ".sha256"
+    assets = [{"id": 1, "name": apk_name, "size": 4, "browser_download_url": "https://example.invalid/apk", "download_sha256": "a" * 64}, {"id": 2, "name": checksum_name, "size": 70, "browser_download_url": "https://example.invalid/checksum", "download_sha256": "b" * 64}]
+    release_value = {"schema": "puber_release_report_v1", "observation_operation_digest": "c" * 64, "observation_provenance_fingerprint": "d" * 64, "run": {"schema": "puber_release_run_v1", "state": "selected", "repository": "rovkinmax/Puber", "workflow_path": ".github/workflows/release.yml", "workflow_name": "Release", "event": "push", "run_id": 42, "attempt": 1, "head_sha": target, "ref": "refs/tags/v99.0.0", "head_branch": "v99.0.0"}, "jobs": {"run": {"run_id": 42, "attempt": 1, "path": ".github/workflows/release.yml", "name": "Release", "event": "push", "head_sha": target, "head_branch": "v99.0.0", "status": "completed", "conclusion": "success"}, "job": {"id": 777, "name": "Build & Publish", "status": "completed", "conclusion": "success", "attempt": 1}}, "release": {"tag_name": "v99.0.0", "target_commitish": "master", "name": "Puber v99.0.0", "draft": False, "prerelease": False, "html_url": "https://github.com/rovkinmax/Puber/releases/tag/v99.0.0", "body": notes_body.decode(), "remote_tag_target": target}, "assets": assets, "checksum": {"schema": "puber_checksum_proof_v1", "apk_asset_id": 1, "apk_name": apk_name, "apk_size": 4, "apk_download_sha256": "a" * 64, "checksum_asset_id": 2, "checksum_name": checksum_name, "checksum_size": 70, "checksum_download_sha256": "b" * 64, "parsed_checksum_digest": "a" * 64, "parsed_checksum_filename": apk_name, "download_sizes_match": True, "apk_checksum_equal": True}, "notes_digest": notes["sha256"], "publication_report_digest": publication_digest, "unresolved": False}
+    release_report = cleanup_mod.helper.canonical_json(release_value)
+    release_digest = hashlib.sha256(release_report.encode()).hexdigest()
+    cleanup_mod.ROOT = managed
+    valid_carrier = {"publication_report": publication, "publication_report_digest": publication_digest, "release_report": release_report, "release_report_digest": release_digest, "release_notes_path": notes["path"], "release_notes_digest": notes["sha256"]}
+    assert cleanup_mod._validate_carriers({"task_short_id": "PUB-99"}, valid_carrier)[0] is not None
+    broken_carrier = dict(valid_carrier)
+    broken_value = json.loads(release_report)
+    broken_value["run"]["head_sha"] = "e" * 40
+    broken_carrier["release_report"] = cleanup_mod.helper.canonical_json(broken_value)
+    broken_carrier["release_report_digest"] = hashlib.sha256(broken_carrier["release_report"].encode()).hexdigest()
+    try:
+        cleanup_mod._validate_carriers({"task_short_id": "PUB-99"}, broken_carrier)
+    except cleanup_mod.helper.ContractError:
+        pass
+    else:
+        raise AssertionError("cleanup selected-run carrier mismatch accepted")
+    conflict_seal = subprocess.run(
+        [str(managed / ".kent/scripts/workflow-evidence-ledger"), "seal", "--task", "PUB-99", "--workspace", str(managed)],
+        cwd=managed,
+        input=json.dumps({"schema": "terminal-evidence-seal-request-v1", "operation_report_digests": marker["operation_report_digests"], "redaction": {"status": "passed", "report_sha256": "0" * 64}, "retention_class": "cleanup_report_only"}),
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=env,
     )
-    assert result.returncode == 0, result.stderr + "\n" + subprocess.run(["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=work, text=True, stdout=subprocess.PIPE).stdout
-    output = json.loads(result.stdout)
-    assert output["transition"] == "cleanup_task_janitor"
-    assert output["cleanup_session_id"] == session_id
-    report_lines = output["cleanup_report"].splitlines()
-    assert len(report_lines) == 2 and report_lines[1].startswith("TERMINAL_EVIDENCE_V1 ")
-    report = json.loads(report_lines[0])
-    assert report["operation_digest"] != ""
-    assert report["destructive_action"] is False and report["unresolved"] is False
+    assert conflict_seal.returncode != 0 and "conflicts" in conflict_seal.stderr
+
+    first_janitor = subprocess.run(
+        [str(managed / ".kent/scripts/workflow-task-janitor")],
+        cwd=managed,
+        input=json.dumps({"workspace_path": str(managed), "branch_name": "release/99.0.0", "pr_url": "", "cleanup_mode": "report_only", "cleanup_session_id": session_id, "cleanup_report": initial_report, "task_short_id": "PUB-99"}),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    assert first_janitor.returncode == 0, first_janitor.stderr
+    first_output = json.loads(first_janitor.stdout)
+    assert first_output["transition"] == "task_janitor_blocked"
+    assert "kent worktree leave" in first_output["blocker_reason"]
+    assert first_output["cleanup_report"].splitlines()[:2] == initial_lines
+    assert managed.exists() and (primary / ".git").exists()
 
     task["live_sessions"] = []
     task_file.write_text(json.dumps(task), encoding="utf-8")
     moved.touch()
-    janitor = subprocess.run(
-        [str(work / ".kent/scripts/workflow-task-janitor")],
-        cwd=work,
-        input=json.dumps(
-            {
-                "workspace_path": str(work),
-                "branch_name": "",
-                "pr_url": "",
-                "cleanup_mode": "report_only",
-                "cleanup_session_id": session_id,
-                "cleanup_report": output["cleanup_report"],
-                "task_short_id": "PUB-99",
-            }
-        ),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert janitor.returncode == 0, janitor.stderr
-    janitor_output = json.loads(janitor.stdout)
-    assert janitor_output["cleanup_report"].splitlines()[1] == report_lines[1]
-    blocked = {
+    retry = {
         "_kent": {"task_id": task_id, "node_id": cleanup_node["id"], "transition_branch_key": "task_janitor_blocked"},
-        "workspace_path": str(work),
+        "workspace_path": str(managed),
         "operation_id": "a" * 64,
         "branch_name": "release/99.0.0",
         "cleanup_mode": "report_only",
-        "cleanup_report": janitor_output["cleanup_report"],
+        "cleanup_report": first_output["cleanup_report"],
     }
-    result = subprocess.run(
-        [str(work / ".kent/scripts/workflow-release-cleanup")],
-        cwd=work,
-        input=json.dumps(blocked),
+    retry_result = subprocess.run([str(managed / ".kent/scripts/workflow-release-cleanup")], cwd=managed, input=json.dumps(retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert retry_result.returncode == 0, retry_result.stderr
+    retry_output = json.loads(retry_result.stdout)
+    assert retry_output["cleanup_session_id"] == session_id
+    assert retry_output["cleanup_report"] != first_output["cleanup_report"]
+    retry_lines = retry_output["cleanup_report"].splitlines()
+    assert retry_lines[0] == initial_lines[0] and retry_lines[-1] == initial_lines[1]
+    assert json.loads(retry_output["cleanup_report"].splitlines()[0]) == initial_json
+
+    second_janitor = subprocess.run(
+        [str(managed / ".kent/scripts/workflow-task-janitor")],
+        cwd=managed,
+        input=json.dumps({"workspace_path": str(managed), "branch_name": "release/99.0.0", "pr_url": "", "cleanup_mode": "report_only", "cleanup_session_id": session_id, "cleanup_report": retry_output["cleanup_report"], "task_short_id": "PUB-99"}),
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=env,
     )
-    assert result.returncode == 0, result.stderr + "\n" + subprocess.run(["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=work, text=True, stdout=subprocess.PIPE).stdout
-    retry = json.loads(result.stdout)
-    retry_lines = retry["cleanup_report"].splitlines()
-    retry_report = json.loads(retry_lines[0])
-    assert retry["transition"] == "cleanup_task_janitor"
-    assert retry["cleanup_session_id"] == session_id
-    assert retry_report["unresolved"] is True
-    assert retry_report["blocker_reason"].startswith("Janitor ")
-    assert retry_report["operation_digest"] != "a" * 64
-    assert retry_lines[1] == report_lines[1]
+    assert second_janitor.returncode == 0, second_janitor.stderr
+    second_output = json.loads(second_janitor.stdout)
+    assert second_output["transition"] == "task_janitor_blocked"
+    assert "still targets the task worktree" not in second_output.get("blocker_reason", "")
+    assert "scheduled worktree deletion" in second_output["cleanup_report"], (second_output["blocker_reason"], second_output["cleanup_report"].splitlines()[-1])
 
-    invalid = dict(cancel)
-    invalid["cleanup_reason"] = ""
-    invalid["branch_name"] = "not-a-release-branch"
-    result = subprocess.run(
-        [str(work / ".kent/scripts/workflow-release-cleanup")],
-        cwd=work,
-        input=json.dumps(invalid),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert result.returncode != 0
-    assert result.stdout == ""
-    assert "error" in result.stderr
+    tampered = initial_lines[0][:-1] + "0\n" + initial_lines[1] + "\nJanitor tampered"
+    expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": tampered}, env, "tampered canonical line")
+    expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_lines[0] + "\n" + initial_lines[1][:-1] + "0\nJanitor tampered"}, env, "tampered marker")
+    marker_task = json.loads(initial_lines[1].removeprefix("TERMINAL_EVIDENCE_V1 "))
+    marker_task["task_short_id"] = "PUB-100"
+    marker_task_line = "TERMINAL_EVIDENCE_V1 " + json.dumps(marker_task, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_lines[0] + "\n" + marker_task_line + "\nJanitor tampered"}, env, "tampered marker task")
+    marker_hash = json.loads(initial_lines[1].removeprefix("TERMINAL_EVIDENCE_V1 "))
+    marker_hash["final_hash"] = "0" * 64
+    marker_hash_line = "TERMINAL_EVIDENCE_V1 " + json.dumps(marker_hash, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_lines[0] + "\n" + marker_hash_line + "\nJanitor tampered"}, env, "tampered marker hash")
+    expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_report + "\nTERMINAL_EVIDENCE_V1 extra"}, env, "extra terminal marker")
 
-print("workflow-release-cleanup: passed")
+print("workflow-release-cleanup: passed scenarios=initial_seal,release_carrier_success,close_without_merge_entry,janitor_block,leave_retry,janitor_later_boundary,tampered_line,marker,marker_task,marker_hash,extra_marker")
