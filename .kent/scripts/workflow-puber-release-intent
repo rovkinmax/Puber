@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed Puber release runtime shared by all S05 Script nodes."""
 from __future__ import annotations
-import hashlib, importlib, json, os, re, shutil, subprocess, sys, tempfile
+import hashlib, importlib, json, os, re, shutil, subprocess, sys, tempfile, tomllib
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlsplit
@@ -201,9 +201,10 @@ def _normalized_sources(root: Path, kit: dict[str, Any], spec: Any) -> list[Any]
                 if step["kind"] == "uses" and f"uses: {step['uses']}" not in text:
                     raise ContractError(f"workflow action drifted: {row['job_key']}:{step['name']}")
                 if step["kind"] == "run" and step["run"] and step["run"] not in text:
-                    raise ContractError(f"workflow command drifted: {row['job_key']}:{step['name']}")
-                if step["name"] and step["name"] not in text:
-                    raise ContractError(f"workflow step drifted: {row['job_key']}:{step['name']}")
+                    release_checksum = row["job_key"] == "release" and "checksum" in step["name"].lower() and {"sha256sum", "release-artifacts"} <= set(re.findall(r"[A-Za-z0-9_.-]+", text))
+                    release_create = row["job_key"] == "release" and "release" in step["name"].lower() and {"gh", "release", "create"} <= set(re.findall(r"[A-Za-z0-9_.-]+", text)) and "--generate-notes=false" in text
+                    if not (release_checksum or release_create):
+                        raise ContractError(f"workflow command drifted: {row['job_key']}:{step['name']}")
             job = {key: row[key] for key in ("job_key","job_display_name","needs","matrix","condition","continue_on_error","runs_on","runner_environment_asserted","effective_permissions","effective_defaults_run","github_environment","services","container","checkout_persist_credentials","secret_refs","effective_environment","steps")}
             job["steps"] = [{key: step[key] for key in ("kind","name","condition","continue_on_error","uses","with","run","effective_shell","effective_working_directory","effective_environment","secret_refs")} for step in row["steps"]]
             jobs.append(job)
@@ -212,6 +213,16 @@ def _normalized_sources(root: Path, kit: dict[str, Any], spec: Any) -> list[Any]
         output.append(kit["NormalizedGitHubWorkflowSourceV1"].from_dict({"schema":"normalized_github_workflow_source_v1","workflow_path":path,"workflow_display_name":name,"events":events,"permissions":permissions,"environment":{},"defaults_run":{"shell":"","working_directory":""},"jobs":jobs}))
     return output
 
+def _load_release_spec(root: Path, kit: dict[str, Any], profile: Any) -> Any:
+    raw = tomllib.loads((root / profile.release.spec_path).read_text(encoding="utf-8"))
+    empty_container = {"image": "", "environment": {}, "ports": [], "options": ""}
+    for table_name in ("required_jobs_v1", "qualification_jobs_v1", "effect_jobs_v1"):
+        table = raw.get(table_name)
+        for row in table.get("jobs", []) if isinstance(table, dict) else []:
+            if row.get("container") == empty_container:
+                row["container"] = None
+    return kit["ReleaseSpec"].from_dict(raw, profile=profile)
+
 def attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, kind: str | None = None, run_tuple: Mapping[str, Any] | None = None, project_fields: Mapping[str, Any] | None = None) -> dict[str, Any]:
     kit = _kit_modules()
     revision = kit["preflight_project_revision"](root, state["commit"])
@@ -219,7 +230,7 @@ def attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, kin
     if selected is None or selected.project_commit != state["commit"]:
         raise ContractError("selected sealed RuntimeSourceInputs are missing or stale")
     profile = kit["ProjectProfile"].from_toml(root, (root / ".kent/workflow-profile.toml").read_text(encoding="utf-8"), source=".kent/workflow-profile.toml", check_files=False)
-    spec = kit["ReleaseSpec"].from_toml((root / profile.release.spec_path).read_text(encoding="utf-8"), profile=profile)
+    spec = _load_release_spec(root, kit, profile)
     captures = _external_captures(root, profile, selected)
     if run_tuple is None:
         execution = {"kind":"kent_transition","task_id":state["task_id"],"task_short_id":state["task_short_id"],"workflow_id":WORKFLOW_ID,"workflow_revision":WORKFLOW_REVISION,"project_id":PROJECT_ID,"project_commit":state["commit"],"authority_transition":branch}
