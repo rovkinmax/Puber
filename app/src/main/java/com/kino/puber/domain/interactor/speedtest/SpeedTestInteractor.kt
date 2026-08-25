@@ -8,6 +8,7 @@ import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 
@@ -39,16 +40,30 @@ internal class SpeedTestInteractor(
         for (server in SpeedTestServer.knownServers) {
             coroutineContext.ensureActive()
             emit(SpeedTestEvent.Started(server))
+            runServer(server)?.let { error ->
+                emit(
+                    SpeedTestEvent.Failed(
+                        server = server,
+                        cause = error,
+                    ),
+                )
+            }
+        }
+    }
 
-            val shard = random.nextInt(server.shards.first, server.shards.last + 1)
-            val url = buildProbeUrl(
-                server = server,
-                shard = shard,
-                randomValue = random.nextDouble(),
-            )
+    private suspend fun FlowCollector<SpeedTestEvent>.runServer(
+        server: SpeedTestServer,
+    ): Throwable? {
+        var lastFailure: Throwable? = null
+        for (shard in shuffledShards(server)) {
+            coroutineContext.ensureActive()
             val result = apiClient.streamSpeedTest(
                 server = server,
-                url = url,
+                url = buildProbeUrl(
+                    server = server,
+                    shard = shard,
+                    randomValue = random.nextDouble(),
+                ),
                 onProgress = { progress ->
                     emit(
                         SpeedTestEvent.Progress(
@@ -62,32 +77,28 @@ internal class SpeedTestInteractor(
                 },
                 expectedBytes = SPEED_TEST_EXPECTED_BYTES,
             )
-
-            result
-                .onSuccess { measurement ->
-                    emit(
-                        SpeedTestEvent.Completed(
-                            server = measurement.server,
-                            downloadedBytes = measurement.downloadedBytes,
-                            expectedBytes = measurement.expectedBytes,
-                            elapsedMillis = measurement.elapsedMillis,
-                            megabitsPerSecond = measurement.megabitsPerSecond,
-                        ),
-                    )
-                }
-                .onFailure { error ->
-                    if (error is CancellationException) {
-                        throw error
-                    }
-                    emit(
-                        SpeedTestEvent.Failed(
-                            server = server,
-                            cause = error,
-                        ),
-                    )
-                }
+            val failure = result.exceptionOrNull()
+            if (failure is CancellationException) throw failure
+            if (failure == null) {
+                val measurement = result.getOrThrow()
+                emit(
+                    SpeedTestEvent.Completed(
+                        server = measurement.server,
+                        downloadedBytes = measurement.downloadedBytes,
+                        expectedBytes = measurement.expectedBytes,
+                        elapsedMillis = measurement.elapsedMillis,
+                        megabitsPerSecond = measurement.megabitsPerSecond,
+                    ),
+                )
+                return null
+            }
+            lastFailure = failure
         }
+        return lastFailure
     }
+
+    private fun shuffledShards(server: SpeedTestServer): List<Int> =
+        server.shards.shuffled(random)
 
     companion object {
         private const val SPEED_TEST_HOST_SUFFIX = "cdntogo.net"
