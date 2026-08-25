@@ -1,8 +1,11 @@
 package com.kino.puber.ui.feature.device.settings
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,18 +15,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.layout.width
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import kotlinx.coroutines.delay
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Button
@@ -33,19 +30,27 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.kino.puber.BuildConfig
 import com.kino.puber.R
 import com.kino.puber.core.model.NavigationMode
+import com.kino.puber.core.ui.navigation.component.LocalRootAnchorFocusRestored
+import com.kino.puber.core.ui.navigation.component.LocalRootAnchorRestorePending
+import com.kino.puber.core.ui.navigation.component.PreserveLazyListAnchorOnRootReturn
 import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
@@ -54,12 +59,14 @@ import com.kino.puber.ui.feature.device.settings.model.DeviceSettingUIModel
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsActions
 import com.kino.puber.ui.feature.device.settings.model.DeviceSettingsState
 import com.kino.puber.ui.feature.device.settings.model.DeviceUi
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun DeviceSettingsContent(
     state: DeviceSettingsState,
     apiDomain: ApiDomainDialogState,
     onAction: (UIAction) -> Unit = {},
+    listState: LazyListState = rememberLazyListState(),
 ) {
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -76,6 +83,7 @@ internal fun DeviceSettingsContent(
                 state = state,
                 apiDomain = apiDomain,
                 onAction = onAction,
+                listState = listState,
             )
         }
     }
@@ -118,20 +126,33 @@ private fun DeviceSettingsList(
     state: DeviceSettingsState.Success,
     apiDomain: ApiDomainDialogState,
     onAction: (UIAction) -> Unit,
+    listState: LazyListState,
 ) {
-    val listState = rememberLazyListState()
-    val focusRequester = remember { FocusRequester() }
+    val initialFocusRequester = remember { FocusRequester() }
+    val speedTestLauncherFocusRequester = remember { FocusRequester() }
+    val rootAnchorRestorePending = LocalRootAnchorRestorePending.current
+    val onRootAnchorFocusRestored = LocalRootAnchorFocusRestored.current
     val headerItemsCount = 5
+    val rootReturnFocusRestorer = if (rootAnchorRestorePending) {
+        Modifier.focusRestorer(speedTestLauncherFocusRequester)
+    } else {
+        Modifier
+    }
+
+    PreserveLazyListAnchorOnRootReturn(listState)
 
     LaunchedEffect(Unit) {
-        delay(100)
-        focusRequester.requestFocus()
+        if (!rootAnchorRestorePending) {
+            delay(100)
+            initialFocusRequester.requestFocus()
+        }
     }
 
     LazyColumn(
         state = listState,
         modifier = Modifier
-            .focusRequester(focusRequester)
+            .focusRequester(initialFocusRequester)
+            .then(rootReturnFocusRestorer)
             .focusGroup()
             .fillMaxSize()
             .testTag(DEVICE_SETTINGS_LIST_TEST_TAG)
@@ -277,19 +298,33 @@ private fun DeviceSettingsList(
             )
         }
 
-        applicationItems(state, onAction)
+        applicationItems(
+            state = state,
+            speedTestLauncherModifier = Modifier
+                .focusRequester(speedTestLauncherFocusRequester)
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        onRootAnchorFocusRestored()
+                    }
+                }
+                .testTag(SPEED_TEST_LAUNCHER_TEST_TAG),
+            onAction = onAction,
+        )
     }
 }
 
 internal const val DEVICE_SETTINGS_LIST_TEST_TAG = "device_settings_list"
+internal const val SPEED_TEST_LAUNCHER_TEST_TAG = "speed_test_launcher"
 
 private fun LazyListScope.applicationItems(
     state: DeviceSettingsState.Success,
+    speedTestLauncherModifier: Modifier,
     onAction: (UIAction) -> Unit,
 ) {
     item {
         LocalActionItem(
             label = stringResource(R.string.speed_test_launcher),
+            modifier = speedTestLauncherModifier,
             onClick = { onAction(DeviceSettingsActions.OpenSpeedTest) },
         )
     }
@@ -462,13 +497,14 @@ private fun LazyListScope.media3PlaybackItems(
 private fun LocalActionItem(
     label: String,
     value: String? = null,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .highlightOnFocus(isFocused)
             .clickable(
