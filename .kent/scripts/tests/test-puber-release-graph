@@ -17,4 +17,10 @@ bad=copy.deepcopy(source); next(n for n in bad["nodes"] if n["key"]=="publish")[
 assert run(bad).returncode != 0
 bad=copy.deepcopy(source); publish=next(n["id"] for n in bad["nodes"] if n["key"]=="publish"); next(e for e in bad["edges"] if e.get("target_node_id")==publish)["requires_approval"]=False
 assert run(bad).returncode != 0
+bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="monitor_release")["parameters"].pop()
+assert run(bad).returncode != 0
+bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="publish_needs_user_action")["parameters"].append({"key":"stale"})
+assert run(bad).returncode != 0
+bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="release_release_published")["target_node_id"]=next(n["id"] for n in bad["nodes"] if n["key"]=="publish")
+assert run(bad).returncode != 0
 print("puber-release-graph: passed")

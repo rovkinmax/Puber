@@ -432,7 +432,7 @@ validation_required = false
 [[operation_variants]]
 key = "publish_after_merge"
 operation_kind = "publish"
-authority_transitions = ["publish_after_merge"]
+authority_transitions = ["merge_watch_pr_merged", "publish_needs_user_action"]
 required_job_contract_keys = ["build_contract", "detekt_contract", "unit-tests_contract"]
 qualification_job_contract_keys = []
 effect_job_contract_keys = ["release_contract"]
@@ -483,7 +483,11 @@ materialized_before_pending_approval = true
 commentary_equals_summary = true
 decision_may_select_approval = false
 required_fields = ["release_tag", "release_version", "target_commit"]
-[approval_materializations.templates.publish_after_merge]
+[approval_materializations.templates.merge_watch_pr_merged]
 "Нужно от вас" = "Подтвердите публикацию релиза {{release_tag}} версии {{release_version}}."
 "Почему" = "Только слитый коммит {{target_commit}} может быть опубликован."
 "После подтверждения" = "Будет создан и отправлен только лёгкий тег {{release_tag}}."
+[approval_materializations.templates.publish_needs_user_action]
+"Нужно от вас" = "Подтвердите повторную проверку публикации {{release_tag}}."
+"Почему" = "Состояние публикации сохранено; новый эффект возможен только после повторной проверки {{target_commit}}."
+"После подтверждения" = "Будет переиспользован только канонический результат {{release_version}}."

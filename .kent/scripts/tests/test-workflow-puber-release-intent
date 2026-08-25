@@ -1,6 +1,43 @@
 #!/usr/bin/env python3
-import json, subprocess
+from __future__ import annotations
+import importlib.util
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[3]
-r=subprocess.run([str(ROOT/'.kent/scripts/workflow-puber-release-intent')],cwd=ROOT,input=json.dumps({'workspace_path':str(ROOT)}),text=True,capture_output=True)
-out=json.loads(r.stdout); assert out['transition']=='release_intent_blocked'; assert 'authority' in out['blocker_reason']; print('workflow-puber-release-intent: passed')
+
+ROOT = Path(__file__).resolve().parents[3]
+path = ROOT / ".kent/scripts/workflow-puber-release-intent"
+spec = importlib.util.spec_from_loader("intent_runtime_test", SourceFileLoader("intent_runtime_test", str(path)))
+mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
+
+node_id = mod._node_id(ROOT, "release_intent_gate")
+mod.validate_task = lambda root, task_id, node_key, task=None: {
+    "task": {"body": "release_type: patch", "live_sessions": [{"session_id": "session-1"}]},
+    "task_id": task_id, "task_short_id": "PUBER-1", "node_id": node_id,
+    "commit": "a" * 40,
+}
+base = {"_kent": {"task_id": "task-12345678-1234-4234-8234-123456789abc", "node_id": node_id, "transition_branch_key": "start_release_intent_gate"}}
+_, state, edge = mod.validate_envelope(base, ROOT, "release_intent_gate")
+assert edge["key"] == "start_release_intent_gate" and state["task_short_id"] == "PUBER-1"
+for bad in (
+    {**base, "_kent": {**base["_kent"], "extra": "x"}},
+    {**base, "stale": "field"},
+    {**base, "_kent": {**base["_kent"], "node_id": "wrong"}},
+):
+    try:
+        mod.validate_envelope(bad, ROOT, "release_intent_gate")
+    except mod.ContractError:
+        pass
+    else:
+        raise AssertionError("invalid zero-argument authority was accepted")
+old = mod.os.environ.pop("KENT_ENGINEERING_KIT_ROOT", None)
+try:
+    try:
+        mod._kit_modules()
+    except mod.ContractError as error:
+        assert "KENT_ENGINEERING_KIT_ROOT" in str(error)
+    else:
+        raise AssertionError("unsealed Kit runtime was accepted")
+finally:
+    if old is not None:
+        mod.os.environ["KENT_ENGINEERING_KIT_ROOT"] = old
+print("workflow-puber-release-intent: passed")

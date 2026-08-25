@@ -1,5 +1,39 @@
 #!/usr/bin/env python3
-import json,subprocess
+from __future__ import annotations
+import importlib.util, json, tempfile
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[3]
-r=subprocess.run([str(ROOT/'.kent/scripts/workflow-wait-github-release')],cwd=ROOT,input=json.dumps({'release_tag':'v1.2.3','target_commit':'a'*40}),text=True,capture_output=True); out=json.loads(r.stdout); assert out['transition']=='release_watch_blocked'; print('workflow-wait-github-release: passed')
+from types import SimpleNamespace
+import subprocess
+
+ROOT = Path(__file__).resolve().parents[3]
+spec = importlib.util.spec_from_loader("monitor_test", SourceFileLoader("monitor_test", str(ROOT / ".kent/scripts/workflow-wait-github-release")))
+mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory); mod.ROOT = root; mod.helper.ROOT = root
+    notes = root / "release-notes.md"; notes.write_text("puber_release_notes_v1\n\n# Изменения\n\n- test\n", encoding="utf-8")
+    target, tag = "a"*40, "v1.2.3"
+    run = {"repository":"rovkinmax/Puber","workflow_path":".github/workflows/release.yml","workflow_name":"Release","event":"push","run_id":42,"attempt":1,"head_sha":target,"ref":f"refs/tags/{tag}"}
+    mod.helper.read_zero_argument = lambda: {"release_tag":tag,"target_commit":target,"release_notes_path":"release-notes.md","release_version":"1.2.3","pr_url":"","tag_push_status":"created_and_pushed","publication_report":"{}"}
+    mod.helper.validate_envelope = lambda value, root, node: (value, {"task_short_id":"PUBER-1","commit":target,"task":{"body":""}}, {"key":"monitor_release"})
+    actual_run_tuple = mod.run_tuple
+    mod.run_tuple = lambda payload, t, target: run
+    mod.helper.attest = lambda *args, **kwargs: {"operation": SimpleNamespace(operation_digest="observe")}
+    release = {"tagName":tag,"targetCommitish":target,"name":"Puber "+tag,"isDraft":False,"isPrerelease":False,
+               "assets":[{"name":"puber-v1.2.3.apk"},{"name":"puber-v1.2.3.apk.sha256"}],"body":notes.read_text(),"url":"https://github.com/rovkinmax/Puber/releases/tag/"+tag}
+    def fake_gh(root, args, input_text=None):
+        if args[0:2] == ["run","view"]:
+            return subprocess.CompletedProcess(args, 0, json.dumps({"databaseId":42,"attempt":1,"workflowPath":".github/workflows/release.yml","headSha":target,"status":"completed","conclusion":"success","jobs":[{"status":"completed","conclusion":"success"}]}), "")
+        if args[0:2] == ["release","view"]:
+            return subprocess.CompletedProcess(args, 0, json.dumps(release), "")
+        raise AssertionError(args)
+    mod.helper.gh = fake_gh
+    seen=[]; mod.helper.emit=lambda transition, **fields: seen.append((transition,fields))
+    assert mod.main() == 0 and seen[0][0] == "release_release_published"
+    try:
+        actual_run_tuple({"release_run": {**run, "head_sha":"b"*40}}, tag, target)
+    except mod.helper.ContractError:
+        pass
+    else:
+        raise AssertionError("switched release run was accepted")
+print("workflow-wait-github-release: passed")
