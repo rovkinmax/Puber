@@ -35,6 +35,8 @@ internal class SpeedTestVM(
 
     private var sessionJob: Job? = null
     private val lastVisibleProgress = mutableMapOf<SpeedTestServer, Long>()
+    private val lastPositiveMeasurements =
+        mutableMapOf<SpeedTestServer, SpeedTestEvent.Progress>()
 
     override fun onStart() {
         launch {
@@ -62,6 +64,7 @@ internal class SpeedTestVM(
         if (sessionJob?.isActive == true) return
 
         lastVisibleProgress.clear()
+        lastPositiveMeasurements.clear()
         updateViewState(
             stateValue.copy(
                 transport = transportProvider.current(),
@@ -146,6 +149,7 @@ internal class SpeedTestVM(
         when (event) {
             is SpeedTestEvent.Started -> {
                 lastVisibleProgress[event.server] = Long.MIN_VALUE
+                lastPositiveMeasurements.remove(event.server)
                 updateRow(event.server) {
                     copy(
                         status = SpeedTestRowStatus.Running,
@@ -158,6 +162,9 @@ internal class SpeedTestVM(
             }
 
             is SpeedTestEvent.Progress -> {
+                if (event.downloadedBytes > 0L) {
+                    lastPositiveMeasurements[event.server] = event
+                }
                 val previous = lastVisibleProgress[event.server] ?: Long.MIN_VALUE
                 val isTerminalProgress = event.downloadedBytes >= event.expectedBytes
                 if (
@@ -189,12 +196,21 @@ internal class SpeedTestVM(
                 )
             }
 
-            is SpeedTestEvent.Failed -> updateRow(event.server) {
-                copy(
-                    status = SpeedTestRowStatus.Failed,
-                    errorMessage = failureMessage(event.cause),
-                )
-            }
+            is SpeedTestEvent.Failed -> applyFailure(event)
+        }
+    }
+
+    private fun applyFailure(event: SpeedTestEvent.Failed) {
+        val measurement = lastPositiveMeasurements[event.server]
+        updateRow(event.server) {
+            copy(
+                status = SpeedTestRowStatus.Failed,
+                downloadedBytes = measurement?.downloadedBytes ?: downloadedBytes,
+                expectedBytes = measurement?.expectedBytes ?: expectedBytes,
+                elapsedMillis = measurement?.elapsedMillis ?: elapsedMillis,
+                megabitsPerSecond = measurement?.megabitsPerSecond ?: megabitsPerSecond,
+                errorMessage = failureMessage(event.cause),
+            )
         }
     }
 
