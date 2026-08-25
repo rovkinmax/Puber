@@ -102,6 +102,25 @@ internal class MainVMRefreshLifecycleTest {
     }
 
     @Test
+    fun settingsControl_navigatesToDeviceSettings() {
+        val settingsScreen = mockk<PuberScreen>()
+        val screens = mockk<Screens>()
+        val router = mockk<AppRouter>(relaxed = true)
+        every { router.screens } returns screens
+        every { screens.deviceSettings() } returns settingsScreen
+        val vm = MainVM(
+            router = router,
+            mainUIMapper = mockk(),
+            tabRouter = mockk(relaxed = true),
+            navigationPreferencesRepository = mockk(relaxed = true),
+        )
+
+        vm.onSettingsClick()
+
+        verify(exactly = 1) { router.navigateTo(settingsScreen) }
+    }
+
+    @Test
     fun disablingSelectedOptionalTab_fallsBackAndOpensModeStartTab() = runTest(dispatcher) {
         val preferences = MutableStateFlow(
             ContentPreferences(
