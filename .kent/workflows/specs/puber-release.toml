@@ -63,7 +63,7 @@ types = []
 dispatch_inputs = []
 [[required_jobs_v1.jobs.steps]]
 kind = "uses"
-name = "Checkout exact source"
+name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
@@ -77,7 +77,7 @@ validation_required = true
 "persist-credentials" = false
 [[required_jobs_v1.jobs.steps]]
 kind = "uses"
-name = "Set up Java 21"
+name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00"
@@ -105,7 +105,7 @@ secret_refs = []
 validation_required = true
 [[required_jobs_v1.jobs.steps]]
 kind = "run"
-name = "Run Detekt"
+name = ""
 condition = ""
 continue_on_error = false
 uses = ""
@@ -155,7 +155,7 @@ types = []
 dispatch_inputs = []
 [[required_jobs_v1.jobs.steps]]
 kind = "uses"
-name = "Checkout exact source"
+name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
@@ -169,7 +169,7 @@ validation_required = true
 "persist-credentials" = false
 [[required_jobs_v1.jobs.steps]]
 kind = "uses"
-name = "Set up Java 21"
+name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00"
@@ -197,7 +197,7 @@ secret_refs = []
 validation_required = true
 [[required_jobs_v1.jobs.steps]]
 kind = "run"
-name = "Run unit tests"
+name = ""
 condition = ""
 continue_on_error = false
 uses = ""
@@ -247,7 +247,7 @@ types = []
 dispatch_inputs = []
 [[required_jobs_v1.jobs.steps]]
 kind = "uses"
-name = "Checkout exact source"
+name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
@@ -261,7 +261,7 @@ validation_required = true
 "persist-credentials" = false
 [[required_jobs_v1.jobs.steps]]
 kind = "uses"
-name = "Set up Java 21"
+name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00"
@@ -289,7 +289,7 @@ secret_refs = []
 validation_required = true
 [[required_jobs_v1.jobs.steps]]
 kind = "run"
-name = "Build debug APK"
+name = ""
 condition = ""
 continue_on_error = false
 uses = ""
@@ -346,7 +346,7 @@ types = []
 dispatch_inputs = []
 [[effect_jobs_v1.jobs.steps]]
 kind = "uses"
-name = "Checkout exact tagged source"
+name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
@@ -361,7 +361,7 @@ validation_required = false
 "ref" = "${{ github.ref }}"
 [[effect_jobs_v1.jobs.steps]]
 kind = "uses"
-name = "Set up Java 21"
+name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00"
@@ -376,33 +376,46 @@ validation_required = false
 "distribution" = "temurin"
 [[effect_jobs_v1.jobs.steps]]
 kind = "run"
-name = "Build release APK"
+name = "Assert GitHub-hosted runner"
 condition = ""
 continue_on_error = false
 uses = ""
+run = "test \"${RUNNER_ENVIRONMENT:-github-hosted}\" = github-hosted"
+effective_shell = ""
+effective_working_directory = ""
+effective_environment = {  }
+secret_refs = []
+validation_required = false
 with = {  }
+[[effect_jobs_v1.jobs.steps]]
+kind = "run"
+name = ""
+condition = ""
+continue_on_error = false
+uses = ""
 run = "./gradlew :app:assembleProdRelease"
 effective_shell = ""
 effective_working_directory = ""
 effective_environment = {  }
 secret_refs = []
 validation_required = false
+with = {  }
 [[effect_jobs_v1.jobs.steps]]
 kind = "run"
-name = "Prepare APK checksum"
+name = "Prepare release artifacts and checksum"
 condition = ""
 continue_on_error = false
 uses = ""
-with = {  }
-run = "sha256sum app/build/outputs/apk/prod/release/*.apk > release.sha256"
+run = "mkdir -p release-artifacts\napk_path=\"$(find app/build/outputs/apk/prod/release -maxdepth 1 -type f -name '*.apk' | head -n 1)\"\ntest -n \"$apk_path\"\ncp \"$apk_path\" \"release-artifacts/puber-${GITHUB_REF_NAME}.apk\"\n(cd release-artifacts && sha256sum \"puber-${GITHUB_REF_NAME}.apk\" > \"puber-${GITHUB_REF_NAME}.apk.sha256\")\n"
 effective_shell = ""
 effective_working_directory = ""
 effective_environment = {  }
 secret_refs = []
 validation_required = false
+with = {  }
 [[effect_jobs_v1.jobs.steps]]
 kind = "uses"
-name = "Upload APK"
+name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
@@ -414,20 +427,21 @@ secret_refs = []
 validation_required = false
 [effect_jobs_v1.jobs.steps.with]
 "name" = "puber-${{ github.ref_name }}"
-"path" = "app/build/outputs/apk/prod/release/*.apk\nrelease.sha256"
+"path" = "release-artifacts/*"
+"if-no-files-found" = "error"
 [[effect_jobs_v1.jobs.steps]]
 kind = "run"
-name = "Create empty GitHub Release"
+name = "Create GitHub Release with empty initial body"
 condition = ""
 continue_on_error = false
 uses = ""
-with = {  }
-run = "gh release create \"$GITHUB_REF_NAME\" --verify-tag --title \"Puber $GITHUB_REF_NAME\" --notes \"\" --generate-notes=false release.sha256 app/build/outputs/apk/prod/release/*.apk"
+run = "gh release create \"$GITHUB_REF_NAME\" --verify-tag --title \"Puber $GITHUB_REF_NAME\" --notes \"\" --generate-notes=false release-artifacts/*"
 effective_shell = ""
 effective_working_directory = ""
 effective_environment = { "GH_TOKEN" = "${{ github.token }}" }
 secret_refs = []
 validation_required = false
+with = {  }
 
 [[operation_variants]]
 key = "publish_after_merge"

@@ -1,43 +1,44 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 import importlib.util
+import json
+import os
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[3]
-path = ROOT / ".kent/scripts/workflow-puber-release-intent"
-spec = importlib.util.spec_from_loader("intent_runtime_test", SourceFileLoader("intent_runtime_test", str(path)))
-mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
+KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
+result = subprocess.run([str(ROOT / ".kent/scripts/workflow-puber-release-intent")], cwd=ROOT, input="{}", text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+assert result.returncode != 0 and "error" in result.stderr
 
-node_id = mod._node_id(ROOT, "release_intent_gate")
-mod.validate_task = lambda root, task_id, node_key, task=None: {
-    "task": {"body": "release_type: patch", "live_sessions": [{"session_id": "session-1"}]},
-    "task_id": task_id, "task_short_id": "PUBER-1", "node_id": node_id,
-    "commit": "a" * 40,
-}
-base = {"_kent": {"task_id": "task-12345678-1234-4234-8234-123456789abc", "node_id": node_id, "transition_branch_key": "start_release_intent_gate"}}
-_, state, edge = mod.validate_envelope(base, ROOT, "release_intent_gate")
-assert edge["key"] == "start_release_intent_gate" and state["task_short_id"] == "PUBER-1"
-for bad in (
-    {**base, "_kent": {**base["_kent"], "extra": "x"}},
-    {**base, "stale": "field"},
-    {**base, "_kent": {**base["_kent"], "node_id": "wrong"}},
-):
+spec = importlib.util.spec_from_loader("intent_runtime_test", SourceFileLoader("intent_runtime_test", str(ROOT / ".kent/scripts/workflow-puber-release-intent")))
+mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
+assert mod.parse_run_carrier(mod.canonical_json(mod.NOT_SELECTED_RUN)) == mod.NOT_SELECTED_RUN
+selected = {"schema":"puber_release_run_v1","state":"selected","repository":"rovkinmax/Puber","workflow_path":".github/workflows/release.yml","workflow_name":"Release","event":"push","run_id":1,"attempt":1,"head_sha":"a"*40,"ref":"refs/tags/v1.2.3","head_branch":"v1.2.3"}
+assert mod.parse_run_carrier(mod.canonical_json(selected)) == selected
+for bad in ({"schema":"puber_release_run_v1","state":"selected"}, {"schema":"puber_release_run_v1","state":"selected","extra":1}):
     try:
-        mod.validate_envelope(bad, ROOT, "release_intent_gate")
+        mod.parse_run_carrier(bad)
     except mod.ContractError:
         pass
     else:
-        raise AssertionError("invalid zero-argument authority was accepted")
-old = mod.os.environ.pop("KENT_ENGINEERING_KIT_ROOT", None)
-try:
+        raise AssertionError("invalid run carrier accepted")
+assert mod.safe_version_tag("1.2.3", "v1.2.3") == ("1.2.3", "v1.2.3")
+for version, tag in (("1.2", "v1.2"), ("1.2.3", "release-1.2.3")):
     try:
-        mod._kit_modules()
-    except mod.ContractError as error:
-        assert "KENT_ENGINEERING_KIT_ROOT" in str(error)
+        mod.safe_version_tag(version, tag)
+    except mod.ContractError:
+        pass
     else:
-        raise AssertionError("unsealed Kit runtime was accepted")
-finally:
-    if old is not None:
-        mod.os.environ["KENT_ENGINEERING_KIT_ROOT"] = old
+        raise AssertionError("unsafe release carrier accepted")
+os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
+kit = mod._kit_modules()
+profile = kit["ProjectProfile"].from_toml(ROOT, (ROOT / ".kent/workflow-profile.toml").read_text(), source="profile", check_files=False)
+release_spec = mod._load_release_spec(ROOT, kit, profile)
+sources = mod._normalized_sources(ROOT, kit, release_spec)
+for key in ("publish_after_merge", "observe_release"):
+    variant = next(item for item in release_spec.operation_variants if item.key == key)
+    kit["validate_operation_jobs"](variant, sources, required=release_spec.required_jobs_v1, qualification=release_spec.qualification_jobs_v1, effect=release_spec.effect_jobs_v1)
 print("workflow-puber-release-intent: passed")

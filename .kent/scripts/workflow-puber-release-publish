@@ -1,49 +1,102 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 import importlib.util
-from importlib.machinery import SourceFileLoader
 import sys
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
+
 sys.dont_write_bytecode = True
 _helper_path = Path(__file__).with_name("workflow-puber-release-intent")
-spec = importlib.util.spec_from_loader("puber_release_runtime", SourceFileLoader("puber_release_runtime", str(_helper_path))); helper = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(helper)
+_spec = importlib.util.spec_from_loader("puber_release_runtime", SourceFileLoader("puber_release_runtime", str(_helper_path)))
+helper = importlib.util.module_from_spec(_spec)
+assert _spec and _spec.loader
+_spec.loader.exec_module(helper)
 ROOT = helper.ROOT
+
+PUBLISH_FIELDS = (
+    "blocker_reason", "workspace_path", "operation_id", "pr_url", "branch_name",
+    "merge_strategy", "pr_head_oid", "pr_base_oid", "release_version",
+    "release_tag", "target_commit", "release_notes_path", "publication_report",
+    "publication_report_digest", "release_run",
+)
+
+def _base_fields(payload: dict, state: dict, version: str, tag: str) -> dict:
+    return {
+        "workspace_path": str(ROOT),
+        "operation_id": payload.get("operation_id") or helper.digest_json({"task_id": state["task_id"], "commit": state["commit"], "workflow_id": helper.WORKFLOW_ID}),
+        "pr_url": payload.get("pr_url", ""),
+        "branch_name": payload.get("branch_name", f"release/{version}"),
+        "merge_strategy": payload.get("merge_strategy", ""),
+        "pr_head_oid": payload.get("pr_head_oid", ""),
+        "pr_base_oid": payload.get("pr_base_oid", ""),
+        "release_version": version,
+        "release_tag": tag,
+        "target_commit": payload.get("target_commit", ""),
+        "release_notes_path": payload.get("release_notes_path", ""),
+        "publication_report": payload.get("publication_report", ""),
+        "publication_report_digest": payload.get("publication_report_digest", ""),
+        "release_run": payload.get("release_run", helper.canonical_json(helper.NOT_SELECTED_RUN)),
+    }
 
 def main() -> int:
     payload = None
-    derived = {}
     try:
         payload, state, edge = helper.validate_envelope(helper.read_zero_argument(), ROOT, "publish")
-        branch = edge["key"]
-        values = helper.declarations(state["task"].get("body"))
-        if branch == "publish_needs_user_action":
-            helper.emit("publish_needs_user_action", **{key: payload[key] for key in payload if key != "_kent"}, no_live_apply=True)
-            return 0
+    except helper.ContractError as error:
+        print(helper.json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
+        return 2
+    values = helper.declarations(state["task"].get("body"))
+    try:
+        version, tag = helper.safe_version_tag(values.get("release_version"), values.get("release_tag") or f"v{values.get('release_version', '')}")
+        helper.safe_release_branch(payload.get("branch_name", f"release/{version}"), version)
         pr_url = helper.canonical_pr_url(payload["pr_url"])
-        version = values.get("release_version"); tag = values.get("release_tag") or (f"v{version}" if version else "")
-        derived.update({"release_version": version or "", "release_tag": tag})
+        base = _base_fields(payload, state, version, tag)
+        if not helper.HEX64.fullmatch(base["operation_id"]):
+            raise helper.ContractError("operation_id is not a canonical digest")
+        base["release_run"] = helper.canonical_json(helper.parse_run_carrier(base["release_run"]))
+        if bool(payload.get("publication_report")) != bool(payload.get("publication_report_digest")):
+            raise helper.ContractError("publication report and digest must be paired")
         pr = helper.pr_state(ROOT, pr_url)
-        if pr.get("headRefName") != payload["branch_name"] or pr.get("headRefOid") != payload["pr_head_oid"] or pr.get("baseRefOid") != payload["pr_base_oid"]:
+        if pr["headRefName"] != base["branch_name"] or pr["headRefOid"] != base["pr_head_oid"] or pr["baseRefOid"] != base["pr_base_oid"]:
             raise helper.ContractError("merged PR head/base identity drifted")
-        merge_commit = pr.get("mergeCommit"); target = merge_commit.get("oid") if isinstance(merge_commit, dict) else merge_commit
-        if not isinstance(target, str) or not helper.SHA1.fullmatch(target) or helper.remote_master(ROOT) != target or helper.git(ROOT, "rev-parse", "HEAD") != target:
+        target = pr["mergeCommit"]["oid"]
+        if helper.remote_master(ROOT) != target or helper.git(ROOT, "rev-parse", "HEAD") != target:
             raise helper.ContractError("merged target is not exact current remote master and local checkout")
-        derived["target_commit"] = target
-        if not version or not helper.SEMVER.fullmatch(version) or tag != f"v{version}":
-            raise helper.ContractError("release version/tag is not an immutable Task declaration")
-        derived.update({"release_version": version, "release_tag": tag})
-        attested = helper.attest(ROOT, state, "publish", branch, kind="publish", project_fields={"release_tag":tag,"target_commit":target,"release_version":version})
-        notes = helper.notes_report(ROOT, state["task_short_id"], tag, target)
-        derived["release_notes_path"] = notes["path"]
-        tag_status = helper.publish_tag(ROOT, tag, target)
-        publication = {"schema":"puber_publication_report_v1","operation_digest":attested["operation"].operation_digest,"target_commit":target,"release_tag":tag,"tag_status":tag_status,"notes":notes,"unresolved":False}
-        helper.emit("monitor_release", workspace_path=str(ROOT), operation_id=attested["operation"].operation_digest, release_version=version, release_tag=tag, target_commit=target, pr_url=pr_url, tag_push_status=tag_status, release_notes_path=notes["path"], publication_report=helper.report_json(publication), no_live_apply=False)
-    except Exception as error:
-        preserved = {key: payload[key] for key in payload if key != "_kent"} if isinstance(payload, dict) else {}
-        preserved.update({key: value for key, value in derived.items() if value})
-        for key in ("workspace_path", "operation_id", "pr_url", "branch_name", "merge_strategy", "pr_head_oid", "pr_base_oid", "release_version", "release_tag", "target_commit", "release_notes_path", "publication_report"):
-            preserved.setdefault(key, "")
-        preserved["blocker_reason"] = str(error)
-        helper.emit("publish_needs_user_action", **preserved, no_live_apply=True)
-    return 0
-if __name__ == "__main__": raise SystemExit(main())
+        base["target_commit"] = target
+        existing_report = None
+        if payload.get("publication_report"):
+            existing_report = helper.parse_publication_report(payload["publication_report"], payload.get("publication_report_digest"), expected_pr=pr_url, expected_version=version, expected_tag=tag, expected_target=target, task_short_id=state["task_short_id"], root=ROOT)
+            notes = existing_report["notes_report"]
+        else:
+            notes = helper.notes_report(ROOT, state["task_short_id"], tag, target)
+        if existing_report is None:
+            attested = helper.attest(ROOT, state, "publish", edge["key"], kind="publish", project_fields={"release_tag": tag, "target_commit": target, "release_version": version})
+            operation_digest = attested["operation"].operation_digest
+            tag_status = helper.publish_tag(ROOT, tag, target)
+            report, report_digest = helper.publication_report(operation_digest, pr_url, version, tag, target, notes, tag_phase="tag_published", tag_status=tag_status, unresolved=True)
+        else:
+            helper.attest(ROOT, state, "publish", edge["key"], kind=None)
+            tag_status = helper.publish_tag(ROOT, tag, target)
+            report, report_digest = helper.publication_report(existing_report["operation_digest"], pr_url, version, tag, target, notes, tag_phase="tag_published", tag_status=tag_status, unresolved=True)
+        fields = {
+            **base,
+            "pr_url": pr_url,
+            "release_notes_path": notes["path"],
+            "publication_report": report,
+            "publication_report_digest": report_digest,
+            "release_run": helper.canonical_json(helper.NOT_SELECTED_RUN),
+            "tag_push_status": tag_status,
+        }
+        helper.emit_exact(ROOT, "monitor_release", "monitor", {key: fields[key] for key in ("release_version", "release_tag", "target_commit", "pr_url", "tag_push_status", "release_notes_path", "publication_report", "publication_report_digest", "release_run")})
+        return 0
+    except helper.ContractError as error:
+        version = values.get("release_version", "")
+        tag = values.get("release_tag", f"v{version}" if version else "")
+        fields = _base_fields(payload or {}, state, version, tag)
+        fields["blocker_reason"] = str(error)
+        helper.emit_exact(ROOT, "publish_needs_user_action", "publish", fields)
+        return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())

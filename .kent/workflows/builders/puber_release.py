@@ -42,6 +42,10 @@ SCRIPT_NODES = {
 }
 SCRIPT_EDGE_PARAMETERS = {
     "start_release_intent_gate": ("release_intent_gate", ()),
+    "release_intent_passed": ("prepare", ("workspace_path", "operation_id", "task_short_id", "release_type", "release_version")),
+    "release_intent_blocked": ("release_intent_gate", ("workspace_path", "operation_id", "task_short_id", "release_type", "release_version", "blocker_reason")),
+    "release_intent_needs_user_action": ("release_intent_gate", ("workspace_path", "operation_id", "task_short_id", "release_type", "release_version", "blocker_reason")),
+    "release_intent_invalid": ("release_intent_gate", ("workspace_path", "operation_id", "task_short_id", "release_type", "release_version", "blocker_reason")),
     "merge_watch_pr_merged": (
         "publish",
         (
@@ -70,6 +74,8 @@ SCRIPT_EDGE_PARAMETERS = {
             "target_commit",
             "release_notes_path",
             "publication_report",
+            "publication_report_digest",
+            "release_run",
         ),
     ),
     "monitor_release": (
@@ -82,6 +88,7 @@ SCRIPT_EDGE_PARAMETERS = {
             "tag_push_status",
             "release_notes_path",
             "publication_report",
+            "publication_report_digest",
             "release_run",
         ),
     ),
@@ -99,12 +106,13 @@ SCRIPT_EDGE_PARAMETERS = {
             "tag_push_status",
             "release_notes_path",
             "publication_report",
+            "publication_report_digest",
             "release_run",
         ),
     ),
     "release_release_published": (
         "cleanup",
-        ("release_report", "publication_report", "release_notes_path", "release_run"),
+        ("release_report", "publication_report", "publication_report_digest", "release_notes_path", "release_notes_digest", "release_run", "release_report_digest"),
     ),
     "cleanup_task_janitor": (
         "task_janitor",
@@ -117,10 +125,18 @@ SCRIPT_EDGE_PARAMETERS = {
             "cleanup_session_id",
             "task_short_id",
             "publication_report",
+            "publication_report_digest",
             "release_report",
+            "release_report_digest",
             "release_notes_path",
+            "release_notes_digest",
         ),
     ),
+    "release_cancel_cleanup": ("cleanup", ("pr_url", "branch_name", "workspace_path", "cleanup_reason")),
+    "merge_watch_close_without_merge": ("cleanup", ("workspace_path", "operation_id", "pr_url", "branch_name", "merge_strategy", "pr_head_oid", "pr_base_oid")),
+    "task_janitor_blocked": ("cleanup", ("workspace_path", "operation_id", "branch_name", "cleanup_mode", "cleanup_report")),
+    "task_janitor_needs_user_action": ("task_janitor", ("workspace_path", "operation_id", "branch_name", "cleanup_mode", "cleanup_report")),
+    "task_janitor_retry": ("task_janitor", ("workspace_path", "operation_id", "branch_name", "cleanup_mode", "cleanup_report")),
 }
 EXPECTED_NODES = set(BASE_NODE_IDS) | set(NEW_NODES)
 EXPECTED_COMMANDS = {
