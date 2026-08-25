@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 from importlib.machinery import SourceFileLoader
+import shlex
 
 ROOT = Path(__file__).resolve().parents[3]
 KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
@@ -44,6 +45,169 @@ def expect_rejected(command: list[str], cwd: Path, payload: dict, env: dict[str,
     assert result.returncode != 0 and result.stdout == "" and "error" in result.stderr, label
 
 
+def append_fixture_ledger(worktree: Path, short_id: str) -> None:
+    sh(
+        [str(worktree / ".kent/scripts/workflow-evidence-ledger"), "append", "--task", short_id, "--workspace", str(worktree)],
+        worktree,
+        input=json.dumps({
+            "node_key": "cleanup",
+            "evidence_type": "cleanup_fixture",
+            "summary": "Fresh cleanup edge ledger.",
+            "artifacts": ["fixture"],
+            "checks": ["edge"],
+            "decisions": ["report_only"],
+            "context": {
+                "manifest_path": ".kent/context/implement.md",
+                "files_read": [".kent/project-contract.md"],
+                "model_calls": 0,
+                "compaction_count": 0,
+                "repeated_questions": 0,
+                "verification_loops": 0,
+            },
+        }),
+    )
+
+
+def make_edge_fixture(base: Path, short_id: str, version: str, cleanup_node: dict) -> dict:
+    primary = base / "home" / "dev" / "android" / "Puber"
+    worktree = base / "home" / ".kent" / "worktrees" / short_id
+    branch = f"release/{version}"
+    primary.parent.mkdir(parents=True)
+    sh(["git", "clone", "--quiet", str(ROOT), str(primary)], base)
+    bare = base / "origin.git"
+    sh(["git", "init", "--bare", str(bare)], base)
+    sh(["git", "remote", "set-url", "origin", str(bare)], primary)
+    worktree.parent.mkdir(parents=True)
+    sh(["git", "worktree", "add", "--quiet", "-b", branch, str(worktree), "HEAD"], primary)
+
+    copied = {
+        ".kent/scripts/workflow-puber-release-intent",
+        ".kent/scripts/workflow-evidence-ledger",
+        ".kent/scripts/workflow-release-cleanup",
+        ".kent/scripts/workflow-task-janitor",
+        ".kent/scripts/tests/test-workflow-release-cleanup",
+        ".kent/scripts/workflow_runtime_contracts.py",
+        ".kent/workflows/puber-release.json",
+        ".kent/workflows/puber-release.manifest.json",
+        ".kent/workflows/specs/puber-release.toml",
+        ".kent/workflows/builders/puber_release.py",
+    }
+    for relative in sorted(copied):
+        source = KIT / "templates/project/workflow-task-janitor" if relative == ".kent/scripts/workflow-task-janitor" else ROOT / relative
+        target = worktree / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    notes = f"puber_release_notes_v1\n\n# Изменения\n\n- Проверка релиза {version}.\n".encode("utf-8")
+    notes_path = worktree / f".todo/{short_id}/release-notes-ru.md"
+    notes_path.parent.mkdir(parents=True, exist_ok=True)
+    notes_path.write_bytes(notes)
+    notes_path.chmod(0o600)
+    sh(["git", "config", "user.email", "test@example.invalid"], worktree)
+    sh(["git", "config", "user.name", "Puber Test"], worktree)
+    sh(["git", "add", "."], worktree)
+    sh(["git", "commit", "--quiet", "-m", "cleanup edge fixture"], worktree)
+    target = sh(["git", "rev-parse", "HEAD"], worktree).stdout.strip()
+    sh(["git", "push", "--quiet", "-u", "origin", branch], worktree)
+
+    task_id = f"task-{int(short_id.split('-', 1)[1]):08x}-1234-4234-8234-123456789abc"
+    session_id = f"session-{short_id.lower()}"
+    workspace_id = f"workspace-{short_id.lower()}"
+    task = {
+        "actions": [],
+        "attention_count": 0,
+        "body": f"release_version: {version}\nrelease_tag: v{version}\nrelease_branch: {branch}\n",
+        "current_nodes": [{"node_id": cleanup_node["id"]}],
+        "current_scripts": [{"path": ".kent/scripts/workflow-release-cleanup", "current_node": {"node_id": cleanup_node["id"]}}],
+        "execution_target": {"commit_oid": target},
+        "label_ids": [],
+        "live_sessions": [{"session_id": session_id, "session_name": "Cleanup", "node_display_name": "cleanup"}],
+        "project": {},
+        "retained_session_count": 0,
+        "source_workspace": {},
+        "status": {"node_ids": [cleanup_node["id"]]},
+        "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": short_id},
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"},
+        "worktree_path": str(worktree),
+    }
+    fake = base / "fake"
+    fake.mkdir()
+    task_file = fake / "task.json"
+    task_file.write_text(json.dumps(task), encoding="utf-8")
+    kent = fake / "kent"
+    kent.write_text("#!/bin/sh\ncat \"$PUBER_FAKE_TASK\"\n", encoding="utf-8")
+    kent.chmod(0o755)
+    moved = fake / "moved"
+    active_status = json.dumps({
+        "target": {
+            "WorkspaceID": workspace_id,
+            "WorkspaceName": "Puber",
+            "WorkspaceRoot": str(primary),
+            "WorkspaceAvailability": "available",
+            "Worktree": {"ID": f"worktree-{short_id.lower()}", "Name": short_id, "Root": str(worktree), "Availability": "available"},
+            "CwdRelpath": ".",
+            "EffectiveWorkdir": str(worktree),
+        },
+        "worktree": {"recorded_root": str(worktree), "observed_root": str(worktree), "display_name": short_id, "recorded_branch_ref": f"refs/heads/{branch}"},
+        "problems": [],
+    }, separators=(",", ":"))
+    moved_status = json.dumps({
+        "target": {
+            "WorkspaceID": workspace_id,
+            "WorkspaceName": "Puber",
+            "WorkspaceRoot": str(primary),
+            "WorkspaceAvailability": "available",
+            "Worktree": None,
+            "CwdRelpath": ".",
+            "EffectiveWorkdir": str(primary),
+        },
+        "worktree": {"recorded_root": str(primary), "observed_root": str(primary)},
+        "problems": [],
+    }, separators=(",", ":"))
+    wrapper = fake / "kent-worktree"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        "if test \"$1\" = status; then\n"
+        "  test \"$2\" = --session && test \"$4\" = --json || exit 2\n"
+        f"  if test -f {shlex.quote(str(moved))}; then printf '%s\\n' {shlex.quote(moved_status)}; "
+        f"  else printf '%s\\n' {shlex.quote(active_status)}; fi\n"
+        "  exit 0\n"
+        "fi\n"
+        "if test \"$1\" = delete; then\n"
+        "  printf '%s\\n' '{\"kind\":\"scheduled\",\"scheduled\":{\"operation_id\":\"delete-fixture\"}}'\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    append_fixture_ledger(worktree, short_id)
+    return {
+        "base": base,
+        "primary": primary,
+        "worktree": worktree,
+        "branch": branch,
+        "target": target,
+        "task": task,
+        "task_file": task_file,
+        "kent": kent,
+        "wrapper": wrapper,
+        "moved": moved,
+        "session_id": session_id,
+        "notes": notes,
+        "notes_path": f".todo/{short_id}/release-notes-ru.md",
+        "env": {
+            **os.environ,
+            "HOME": str(base / "home"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "KENT_ENGINEERING_KIT_ROOT": str(KIT),
+            "PUBER_KENT_BIN": str(kent),
+            "PUBER_KENT_WORKTREE_BIN": str(wrapper),
+            "KENT_WORKTREE_WRAPPER": str(wrapper),
+            "PUBER_FAKE_TASK": str(task_file),
+        },
+    }
+
+
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)
     primary = root / "home" / "dev" / "android" / "Puber"
@@ -73,16 +237,12 @@ with tempfile.TemporaryDirectory() as directory:
         target = managed / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    carrier_notes_path = managed / ".todo/PUB-99/release-notes-ru.md"
-    carrier_notes_path.parent.mkdir(parents=True, exist_ok=True)
     carrier_body = "puber_release_notes_v1\n\n# Изменения\n\n- Проверка релиза.\n".encode("utf-8")
-    carrier_notes_path.write_bytes(carrier_body)
-    carrier_notes_path.chmod(0o600)
-    carrier_notes_path = managed / ".todo/PUB-99/release-notes-ru.md"
-    carrier_notes_path.parent.mkdir(parents=True, exist_ok=True)
-    carrier_body = "puber_release_notes_v1\n\n# Изменения\n\n- Проверка релиза.\n".encode("utf-8")
-    carrier_notes_path.write_bytes(carrier_body)
-    carrier_notes_path.chmod(0o600)
+    for short_id in ("PUB-99", "PUB-100", "PUB-101", "PUB-102", "PUB-103", "PUB-104"):
+        path = managed / f".todo/{short_id}/release-notes-ru.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(carrier_body)
+        path.chmod(0o600)
     sh(["git", "config", "user.email", "test@example.invalid"], managed)
     sh(["git", "config", "user.name", "Puber Test"], managed)
     sh(["git", "add", "."], managed)
@@ -110,6 +270,7 @@ with tempfile.TemporaryDirectory() as directory:
             },
         }),
     )
+    append_fixture_ledger(managed, "UNRELATED")
 
     graph = json.loads((managed / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
     cleanup_node = next(node for node in graph["nodes"] if node["key"] == "cleanup")
@@ -215,33 +376,18 @@ with tempfile.TemporaryDirectory() as directory:
     else:
         raise AssertionError("cleanup selected-run carrier mismatch accepted")
 
-    notes_path = managed / ".todo/PUB-99/release-notes-ru.md"
-    notes_path.parent.mkdir(parents=True, exist_ok=True)
-    notes_body = "puber_release_notes_v1\n\n# Изменения\n\n- Проверка релиза.\n".encode("utf-8")
-    notes_path.write_bytes(notes_body)
-    notes_path.chmod(0o600)
-    notes = {"schema": "puber_release_notes_v1", "path": ".todo/PUB-99/release-notes-ru.md", "mode": 0o600, "bytes": len(notes_body), "sha256": hashlib.sha256(notes_body).hexdigest(), "encoding": "UTF-8", "line_endings": "LF", "final_newline": True, "producer": ".kent/scripts/workflow-puber-release-publish", "previous_tag": "", "range": target, "target_commit": target}
-    publication, publication_digest = cleanup_mod.helper.publication_report("b" * 64, "https://github.com/rovkinmax/Puber/pull/7", "99.0.0", "v99.0.0", target, notes, tag_phase="tag_published", tag_status="already_present_exact", unresolved=True)
-    apk_name = "puber-v99.0.0.apk"
-    checksum_name = apk_name + ".sha256"
-    assets = [{"id": 1, "name": apk_name, "size": 4, "browser_download_url": "https://example.invalid/apk", "download_sha256": "a" * 64}, {"id": 2, "name": checksum_name, "size": 70, "browser_download_url": "https://example.invalid/checksum", "download_sha256": "b" * 64}]
-    release_value = {"schema": "puber_release_report_v1", "observation_operation_digest": "c" * 64, "observation_provenance_fingerprint": "d" * 64, "run": {"schema": "puber_release_run_v1", "state": "selected", "repository": "rovkinmax/Puber", "workflow_path": ".github/workflows/release.yml", "workflow_name": "Release", "event": "push", "run_id": 42, "attempt": 1, "head_sha": target, "ref": "refs/tags/v99.0.0", "head_branch": "v99.0.0"}, "jobs": {"run": {"run_id": 42, "attempt": 1, "path": ".github/workflows/release.yml", "name": "Release", "event": "push", "head_sha": target, "head_branch": "v99.0.0", "status": "completed", "conclusion": "success"}, "job": {"id": 777, "name": "Build & Publish", "status": "completed", "conclusion": "success", "attempt": 1}}, "release": {"tag_name": "v99.0.0", "target_commitish": "master", "name": "Puber v99.0.0", "draft": False, "prerelease": False, "html_url": "https://github.com/rovkinmax/Puber/releases/tag/v99.0.0", "body": notes_body.decode(), "remote_tag_target": target}, "assets": assets, "checksum": {"schema": "puber_checksum_proof_v1", "apk_asset_id": 1, "apk_name": apk_name, "apk_size": 4, "apk_download_sha256": "a" * 64, "checksum_asset_id": 2, "checksum_name": checksum_name, "checksum_size": 70, "checksum_download_sha256": "b" * 64, "parsed_checksum_digest": "a" * 64, "parsed_checksum_filename": apk_name, "download_sizes_match": True, "apk_checksum_equal": True}, "notes_digest": notes["sha256"], "publication_report_digest": publication_digest, "unresolved": False}
-    release_report = cleanup_mod.helper.canonical_json(release_value)
-    release_digest = hashlib.sha256(release_report.encode()).hexdigest()
-    cleanup_mod.ROOT = managed
-    valid_carrier = {"publication_report": publication, "publication_report_digest": publication_digest, "release_report": release_report, "release_report_digest": release_digest, "release_notes_path": notes["path"], "release_notes_digest": notes["sha256"]}
-    assert cleanup_mod._validate_carriers({"task_short_id": "PUB-99"}, valid_carrier)[0] is not None
-    broken_carrier = dict(valid_carrier)
-    broken_value = json.loads(release_report)
-    broken_value["run"]["head_sha"] = "e" * 40
-    broken_carrier["release_report"] = cleanup_mod.helper.canonical_json(broken_value)
-    broken_carrier["release_report_digest"] = hashlib.sha256(broken_carrier["release_report"].encode()).hexdigest()
-    try:
-        cleanup_mod._validate_carriers({"task_short_id": "PUB-99"}, broken_carrier)
-    except cleanup_mod.helper.ContractError:
-        pass
-    else:
-        raise AssertionError("cleanup selected-run carrier mismatch accepted")
+    def make_carrier(short_id: str, mutation: str | None = None) -> dict:
+        notes = dict(carrier_notes)
+        notes["path"] = f".todo/{short_id}/release-notes-ru.md"
+        publication_value, publication_value_digest = cleanup_mod.helper.publication_report("b" * 64, "https://github.com/rovkinmax/Puber/pull/7", "99.0.0", "v99.0.0", target, notes, tag_phase="tag_published", tag_status="already_present_exact", unresolved=True)
+        value = json.loads(release_report)
+        value["publication_report_digest"] = publication_value_digest
+        value["notes_digest"] = notes["sha256"]
+        if mutation:
+            value["run"][mutation] = ("f" * 40 if mutation == "head_sha" else "v99.9.9" if mutation == "head_branch" else "refs/tags/v99.9.9")
+        encoded = cleanup_mod.helper.canonical_json(value)
+        return {"publication_report": publication_value, "publication_report_digest": publication_value_digest, "release_report": encoded, "release_report_digest": hashlib.sha256(encoded.encode()).hexdigest(), "release_notes_path": notes["path"], "release_notes_digest": notes["sha256"], "release_run": value["run"]}
+
     conflict_seal = subprocess.run(
         [str(managed / ".kent/scripts/workflow-evidence-ledger"), "seal", "--task", "PUB-99", "--workspace", str(managed)],
         cwd=managed,
@@ -327,6 +473,109 @@ with tempfile.TemporaryDirectory() as directory:
     assert third_janitor_output["transition"] == "task_janitor_blocked"
     assert "still targets the task worktree" not in third_janitor_output.get("blocker_reason", "")
 
+    # Each cleanup edge below gets an independent managed worktree and runtime
+    # ledger.  The Kit intentionally treats a terminal cleanup tombstone as a
+    # workspace-wide conflict, so reusing PUB-99 would not be a valid fixture.
+    with tempfile.TemporaryDirectory(dir=root) as edge_directory:
+        edge = make_edge_fixture(Path(edge_directory), "PUB-100", "100.0.0", cleanup_node)
+        close_payload = {
+            "_kent": {"task_id": edge["task"]["summary"]["id"], "node_id": cleanup_node["id"], "transition_branch_key": "merge_watch_close_without_merge"},
+            "workspace_path": str(edge["worktree"]),
+            "operation_id": "a" * 64,
+            "pr_url": "https://github.com/rovkinmax/Puber/pull/7",
+            "branch_name": edge["branch"],
+            "merge_strategy": "auto",
+            "pr_head_oid": "c" * 40,
+            "pr_base_oid": "b" * 40,
+        }
+        close_result = subprocess.run([str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")], cwd=edge["worktree"], input=json.dumps(close_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
+        assert close_result.returncode == 0, close_result.stderr
+        close_output = json.loads(close_result.stdout)
+        assert close_output["transition"] == "cleanup_task_janitor"
+        close_janitor = subprocess.run([str(edge["worktree"] / ".kent/scripts/workflow-task-janitor")], cwd=edge["worktree"], input=json.dumps({"workspace_path": str(edge["worktree"]), "branch_name": edge["branch"], "pr_url": close_payload["pr_url"], "cleanup_mode": "report_only", "cleanup_session_id": edge["session_id"], "cleanup_report": close_output["cleanup_report"], "task_short_id": "PUB-100"}), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
+        assert close_janitor.returncode == 0, close_janitor.stderr
+        assert json.loads(close_janitor.stdout)["transition"] == "task_janitor_blocked"
+
+    def release_carrier_for(edge: dict) -> dict:
+        version = edge["task"]["body"].split("release_version: ", 1)[1].splitlines()[0]
+        tag = f"v{version}"
+        notes = {
+            "schema": "puber_release_notes_v1",
+            "path": edge["notes_path"],
+            "mode": 0o600,
+            "bytes": len(edge["notes"]),
+            "sha256": hashlib.sha256(edge["notes"]).hexdigest(),
+            "encoding": "UTF-8",
+            "line_endings": "LF",
+            "final_newline": True,
+            "producer": ".kent/scripts/workflow-puber-release-publish",
+            "previous_tag": "",
+            "range": edge["target"],
+            "target_commit": edge["target"],
+        }
+        publication, publication_digest = cleanup_mod.helper.publication_report("b" * 64, "https://github.com/rovkinmax/Puber/pull/7", version, tag, edge["target"], notes, tag_phase="tag_published", tag_status="already_present_exact", unresolved=True)
+        value = json.loads(release_report)
+        value["publication_report_digest"] = publication_digest
+        value["notes_digest"] = notes["sha256"]
+        value["run"].update({"head_sha": edge["target"], "ref": f"refs/tags/{tag}", "head_branch": tag})
+        value["jobs"]["run"].update({"head_sha": edge["target"], "head_branch": tag})
+        value["release"].update({"tag_name": tag, "name": f"Puber {tag}", "html_url": f"https://github.com/rovkinmax/Puber/releases/tag/{tag}", "remote_tag_target": edge["target"]})
+        for asset in value["assets"]:
+            if asset["name"].endswith(".sha256"):
+                asset["name"] = f"puber-{tag}.apk.sha256"
+            else:
+                asset["name"] = f"puber-{tag}.apk"
+        apk_asset = next(asset for asset in value["assets"] if asset["name"].endswith(".apk"))
+        checksum_asset = next(asset for asset in value["assets"] if asset["name"].endswith(".apk.sha256"))
+        value["checksum"].update({
+            "apk_asset_id": apk_asset["id"],
+            "apk_name": apk_asset["name"],
+            "apk_size": apk_asset["size"],
+            "checksum_asset_id": checksum_asset["id"],
+            "checksum_name": checksum_asset["name"],
+            "checksum_size": checksum_asset["size"],
+            "parsed_checksum_filename": apk_asset["name"],
+        })
+        encoded = cleanup_mod.helper.canonical_json(value)
+        return {
+            "publication_report": publication,
+            "publication_report_digest": publication_digest,
+            "release_report": encoded,
+            "release_report_digest": hashlib.sha256(encoded.encode()).hexdigest(),
+            "release_notes_path": edge["notes_path"],
+            "release_notes_digest": notes["sha256"],
+            "release_run": cleanup_mod.helper.canonical_json(value["run"]),
+            "_value": value,
+        }
+
+    with tempfile.TemporaryDirectory(dir=root) as edge_directory:
+        edge = make_edge_fixture(Path(edge_directory), "PUB-101", "101.0.0", cleanup_node)
+        carrier = release_carrier_for(edge)
+        release_payload = {"_kent": {"task_id": edge["task"]["summary"]["id"], "node_id": cleanup_node["id"], "transition_branch_key": "release_release_published"}, **{key: value for key, value in carrier.items() if not key.startswith("_")}}
+        release_result = subprocess.run([str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")], cwd=edge["worktree"], input=json.dumps(release_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
+        assert release_result.returncode == 0, release_result.stderr
+        release_output = json.loads(release_result.stdout)
+        assert release_output["transition"] == "cleanup_task_janitor"
+        release_janitor = subprocess.run([str(edge["worktree"] / ".kent/scripts/workflow-task-janitor")], cwd=edge["worktree"], input=json.dumps({"workspace_path": str(edge["worktree"]), "branch_name": edge["branch"], "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "cleanup_mode": "report_only", "cleanup_session_id": edge["session_id"], "cleanup_report": release_output["cleanup_report"], "task_short_id": "PUB-101"}), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
+        assert release_janitor.returncode == 0, release_janitor.stderr
+        assert json.loads(release_janitor.stdout)["transition"] == "task_janitor_blocked"
+
+    for index, mutation in enumerate(("head_sha", "head_branch", "ref"), start=102):
+        with tempfile.TemporaryDirectory(dir=root) as edge_directory:
+            edge = make_edge_fixture(Path(edge_directory), f"PUB-{index}", f"{index}.0.0", cleanup_node)
+            carrier = release_carrier_for(edge)
+            value = json.loads(carrier["release_report"])
+            value["run"][mutation] = "f" * 40 if mutation == "head_sha" else f"v{index}.9.9" if mutation == "head_branch" else f"refs/tags/v{index}.9.9"
+            invalid_report = cleanup_mod.helper.canonical_json(value)
+            invalid = {**carrier, "release_report": invalid_report, "release_report_digest": hashlib.sha256(invalid_report.encode()).hexdigest(), "release_run": cleanup_mod.helper.canonical_json(value["run"])}
+            invalid_payload = {"_kent": {"task_id": edge["task"]["summary"]["id"], "node_id": cleanup_node["id"], "transition_branch_key": "release_release_published"}, **{key: value for key, value in invalid.items() if not key.startswith("_")}}
+            invalid_result = subprocess.run([str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")], cwd=edge["worktree"], input=json.dumps(invalid_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
+            assert invalid_result.returncode != 0 and invalid_result.stdout == "", (f"PUB-{index}", invalid_result.stderr)
+
+    task["summary"]["short_id"] = "PUB-99"
+    task["live_sessions"] = []
+    task_file.write_text(json.dumps(task), encoding="utf-8")
+    moved.touch()
     tampered = initial_lines[0][:-1] + "0\n" + initial_lines[1] + "\nJanitor tampered"
     expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": tampered}, env, "tampered canonical line")
     expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_lines[0] + "\n" + initial_lines[1][:-1] + "0\nJanitor tampered"}, env, "tampered marker")
@@ -340,4 +589,4 @@ with tempfile.TemporaryDirectory() as directory:
     expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_lines[0] + "\n" + marker_hash_line + "\nJanitor tampered"}, env, "tampered marker hash")
     expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_report + "\nTERMINAL_EVIDENCE_V1 extra"}, env, "extra terminal marker")
 
-print("workflow-release-cleanup: passed scenarios=initial_seal,release_carrier_success,close_without_merge_entry,janitor_block,leave_retry,janitor_later_boundary,tampered_line,marker,marker_task,marker_hash,extra_marker")
+print("workflow-release-cleanup: passed scenarios=cancel_edge,close_without_merge_edge,release_carrier_edge,selected_run_head_sha_branch_ref_boundary,janitor_active_block,post_leave_block,third_retry_block,marker_adversarial,unrelated_ledger")
