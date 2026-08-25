@@ -243,11 +243,22 @@ private fun SpeedTestRowResult(row: SpeedTestRowState) {
             )
         }
 
-        SpeedTestRowStatus.Failed -> Text(
-            text = row.errorMessage ?: stringResource(R.string.speed_test_failure),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error,
-        )
+        SpeedTestRowStatus.Failed -> {
+            if (row.megabitsPerSecond > 0.0) {
+                Text(
+                    text = stringResource(
+                        R.string.speed_test_result,
+                        row.megabitsPerSecond,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Text(
+                text = row.errorMessage ?: stringResource(R.string.speed_test_failure),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
 
         SpeedTestRowStatus.Canceled -> Text(
             text = stringResource(R.string.speed_test_canceled),

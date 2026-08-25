@@ -186,7 +186,11 @@ internal class SpeedTestContentTest {
     }
 
     @Test
-    fun terminalStates_showResultFailureAndCanceledText() {
+    fun failedState_showsRetainedPositiveSpeedAndLocalizedError() {
+        val expectedRetainedSpeed = InstrumentationRegistry.getInstrumentation()
+            .targetContext
+            .getString(R.string.speed_test_result, 0.8)
+
         composeRule.setContent {
             PuberTheme {
                 SpeedTestContent(
@@ -204,10 +208,12 @@ internal class SpeedTestContentTest {
                                 status = SpeedTestRowStatus.Failed,
                                 downloadedBytes = 25,
                                 expectedBytes = 100,
+                                elapsedMillis = 250,
+                                megabitsPerSecond = 0.8,
                                 errorMessage = "Сервер недоступен",
                             ),
                         ),
-                        sessionStatus = SpeedTestSessionStatus.Completed,
+                        sessionStatus = SpeedTestSessionStatus.Failed,
                     ),
                     onAction = {},
                 )
@@ -217,6 +223,7 @@ internal class SpeedTestContentTest {
         assertByteProgress(downloadedBytes = 100, expectedBytes = 100)
         assertByteProgress(downloadedBytes = 25, expectedBytes = 100)
         composeRule.onNodeWithText("20.0 Мбит/с").assertIsDisplayed()
+        composeRule.onNodeWithText(expectedRetainedSpeed).assertIsDisplayed()
         composeRule.onNodeWithText("Сервер недоступен").assertIsDisplayed()
         composeRule.onNodeWithText("Текущий сервер").assertDoesNotExist()
     }
