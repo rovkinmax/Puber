@@ -149,7 +149,7 @@ with tempfile.TemporaryDirectory() as directory:
         f"  if test -f '{moved}'; then\n"
         f"    printf '%s\\n' '{{\"target\":{{\"WorkspaceID\":\"{workspace_id}\",\"WorkspaceName\":\"Puber\",\"WorkspaceRoot\":\"{primary}\",\"WorkspaceAvailability\":\"available\",\"Worktree\":null,\"CwdRelpath\":\".\",\"EffectiveWorkdir\":\"{primary}\"}},\"worktree\":{{\"recorded_root\":\"{primary}\",\"observed_root\":\"{primary}\"}},\"problems\":[]}}'\n"
         "  else\n"
-        f"    printf '%s\\n' '{{\"target\":{{\"WorkspaceID\":\"{workspace_id}\",\"WorkspaceName\":\"Puber\",\"WorkspaceRoot\":\"{primary}\",\"WorkspaceAvailability\":\"available\",\"Worktree\":{{\"ID\":\"worktree-fixture\",\"Name\":\"PUB-99\",\"Root\":\"{managed}\",\"Availability\":\"available\"}},\"CwdRelpath\":\".\",\"EffectiveWorkdir\":\"{managed}\"}},\"worktree\":{{\"recorded_root\":\"{managed}\",\"observed_root\":\"{managed}\"}},\"problems\":[]}}'\n"
+        f"    printf '%s\\n' '{{\"target\":{{\"WorkspaceID\":\"{workspace_id}\",\"WorkspaceName\":\"Puber\",\"WorkspaceRoot\":\"{primary}\",\"WorkspaceAvailability\":\"available\",\"Worktree\":{{\"ID\":\"worktree-fixture\",\"Name\":\"PUB-99\",\"Root\":\"{managed}\",\"Availability\":\"available\"}},\"CwdRelpath\":\".\",\"EffectiveWorkdir\":\"{managed}\"}},\"worktree\":{{\"recorded_root\":\"{managed}\",\"observed_root\":\"{managed}\",\"display_name\":\"PUB-99\",\"recorded_branch_ref\":\"refs/heads/release/99.0.0\"}},\"problems\":[]}}'\n"
         "  fi\n"
         "  exit 0\n"
         "fi\n"
@@ -165,9 +165,6 @@ with tempfile.TemporaryDirectory() as directory:
         **os.environ,
         "HOME": str(root / "home"),
         "PYTHONDONTWRITEBYTECODE": "1",
-        "PUBER_TEST_MODE": "1",
-        "PUBER_TEST_PRIMARY_WORKSPACE_ID": workspace_id,
-        "PUBER_TEST_PRIMARY_WORKSPACE_ROOT": str(primary),
         "KENT_ENGINEERING_KIT_ROOT": str(KIT),
         "PUBER_KENT_BIN": str(kent),
         "PUBER_KENT_WORKTREE_BIN": str(wrapper),
@@ -306,6 +303,29 @@ with tempfile.TemporaryDirectory() as directory:
     assert second_output["transition"] == "task_janitor_blocked"
     assert "still targets the task worktree" not in second_output.get("blocker_reason", "")
     assert "scheduled worktree deletion" in second_output["cleanup_report"], (second_output["blocker_reason"], second_output["cleanup_report"].splitlines()[-1])
+
+    third_retry = {**retry, "cleanup_report": second_output["cleanup_report"]}
+    third_result = subprocess.run([str(managed / ".kent/scripts/workflow-release-cleanup")], cwd=managed, input=json.dumps(third_retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert third_result.returncode == 0, third_result.stderr
+    third_output = json.loads(third_result.stdout)
+    third_lines = third_output["cleanup_report"].splitlines()
+    assert third_output["cleanup_session_id"] == session_id
+    assert third_lines[0] == initial_lines[0] and third_lines[-1] == initial_lines[1]
+    assert len(third_lines) > len(retry_output["cleanup_report"].splitlines())
+
+    third_janitor = subprocess.run(
+        [str(managed / ".kent/scripts/workflow-task-janitor")],
+        cwd=managed,
+        input=json.dumps({"workspace_path": str(managed), "branch_name": "release/99.0.0", "pr_url": "", "cleanup_mode": "report_only", "cleanup_session_id": session_id, "cleanup_report": third_output["cleanup_report"], "task_short_id": "PUB-99"}),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    assert third_janitor.returncode == 0
+    third_janitor_output = json.loads(third_janitor.stdout)
+    assert third_janitor_output["transition"] == "task_janitor_blocked"
+    assert "still targets the task worktree" not in third_janitor_output.get("blocker_reason", "")
 
     tampered = initial_lines[0][:-1] + "0\n" + initial_lines[1] + "\nJanitor tampered"
     expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": tampered}, env, "tampered canonical line")
