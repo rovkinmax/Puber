@@ -57,8 +57,8 @@ internal class SpeedTestContentTest {
         composeRule.onNodeWithTag(SPEED_TEST_START_TAG)
             .assertIsFocused()
             .assertIsEnabled()
-        composeRule.onNodeWithText("Амстердам").assertIsDisplayed()
-        composeRule.onNodeWithText("Москва").assertIsDisplayed()
+        composeRule.onNodeWithText(targetString(R.string.speed_test_server_amsterdam)).assertIsDisplayed()
+        composeRule.onNodeWithText(targetString(R.string.speed_test_server_moscow)).assertIsDisplayed()
         composeRule.onNodeWithTag(SPEED_TEST_START_TAG).performClick()
         assert(actions.single() == SpeedTestAction.Start)
     }
@@ -91,10 +91,10 @@ internal class SpeedTestContentTest {
             }
         }
 
-        composeRule.onNodeWithText("Wi-Fi").assertIsDisplayed()
+        composeRule.onNodeWithText(targetString(R.string.speed_test_transport_wifi)).assertIsDisplayed()
         composeRule.onNodeWithTag(SPEED_TEST_AMSTERDAM_TAG).assertIsDisplayed()
         assertByteProgress(downloadedBytes = 50, expectedBytes = 100)
-        composeRule.onNodeWithText("12.5 Мбит/с").assertIsDisplayed()
+        composeRule.onNodeWithText(targetString(R.string.speed_test_result, 12.5)).assertIsDisplayed()
         composeRule.onNodeWithTag(SPEED_TEST_STOP_TAG)
             .assertIsDisplayed()
             .performClick()
@@ -166,7 +166,7 @@ internal class SpeedTestContentTest {
             }
         }
 
-        composeRule.onAllNodesWithText("Текущий сервер").assertCountEquals(1)
+        composeRule.onAllNodesWithText(targetString(R.string.speed_test_current_server)).assertCountEquals(1)
     }
 
     @Test
@@ -182,14 +182,14 @@ internal class SpeedTestContentTest {
             }
         }
 
-        composeRule.onAllNodesWithText("Текущий сервер").assertCountEquals(0)
+        composeRule.onAllNodesWithText(targetString(R.string.speed_test_current_server)).assertCountEquals(0)
     }
 
     @Test
     fun failedState_showsRetainedPositiveSpeedAndLocalizedError() {
-        val expectedRetainedSpeed = InstrumentationRegistry.getInstrumentation()
-            .targetContext
-            .getString(R.string.speed_test_result, 0.8)
+        val expectedCompletedSpeed = targetString(R.string.speed_test_result, 20.0)
+        val expectedRetainedSpeed = targetString(R.string.speed_test_result, 0.8)
+        val mappedErrorMessage = "mapped_failure_message"
 
         composeRule.setContent {
             PuberTheme {
@@ -210,7 +210,7 @@ internal class SpeedTestContentTest {
                                 expectedBytes = 100,
                                 elapsedMillis = 250,
                                 megabitsPerSecond = 0.8,
-                                errorMessage = "Сервер недоступен",
+                                errorMessage = mappedErrorMessage,
                             ),
                         ),
                         sessionStatus = SpeedTestSessionStatus.Failed,
@@ -222,10 +222,10 @@ internal class SpeedTestContentTest {
 
         assertByteProgress(downloadedBytes = 100, expectedBytes = 100)
         assertByteProgress(downloadedBytes = 25, expectedBytes = 100)
-        composeRule.onNodeWithText("20.0 Мбит/с").assertIsDisplayed()
+        composeRule.onNodeWithText(expectedCompletedSpeed).assertIsDisplayed()
         composeRule.onNodeWithText(expectedRetainedSpeed).assertIsDisplayed()
-        composeRule.onNodeWithText("Сервер недоступен").assertIsDisplayed()
-        composeRule.onNodeWithText("Текущий сервер").assertDoesNotExist()
+        composeRule.onNodeWithText(mappedErrorMessage).assertIsDisplayed()
+        composeRule.onNodeWithText(targetString(R.string.speed_test_current_server)).assertDoesNotExist()
     }
 
     @Test
@@ -251,7 +251,7 @@ internal class SpeedTestContentTest {
         }
 
         assertByteProgress(downloadedBytes = 40, expectedBytes = 100)
-        composeRule.onNodeWithText("Тест остановлен").assertIsDisplayed()
+        composeRule.onNodeWithText(targetString(R.string.speed_test_canceled)).assertIsDisplayed()
     }
 
     private fun assertTerminalStateRestoresStartFocus(
@@ -312,6 +312,13 @@ internal class SpeedTestContentTest {
 
         composeRule.onNodeWithText(expectedText).assertIsDisplayed()
     }
+
+    private fun targetString(
+        resourceId: Int,
+        vararg formatArgs: Any,
+    ): String = InstrumentationRegistry.getInstrumentation()
+        .targetContext
+        .getString(resourceId, *formatArgs)
 
     private fun runningState() = SpeedTestViewState(
         rows = listOf(

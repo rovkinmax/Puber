@@ -11,6 +11,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performClick
+import androidx.test.platform.app.InstrumentationRegistry
+import com.kino.puber.R
 import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
@@ -67,6 +69,9 @@ internal class DeviceSettingsContentTest {
     @Test
     fun settingsRenderAndDispatchSpeedTestLauncher() {
         val actions = mutableListOf<UIAction>()
+        val launcherText = InstrumentationRegistry.getInstrumentation()
+            .targetContext
+            .getString(R.string.speed_test_launcher)
         composeRule.setContent {
             PuberTheme {
                 DeviceSettingsContent(
@@ -89,9 +94,9 @@ internal class DeviceSettingsContentTest {
 
         composeRule
             .onNodeWithTag(DEVICE_SETTINGS_LIST_TEST_TAG)
-            .performScrollToNode(hasText("Запустить тест скорости"))
+            .performScrollToNode(hasText(launcherText))
         composeRule
-            .onNodeWithText("Запустить тест скорости")
+            .onNodeWithText(launcherText)
             .assertIsDisplayed()
             .performClick()
 
