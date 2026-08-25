@@ -16,9 +16,11 @@ import java.io.IOException
 import java.net.URI
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -254,6 +256,60 @@ internal class SpeedTestInteractorTest {
     }
 
     @Test
+    fun run_deliversPositiveProgressAndCompletion_whenCallbackUsesIoDispatcher() = runTest {
+        coEvery {
+            api.streamSpeedTest(any(), any(), any(), any())
+        } coAnswers {
+            val server = firstArg<SpeedTestServer>()
+            val callback = thirdArg<suspend (SpeedTestProgress) -> Unit>()
+            val progress = SpeedTestProgress(
+                server = server,
+                downloadedBytes = 1_024,
+                expectedBytes = SPEED_TEST_EXPECTED_BYTES,
+                elapsedMillis = 250,
+                megabitsPerSecond = 0.03125,
+            )
+            withContext(Dispatchers.IO) {
+                callback(progress)
+            }
+            Result.success(
+                SpeedTestResult(
+                    server = server,
+                    downloadedBytes = SPEED_TEST_EXPECTED_BYTES,
+                    expectedBytes = SPEED_TEST_EXPECTED_BYTES,
+                    elapsedMillis = 1_000,
+                    megabitsPerSecond = 800.0,
+                ),
+            )
+        }
+
+        val events = interactor(Random(1)).run().toList()
+
+        assertEquals(
+            SpeedTestServer.knownServers.flatMap { server ->
+                listOf(
+                    SpeedTestEvent.Started(server),
+                    SpeedTestEvent.Progress(
+                        server = server,
+                        downloadedBytes = 1_024,
+                        expectedBytes = SPEED_TEST_EXPECTED_BYTES,
+                        elapsedMillis = 250,
+                        megabitsPerSecond = 0.03125,
+                    ),
+                    SpeedTestEvent.Completed(
+                        server = server,
+                        downloadedBytes = SPEED_TEST_EXPECTED_BYTES,
+                        expectedBytes = SPEED_TEST_EXPECTED_BYTES,
+                        elapsedMillis = 1_000,
+                        megabitsPerSecond = 800.0,
+                    ),
+                )
+            },
+            events,
+        )
+    }
+
+    @Test
     fun run_failsRegionWithoutFallbackAfterPositiveProgress() = runTest {
         val amsterdamFailure = IOException("post-progress failure")
         val amsterdamUrls = mutableListOf<String>()
@@ -335,7 +391,8 @@ internal class SpeedTestInteractorTest {
             interactor(Random(1)).run().toList()
         }.exceptionOrNull()
 
-        assertEquals(cancellation, thrown)
+        assertTrue(thrown is CancellationException)
+        assertEquals(cancellation.message, thrown?.message)
         coVerify(exactly = 1) {
             api.streamSpeedTest(SpeedTestServer.AMSTERDAM, any(), any(), any())
         }
