@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 
 internal class SpeedTestInteractorTest {
@@ -118,7 +119,7 @@ internal class SpeedTestInteractorTest {
     }
 
     @Test
-    fun run_sequentiallyEmitsTerminalResultAndContinuesAfterFailure() = runTest {
+    fun run_exhaustsServerShardsThenContinuesAfterFailure() = runTest {
         val amsterdamFailure = IOException("raw-amsterdam-sentinel")
         every { deviceSettings.getCurrentDeviceSettings() } returns flowOf(
             Result.success(
@@ -137,6 +138,9 @@ internal class SpeedTestInteractorTest {
             api.streamSpeedTest(any(), any(), any(), any())
         } coAnswers {
             val server = firstArg<SpeedTestServer>()
+            if (server == SpeedTestServer.AMSTERDAM) {
+                return@coAnswers Result.failure(amsterdamFailure)
+            }
             val callback = thirdArg<suspend (SpeedTestProgress) -> Unit>()
             callback(
                 SpeedTestProgress(
@@ -147,19 +151,15 @@ internal class SpeedTestInteractorTest {
                     megabitsPerSecond = 0.8,
                 ),
             )
-            if (server == SpeedTestServer.AMSTERDAM) {
-                Result.failure(amsterdamFailure)
-            } else {
-                Result.success(
-                    SpeedTestResult(
-                        server = server,
-                        downloadedBytes = 100,
-                        expectedBytes = 100,
-                        elapsedMillis = 1_000,
-                        megabitsPerSecond = 0.8,
-                    ),
-                )
-            }
+            Result.success(
+                SpeedTestResult(
+                    server = server,
+                    downloadedBytes = 100,
+                    expectedBytes = 100,
+                    elapsedMillis = 1_000,
+                    megabitsPerSecond = 0.8,
+                ),
+            )
         }
 
         val events = interactor(Random(1)).run().toList()
@@ -167,13 +167,6 @@ internal class SpeedTestInteractorTest {
         assertEquals(
             listOf(
                 SpeedTestEvent.Started(SpeedTestServer.AMSTERDAM),
-                SpeedTestEvent.Progress(
-                    server = SpeedTestServer.AMSTERDAM,
-                    downloadedBytes = 100,
-                    expectedBytes = 100,
-                    elapsedMillis = 1_000,
-                    megabitsPerSecond = 0.8,
-                ),
                 SpeedTestEvent.Failed(
                     server = SpeedTestServer.AMSTERDAM,
                     cause = amsterdamFailure,
@@ -196,11 +189,65 @@ internal class SpeedTestInteractorTest {
             ),
             events,
         )
-        coVerifyOrder {
+        coVerify(exactly = SpeedTestServer.AMSTERDAM.shards.count()) {
             api.streamSpeedTest(SpeedTestServer.AMSTERDAM, any(), any(), any())
+        }
+        coVerify(exactly = 1) {
             api.streamSpeedTest(SpeedTestServer.MOSCOW, any(), any(), any())
         }
         assertTrue(events.last() is SpeedTestEvent.Completed)
+    }
+
+    @Test
+    fun run_retriesAnotherShardBeforeFailingServer() = runTest {
+        val amsterdamAttempts = AtomicInteger()
+        val amsterdamUrls = mutableListOf<String>()
+        coEvery {
+            api.streamSpeedTest(any(), any(), any(), any())
+        } coAnswers {
+            val server = firstArg<SpeedTestServer>()
+            val url = secondArg<String>()
+            val callback = thirdArg<suspend (SpeedTestProgress) -> Unit>()
+            if (server == SpeedTestServer.AMSTERDAM) {
+                amsterdamUrls += url
+                if (amsterdamAttempts.getAndIncrement() == 0) {
+                    return@coAnswers Result.failure(IOException("unreachable shard"))
+                }
+            }
+            callback(
+                SpeedTestProgress(
+                    server = server,
+                    downloadedBytes = 100,
+                    expectedBytes = 100,
+                    elapsedMillis = 1_000,
+                    megabitsPerSecond = 0.8,
+                ),
+            )
+            Result.success(
+                SpeedTestResult(
+                    server = server,
+                    downloadedBytes = 100,
+                    expectedBytes = 100,
+                    elapsedMillis = 1_000,
+                    megabitsPerSecond = 0.8,
+                ),
+            )
+        }
+
+        val events = interactor(Random(1)).run().toList()
+
+        assertEquals(2, amsterdamAttempts.get())
+        assertEquals(2, amsterdamUrls.distinct().size)
+        assertTrue(
+            events.none {
+                it is SpeedTestEvent.Failed && it.server == SpeedTestServer.AMSTERDAM
+            },
+        )
+        assertTrue(
+            events.any {
+                it is SpeedTestEvent.Completed && it.server == SpeedTestServer.AMSTERDAM
+            },
+        )
     }
 
     @Test
