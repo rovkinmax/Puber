@@ -57,6 +57,7 @@ internal class SpeedTestInteractor(
         var lastFailure: Throwable? = null
         for (shard in shuffledShards(server)) {
             coroutineContext.ensureActive()
+            var hasPositiveProgress = false
             val result = apiClient.streamSpeedTest(
                 server = server,
                 url = buildProbeUrl(
@@ -65,6 +66,9 @@ internal class SpeedTestInteractor(
                     randomValue = random.nextDouble(),
                 ),
                 onProgress = { progress ->
+                    if (progress.downloadedBytes > 0) {
+                        hasPositiveProgress = true
+                    }
                     emit(
                         SpeedTestEvent.Progress(
                             server = progress.server,
@@ -92,6 +96,7 @@ internal class SpeedTestInteractor(
                 )
                 return null
             }
+            if (hasPositiveProgress) return failure
             lastFailure = failure
         }
         return lastFailure

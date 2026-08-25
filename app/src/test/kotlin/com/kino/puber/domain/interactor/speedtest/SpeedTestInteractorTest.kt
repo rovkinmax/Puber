@@ -10,9 +10,11 @@ import com.kino.puber.data.api.models.SettingsResponse
 import com.kino.puber.domain.interactor.device.IDeviceSettingInteractor
 import io.mockk.coEvery
 import io.mockk.coVerify
-import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
+import java.io.IOException
+import java.net.URI
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
@@ -20,8 +22,6 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.io.IOException
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 
 internal class SpeedTestInteractorTest {
@@ -121,6 +121,7 @@ internal class SpeedTestInteractorTest {
     @Test
     fun run_exhaustsServerShardsThenContinuesAfterFailure() = runTest {
         val amsterdamFailure = IOException("raw-amsterdam-sentinel")
+        val amsterdamUrls = mutableListOf<String>()
         every { deviceSettings.getCurrentDeviceSettings() } returns flowOf(
             Result.success(
                 deviceResponse(
@@ -139,6 +140,7 @@ internal class SpeedTestInteractorTest {
         } coAnswers {
             val server = firstArg<SpeedTestServer>()
             if (server == SpeedTestServer.AMSTERDAM) {
+                amsterdamUrls += secondArg<String>()
                 return@coAnswers Result.failure(amsterdamFailure)
             }
             val callback = thirdArg<suspend (SpeedTestProgress) -> Unit>()
@@ -189,6 +191,7 @@ internal class SpeedTestInteractorTest {
             ),
             events,
         )
+        assertConfiguredAmsterdamHosts(amsterdamUrls)
         coVerify(exactly = SpeedTestServer.AMSTERDAM.shards.count()) {
             api.streamSpeedTest(SpeedTestServer.AMSTERDAM, any(), any(), any())
         }
@@ -199,7 +202,7 @@ internal class SpeedTestInteractorTest {
     }
 
     @Test
-    fun run_retriesAnotherShardBeforeFailingServer() = runTest {
+    fun run_retriesEveryConfiguredShardBeforePreProgressRecovery() = runTest {
         val amsterdamAttempts = AtomicInteger()
         val amsterdamUrls = mutableListOf<String>()
         coEvery {
@@ -210,7 +213,7 @@ internal class SpeedTestInteractorTest {
             val callback = thirdArg<suspend (SpeedTestProgress) -> Unit>()
             if (server == SpeedTestServer.AMSTERDAM) {
                 amsterdamUrls += url
-                if (amsterdamAttempts.getAndIncrement() == 0) {
+                if (amsterdamAttempts.getAndIncrement() < 2) {
                     return@coAnswers Result.failure(IOException("unreachable shard"))
                 }
             }
@@ -236,8 +239,8 @@ internal class SpeedTestInteractorTest {
 
         val events = interactor(Random(1)).run().toList()
 
-        assertEquals(2, amsterdamAttempts.get())
-        assertEquals(2, amsterdamUrls.distinct().size)
+        assertEquals(SpeedTestServer.AMSTERDAM.shards.count(), amsterdamAttempts.get())
+        assertConfiguredAmsterdamHosts(amsterdamUrls)
         assertTrue(
             events.none {
                 it is SpeedTestEvent.Failed && it.server == SpeedTestServer.AMSTERDAM
@@ -248,6 +251,77 @@ internal class SpeedTestInteractorTest {
                 it is SpeedTestEvent.Completed && it.server == SpeedTestServer.AMSTERDAM
             },
         )
+    }
+
+    @Test
+    fun run_failsRegionWithoutFallbackAfterPositiveProgress() = runTest {
+        val amsterdamFailure = IOException("post-progress failure")
+        val amsterdamUrls = mutableListOf<String>()
+        val amsterdamProgress = SpeedTestEvent.Progress(
+            server = SpeedTestServer.AMSTERDAM,
+            downloadedBytes = 1_024,
+            expectedBytes = SPEED_TEST_EXPECTED_BYTES,
+            elapsedMillis = 250,
+            megabitsPerSecond = 0.03125,
+        )
+        coEvery {
+            api.streamSpeedTest(any(), any(), any(), any())
+        } coAnswers {
+            val server = firstArg<SpeedTestServer>()
+            val callback = thirdArg<suspend (SpeedTestProgress) -> Unit>()
+            if (server == SpeedTestServer.AMSTERDAM) {
+                amsterdamUrls += secondArg<String>()
+                callback(
+                    SpeedTestProgress(
+                        server = server,
+                        downloadedBytes = amsterdamProgress.downloadedBytes,
+                        expectedBytes = amsterdamProgress.expectedBytes,
+                        elapsedMillis = amsterdamProgress.elapsedMillis,
+                        megabitsPerSecond = amsterdamProgress.megabitsPerSecond,
+                    ),
+                )
+                return@coAnswers Result.failure(amsterdamFailure)
+            }
+            Result.success(
+                SpeedTestResult(
+                    server = server,
+                    downloadedBytes = 100,
+                    expectedBytes = 100,
+                    elapsedMillis = 1_000,
+                    megabitsPerSecond = 0.8,
+                ),
+            )
+        }
+
+        val events = interactor(Random(1)).run().toList()
+
+        assertEquals(
+            listOf(
+                SpeedTestEvent.Started(SpeedTestServer.AMSTERDAM),
+                amsterdamProgress,
+                SpeedTestEvent.Failed(
+                    server = SpeedTestServer.AMSTERDAM,
+                    cause = amsterdamFailure,
+                ),
+                SpeedTestEvent.Started(SpeedTestServer.MOSCOW),
+                SpeedTestEvent.Completed(
+                    server = SpeedTestServer.MOSCOW,
+                    downloadedBytes = 100,
+                    expectedBytes = 100,
+                    elapsedMillis = 1_000,
+                    megabitsPerSecond = 0.8,
+                ),
+            ),
+            events,
+        )
+        assertEquals(1, amsterdamUrls.size)
+        assertTrue(URI(amsterdamUrls.single()).host in CONFIGURED_AMSTERDAM_HOSTS)
+        coVerify(exactly = 1) {
+            api.streamSpeedTest(SpeedTestServer.AMSTERDAM, any(), any(), any())
+        }
+        coVerify(exactly = 1) {
+            api.streamSpeedTest(SpeedTestServer.MOSCOW, any(), any(), any())
+        }
     }
 
     @Test
@@ -272,6 +346,12 @@ internal class SpeedTestInteractorTest {
 
     private fun interactor(random: Random = Random(1)) =
         SpeedTestInteractor(api, deviceSettings, random)
+
+    private fun assertConfiguredAmsterdamHosts(urls: List<String>) {
+        val attemptedHosts = urls.map { URI(it).host }
+        assertEquals(CONFIGURED_AMSTERDAM_HOSTS, attemptedHosts.toSet())
+        assertEquals(attemptedHosts.size, attemptedHosts.toSet().size)
+    }
 
     private fun deviceResponse(serverOptions: List<SettingOption>): DeviceResponse =
         DeviceResponse(
@@ -304,4 +384,12 @@ internal class SpeedTestInteractorTest {
                 ),
             ),
         )
+
+    private companion object {
+        val CONFIGURED_AMSTERDAM_HOSTS = setOf(
+            "speed.ams-static-00.cdntogo.net",
+            "speed.ams-static-01.cdntogo.net",
+            "speed.ams-static-02.cdntogo.net",
+        )
+    }
 }
