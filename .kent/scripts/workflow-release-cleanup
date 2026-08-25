@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import stat
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -29,8 +30,12 @@ def _eligible_session(state: dict) -> tuple[str, dict[str, str]]:
         session_id = helper.require_string(row.get("session_id"), "cleanup_session_id")
         helper.require_string(row.get("session_name"), "session_name")
         helper.require_string(row.get("node_display_name"), "node_display_name")
-        if helper.session_targets_worktree(ROOT, session_id):
-            candidates.append((session_id, helper.session_identity(ROOT, session_id)))
+        status = helper.session_worktree_status(ROOT, session_id)
+        classification, identity = helper.classify_session_status(ROOT, status)
+        if classification == "active":
+            candidates.append((session_id, identity))
+        elif classification != "primary":
+            raise helper.ContractError("Kent live Session is foreign to the selected worktree")
     if len(candidates) != 1:
         raise helper.ContractError("exactly one stock Kent Session must target this task worktree")
     return candidates[0]
@@ -38,7 +43,10 @@ def _eligible_session(state: dict) -> tuple[str, dict[str, str]]:
 def _session_for_cleanup(state: dict, prior_session: str | None = None, prior_identity: dict[str, str] | None = None) -> tuple[str, dict[str, str]]:
     if prior_session is not None:
         prior_session = helper.require_string(prior_session, "cleanup_session_id")
-        current = helper.session_identity(ROOT, prior_session, moved=True)
+        status = helper.session_worktree_status(ROOT, prior_session)
+        classification, current = helper.classify_session_status(ROOT, status)
+        if classification != "primary":
+            raise helper.ContractError("prior cleanup Session is not in the exact post-leave primary state")
         if not isinstance(prior_identity, dict) or any(current.get(key) != prior_identity.get(key) for key in ("workspace_id", "workspace_name", "workspace_root")):
             raise helper.ContractError("prior cleanup Session workspace identity drifted")
         return prior_session, prior_identity
@@ -69,8 +77,8 @@ def _parse_janitor_report(raw: str, task_short_id: str) -> tuple[dict, str, str,
     if marker["task_short_id"] != task_short_id or marker_line != lines[marker_index]:
         raise helper.ContractError("Janitor terminal evidence marker has the wrong task or is not canonical")
     annotations = [line for index, line in enumerate(lines[1:], start=1) if index != marker_index]
-    if not annotations or any(not line.startswith("Janitor ") or not line.strip() for line in annotations):
-        raise helper.ContractError("Janitor cleanup_report suffix is not a bounded Janitor blocker")
+    if not annotations or not annotations[0].startswith("Janitor ") or any(not line.strip() or "\x00" in line for line in annotations):
+        raise helper.ContractError("Janitor cleanup_report annotations are not a bounded Janitor blocker")
     suffix = "\n".join(annotations)
     if len(suffix.encode("utf-8")) > 512 * 1024:
         raise helper.ContractError("Janitor cleanup_report annotations are unbounded")
@@ -78,7 +86,7 @@ def _parse_janitor_report(raw: str, task_short_id: str) -> tuple[dict, str, str,
         raise helper.ContractError("Janitor terminal marker redaction digest does not match the canonical report line")
     return previous, marker_line, suffix, lines[0]
 
-def _validate_carriers(state: dict, carrier: dict) -> tuple[dict | None, dict | None]:
+def _validate_carriers(state: dict, carrier: dict, *, require_release_run: bool = False) -> tuple[dict | None, dict | None]:
     publication = None
     if carrier.get("publication_report"):
         publication = helper.parse_publication_report(
@@ -112,18 +120,74 @@ def _validate_carriers(state: dict, carrier: dict) -> tuple[dict | None, dict | 
             raise helper.ContractError("cleanup release/publication report digest mismatch")
         if release["notes_digest"] != carrier.get("release_notes_digest"):
             raise helper.ContractError("cleanup release/notes digest mismatch")
+    if require_release_run:
+        if release is None:
+            raise helper.ContractError("published cleanup is missing its release report")
+        outer_run = helper.parse_run_carrier(carrier.get("release_run"))
+        if outer_run == helper.NOT_SELECTED_RUN or outer_run != release["run"]:
+            raise helper.ContractError("cleanup release_run carrier does not equal the nested release report run")
     return publication, release
 
 def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, object], kit: dict[str, object]) -> None:
     runtime_root = ROOT / ".kent" / "runtime"
     marker_digest = kit["canonical_sha256"](marker)
-    active = runtime_root / task_short_id / "evidence-ledger.jsonl"
-    tombstone = runtime_root / f".evidence-cleanup-{marker_digest}" / "evidence-ledger.jsonl"
-    candidates = [path for path in (active, tombstone) if path.exists()]
-    if len(candidates) != 1 or any(path.is_symlink() or not path.is_file() for path in candidates):
-        raise helper.ContractError("terminal evidence task ledger/tombstone is missing or ambiguous")
+    kent_root = ROOT / ".kent"
+    for path, label in ((kent_root, ".kent"), (runtime_root, ".kent/runtime")):
+        try:
+            metadata = path.lstat()
+        except (OSError, ValueError) as error:
+            raise helper.ContractError(f"terminal evidence {label} is missing") from error
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            raise helper.ContractError(f"terminal evidence {label} is unsafe")
+    expected_name = f".evidence-cleanup-{marker_digest}"
+    tombstone_names = []
     try:
-        records = [json.loads(line) for line in candidates[0].read_text(encoding="utf-8").splitlines() if line.strip()]
+        runtime_entries = list(runtime_root.iterdir())
+    except (OSError, ValueError) as error:
+        raise helper.ContractError("terminal evidence runtime directory is unreadable") from error
+    for entry in runtime_entries:
+        if entry.name.startswith(".evidence-cleanup-"):
+            if entry.name != expected_name:
+                raise helper.ContractError("terminal evidence has an unexpected cleanup tombstone")
+            tombstone_names.append(entry)
+    if len(tombstone_names) > 1:
+        raise helper.ContractError("terminal evidence has duplicate cleanup tombstones")
+    active_dir = runtime_root / task_short_id
+    tombstone_dir = runtime_root / expected_name
+    def component(path: Path, label: str, directory: bool, *, missing_ok: bool = False) -> bool:
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            if missing_ok:
+                return False
+            raise helper.ContractError(f"terminal evidence {label} is missing")
+        except (OSError, ValueError) as error:
+            raise helper.ContractError(f"terminal evidence {label} is unreadable") from error
+        if stat.S_ISLNK(metadata.st_mode) or (stat.S_ISDIR(metadata.st_mode) != directory):
+            raise helper.ContractError(f"terminal evidence {label} is unsafe")
+        return True
+    active_present = component(active_dir, "active task directory", True, missing_ok=True)
+    tombstone_present = component(tombstone_dir, "cleanup tombstone directory", True, missing_ok=True)
+    if bool(tombstone_names) != tombstone_present:
+        raise helper.ContractError("terminal evidence cleanup tombstone component is ambiguous")
+    if active_present and tombstone_present:
+        raise helper.ContractError("terminal evidence has both active ledger and cleanup tombstone")
+    if not active_present and not tombstone_present:
+        raise helper.ContractError("terminal evidence task ledger/tombstone is missing")
+    selected_dir = active_dir if active_present else tombstone_dir
+    ledger = selected_dir / "evidence-ledger.jsonl"
+    component(ledger, "evidence ledger", False)
+    try:
+        entries = list(selected_dir.iterdir())
+    except (OSError, ValueError) as error:
+        raise helper.ContractError("terminal evidence ledger directory is unreadable") from error
+    if any(entry.name != "evidence-ledger.jsonl" for entry in entries):
+        raise helper.ContractError("terminal evidence ledger directory has unexpected entries")
+    try:
+        raw_lines = ledger.read_text(encoding="utf-8").splitlines()
+        if not raw_lines or any(not line.strip() or "\x00" in line for line in raw_lines):
+            raise helper.ContractError("terminal evidence ledger contains empty or NUL data")
+        records = [json.loads(line) for line in raw_lines]
         readback = kit["validate_terminal_chain"](records, task_short_id=task_short_id)
     except Exception as error:
         raise helper.ContractError(f"terminal evidence ledger readback is invalid: {error}") from error
@@ -259,7 +323,7 @@ def main() -> int:
             operation_digest = fresh["binding"].provenance_fingerprint
             session, session_identity = _session_for_cleanup(state)
             carrier = payload
-        _validate_carriers(state, carrier)
+        _validate_carriers(state, carrier, require_release_run=edge["key"] == "release_release_published")
         declarations = helper.declarations(state["task"].get("body"))
         version = declarations.get("release_version")
         branch = carrier.get("branch_name") or declarations.get("release_branch", "")

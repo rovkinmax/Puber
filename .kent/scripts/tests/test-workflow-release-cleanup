@@ -86,6 +86,7 @@ def make_edge_fixture(base: Path, short_id: str, version: str, cleanup_node: dic
         ".kent/scripts/workflow-release-cleanup",
         ".kent/scripts/workflow-task-janitor",
         ".kent/scripts/tests/test-workflow-release-cleanup",
+        ".kent/scripts/tests/test-workflow-wait-github-release",
         ".kent/scripts/workflow_runtime_contracts.py",
         ".kent/workflows/puber-release.json",
         ".kent/workflows/puber-release.manifest.json",
@@ -332,6 +333,95 @@ with tempfile.TemporaryDirectory() as directory:
         "KENT_WORKTREE_WRAPPER": str(wrapper),
         "PUBER_FAKE_TASK": str(task_file),
     }
+    cleanup_mod.ROOT = managed
+    active_status = {
+        "target": {"WorkspaceID": workspace_id, "WorkspaceName": "Puber", "WorkspaceRoot": str(primary), "WorkspaceAvailability": "available", "Worktree": {"ID": "worktree-fixture", "Name": "PUB-99", "Root": str(managed), "Availability": "available"}, "CwdRelpath": ".", "EffectiveWorkdir": str(managed)},
+        "worktree": {"recorded_root": str(managed), "observed_root": str(managed), "display_name": "PUB-99", "recorded_branch_ref": "refs/heads/release/99.0.0"},
+        "problems": [],
+    }
+    primary_status = {
+        "target": {"WorkspaceID": workspace_id, "WorkspaceName": "Puber", "WorkspaceRoot": str(primary), "WorkspaceAvailability": "available", "Worktree": None, "CwdRelpath": ".", "EffectiveWorkdir": str(primary)},
+        "worktree": {"recorded_root": str(primary), "observed_root": str(primary)},
+        "problems": [],
+    }
+    status_calls = []
+    original_status = cleanup_mod.helper.session_worktree_status
+    cleanup_mod.helper.session_worktree_status = lambda _root, session: (status_calls.append(session) or json.loads(json.dumps(primary_status if session == "session-primary" else active_status)))
+    selection_state = {"task": {"live_sessions": [{"session_id": "session-primary", "session_name": "Primary", "node_display_name": "primary"}, {"session_id": session_id, "session_name": "Cleanup", "node_display_name": "cleanup"}]}}
+    dirty_primary = primary / "unrelated-primary-edit"
+    dirty_primary.write_text("unrelated", encoding="utf-8")
+    selected_session, selected_identity = cleanup_mod._eligible_session(selection_state)
+    assert selected_session == session_id and selected_identity["worktree_root"] == str(managed.resolve())
+    assert status_calls == ["session-primary", session_id]
+    assert cleanup_mod.helper.session_targets_worktree(managed, "session-primary") is False
+    assert status_calls == ["session-primary", session_id, "session-primary"]
+    status_calls.clear()
+    cleanup_mod.helper.session_worktree_status = lambda _root, session: (status_calls.append(session) or json.loads(json.dumps(primary_status)))
+    retry_session, retry_identity = cleanup_mod._session_for_cleanup({}, session_id, selected_identity)
+    assert retry_session == session_id and retry_identity == selected_identity and status_calls == [session_id]
+    dirty_primary.unlink()
+    cleanup_mod.helper.session_worktree_status = original_status
+
+    def expect_status_contract(label: str, payload: object) -> None:
+        original = cleanup_mod.helper.session_worktree_status
+        cleanup_mod.helper.session_worktree_status = lambda _root, _session: payload
+        try:
+            cleanup_mod.helper.session_targets_worktree(managed, "status-probe")
+        except cleanup_mod.helper.ContractError:
+            pass
+        else:
+            raise AssertionError(label)
+        finally:
+            cleanup_mod.helper.session_worktree_status = original
+
+    malformed_active = json.loads(json.dumps(active_status))
+    malformed_active["target"]["Worktree"].pop("ID")
+    expect_status_contract("malformed active status", malformed_active)
+    for label, mutation in (
+        ("wrong root", lambda value: value["target"].__setitem__("EffectiveWorkdir", str(primary))),
+        ("wrong branch", lambda value: value["worktree"].__setitem__("recorded_branch_ref", "refs/heads/foreign")),
+        ("wrong display", lambda value: value["worktree"].__setitem__("display_name", "foreign")),
+        ("foreign Workspace", lambda value: value["target"].__setitem__("WorkspaceRoot", str(root / "foreign-primary"))),
+    ):
+        candidate = json.loads(json.dumps(active_status))
+        mutation(candidate)
+        expect_status_contract(label, candidate)
+    expect_status_contract("non-object status", [])
+    original_bin = cleanup_mod.helper._kent_worktree_bin
+    cleanup_mod.helper._kent_worktree_bin = lambda _root=None: str(root / "missing-kent-worktree")
+    try:
+        try:
+            cleanup_mod.helper.session_targets_worktree(managed, "missing-wrapper")
+        except cleanup_mod.helper.ContractError:
+            pass
+        else:
+            raise AssertionError("missing wrapper status was accepted")
+    finally:
+        cleanup_mod.helper._kent_worktree_bin = original_bin
+    duplicate_state = {"task": {"live_sessions": [{"session_id": "a", "session_name": "A", "node_display_name": "cleanup"}, {"session_id": "b", "session_name": "B", "node_display_name": "cleanup"}]}}
+    original = cleanup_mod.helper.session_worktree_status
+    cleanup_mod.helper.session_worktree_status = lambda _root, _session: json.loads(json.dumps(active_status))
+    try:
+        try:
+            cleanup_mod._eligible_session(duplicate_state)
+        except cleanup_mod.helper.ContractError:
+            pass
+        else:
+            raise AssertionError("duplicate active Sessions were accepted")
+    finally:
+        cleanup_mod.helper.session_worktree_status = original
+    no_active_state = {"task": {"live_sessions": [{"session_id": "primary", "session_name": "P", "node_display_name": "cleanup"}]}}
+    cleanup_mod.helper.session_worktree_status = lambda _root, _session: json.loads(json.dumps(primary_status))
+    try:
+        try:
+            cleanup_mod._eligible_session(no_active_state)
+        except cleanup_mod.helper.ContractError:
+            pass
+        else:
+            raise AssertionError("no active Session was accepted")
+    finally:
+        cleanup_mod.helper.session_worktree_status = original
+
     cancel = {
         "_kent": {"task_id": task_id, "node_id": cleanup_node["id"], "transition_branch_key": "release_cancel_cleanup"},
         "pr_url": "",
@@ -352,6 +442,61 @@ with tempfile.TemporaryDirectory() as directory:
     assert marker["redaction"]["report_sha256"] == hashlib.sha256(initial_lines[0].encode()).hexdigest()
     ledger = managed / ".kent/runtime/PUB-99/evidence-ledger.jsonl"
     assert marker["final_hash"] == json.loads(ledger.read_text().splitlines()[-1])["event_hash"]
+    os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
+    ledger_kit = cleanup_mod.helper._kit_modules()
+    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
+    runtime_root = managed / ".kent/runtime"
+    expected_tombstone = runtime_root / f".evidence-cleanup-{ledger_kit['canonical_sha256'](marker)}"
+
+    def expect_ledger_rejected(label: str) -> None:
+        try:
+            cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
+        except cleanup_mod.helper.ContractError:
+            return
+        raise AssertionError(label)
+
+    wrong_tombstone = runtime_root / (".evidence-cleanup-" + "0" * 64)
+    wrong_tombstone.mkdir()
+    shutil.copy2(ledger, wrong_tombstone / "evidence-ledger.jsonl")
+    expect_ledger_rejected("wrong cleanup tombstone")
+    shutil.rmtree(wrong_tombstone)
+    shutil.copytree(runtime_root / "PUB-99", expected_tombstone)
+    expect_ledger_rejected("active ledger and exact tombstone both present")
+    shutil.rmtree(expected_tombstone)
+    active_dir = runtime_root / "PUB-99"
+    active_backup = runtime_root / "PUB-99.active-backup"
+    active_dir.rename(active_backup)
+    expect_ledger_rejected("neither active ledger nor tombstone")
+    active_backup.rename(active_dir)
+    ledger_bytes = ledger.read_bytes()
+    ledger.write_bytes(b"{malformed\n")
+    expect_ledger_rejected("malformed ledger")
+    ledger.write_bytes(ledger_bytes)
+    wrong_task_dir = runtime_root / "PUB-100"
+    wrong_task_dir.mkdir()
+    shutil.copy2(ledger, wrong_task_dir / "evidence-ledger.jsonl")
+    try:
+        cleanup_mod._validate_terminal_marker_ledger("PUB-100", marker, ledger_kit)
+    except cleanup_mod.helper.ContractError:
+        pass
+    else:
+        raise AssertionError("wrong task ledger accepted")
+    shutil.rmtree(wrong_task_dir)
+
+    def reject_symlink_component(path: Path, label: str) -> None:
+        backup = path.with_name(path.name + ".symlink-backup")
+        path.rename(backup)
+        path.symlink_to(backup.name, target_is_directory=backup.is_dir())
+        try:
+            expect_ledger_rejected(label)
+        finally:
+            path.unlink()
+            backup.rename(path)
+
+    reject_symlink_component(managed / ".kent", ".kent symlink")
+    reject_symlink_component(runtime_root, "runtime symlink")
+    reject_symlink_component(active_dir, "task directory symlink")
+    reject_symlink_component(ledger, "ledger symlink")
 
     cleanup_mod.ROOT = managed
     carrier_notes = {"schema": "puber_release_notes_v1", "path": ".todo/PUB-99/release-notes-ru.md", "mode": 0o600, "bytes": len(carrier_body), "sha256": hashlib.sha256(carrier_body).hexdigest(), "encoding": "UTF-8", "line_endings": "LF", "final_newline": True, "producer": ".kent/scripts/workflow-puber-release-publish", "previous_tag": "", "range": target, "target_commit": target}
@@ -414,6 +559,21 @@ with tempfile.TemporaryDirectory() as directory:
     assert "kent worktree leave" in first_output["blocker_reason"]
     assert first_output["cleanup_report"].splitlines()[:2] == initial_lines
     assert managed.exists() and (primary / ".git").exists()
+    assert not active_dir.exists() and expected_tombstone.is_dir()
+    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
+    tombstone_backup = expected_tombstone.with_name(expected_tombstone.name + ".backup")
+    expected_tombstone.rename(tombstone_backup)
+    expected_tombstone.symlink_to(tombstone_backup.name, target_is_directory=True)
+    expect_ledger_rejected("tombstone directory symlink")
+    expected_tombstone.unlink()
+    tombstone_backup.rename(expected_tombstone)
+    tombstone_ledger = expected_tombstone / "evidence-ledger.jsonl"
+    tombstone_ledger_backup = expected_tombstone / "evidence-ledger.jsonl.backup"
+    tombstone_ledger.rename(tombstone_ledger_backup)
+    tombstone_ledger.symlink_to(tombstone_ledger_backup.name)
+    expect_ledger_rejected("tombstone ledger symlink")
+    tombstone_ledger.unlink()
+    tombstone_ledger_backup.rename(tombstone_ledger)
 
     task["live_sessions"] = []
     task_file.write_text(json.dumps(task), encoding="utf-8")
@@ -426,6 +586,8 @@ with tempfile.TemporaryDirectory() as directory:
         "cleanup_mode": "report_only",
         "cleanup_report": first_output["cleanup_report"],
     }
+    multiline_report = initial_lines[0] + "\nJanitor first blocker\n  command detail: session still owns worktree\n  status detail: leave required\n" + initial_lines[1]
+    retry["cleanup_report"] = multiline_report
     retry_result = subprocess.run([str(managed / ".kent/scripts/workflow-release-cleanup")], cwd=managed, input=json.dumps(retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert retry_result.returncode == 0, retry_result.stderr
     retry_output = json.loads(retry_result.stdout)
@@ -433,6 +595,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert retry_output["cleanup_report"] != first_output["cleanup_report"]
     retry_lines = retry_output["cleanup_report"].splitlines()
     assert retry_lines[0] == initial_lines[0] and retry_lines[-1] == initial_lines[1]
+    assert retry_lines[1:-1] == ["Janitor first blocker", "  command detail: session still owns worktree", "  status detail: leave required"]
     assert json.loads(retry_output["cleanup_report"].splitlines()[0]) == initial_json
 
     second_janitor = subprocess.run(
@@ -472,6 +635,11 @@ with tempfile.TemporaryDirectory() as directory:
     third_janitor_output = json.loads(third_janitor.stdout)
     assert third_janitor_output["transition"] == "task_janitor_blocked"
     assert "still targets the task worktree" not in third_janitor_output.get("blocker_reason", "")
+    fourth_retry = {**retry, "cleanup_report": third_janitor_output["cleanup_report"]}
+    fourth_result = subprocess.run([str(managed / ".kent/scripts/workflow-release-cleanup")], cwd=managed, input=json.dumps(fourth_retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    assert fourth_result.returncode == 0, fourth_result.stderr
+    fourth_output = json.loads(fourth_result.stdout)
+    assert fourth_output["cleanup_report"].splitlines()[-1] == initial_lines[1]
 
     # Each cleanup edge below gets an independent managed worktree and runtime
     # ledger.  The Kit intentionally treats a terminal cleanup tombstone as a
@@ -556,6 +724,14 @@ with tempfile.TemporaryDirectory() as directory:
         assert release_result.returncode == 0, release_result.stderr
         release_output = json.loads(release_result.stdout)
         assert release_output["transition"] == "cleanup_task_janitor"
+        for label, mutation in (
+            ("outer release_run missing", lambda value: value.pop("release_run")),
+            ("outer release_run not selected", lambda value: value.__setitem__("release_run", cleanup_mod.helper.canonical_json(cleanup_mod.helper.NOT_SELECTED_RUN))),
+            ("outer release_run mismatched", lambda value: value.__setitem__("release_run", cleanup_mod.helper.canonical_json({**json.loads(value["release_run"]), "head_sha": "f" * 40}))),
+        ):
+            invalid_payload = dict(release_payload)
+            mutation(invalid_payload)
+            expect_rejected([str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")], edge["worktree"], invalid_payload, edge["env"], label)
         release_janitor = subprocess.run([str(edge["worktree"] / ".kent/scripts/workflow-task-janitor")], cwd=edge["worktree"], input=json.dumps({"workspace_path": str(edge["worktree"]), "branch_name": edge["branch"], "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "cleanup_mode": "report_only", "cleanup_session_id": edge["session_id"], "cleanup_report": release_output["cleanup_report"], "task_short_id": "PUB-101"}), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
         assert release_janitor.returncode == 0, release_janitor.stderr
         assert json.loads(release_janitor.stdout)["transition"] == "task_janitor_blocked"
@@ -589,4 +765,4 @@ with tempfile.TemporaryDirectory() as directory:
     expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_lines[0] + "\n" + marker_hash_line + "\nJanitor tampered"}, env, "tampered marker hash")
     expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_report + "\nTERMINAL_EVIDENCE_V1 extra"}, env, "extra terminal marker")
 
-print("workflow-release-cleanup: passed scenarios=cancel_edge,close_without_merge_edge,release_carrier_edge,selected_run_head_sha_branch_ref_boundary,janitor_active_block,post_leave_block,third_retry_block,marker_adversarial,unrelated_ledger")
+print("workflow-release-cleanup: passed scenarios=one_read_session_selection,malformed_status_matrix,dirty_primary,ledger_active_tombstone_safety,cancel_edge,close_without_merge_edge,release_carrier_edge,outer_release_run_binding,selected_run_head_sha_branch_ref_boundary,janitor_active_block,multiline_repeated_retries,post_leave_block,third_retry_block,marker_adversarial,unrelated_ledger")

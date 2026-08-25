@@ -158,7 +158,10 @@ def session_worktree_status(root: Path, session_id: str) -> dict[str, Any]:
     session_id = require_string(session_id, "cleanup_session_id")
     if any(character.isspace() for character in session_id) or "/" in session_id or "\\" in session_id:
         raise ContractError("cleanup_session_id is not safe")
-    result = run([_kent_worktree_bin(), "status", "--session", session_id, "--json"], cwd=root, env=child_env(), check=False)
+    try:
+        result = run([_kent_worktree_bin(), "status", "--session", session_id, "--json"], cwd=root, env=child_env(), check=False)
+    except (OSError, TypeError, ValueError) as error:
+        raise ContractError("Kent worktree status failed") from error
     if result.returncode != 0:
         raise ContractError(result.stderr.strip() or result.stdout.strip() or "Kent worktree status failed")
     return _json_one(result.stdout.encode("utf-8"))
@@ -167,20 +170,45 @@ def git_common_root(root: Path) -> Path:
     common = Path(git(root, "rev-parse", "--git-common-dir"))
     if not common.is_absolute():
         common = root / common
-    common = common.expanduser().resolve()
+    try:
+        common = common.expanduser().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        raise ContractError("Git common directory is not a safe path") from error
     if common.name != ".git":
         raise ContractError("Git common directory is not a .git directory")
     primary = common.parent
-    if git(primary, "rev-parse", "--show-toplevel") != str(primary) or git(primary, "status", "--porcelain=v1", "--untracked-files=all"):
-        raise ContractError("primary checkout is not the exact clean Git root")
+    try:
+        top_level = git(primary, "rev-parse", "--show-toplevel")
+    except ContractError:
+        raise
+    if top_level != str(primary):
+        raise ContractError("primary checkout is not the exact Git root")
     return primary
 
 def current_branch_ref(root: Path) -> str:
     branch = require_string(git(root, "symbolic-ref", "--quiet", "--short", "HEAD"), "current branch")
     return f"refs/heads/{branch}"
 
+def _resolved_status_path(value: Any, label: str) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        raise ContractError(f"{label} must be a non-empty path string")
+    try:
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            raise ContractError(f"{label} must be absolute")
+        return path.resolve()
+    except ContractError:
+        raise
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
+        raise ContractError(f"{label} is not a safe path") from error
+
+def _status_string(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ContractError(f"{label} must be a non-empty string")
+    return value
+
 def _validate_session_status(root: Path, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], Path]:
-    if set(payload) != {"target", "worktree", "problems"} or payload.get("problems") != []:
+    if not isinstance(payload, dict) or set(payload) != {"target", "worktree", "problems"} or payload.get("problems") != []:
         raise ContractError("Kent worktree status is not the exact clean closed shape")
     target = payload.get("target")
     worktree = payload.get("worktree")
@@ -189,53 +217,90 @@ def _validate_session_status(root: Path, payload: dict[str, Any]) -> tuple[dict[
     if not isinstance(worktree, dict) or set(worktree) not in ({"recorded_root", "observed_root", "display_name", "recorded_branch_ref"}, {"recorded_root", "observed_root"}):
         raise ContractError("Kent worktree status roots are not the stock closed shape")
     primary = git_common_root(root)
-    if not isinstance(target["WorkspaceID"], str) or not target["WorkspaceID"].strip() or not all(isinstance(target.get(key), str) and target[key].strip() for key in ("WorkspaceName", "WorkspaceRoot", "EffectiveWorkdir")) or target["WorkspaceAvailability"] != "available" or target["CwdRelpath"] != "." or Path(target["WorkspaceRoot"]).expanduser().resolve() != primary:
+    workspace_id = _status_string(target.get("WorkspaceID"), "WorkspaceID")
+    workspace_name = _status_string(target.get("WorkspaceName"), "WorkspaceName")
+    workspace_root = _resolved_status_path(target.get("WorkspaceRoot"), "WorkspaceRoot")
+    effective_workdir = _resolved_status_path(target.get("EffectiveWorkdir"), "EffectiveWorkdir")
+    if not isinstance(target["WorkspaceAvailability"], str) or not isinstance(target["CwdRelpath"], str) or target["WorkspaceAvailability"] != "available" or target["CwdRelpath"] != "." or workspace_root != primary:
         raise ContractError("Kent worktree status workspace identity drifted")
+    target["WorkspaceID"], target["WorkspaceName"] = workspace_id, workspace_name
+    target["WorkspaceRoot"], target["EffectiveWorkdir"] = str(workspace_root), str(effective_workdir)
     for key in ("recorded_root", "observed_root"):
-        if not isinstance(worktree[key], str) or not worktree[key].strip():
-            raise ContractError("Kent worktree status root is incomplete")
+        worktree[key] = str(_resolved_status_path(worktree.get(key), f"worktree.{key}"))
+    task_worktree = target.get("Worktree")
+    if task_worktree is not None:
+        if not isinstance(task_worktree, dict) or set(task_worktree) != {"ID", "Name", "Root", "Availability"}:
+            raise ContractError("Kent active Session Worktree is not the stock closed shape")
+        task_worktree["ID"] = _status_string(task_worktree.get("ID"), "Worktree.ID")
+        task_worktree["Name"] = _status_string(task_worktree.get("Name"), "Worktree.Name")
+        task_worktree["Root"] = str(_resolved_status_path(task_worktree.get("Root"), "Worktree.Root"))
+        if not isinstance(task_worktree["Availability"], str) or task_worktree["Availability"] != "available":
+            raise ContractError("Worktree.Availability is not available")
     if set(worktree) == {"recorded_root", "observed_root", "display_name", "recorded_branch_ref"}:
-        if worktree["display_name"] != target.get("Worktree", {}).get("Name") or worktree["recorded_branch_ref"] != current_branch_ref(root):
+        worktree["display_name"] = _status_string(worktree.get("display_name"), "worktree.display_name")
+        worktree["recorded_branch_ref"] = _status_string(worktree.get("recorded_branch_ref"), "worktree.recorded_branch_ref")
+        if not re.fullmatch(r"refs/heads/[A-Za-z0-9._/-]+", worktree["recorded_branch_ref"]) or not isinstance(task_worktree, dict) or worktree["display_name"] != task_worktree["Name"] or worktree["recorded_branch_ref"] != current_branch_ref(root):
             raise ContractError("Kent worktree status display or branch identity drifted")
     return target, worktree, primary
 
-def session_identity(root: Path, session_id: str, *, moved: bool = False) -> dict[str, str]:
-    payload = session_worktree_status(root, session_id)
+def classify_session_status(root: Path, payload: dict[str, Any]) -> tuple[str, dict[str, str]]:
     target, roots, primary = _validate_session_status(root, payload)
-    if moved:
-        if set(roots) != {"recorded_root", "observed_root"} or target["Worktree"] is not None or Path(target["EffectiveWorkdir"]).expanduser().resolve() != primary or any(Path(roots[key]).expanduser().resolve() != primary for key in ("recorded_root", "observed_root")):
-            raise ContractError("Kent post-leave Session identity is not exact")
-        return {
-            "workspace_id": target["WorkspaceID"],
-            "workspace_name": target["WorkspaceName"],
-            "workspace_root": str(primary),
-            "worktree_id": "",
-            "worktree_name": "",
-            "worktree_root": str(primary),
-            "recorded_branch_ref": "",
-        }
+    selected_root = _resolved_status_path(str(root), "selected worktree")
+    if target["Worktree"] is None:
+        if set(roots) != {"recorded_root", "observed_root"}:
+            raise ContractError("Kent post-leave Session roots are not exact")
+        if target["EffectiveWorkdir"] == str(primary) and all(roots[key] == str(primary) for key in ("recorded_root", "observed_root")):
+            return "primary", {
+                "workspace_id": target["WorkspaceID"],
+                "workspace_name": target["WorkspaceName"],
+                "workspace_root": str(primary),
+                "worktree_id": "",
+                "worktree_name": "",
+                "worktree_root": str(primary),
+                "recorded_branch_ref": "",
+            }
+        return "foreign", {}
     task_worktree = target.get("Worktree")
-    if set(roots) != {"recorded_root", "observed_root", "display_name", "recorded_branch_ref"} or not isinstance(task_worktree, dict) or set(task_worktree) != {"ID", "Name", "Root", "Availability"} or task_worktree["Availability"] != "available":
-        raise ContractError("Kent active Session Worktree is not exact")
-    if Path(target["EffectiveWorkdir"]).expanduser().resolve() != root or Path(task_worktree["Root"]).expanduser().resolve() != root or any(Path(roots[key]).expanduser().resolve() != root for key in ("recorded_root", "observed_root")):
-        raise ContractError("Kent active Session roots do not match the selected worktree")
-    return {
+    if set(roots) != {"recorded_root", "observed_root", "display_name", "recorded_branch_ref"}:
+        raise ContractError("Kent active Session roots are not exact")
+    identity = {
         "workspace_id": target["WorkspaceID"],
         "workspace_name": target["WorkspaceName"],
         "workspace_root": str(primary),
         "worktree_id": task_worktree["ID"],
         "worktree_name": task_worktree["Name"],
-        "worktree_root": str(root),
+        "worktree_root": task_worktree["Root"],
         "recorded_branch_ref": roots["recorded_branch_ref"],
     }
+    if target["EffectiveWorkdir"] == str(selected_root) and task_worktree["Root"] == str(selected_root) and all(roots[key] == str(selected_root) for key in ("recorded_root", "observed_root")):
+        return "active", identity
+    return "foreign", identity
+
+def session_identity(root: Path, session_id: str, *, moved: bool = False) -> dict[str, str]:
+    payload = session_worktree_status(root, session_id)
+    classification, identity = classify_session_status(root, payload)
+    expected = "primary" if moved else "active"
+    if classification != expected:
+        raise ContractError(f"Kent Session is not the exact {expected} state")
+    return identity
 
 def session_targets_worktree(root: Path, session_id: str) -> bool:
-    session_identity(root, session_id)
-    return True
+    payload = session_worktree_status(root, session_id)
+    classification, _ = classify_session_status(root, payload)
+    if classification == "active":
+        return True
+    if classification == "primary":
+        return False
+    raise ContractError("Kent Session is foreign to the selected worktree")
 
 def session_preserves_worktree_identity(root: Path, session_id: str) -> bool:
-    session_identity(root, session_id, moved=True)
-    return True
+    payload = session_worktree_status(root, session_id)
+    classification, _ = classify_session_status(root, payload)
+    if classification == "primary":
+        return True
+    if classification == "active":
+        return False
+    raise ContractError("Kent Session is foreign to the selected Workspace")
 
 def task_show(root: Path, task_id: str) -> dict[str, Any]:
     result = run([_kent_bin(root), "task", "show", task_id, "--project", PROJECT_ID, "--json"], cwd=root, env=child_env(), check=False)
@@ -818,7 +883,7 @@ def discover_release_run(root: Path, tag: str, target: str) -> dict[str, Any]:
     if len(matches) != 1:
         raise ContractError("release run is missing or ambiguous")
     row = matches[0]
-    if not isinstance(row.get("id"), int) or row["id"] <= 0 or not isinstance(row.get("run_attempt"), int) or row["run_attempt"] <= 0:
+    if isinstance(row.get("id"), bool) or not isinstance(row.get("id"), int) or row["id"] <= 0 or isinstance(row.get("run_attempt"), bool) or not isinstance(row.get("run_attempt"), int) or row["run_attempt"] <= 0:
         raise ContractError("discovered run identity is invalid")
     return {"schema": "puber_release_run_v1", "state": "selected", "repository": REPOSITORY, "workflow_path": ".github/workflows/release.yml", "workflow_name": "Release", "event": "push", "run_id": row["id"], "attempt": row["run_attempt"], "head_sha": target, "ref": f"refs/tags/{tag}", "head_branch": tag}
 
@@ -832,7 +897,7 @@ def read_release_run(root: Path, run: Mapping[str, Any], target: str, tag: str) 
     if not isinstance(jobs_response, dict) or not isinstance(jobs_response.get("jobs"), list) or len(jobs_response["jobs"]) != 1:
         raise ContractError("release jobs are missing, extra, or ambiguous")
     job = jobs_response["jobs"][0]
-    if not isinstance(job, dict) or job.get("name") != "Build & Publish" or job.get("status") != "completed" or job.get("conclusion") != "success" or not isinstance(job.get("id"), int) or job["id"] <= 0:
+    if not isinstance(job, dict) or job.get("name") != "Build & Publish" or job.get("status") != "completed" or job.get("conclusion") != "success" or isinstance(job.get("id"), bool) or not isinstance(job.get("id"), int) or job["id"] <= 0:
         raise ContractError("release job identity or outcome is invalid")
     return {"run_id": run["run_id"], "attempt": run["attempt"], "path": response["path"], "name": response["name"], "event": response["event"], "head_sha": response["head_sha"], "head_branch": response["head_branch"], "status": response["status"], "conclusion": response["conclusion"]}, {"id": job["id"], "name": job["name"], "status": job["status"], "conclusion": job["conclusion"], "attempt": run["attempt"]}
 
@@ -851,9 +916,11 @@ def read_release(root: Path, tag: str, target: str) -> dict[str, Any]:
         raise ContractError("GitHub Release asset names are not exact")
     normalized_assets = []
     for asset in assets:
-        if not isinstance(asset, dict) or not isinstance(asset.get("id"), int) or asset["id"] <= 0 or not isinstance(asset.get("size"), int) or asset["size"] <= 0 or not isinstance(asset.get("name"), str) or not isinstance(asset.get("browser_download_url"), str) or not asset["browser_download_url"].startswith("https://"):
+        if not isinstance(asset, dict) or isinstance(asset.get("id"), bool) or not isinstance(asset.get("id"), int) or asset["id"] <= 0 or isinstance(asset.get("size"), bool) or not isinstance(asset.get("size"), int) or asset["size"] <= 0 or not isinstance(asset.get("name"), str) or not isinstance(asset.get("browser_download_url"), str) or not asset["browser_download_url"].startswith("https://"):
             raise ContractError("GitHub Release asset identity/size is invalid")
         normalized_assets.append({"id": asset["id"], "name": asset["name"], "size": asset["size"], "browser_download_url": asset["browser_download_url"]})
+    if len({asset["id"] for asset in normalized_assets}) != len(normalized_assets):
+        raise ContractError("GitHub Release asset IDs are duplicated")
     apk = next(item for item in normalized_assets if item["name"].endswith(".apk"))
     checksum = next(item for item in normalized_assets if item["name"].endswith(".apk.sha256"))
     apk_bytes = gh_api_bytes(root, f"repos/{REPOSITORY}/releases/assets/{apk['id']}")
