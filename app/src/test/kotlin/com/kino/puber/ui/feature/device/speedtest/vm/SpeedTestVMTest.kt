@@ -19,6 +19,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
+import java.io.IOException
 
 internal class SpeedTestVMTest {
 
@@ -302,19 +304,29 @@ internal class SpeedTestVMTest {
     }
 
     @Test
-    fun start_ignoresDelayedCompletionFromCanceledPreviousSession() = runTest {
+    fun stop_blocksRestartAndIgnoresDelayedFailureUntilCanceledJobCompletes() = runTest {
         every { transportProvider.current() } returns ConnectionTransport.Ethernet
         val releaseCanceledSession = CompletableDeferred<Unit>()
         val completeRestartedSession = CompletableDeferred<Unit>()
         every { interactor.run() } returnsMany listOf(
             flow {
                 emit(SpeedTestEvent.Started(SpeedTestServer.AMSTERDAM))
+                emit(
+                    SpeedTestEvent.Progress(
+                        server = SpeedTestServer.AMSTERDAM,
+                        downloadedBytes = 20,
+                        expectedBytes = 100,
+                        elapsedMillis = 1_000,
+                        megabitsPerSecond = 0.16,
+                    ),
+                )
                 try {
                     awaitCancellation()
-                } finally {
+                } catch (cancellation: CancellationException) {
                     withContext(NonCancellable) {
                         releaseCanceledSession.await()
                     }
+                    throw IOException("delayed-cancellation-failure", cancellation)
                 }
             },
             flow {
@@ -340,13 +352,35 @@ internal class SpeedTestVMTest {
         vm.onAction(SpeedTestAction.Start)
         testScheduler.runCurrent()
 
-        assertEquals(SpeedTestSessionStatus.Running, vm.testStateValue.sessionStatus)
+        assertEquals(SpeedTestSessionStatus.Canceled, vm.testStateValue.sessionStatus)
         assertEquals(
-            SpeedTestRowStatus.Running,
-            vm.testStateValue.rows.first { it.server == SpeedTestServer.MOSCOW }.status,
+            SpeedTestRowStatus.Canceled,
+            vm.testStateValue.rows.first { it.server == SpeedTestServer.AMSTERDAM }.status,
         )
+        assertEquals(
+            20,
+            vm.testStateValue.rows.first { it.server == SpeedTestServer.AMSTERDAM }.downloadedBytes,
+        )
+        assertEquals(0, vm.testStateValue.rows.count { it.status == SpeedTestRowStatus.Running })
+        assertFalse(vm.testStateValue.canStart)
+        assertFalse(vm.testStateValue.canStop)
+        verify(exactly = 1) { interactor.run() }
 
         releaseCanceledSession.complete(Unit)
+        testScheduler.runCurrent()
+
+        assertEquals(SpeedTestSessionStatus.Canceled, vm.testStateValue.sessionStatus)
+        assertTrue(vm.testStateValue.canStart)
+        assertFalse(vm.testStateValue.canStop)
+        assertEquals(null, vm.testStateValue.sessionError)
+        assertFalse(vm.testStateValue.rows.any { it.errorMessage != null })
+        assertEquals(
+            20,
+            vm.testStateValue.rows.first { it.server == SpeedTestServer.AMSTERDAM }.downloadedBytes,
+        )
+        verify(exactly = 0) { errorHandler.map(any<IOException>()) }
+
+        vm.onAction(SpeedTestAction.Start)
         testScheduler.runCurrent()
 
         assertEquals(SpeedTestSessionStatus.Running, vm.testStateValue.sessionStatus)
@@ -354,6 +388,7 @@ internal class SpeedTestVMTest {
             SpeedTestRowStatus.Running,
             vm.testStateValue.rows.first { it.server == SpeedTestServer.MOSCOW }.status,
         )
+        verify(exactly = 2) { interactor.run() }
 
         completeRestartedSession.complete(Unit)
         testScheduler.advanceUntilIdle()

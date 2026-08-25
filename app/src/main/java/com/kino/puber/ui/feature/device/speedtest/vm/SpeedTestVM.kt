@@ -34,6 +34,7 @@ internal class SpeedTestVM(
     )
 
     private var sessionJob: Job? = null
+    private var sessionGeneration = 0L
     private val lastVisibleProgress = mutableMapOf<SpeedTestServer, Long>()
     private val lastPositiveMeasurements =
         mutableMapOf<SpeedTestServer, SpeedTestEvent.Progress>()
@@ -54,15 +55,25 @@ internal class SpeedTestVM(
 
     override fun onBackPressed() {
         if (stateValue.sessionStatus == SpeedTestSessionStatus.Running) {
-            sessionJob?.cancel()
             markCanceled()
+            sessionJob?.cancel()
         }
         router.back()
     }
 
     private fun start() {
-        if (sessionJob?.isActive == true) return
+        if (sessionJob != null) return
 
+        prepareSession()
+        val generation = ++sessionGeneration
+        val job = launch {
+            runSession(generation)
+        }
+        sessionJob = job
+        observeSessionCompletion(job)
+    }
+
+    private fun prepareSession() {
         lastVisibleProgress.clear()
         lastPositiveMeasurements.clear()
         updateViewState(
@@ -81,42 +92,50 @@ internal class SpeedTestVM(
                 sessionError = null,
             ),
         )
+    }
 
-        val job = launch {
-            try {
-                interactor.run().collect(::onEvent)
-                if (stateValue.sessionStatus == SpeedTestSessionStatus.Running) {
-                    updateViewState(
-                        stateValue.copy(
-                            sessionStatus = SpeedTestSessionStatus.Completed,
-                            canStart = true,
-                            canStop = false,
-                        ),
-                    )
+    private suspend fun runSession(generation: Long) {
+        try {
+            interactor.run().collect { event ->
+                if (isCurrentRunningSession(generation)) {
+                    onEvent(event)
                 }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                val message = failureMessage(error)
+            }
+            if (isCurrentRunningSession(generation)) {
                 updateViewState(
                     stateValue.copy(
-                        sessionStatus = SpeedTestSessionStatus.Failed,
+                        sessionStatus = SpeedTestSessionStatus.Completed,
                         canStart = true,
                         canStop = false,
-                        sessionError = message,
                     ),
                 )
-                throw error
             }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            if (!isCurrentRunningSession(generation)) return
+            val message = failureMessage(error)
+            updateViewState(
+                stateValue.copy(
+                    sessionStatus = SpeedTestSessionStatus.Failed,
+                    canStart = true,
+                    canStop = false,
+                    sessionError = message,
+                ),
+            )
         }
-        sessionJob = job
+    }
+
+    private fun observeSessionCompletion(job: Job) {
         job.invokeOnCompletion { cause ->
             if (sessionJob !== job) return@invokeOnCompletion
             sessionJob = null
-            if (cause is CancellationException &&
-                stateValue.sessionStatus == SpeedTestSessionStatus.Running
-            ) {
-                markCanceled()
+            when {
+                stateValue.sessionStatus == SpeedTestSessionStatus.Canceled ->
+                    updateViewState(stateValue.copy(canStart = true))
+
+                cause is CancellationException &&
+                    stateValue.sessionStatus == SpeedTestSessionStatus.Running -> markCanceled()
             }
         }
     }
@@ -141,9 +160,13 @@ internal class SpeedTestVM(
 
     private fun stop() {
         if (stateValue.sessionStatus != SpeedTestSessionStatus.Running) return
-        sessionJob?.cancel()
         markCanceled()
+        sessionJob?.cancel()
     }
+
+    private fun isCurrentRunningSession(generation: Long): Boolean =
+        sessionGeneration == generation &&
+            stateValue.sessionStatus == SpeedTestSessionStatus.Running
 
     private fun onEvent(event: SpeedTestEvent) {
         when (event) {
@@ -262,7 +285,7 @@ internal class SpeedTestVM(
                     }
                 },
                 sessionStatus = SpeedTestSessionStatus.Canceled,
-                canStart = true,
+                canStart = sessionJob == null,
                 canStop = false,
             ),
         )
