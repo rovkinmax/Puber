@@ -1,6 +1,79 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" ?>
 <SmellBaseline>
-    <ManuallySuppressedIssues/>
-    <CurrentIssues>
-    </CurrentIssues>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>BracesOnIfStatements:CollectionsScreenContent.kt$else</ID>
+    <ID>BracesOnIfStatements:CollectionsScreenContent.kt$if</ID>
+    <ID>BracesOnIfStatements:DeviceSettingsItems.kt$else</ID>
+    <ID>BracesOnIfStatements:FavoriteItemUIMapper.kt$FavoriteItemUIMapper$if</ID>
+    <ID>BracesOnIfStatements:HomeScreenContent.kt$else</ID>
+    <ID>BracesOnIfStatements:HomeScreenContent.kt$if</ID>
+    <ID>BracesOnIfStatements:MainSideMenuPreview.kt$else</ID>
+    <ID>BracesOnIfStatements:Paginator.kt$Paginator$else</ID>
+    <ID>BracesOnIfStatements:SectionRow.kt$else</ID>
+    <ID>BracesOnIfStatements:SectionRow.kt$if</ID>
+    <ID>BracesOnWhenStatements:BookmarksScreenContent.kt$-&gt;</ID>
+    <ID>BracesOnWhenStatements:CollectionsScreenContent.kt$-&gt;</ID>
+    <ID>BracesOnWhenStatements:DeviceSettingsVM.kt$DeviceSettingsVM$-&gt;</ID>
+    <ID>BracesOnWhenStatements:HomeScreenContent.kt$-&gt;</ID>
+    <ID>BracesOnWhenStatements:HomeVM.kt$HomeVM$-&gt;</ID>
+    <ID>BracesOnWhenStatements:Paginator.kt$Paginator$-&gt;</ID>
+    <ID>BracesOnWhenStatements:SectionRow.kt$-&gt;</ID>
+    <ID>BracesOnWhenStatements:TvSafeButton.kt$-&gt;</ID>
+    <ID>BracesOnWhenStatements:UpdatePromptVM.kt$UpdatePromptVM$-&gt;</ID>
+    <ID>ComplexCondition:AppUpdateDownload.kt$AppUpdateDownloader$char.isLetterOrDigit() || char == '.' || char == '_' || char == '-'</ID>
+    <ID>CyclomaticComplexMethod:KinoPubApiClient.kt$KinoPubApiClient$suspend fun downloadUpdateAsset( url: String, targetFile: File, onProgress: (Int) -&gt; Unit, ): Result&lt;File&gt;</ID>
+    <ID>LargeClass:KinoPubApiClient.kt$KinoPubApiClient</ID>
+    <ID>LargeClass:PlayerVM.kt$PlayerVM : PuberVM</ID>
+    <ID>LongMethod:CollectionCard.kt$@Composable internal fun CollectionCard( state: CollectionUIState, onClick: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:DeviceSettingsContent.kt$@Composable private fun DeviceSettingsList( state: DeviceSettingsState.Success, apiDomain: ApiDomainDialogState, onAction: (UIAction) -&gt; Unit, )</ID>
+    <ID>LongMethod:DeviceSettingsItems.kt$@Composable internal fun SettingListItem( setting: DeviceSettingUIModel.TypeList, isExpanded: Boolean, savingOptionId: Int?, onToggleExpand: () -&gt; Unit, onOptionSelect: (Int) -&gt; Unit, listState: LazyListState? = null, lazyItemIndex: Int = 0, )</ID>
+    <ID>LongMethod:HeroCarousel.kt$@Composable fun HeroCarousel( items: List&lt;HeroItemState&gt;, onItemClick: (Int) -&gt; Unit, modifier: Modifier = Modifier, onFocusedItemChanged: (Int) -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:HeroCarousel.kt$@Composable private fun HeroItem( state: HeroItemState, onClick: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:HomeScreenContent.kt$@Composable private fun HomeContent( state: HomeViewState.Content, onAction: (UIAction) -&gt; Unit, onHeroClick: (Int) -&gt; Unit, onCollectionClick: (Int, String) -&gt; Unit, lazyListState: LazyListState, )</ID>
+    <ID>LongMethod:KinoPubApiClient.kt$KinoPubApiClient$private fun createHttpClient(): HttpClient</ID>
+    <ID>LongMethod:SectionRow.kt$@Composable private fun ContentSectionCards( state: SectionState.Content, isTargetRow: Boolean, shouldRequestInitialFocus: Boolean, rowHasFocusRef: BooleanArray, contentFocusRequester: FocusRequester, rowKey: String, onItemClick: (VideoItemUIState) -&gt; Unit, onItemContextMenu: (VideoItemUIState) -&gt; Unit, onItemFocused: (VideoItemUIState) -&gt; Unit, onSectionFocused: () -&gt; Unit, onLoadMore: () -&gt; Unit, onShowAll: (() -&gt; Unit)?, onRowEmpty: () -&gt; Unit, )</ID>
+    <ID>LongMethod:TopTabMainContent.kt$@OptIn(ExperimentalComposeUiApi::class) @Composable internal fun TopTabMainContent( state: MainViewState, onAction: (UIAction) -&gt; Unit, tabRouter: TabRouter, tabAppRouterHolder: TabAppRouterHolder, )</ID>
+    <ID>LongMethod:TvSafeButton.kt$@Composable internal fun TvSafeButton( text: String, onClick: () -&gt; Unit, modifier: Modifier = Modifier, enabled: Boolean = true, primary: Boolean = false, )</ID>
+    <ID>LongMethod:VideoItemGridDetails.kt$@Composable fun VideoDetailsDescription( modifier: Modifier, state: VideoDetailsUIState, descriptionMaxLines: Int = Int.MAX_VALUE, )</ID>
+    <ID>LongMethod:VideoItemGridDetails.kt$@Composable private fun VideoDetailsPoster( modifier: Modifier, imageUrl: String, imageFallbackUrls: List&lt;String&gt;, )</ID>
+    <ID>LongMethod:VideoItemHorizontal.kt$@Composable fun VideoItemHorizontal( modifier: Modifier = Modifier, state: VideoItemUIState, onClick: () -&gt; Unit, onContextMenu: (() -&gt; Unit)? = null, )</ID>
+    <ID>LoopWithTooManyJumpStatements:DeviceInfoRepository.kt$DeviceInfoRepository$for</ID>
+    <ID>MagicNumber:AppUpdateDownload.kt$AppUpdateChecksum$0xff</ID>
+    <ID>MagicNumber:BookmarksScreenPreview.kt$6</ID>
+    <ID>MagicNumber:BookmarksScreenPreview.kt$7</ID>
+    <ID>MagicNumber:CollectionsScreenContent.kt$6</ID>
+    <ID>MagicNumber:CollectionsScreenPreview.kt$9</ID>
+    <ID>MagicNumber:CryptoPreferenceRepository.kt$CryptoPreferenceRepository$12</ID>
+    <ID>MagicNumber:CryptoPreferenceRepository.kt$CryptoPreferenceRepository$128</ID>
+    <ID>MagicNumber:CryptoPreferenceRepository.kt$CryptoPreferenceRepository$256</ID>
+    <ID>MagicNumber:DeviceInfoRepository.kt$DeviceInfoRepository$2160</ID>
+    <ID>MagicNumber:DeviceInfoRepository.kt$DeviceInfoRepository$3840</ID>
+    <ID>MagicNumber:HeroCarousel.kt$50</ID>
+    <ID>MagicNumber:HeroCarousel.kt$5000</ID>
+    <ID>MagicNumber:IdGenerator.kt$IdGenerator$0x00FFFFFF</ID>
+    <ID>MagicNumber:LauncherScreen.kt$0xFF1A0E2E</ID>
+    <ID>MagicNumber:LauncherScreen.kt$LauncherScreen$0.8f</ID>
+    <ID>MagicNumber:PuberApp.kt$PuberApp$0.15</ID>
+    <ID>MagicNumber:PuberApp.kt$PuberApp$1024</ID>
+    <ID>MagicNumber:VideoItemUIMapper.kt$VideoItemUIMapper$10</ID>
+    <ID>MagicNumber:VideoItemUIMapper.kt$VideoItemUIMapper$3600</ID>
+    <ID>MagicNumber:VideoItemUIMapper.kt$VideoItemUIMapper$60</ID>
+    <ID>MagicNumber:VideoItemUIMapper.kt$VideoItemUIMapper$86400</ID>
+    <ID>MatchingDeclarationName:AppUpdateModels.kt$AvailableUpdate</ID>
+    <ID>MatchingDeclarationName:ConnectivityPlugin.kt$NoConnectivityException : IOException</ID>
+    <ID>MatchingDeclarationName:MainDispatcherRule.kt$MainDispatcherExtension : BeforeEachCallbackAfterEachCallback</ID>
+    <ID>MatchingDeclarationName:PreviewLorem.kt$Lorem</ID>
+    <ID>MatchingDeclarationName:TvContextMenuState.kt$TvContextMenuAction</ID>
+    <ID>MaxLineLength:DeviceSettingsRepository.kt$DeviceSettingsRepository$DeviceSettingType.MIXED_PLAYLIST -&gt; kinoPubApiClient.updateDeviceSettings(deviceId, mixedPlaylist = optionId)</ID>
+    <ID>MaxLineLength:DeviceSettingsRepository.kt$DeviceSettingsRepository$DeviceSettingType.SERVER_LOCATION -&gt; kinoPubApiClient.updateDeviceSettings(deviceId, serverLocation = optionId)</ID>
+    <ID>MaxLineLength:DeviceSettingsRepository.kt$DeviceSettingsRepository$DeviceSettingType.STREAMING_TYPE -&gt; kinoPubApiClient.updateDeviceSettings(deviceId, streamingType = optionId)</ID>
+    <ID>MaxLineLength:ShowAllScreenContent.kt$var contextMenuItem by remember { mutableStateOf&lt;com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState?&gt;(null) }</ID>
+    <ID>MaxLineLength:VideoItemHorizontal.kt$val</ID>
+    <ID>NestedBlockDepth:DeviceInfoRepository.kt$DeviceInfoRepository$override fun isHevcHardwareDecodingSupported(): Boolean</ID>
+    <ID>ReturnCount:AppUpdateDownload.kt$AppUpdateDownloader$suspend fun download( update: AvailableUpdate, onProgress: (AppUpdateDownload.Progress) -&gt; Unit, ): AppUpdateDownload</ID>
+    <ID>ReturnCount:AppUpdateRepository.kt$AppUpdateRepository$private fun GitHubReleaseResponse.toAvailableUpdate(currentVersion: AppVersion): AvailableUpdate?</ID>
+    <ID>ReturnCount:AppVersion.kt$AppVersion.Companion$fun parse(raw: String): AppVersion?</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:LinkingDebugTree.kt$LinkingDebugTree$Throwable()</ID>
+  </CurrentIssues>
 </SmellBaseline>
