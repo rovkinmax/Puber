@@ -237,7 +237,7 @@ def attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, kin
         authority = {"kind":"kent_transition","task_short_id":state["task_short_id"],"workflow_id":WORKFLOW_ID,"workflow_revision":WORKFLOW_REVISION,"project_id":PROJECT_ID,"approval_authority":"publish-release","authority_transition":branch}
     else:
         execution = {"kind":"github_run", **dict(run_tuple)}
-        authority = {"kind":"github_run", **dict(run_tuple)}
+        authority = {"kind":"github_run", **{key: value for key, value in run_tuple.items() if key != "repository"}}
     context = kit["capture_runtime_execution_context"](selected, execution)
     binding = kit["capture_runtime_authority_binding"](selected, captures, context, authority)
     canonicalized = None
