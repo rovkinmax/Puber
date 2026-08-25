@@ -9,13 +9,21 @@ import com.kino.puber.ui.feature.main.model.MainAction
 import com.kino.puber.ui.feature.main.model.MainUIMapper
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.vm.MainVM
+import com.kino.puber.util.MainDispatcherExtension
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.RegisterExtension
 
 internal class MainScreenComponentContractTest {
+
+    companion object {
+        @JvmField
+        @RegisterExtension
+        val mainDispatcher = MainDispatcherExtension()
+    }
 
     @Test
     fun searchClicked_navigatesToSearchWithoutChangingMainState() {
