@@ -179,6 +179,26 @@ def session_targets_worktree(root: Path, session_id: str) -> bool:
     normalized = {key: Path(value).expanduser().resolve() for key, value in values.items()}
     return all(value == root for value in normalized.values())
 
+def session_preserves_worktree_identity(root: Path, session_id: str) -> bool:
+    payload = session_worktree_status(root, session_id)
+    target = payload.get("target")
+    worktree = payload.get("worktree")
+    if not isinstance(target, dict) or not isinstance(worktree, dict):
+        raise ContractError("Kent worktree status is missing target/worktree objects")
+    recorded = worktree.get("recorded_root")
+    observed = worktree.get("observed_root")
+    effective = target.get("EffectiveWorkdir")
+    if any(not isinstance(value, str) or not value.strip() for value in (recorded, observed, effective)):
+        raise ContractError("Kent worktree status has incomplete retry identity evidence")
+    recorded_path = Path(recorded).expanduser().resolve()
+    observed_path = Path(observed).expanduser().resolve()
+    effective_path = Path(effective).expanduser().resolve()
+    if recorded_path != root or observed_path != root:
+        return False
+    if effective_path == root or root in effective_path.parents:
+        return False
+    return True
+
 def task_show(root: Path, task_id: str) -> dict[str, Any]:
     result = run([_kent_bin(root), "task", "show", task_id, "--project", PROJECT_ID, "--json"], cwd=root, env=child_env(), check=False)
     if result.returncode != 0:
@@ -278,7 +298,10 @@ def _kit_modules() -> dict[str, Any]:
         path = Path(importlib.import_module(name).__file__).resolve()
         if kit_root not in path.parents:
             raise ContractError("Kit import escaped the selected root")
-    return {name: getattr(workflowkit, name) for name in ("ProjectProfile","ReleaseSpec","NormalizedGitHubWorkflowSourceV1","preflight_project_revision","capture_runtime_execution_context","capture_runtime_authority_binding","validate_operation_jobs","canonicalize_publication_operation")}
+    runtime = importlib.import_module("workflowkit.runtime")
+    result = {name: getattr(workflowkit, name) for name in ("ProjectProfile","ReleaseSpec","NormalizedGitHubWorkflowSourceV1","preflight_project_revision","capture_runtime_execution_context","capture_runtime_authority_binding","validate_operation_jobs","canonicalize_publication_operation")}
+    result.update({name: getattr(runtime, name) for name in ("validate_terminal_seal_request","validate_terminal_marker","parse_terminal_marker_line","terminal_marker_line","validate_cleanup_report")})
+    return result
 
 def _external_captures(root: Path, profile: Any, selected: Any) -> list[tuple[str, str, bytes]]:
     captures = []
@@ -578,8 +601,15 @@ def parse_publication_report(raw: Any, digest: Any, *, expected_pr: str | None =
         raise ContractError("publication report PR/target drifted")
     if not SHA1.fullmatch(str(value.get("target_commit", ""))) or value.get("pr_url") and canonical_pr_url(value["pr_url"]) != value["pr_url"]:
         raise ContractError("publication report identity is invalid")
-    if value.get("tag_phase") not in {"prepared", "tag_published"} or not isinstance(value.get("tag_status"), str) or not isinstance(value.get("unresolved"), bool):
+    phase = value.get("tag_phase")
+    tag_status = value.get("tag_status")
+    unresolved = value.get("unresolved")
+    if phase not in {"prepared", "tag_published"} or not isinstance(tag_status, str) or not isinstance(unresolved, bool):
         raise ContractError("publication report phase is invalid")
+    if phase == "prepared" and (tag_status != "prepared" or unresolved is not True):
+        raise ContractError("prepared publication report status is not exact")
+    if phase == "tag_published" and tag_status not in {"already_present_exact", "created_and_pushed", "local_tag_pushed", "push_ack_recovered"}:
+        raise ContractError("tag-published publication report status is not exact")
     if not isinstance(value.get("notes_report"), dict):
         raise ContractError("publication report notes report is not an object")
     if root and task_short_id:
@@ -788,7 +818,10 @@ def read_release(root: Path, tag: str, target: str) -> dict[str, Any]:
     checksum_bytes = gh_api_bytes(root, f"repos/{REPOSITORY}/releases/assets/{checksum['id']}")
     if len(apk_bytes) != apk["size"] or len(checksum_bytes) != checksum["size"]:
         raise ContractError("downloaded release asset sizes do not match metadata")
-    checksum_text = checksum_bytes.decode("utf-8")
+    try:
+        checksum_text = checksum_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ContractError("checksum asset is not valid UTF-8") from error
     lines = checksum_text.splitlines()
     if len(lines) != 1:
         raise ContractError("checksum asset is not one exact line")
