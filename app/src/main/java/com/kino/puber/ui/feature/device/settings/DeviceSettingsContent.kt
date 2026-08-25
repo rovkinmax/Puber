@@ -132,7 +132,6 @@ private fun DeviceSettingsList(
     val speedTestLauncherFocusRequester = remember { FocusRequester() }
     val rootAnchorRestorePending = LocalRootAnchorRestorePending.current
     val onRootAnchorFocusRestored = LocalRootAnchorFocusRestored.current
-    val headerItemsCount = 5
     val rootReturnFocusRestorer = if (rootAnchorRestorePending) {
         Modifier.focusRestorer(speedTestLauncherFocusRequester)
     } else {
@@ -148,6 +147,34 @@ private fun DeviceSettingsList(
         }
     }
 
+    DeviceSettingsLazyColumn(
+        state = state,
+        apiDomain = apiDomain,
+        onAction = onAction,
+        listState = listState,
+        initialFocusRequester = initialFocusRequester,
+        rootReturnFocusRestorer = rootReturnFocusRestorer,
+        speedTestLauncherModifier = Modifier
+            .focusRequester(speedTestLauncherFocusRequester)
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    onRootAnchorFocusRestored()
+                }
+            }
+            .testTag(SPEED_TEST_LAUNCHER_TEST_TAG),
+    )
+}
+
+@Composable
+private fun DeviceSettingsLazyColumn(
+    state: DeviceSettingsState.Success,
+    apiDomain: ApiDomainDialogState,
+    onAction: (UIAction) -> Unit,
+    listState: LazyListState,
+    initialFocusRequester: FocusRequester,
+    rootReturnFocusRestorer: Modifier,
+    speedTestLauncherModifier: Modifier,
+) {
     LazyColumn(
         state = listState,
         modifier = Modifier
@@ -159,155 +186,18 @@ private fun DeviceSettingsList(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item {
-            Column(modifier = Modifier.selectableGroup()) {
-                Text(
-                    text = stringResource(R.string.device_settings_current_device),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                DeviceInfoCard(device = state.device)
-            }
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-
-        item {
-            Column {
-                Text(
-                    text = stringResource(R.string.api_domain_settings_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = stringResource(R.string.api_domain_settings_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        item {
-            LocalActionItem(
-                label = stringResource(R.string.api_domain_open_action),
-                value = apiDomain.currentDomain,
-                onClick = { onAction(DeviceSettingsActions.OpenApiDomainDialog) },
-            )
-        }
-        item {
-            Text(
-                text = stringResource(R.string.device_settings_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        itemsIndexed(state.settings.settingsList) { index, setting ->
-            when (setting) {
-                is DeviceSettingUIModel.TypeValue -> SettingSwitchItem(
-                    setting = setting,
-                    isSaving = state.savingToggleType == setting.type,
-                    onToggle = {
-                        onAction(DeviceSettingsActions.ChangeSettingValue(setting.copy(value = !setting.value)))
-                    },
-                )
-
-                is DeviceSettingUIModel.TypeList -> SettingListItem(
-                    setting = setting,
-                    isExpanded = setting.type == state.expandedType,
-                    savingOptionId = if (setting.type == state.expandedType) state.savingOptionId else null,
-                    onToggleExpand = { onAction(DeviceSettingsActions.ToggleListExpand(setting)) },
-                    onOptionSelect = { optionId ->
-                        onAction(DeviceSettingsActions.SelectOption(setting.type, optionId))
-                    },
-                    listState = listState,
-                    lazyItemIndex = headerItemsCount + index,
-                )
-            }
-        }
+        deviceSettingsHeaderItems(
+            device = state.device,
+            apiDomain = apiDomain,
+            onAction = onAction,
+        )
+        deviceSettingItems(state, listState, onAction)
         localPreferencesItems(state, onAction)
-
-        // Skip segments section (local-only preferences)
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-
-        item {
-            Column {
-                Text(
-                    text = stringResource(R.string.settings_skip_segments_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = stringResource(R.string.settings_skip_segments_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        item {
-            LocalToggleItem(
-                label = stringResource(R.string.settings_skip_intro),
-                checked = state.skipIntroEnabled,
-                onToggle = { onAction(DeviceSettingsActions.ToggleSkipIntro) },
-            )
-        }
-        item {
-            LocalToggleItem(
-                label = stringResource(R.string.settings_skip_recap),
-                checked = state.skipRecapEnabled,
-                onToggle = { onAction(DeviceSettingsActions.ToggleSkipRecap) },
-            )
-        }
-        item {
-            LocalToggleItem(
-                label = stringResource(R.string.settings_skip_credits),
-                checked = state.skipCreditsEnabled,
-                onToggle = { onAction(DeviceSettingsActions.ToggleSkipCredits) },
-            )
-        }
-
-        // Navigation mode section
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-        item {
-            Column {
-                Text(
-                    text = stringResource(R.string.settings_navigation_mode),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = stringResource(R.string.settings_navigation_restart_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        item {
-            NavigationModeRadioGroup(
-                currentMode = state.navigationMode,
-                onModeSelected = { mode ->
-                    onAction(DeviceSettingsActions.ChangeNavigationMode(mode))
-                },
-            )
-        }
-
+        skipSegmentsItems(state, onAction)
+        navigationModeItems(state, onAction)
         applicationItems(
             state = state,
-            speedTestLauncherModifier = Modifier
-                .focusRequester(speedTestLauncherFocusRequester)
-                .onFocusChanged { focusState ->
-                    if (focusState.isFocused) {
-                        onRootAnchorFocusRestored()
-                    }
-                }
-                .testTag(SPEED_TEST_LAUNCHER_TEST_TAG),
+            speedTestLauncherModifier = speedTestLauncherModifier,
             onAction = onAction,
         )
     }
@@ -315,6 +205,161 @@ private fun DeviceSettingsList(
 
 internal const val DEVICE_SETTINGS_LIST_TEST_TAG = "device_settings_list"
 internal const val SPEED_TEST_LAUNCHER_TEST_TAG = "speed_test_launcher"
+private const val DEVICE_SETTINGS_HEADER_ITEMS_COUNT = 5
+
+private fun LazyListScope.deviceSettingsHeaderItems(
+    device: DeviceUi,
+    apiDomain: ApiDomainDialogState,
+    onAction: (UIAction) -> Unit,
+) {
+    item {
+        Column(modifier = Modifier.selectableGroup()) {
+            Text(
+                text = stringResource(R.string.device_settings_current_device),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            DeviceInfoCard(device = device)
+        }
+    }
+    item {
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+    item {
+        Column {
+            Text(
+                text = stringResource(R.string.api_domain_settings_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = stringResource(R.string.api_domain_settings_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    item {
+        LocalActionItem(
+            label = stringResource(R.string.api_domain_open_action),
+            value = apiDomain.currentDomain,
+            onClick = { onAction(DeviceSettingsActions.OpenApiDomainDialog) },
+        )
+    }
+    item {
+        Text(
+            text = stringResource(R.string.device_settings_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+private fun LazyListScope.deviceSettingItems(
+    state: DeviceSettingsState.Success,
+    listState: LazyListState,
+    onAction: (UIAction) -> Unit,
+) {
+    itemsIndexed(state.settings.settingsList) { index, setting ->
+        when (setting) {
+            is DeviceSettingUIModel.TypeValue -> SettingSwitchItem(
+                setting = setting,
+                isSaving = state.savingToggleType == setting.type,
+                onToggle = {
+                    onAction(DeviceSettingsActions.ChangeSettingValue(setting.copy(value = !setting.value)))
+                },
+            )
+
+            is DeviceSettingUIModel.TypeList -> SettingListItem(
+                setting = setting,
+                isExpanded = setting.type == state.expandedType,
+                savingOptionId = if (setting.type == state.expandedType) state.savingOptionId else null,
+                onToggleExpand = { onAction(DeviceSettingsActions.ToggleListExpand(setting)) },
+                onOptionSelect = { optionId ->
+                    onAction(DeviceSettingsActions.SelectOption(setting.type, optionId))
+                },
+                listState = listState,
+                lazyItemIndex = DEVICE_SETTINGS_HEADER_ITEMS_COUNT + index,
+            )
+        }
+    }
+}
+
+private fun LazyListScope.skipSegmentsItems(
+    state: DeviceSettingsState.Success,
+    onAction: (UIAction) -> Unit,
+) {
+    item {
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+    item {
+        Column {
+            Text(
+                text = stringResource(R.string.settings_skip_segments_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = stringResource(R.string.settings_skip_segments_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_skip_intro),
+            checked = state.skipIntroEnabled,
+            onToggle = { onAction(DeviceSettingsActions.ToggleSkipIntro) },
+        )
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_skip_recap),
+            checked = state.skipRecapEnabled,
+            onToggle = { onAction(DeviceSettingsActions.ToggleSkipRecap) },
+        )
+    }
+    item {
+        LocalToggleItem(
+            label = stringResource(R.string.settings_skip_credits),
+            checked = state.skipCreditsEnabled,
+            onToggle = { onAction(DeviceSettingsActions.ToggleSkipCredits) },
+        )
+    }
+}
+
+private fun LazyListScope.navigationModeItems(
+    state: DeviceSettingsState.Success,
+    onAction: (UIAction) -> Unit,
+) {
+    item {
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+    item {
+        Column {
+            Text(
+                text = stringResource(R.string.settings_navigation_mode),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = stringResource(R.string.settings_navigation_restart_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    item {
+        NavigationModeRadioGroup(
+            currentMode = state.navigationMode,
+            onModeSelected = { mode ->
+                onAction(DeviceSettingsActions.ChangeNavigationMode(mode))
+            },
+        )
+    }
+}
 
 private fun LazyListScope.applicationItems(
     state: DeviceSettingsState.Success,
