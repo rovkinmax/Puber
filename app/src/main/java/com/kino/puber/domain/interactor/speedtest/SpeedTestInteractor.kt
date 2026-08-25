@@ -6,11 +6,11 @@ import java.util.Locale
 import kotlin.coroutines.coroutineContext
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.flow
 
 internal class SpeedTestInteractor(
     private val apiClient: KinoPubApiClient,
@@ -36,12 +36,12 @@ internal class SpeedTestInteractor(
         }
     }
 
-    fun run(): Flow<SpeedTestEvent> = flow {
+    fun run(): Flow<SpeedTestEvent> = channelFlow {
         for (server in SpeedTestServer.knownServers) {
             coroutineContext.ensureActive()
-            emit(SpeedTestEvent.Started(server))
+            send(SpeedTestEvent.Started(server))
             runServer(server)?.let { error ->
-                emit(
+                send(
                     SpeedTestEvent.Failed(
                         server = server,
                         cause = error,
@@ -51,7 +51,7 @@ internal class SpeedTestInteractor(
         }
     }
 
-    private suspend fun FlowCollector<SpeedTestEvent>.runServer(
+    private suspend fun ProducerScope<SpeedTestEvent>.runServer(
         server: SpeedTestServer,
     ): Throwable? {
         var lastFailure: Throwable? = null
@@ -69,7 +69,7 @@ internal class SpeedTestInteractor(
                     if (progress.downloadedBytes > 0) {
                         hasPositiveProgress = true
                     }
-                    emit(
+                    send(
                         SpeedTestEvent.Progress(
                             server = progress.server,
                             downloadedBytes = progress.downloadedBytes,
@@ -85,7 +85,7 @@ internal class SpeedTestInteractor(
             if (failure is CancellationException) throw failure
             if (failure == null) {
                 val measurement = result.getOrThrow()
-                emit(
+                send(
                     SpeedTestEvent.Completed(
                         server = measurement.server,
                         downloadedBytes = measurement.downloadedBytes,
