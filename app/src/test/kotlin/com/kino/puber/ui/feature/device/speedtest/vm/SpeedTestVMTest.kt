@@ -186,6 +186,50 @@ internal class SpeedTestVMTest {
     }
 
     @Test
+    fun start_failedRowRetainsPositiveProgressSuppressedByVisibleThrottle() = runTest {
+        val failure = IllegalStateException("post-progress-failure")
+        every { transportProvider.current() } returns ConnectionTransport.Wifi
+        every { errorHandler.map(failure) } returns ErrorEntity(
+            message = "Локализованная ошибка",
+            code = "test",
+        )
+        every { interactor.run() } returns flowOf(
+            SpeedTestEvent.Started(SpeedTestServer.AMSTERDAM),
+            SpeedTestEvent.Progress(
+                server = SpeedTestServer.AMSTERDAM,
+                downloadedBytes = 0,
+                expectedBytes = 100,
+                elapsedMillis = 0,
+                megabitsPerSecond = 0.0,
+            ),
+            SpeedTestEvent.Progress(
+                server = SpeedTestServer.AMSTERDAM,
+                downloadedBytes = 25,
+                expectedBytes = 100,
+                elapsedMillis = 250,
+                megabitsPerSecond = 0.8,
+            ),
+            SpeedTestEvent.Failed(
+                server = SpeedTestServer.AMSTERDAM,
+                cause = failure,
+            ),
+        )
+
+        val vm = createVM()
+        vm.onAction(SpeedTestAction.Start)
+        testScheduler.advanceUntilIdle()
+
+        val row = vm.testStateValue.rows
+            .first { it.server == SpeedTestServer.AMSTERDAM }
+        assertEquals(SpeedTestRowStatus.Failed, row.status)
+        assertEquals(25, row.downloadedBytes)
+        assertEquals(100, row.expectedBytes)
+        assertEquals(250, row.elapsedMillis)
+        assertEquals(0.8, row.megabitsPerSecond)
+        assertEquals("Локализованная ошибка", row.errorMessage)
+    }
+
+    @Test
     fun start_usesLocalizedFallbackWhenMappedFailureMessageIsBlank() = runTest {
         val rawFailure = IllegalStateException("raw-blank-sentinel")
         every { transportProvider.current() } returns ConnectionTransport.Unknown
