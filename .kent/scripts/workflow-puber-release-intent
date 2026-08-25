@@ -34,9 +34,15 @@ TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 NOT_SELECTED_RUN = {"schema": "puber_release_run_v1", "state": "not_selected"}
 RUN_KEYS = {"schema", "state", "repository", "workflow_path", "workflow_name", "event", "run_id", "attempt", "head_sha", "ref", "head_branch"}
-PUBLICATION_KEYS = {"schema", "operation_digest", "pr_url", "release_version", "release_tag", "target_commit", "notes_report", "notes_digest", "tag_phase", "tag_status", "unresolved"}
-RELEASE_KEYS = {"schema", "run", "jobs", "release", "assets", "checksum", "notes_digest", "publication_report_digest", "unresolved"}
+PUBLICATION_KEYS = {"schema", "operation_digest", "previous_operation_digest", "pr_url", "release_version", "release_tag", "target_commit", "notes_report", "notes_digest", "tag_phase", "tag_status", "unresolved"}
+RELEASE_KEYS = {"schema", "observation_operation_digest", "observation_provenance_fingerprint", "run", "jobs", "release", "assets", "checksum", "notes_digest", "publication_report_digest", "unresolved"}
 CLEANUP_KEYS = {"schema", "operation_digest", "cleanup_session_id", "cleanup_mode", "publication_report", "publication_report_digest", "release_report", "release_report_digest", "release_notes_path", "release_notes_digest", "unresolved", "destructive_action", "blocker_reason"}
+NOTES_KEYS = {"schema", "path", "mode", "bytes", "sha256", "encoding", "line_endings", "final_newline", "producer", "previous_tag", "range", "target_commit"}
+RUN_API_KEYS = {"run_id", "attempt", "path", "name", "event", "head_sha", "head_branch", "status", "conclusion"}
+JOB_KEYS = {"id", "name", "status", "conclusion", "attempt"}
+RELEASE_METADATA_KEYS = {"tag_name", "target_commitish", "name", "draft", "prerelease", "html_url", "body", "remote_tag_target"}
+ASSET_KEYS = {"id", "name", "size", "browser_download_url", "download_sha256"}
+CHECKSUM_KEYS = {"schema", "apk_asset_id", "apk_name", "apk_size", "apk_download_sha256", "checksum_asset_id", "checksum_name", "checksum_size", "checksum_download_sha256", "parsed_checksum_digest", "parsed_checksum_filename", "download_sizes_match", "apk_checksum_equal"}
 
 class ContractError(ValueError):
     pass
@@ -141,6 +147,37 @@ def _kent_bin(root: Path) -> str:
     if not Path(candidate).is_file() or not os.access(candidate, os.X_OK):
         raise ContractError("stock Kent executable is unavailable")
     return candidate
+
+def _kent_worktree_bin() -> str:
+    candidate = os.environ.get("PUBER_KENT_WORKTREE_BIN", "") or str(Path.home() / ".kent/bin/kent-worktree")
+    if not Path(candidate).is_file() or not os.access(candidate, os.X_OK):
+        raise ContractError("stock Kent worktree wrapper is unavailable")
+    return candidate
+
+def session_worktree_status(root: Path, session_id: str) -> dict[str, Any]:
+    session_id = require_string(session_id, "cleanup_session_id")
+    if any(character.isspace() for character in session_id) or "/" in session_id or "\\" in session_id:
+        raise ContractError("cleanup_session_id is not safe")
+    result = run([_kent_worktree_bin(), "status", "--session", session_id, "--json"], cwd=root, env=child_env(), check=False)
+    if result.returncode != 0:
+        raise ContractError(result.stderr.strip() or result.stdout.strip() or "Kent worktree status failed")
+    return _json_one(result.stdout.encode("utf-8"))
+
+def session_targets_worktree(root: Path, session_id: str) -> bool:
+    payload = session_worktree_status(root, session_id)
+    target = payload.get("target")
+    worktree = payload.get("worktree")
+    if not isinstance(target, dict) or not isinstance(worktree, dict):
+        raise ContractError("Kent worktree status is missing target/worktree objects")
+    values = {
+        "effective_target": target.get("EffectiveWorkdir"),
+        "recorded_target": worktree.get("recorded_root"),
+        "observed_target": worktree.get("observed_root"),
+    }
+    if any(not isinstance(value, str) or not value.strip() for value in values.values()):
+        raise ContractError("Kent worktree status has incomplete target evidence")
+    normalized = {key: Path(value).expanduser().resolve() for key, value in values.items()}
+    return all(value == root for value in normalized.values())
 
 def task_show(root: Path, task_id: str) -> dict[str, Any]:
     result = run([_kent_bin(root), "task", "show", task_id, "--project", PROJECT_ID, "--json"], cwd=root, env=child_env(), check=False)
@@ -365,7 +402,9 @@ def attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, kin
     binding = kit["capture_runtime_authority_binding"](selected, captures, context, authority)
     canonicalized = None
     if kind:
-        variant_key = "publish_after_merge" if kind == "publish" else "observe_release"
+        variant_key = {"publish": "publish_after_merge", "observe": "observe_release", "observe_release": "observe_release"}.get(kind)
+        if variant_key is None:
+            raise ContractError(f"unsupported operation kind: {kind}")
         variant = next((item for item in spec.operation_variants if item.key == variant_key), None)
         if variant is None:
             raise ContractError(f"missing ReleaseSpec operation variant: {variant_key}")
@@ -456,7 +495,10 @@ def remote_tag(root: Path, tag: str) -> str:
     raise ContractError("remote tag does not resolve to an exact commit")
 
 def remote_release_tags(root: Path) -> list[str]:
-    output = git(root, "ls-remote", "--tags", "origin", "refs/tags/v*", check=False)
+    result = run(["git", "ls-remote", "--tags", "origin", "refs/tags/v*"], cwd=root, check=False)
+    if result.returncode != 0:
+        raise ContractError(result.stderr.strip() or "exact remote release tag line is unavailable")
+    output = result.stdout
     tags = set()
     for line in output.splitlines():
         fields = line.split()
@@ -489,8 +531,8 @@ def selected_run_context(run: Mapping[str, Any]) -> dict[str, Any]:
     return {key: run[key] for key in ("repository", "workflow_path", "workflow_name", "event", "run_id", "attempt", "head_sha", "ref")}
 
 def parse_notes_report(raw: Any, root: Path, task_short_id: str, *, expected_tag: str | None = None, expected_target: str | None = None) -> dict[str, Any]:
-    value = raw if isinstance(raw, dict) else parse_closed_json(raw, "puber_release_notes_v1", {"schema", "path", "mode", "bytes", "sha256", "encoding", "line_endings", "final_newline", "producer", "previous_tag", "range", "target_commit"})
-    if set(value) != {"schema", "path", "mode", "bytes", "sha256", "encoding", "line_endings", "final_newline", "producer", "previous_tag", "range", "target_commit"} or value.get("schema") != "puber_release_notes_v1":
+    value = raw if isinstance(raw, dict) else parse_closed_json(raw, "puber_release_notes_v1", NOTES_KEYS)
+    if set(value) != NOTES_KEYS or value.get("schema") != "puber_release_notes_v1":
         raise ContractError("notes report is not closed")
     path = validate_notes_path(root, value.get("path"), task_short_id=task_short_id)
     if value.get("mode") != 0o600 or not isinstance(value.get("bytes"), int) or value["bytes"] <= 0 or not HEX64.fullmatch(str(value.get("sha256", ""))) or value.get("encoding") != "UTF-8" or value.get("line_endings") != "LF" or value.get("final_newline") is not True or value.get("producer") != ".kent/scripts/workflow-puber-release-publish":
@@ -498,7 +540,15 @@ def parse_notes_report(raw: Any, root: Path, task_short_id: str, *, expected_tag
     target = require_string(value.get("target_commit"), "notes target_commit")
     if not SHA1.fullmatch(target) or expected_target and target != expected_target:
         raise ContractError("notes target commit is not exact")
-    if expected_tag and value.get("range") != (f"{value['previous_tag']}..{target}" if value.get("previous_tag") else target):
+    previous = value.get("previous_tag")
+    if previous:
+        if not TAG.fullmatch(previous) or expected_tag and tuple(int(part) for part in previous[1:].split(".")) >= tuple(int(part) for part in expected_tag[1:].split(".")):
+            raise ContractError("notes previous_tag is not strictly lower than the release tag")
+        if previous not in remote_release_tags(root):
+            raise ContractError("notes previous_tag is not present in the exact remote release tag line")
+    elif previous != "":
+        raise ContractError("notes previous_tag must be empty or an exact release tag")
+    if expected_tag and value.get("range") != (f"{previous}..{target}" if previous else target):
         raise ContractError("notes range is not exact")
     body = (root / path).read_bytes()
     mode = stat.S_IMODE((root / path).stat().st_mode)
@@ -506,10 +556,12 @@ def parse_notes_report(raw: Any, root: Path, task_short_id: str, *, expected_tag
         raise ContractError("notes bytes/readback are not canonical")
     return dict(value)
 
-def publication_report(operation_digest: str, pr_url: str, version: str, tag: str, target: str, notes: Mapping[str, Any], *, tag_phase: str, tag_status: str, unresolved: bool) -> tuple[str, str]:
+def publication_report(operation_digest: str, pr_url: str, version: str, tag: str, target: str, notes: Mapping[str, Any], *, tag_phase: str, tag_status: str, unresolved: bool, previous_operation_digest: str = "") -> tuple[str, str]:
     if not HEX64.fullmatch(operation_digest):
         raise ContractError("operation digest is not exact")
-    report = {"schema": "puber_publication_report_v1", "operation_digest": operation_digest, "pr_url": pr_url, "release_version": version, "release_tag": tag, "target_commit": target, "notes_report": dict(notes), "notes_digest": notes["sha256"], "tag_phase": tag_phase, "tag_status": tag_status, "unresolved": unresolved}
+    if previous_operation_digest and not HEX64.fullmatch(previous_operation_digest):
+        raise ContractError("previous operation digest is not exact")
+    report = {"schema": "puber_publication_report_v1", "operation_digest": operation_digest, "previous_operation_digest": previous_operation_digest, "pr_url": pr_url, "release_version": version, "release_tag": tag, "target_commit": target, "notes_report": dict(notes), "notes_digest": notes["sha256"], "tag_phase": tag_phase, "tag_status": tag_status, "unresolved": unresolved}
     encoded = canonical_json(report)
     return encoded, sha256_bytes(encoded.encode("utf-8"))
 
@@ -534,12 +586,86 @@ def parse_publication_report(raw: Any, digest: Any, *, expected_pr: str | None =
         parse_notes_report(value["notes_report"], root, task_short_id, expected_tag=value["release_tag"], expected_target=value["target_commit"])
     if value.get("notes_digest") != value["notes_report"].get("sha256"):
         raise ContractError("publication report notes digest mismatch")
+    previous_operation_digest = value.get("previous_operation_digest")
+    if previous_operation_digest and not HEX64.fullmatch(previous_operation_digest):
+        raise ContractError("publication report previous operation digest is invalid")
+    if previous_operation_digest == value.get("operation_digest"):
+        raise ContractError("publication report operation continuity is circular")
     return dict(value)
 
-def parse_release_report(raw: Any, digest: Any) -> dict[str, Any]:
+def parse_run_api(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != RUN_API_KEYS:
+        raise ContractError("release run API evidence is not closed")
+    if not isinstance(value["run_id"], int) or value["run_id"] <= 0 or not isinstance(value["attempt"], int) or value["attempt"] <= 0:
+        raise ContractError("release run API IDs are invalid")
+    if value["path"] != ".github/workflows/release.yml" or value["name"] != "Release" or value["event"] != "push" or not SHA1.fullmatch(str(value["head_sha"])) or not TAG.fullmatch(str(value["head_branch"])) or value["status"] != "completed" or value["conclusion"] != "success":
+        raise ContractError("release run API identity/outcome is invalid")
+    return dict(value)
+
+def parse_job(value: Any, attempt: int) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != JOB_KEYS or value.get("name") != "Build & Publish" or value.get("status") != "completed" or value.get("conclusion") != "success" or not isinstance(value.get("id"), int) or value["id"] <= 0 or value.get("attempt") != attempt:
+        raise ContractError("release job evidence is not exact")
+    return dict(value)
+
+def parse_checksum_proof(value: Any, assets: list[dict[str, Any]]) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != CHECKSUM_KEYS or value.get("schema") != "puber_checksum_proof_v1" or value.get("download_sizes_match") is not True or value.get("apk_checksum_equal") is not True:
+        raise ContractError("checksum proof is not closed")
+    apk = next((asset for asset in assets if asset["name"].endswith(".apk")), None)
+    checksum = next((asset for asset in assets if asset["name"].endswith(".apk.sha256")), None)
+    if apk is None or checksum is None:
+        raise ContractError("checksum proof assets are incomplete")
+    if value["apk_asset_id"] != apk["id"] or value["apk_name"] != apk["name"] or value["apk_size"] != apk["size"] or value["checksum_asset_id"] != checksum["id"] or value["checksum_name"] != checksum["name"] or value["checksum_size"] != checksum["size"]:
+        raise ContractError("checksum proof asset identity drifted")
+    for key in ("apk_download_sha256", "checksum_download_sha256", "parsed_checksum_digest"):
+        if not HEX64.fullmatch(str(value.get(key, ""))):
+            raise ContractError("checksum proof digest is invalid")
+    if value["parsed_checksum_filename"] != apk["name"]:
+        raise ContractError("checksum proof filename is invalid")
+    if value["apk_download_sha256"] != apk["download_sha256"] or value["checksum_download_sha256"] != checksum["download_sha256"] or value["parsed_checksum_digest"] != value["apk_download_sha256"]:
+        raise ContractError("checksum proof byte digest equality is invalid")
+    return dict(value)
+
+def parse_release_metadata(value: Any, expected_tag: str | None = None, expected_target: str | None = None) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != RELEASE_METADATA_KEYS or value.get("target_commitish") != "master" or value.get("draft") is not False or value.get("prerelease") is not False:
+        raise ContractError("release metadata is not the actual workflow shape")
+    safe_version_tag(value.get("tag_name", "")[1:], value.get("tag_name", ""))
+    if expected_tag and value["tag_name"] != expected_tag or expected_target and value.get("remote_tag_target") != expected_target:
+        raise ContractError("release metadata tag/target drifted")
+    if value.get("name") != f"Puber {value['tag_name']}" or value.get("html_url") != f"https://github.com/{REPOSITORY}/releases/tag/{value['tag_name']}" or not isinstance(value.get("body"), str) or not SHA1.fullmatch(str(value.get("remote_tag_target", ""))):
+        raise ContractError("release metadata identity is invalid")
+    return dict(value)
+
+def parse_release_report(raw: Any, digest: Any, *, expected_publication_digest: str | None = None, expected_notes_digest: str | None = None, expected_tag: str | None = None, expected_target: str | None = None) -> dict[str, Any]:
     value = raw if isinstance(raw, dict) else parse_closed_json(raw, "puber_release_report_v1", RELEASE_KEYS)
-    if set(value) != RELEASE_KEYS or value.get("schema") != "puber_release_report_v1" or not isinstance(digest, str) or digest != sha256_bytes(canonical_json(value).encode("utf-8")) or not isinstance(value.get("unresolved"), bool):
+    if set(value) != RELEASE_KEYS or value.get("schema") != "puber_release_report_v1" or not isinstance(digest, str) or digest != sha256_bytes(canonical_json(value).encode("utf-8")) or value.get("unresolved") is not False:
         raise ContractError("release report is not closed or its digest mismatches")
+    if not HEX64.fullmatch(str(value.get("observation_operation_digest", ""))) or not HEX64.fullmatch(str(value.get("observation_provenance_fingerprint", ""))):
+        raise ContractError("release observation authority evidence is missing or invalid")
+    run = parse_run_carrier(value["run"])
+    if run == NOT_SELECTED_RUN:
+        raise ContractError("release report run is not selected")
+    if not isinstance(value.get("jobs"), dict) or set(value["jobs"]) != {"run", "job"}:
+        raise ContractError("release report jobs are not closed")
+    run_api = parse_run_api(value["jobs"]["run"])
+    job = parse_job(value["jobs"]["job"], run["attempt"])
+    if run_api["run_id"] != run["run_id"] or run_api["attempt"] != run["attempt"] or run_api["head_sha"] != run["head_sha"] or run_api["head_branch"] != run["head_branch"]:
+        raise ContractError("release report run API evidence drifted")
+    metadata = parse_release_metadata(value["release"], expected_tag=expected_tag, expected_target=expected_target)
+    assets = value["assets"]
+    if not isinstance(assets, list) or len(assets) != 2 or any(not isinstance(asset, dict) or set(asset) != ASSET_KEYS for asset in assets):
+        raise ContractError("release report assets are not closed")
+    if {asset["name"] for asset in assets} != {f"puber-{metadata['tag_name']}.apk", f"puber-{metadata['tag_name']}.apk.sha256"}:
+        raise ContractError("release report asset names are not exact")
+    for asset in assets:
+        if not isinstance(asset["id"], int) or asset["id"] <= 0 or not isinstance(asset["size"], int) or asset["size"] <= 0 or not HEX64.fullmatch(str(asset["download_sha256"])) or not isinstance(asset["browser_download_url"], str) or not asset["browser_download_url"].startswith("https://"):
+            raise ContractError("release report asset evidence is invalid")
+    checksum = parse_checksum_proof(value["checksum"], assets)
+    if expected_target and metadata["remote_tag_target"] != expected_target or metadata.get("tag_name") != (expected_tag or metadata.get("tag_name")) or metadata.get("body") is None:
+        raise ContractError("release report metadata proof is incomplete")
+    if not HEX64.fullmatch(str(value.get("notes_digest", ""))) or not HEX64.fullmatch(str(value.get("publication_report_digest", ""))):
+        raise ContractError("release report carrier digests are invalid")
+    if expected_publication_digest and value["publication_report_digest"] != expected_publication_digest or expected_notes_digest and value["notes_digest"] != expected_notes_digest:
+        raise ContractError("release report carrier digest drifted")
     return dict(value)
 
 def notes_report(root: Path, task_short_id: str, tag: str, target: str) -> dict[str, Any]:
@@ -549,10 +675,15 @@ def notes_report(root: Path, task_short_id: str, tag: str, target: str) -> dict[
         raise ContractError("notes target is not exact")
     path_value = f".todo/{task_short_id}/release-notes-ru.md"
     path = root / path_value
-    previous_values = [value for value in remote_release_tags(root) if value != tag and tuple(int(part) for part in value[1:].split(".")) < tuple(int(part) for part in tag[1:].split("."))]
+    remote_tags = remote_release_tags(root)
+    current_version = tuple(int(part) for part in tag[1:].split("."))
+    previous_values = [value for value in remote_tags if value != tag and tuple(int(part) for part in value[1:].split(".")) < current_version]
     previous = previous_values[-1] if previous_values else ""
     revision = f"{previous}..{target}" if previous else target
-    subjects = git(root, "log", "--format=%s", revision, check=False).splitlines()[:100]
+    log_result = run(["git", "log", "--format=%s", revision], cwd=root, check=False)
+    if log_result.returncode != 0:
+        raise ContractError("exact release notes range cannot be resolved")
+    subjects = log_result.stdout.splitlines()[:100]
     body = ("puber_release_notes_v1\n\n# Изменения\n\n" + "\n".join(f"- {subject}" for subject in subjects) + "\n").encode("utf-8")
     if not re.search(r"[А-Яа-яЁё]", body.decode("utf-8")):
         body += "- Изменения релиза подтверждены.\n".encode("utf-8")
@@ -635,7 +766,10 @@ def read_release_run(root: Path, run: Mapping[str, Any], target: str, tag: str) 
 
 def read_release(root: Path, tag: str, target: str) -> dict[str, Any]:
     release = gh_api(root, f"repos/{REPOSITORY}/releases/tags/{tag}")
-    if not isinstance(release, dict) or release.get("tag_name") != tag or release.get("target_commitish") != target or release.get("name") != f"Puber {tag}" or release.get("draft") is not False or release.get("prerelease") is not False or release.get("html_url") != f"https://github.com/{REPOSITORY}/releases/tag/{tag}":
+    remote_target = remote_tag(root, tag)
+    if remote_target != target:
+        raise ContractError("remote release tag does not resolve to the exact target")
+    if not isinstance(release, dict) or release.get("tag_name") != tag or release.get("target_commitish") != "master" or release.get("name") != f"Puber {tag}" or release.get("draft") is not False or release.get("prerelease") is not False or release.get("html_url") != f"https://github.com/{REPOSITORY}/releases/tag/{tag}":
         raise ContractError("GitHub Release identity/state is not exact")
     assets = release.get("assets")
     if not isinstance(assets, list) or len(assets) != 2:
@@ -645,9 +779,9 @@ def read_release(root: Path, tag: str, target: str) -> dict[str, Any]:
         raise ContractError("GitHub Release asset names are not exact")
     normalized_assets = []
     for asset in assets:
-        if not isinstance(asset, dict) or not isinstance(asset.get("id"), int) or asset["id"] <= 0 or not isinstance(asset.get("size"), int) or asset["size"] <= 0 or not isinstance(asset.get("name"), str):
+        if not isinstance(asset, dict) or not isinstance(asset.get("id"), int) or asset["id"] <= 0 or not isinstance(asset.get("size"), int) or asset["size"] <= 0 or not isinstance(asset.get("name"), str) or not isinstance(asset.get("browser_download_url"), str) or not asset["browser_download_url"].startswith("https://"):
             raise ContractError("GitHub Release asset identity/size is invalid")
-        normalized_assets.append({"id": asset["id"], "name": asset["name"], "size": asset["size"], "browser_download_url": asset.get("browser_download_url", "")})
+        normalized_assets.append({"id": asset["id"], "name": asset["name"], "size": asset["size"], "browser_download_url": asset["browser_download_url"]})
     apk = next(item for item in normalized_assets if item["name"].endswith(".apk"))
     checksum = next(item for item in normalized_assets if item["name"].endswith(".apk.sha256"))
     apk_bytes = gh_api_bytes(root, f"repos/{REPOSITORY}/releases/assets/{apk['id']}")
@@ -661,7 +795,26 @@ def read_release(root: Path, tag: str, target: str) -> dict[str, Any]:
     match = re.fullmatch(r"([0-9a-f]{64})[ \t]+\*?(.+)", lines[0])
     if not match or match.group(2) != apk["name"] or match.group(1) != sha256_bytes(apk_bytes):
         raise ContractError("checksum asset does not match APK bytes")
-    return {"tag_name": release["tag_name"], "target_commitish": release["target_commitish"], "name": release["name"], "draft": release["draft"], "prerelease": release["prerelease"], "html_url": release["html_url"], "body": release.get("body", ""), "assets": normalized_assets}
+    apk_download_sha256 = sha256_bytes(apk_bytes)
+    checksum_download_sha256 = sha256_bytes(checksum_bytes)
+    for asset in normalized_assets:
+        asset["download_sha256"] = apk_download_sha256 if asset["id"] == apk["id"] else checksum_download_sha256
+    checksum_proof = {
+        "schema": "puber_checksum_proof_v1",
+        "apk_asset_id": apk["id"],
+        "apk_name": apk["name"],
+        "apk_size": apk["size"],
+        "apk_download_sha256": apk_download_sha256,
+        "checksum_asset_id": checksum["id"],
+        "checksum_name": checksum["name"],
+        "checksum_size": checksum["size"],
+        "checksum_download_sha256": checksum_download_sha256,
+        "parsed_checksum_digest": match.group(1),
+        "parsed_checksum_filename": match.group(2),
+        "download_sizes_match": True,
+        "apk_checksum_equal": True,
+    }
+    return {"tag_name": release["tag_name"], "target_commitish": release["target_commitish"], "name": release["name"], "draft": release["draft"], "prerelease": release["prerelease"], "html_url": release["html_url"], "body": release.get("body", ""), "remote_tag_target": remote_target, "assets": normalized_assets, "checksum": checksum_proof}
 
 def report_json(value: Mapping[str, Any]) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

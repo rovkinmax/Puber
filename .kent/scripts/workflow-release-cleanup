@@ -22,26 +22,78 @@ def _eligible_session(state: dict) -> str:
     candidates = []
     for row in rows:
         if not isinstance(row, dict):
-            continue
-        session_id = row.get("session_id") or row.get("id")
-        if not isinstance(session_id, str) or not session_id:
-            continue
-        if row.get("task_id") not in {None, state["task_id"]} or row.get("worktree_path") not in {None, str(ROOT)}:
-            continue
-        if row.get("status") not in {None, "live", "retained", "active"}:
-            continue
-        if row.get("task_id") is None or row.get("worktree_path") is None:
-            continue
-        candidates.append(session_id)
+            raise helper.ContractError("Kent live_sessions contains a non-object row")
+        if set(row) != {"session_id", "session_name", "node_display_name"}:
+            raise helper.ContractError("Kent live_sessions row is not the stock closed shape")
+        session_id = helper.require_string(row.get("session_id"), "cleanup_session_id")
+        helper.require_string(row.get("session_name"), "session_name")
+        helper.require_string(row.get("node_display_name"), "node_display_name")
+        if helper.session_targets_worktree(ROOT, session_id):
+            candidates.append(session_id)
     if len(candidates) != 1:
-        raise helper.ContractError("no exact eligible retained/live Kent Session belongs to this task/worktree")
+        raise helper.ContractError("exactly one stock Kent Session must target this task worktree")
     return candidates[0]
 
-def _cleanup_report(state: dict, session: str, payload: dict, *, unresolved: bool, blocker: str) -> tuple[str, str]:
+def _session_for_cleanup(state: dict, prior_session: str | None = None) -> str:
+    if prior_session is not None:
+        prior_session = helper.require_string(prior_session, "cleanup_session_id")
+        if not helper.session_targets_worktree(ROOT, prior_session):
+            raise helper.ContractError("prior cleanup Session no longer targets this task worktree")
+        return prior_session
+    return _eligible_session(state)
+
+def _parse_janitor_report(raw: str) -> tuple[dict, str]:
+    if not isinstance(raw, str) or len(raw.encode("utf-8")) > 2 * 1024 * 1024:
+        raise helper.ContractError("Janitor cleanup_report is unbounded or not text")
+    parts = raw.split("\n", 1)
+    if len(parts) != 2 or not parts[0].strip() or not parts[1].startswith("Janitor ") or not parts[1].strip():
+        raise helper.ContractError("Janitor cleanup_report must contain one canonical report line and a bounded Janitor suffix")
+    previous = helper.parse_closed_json(parts[0], "puber_cleanup_report_v1", helper.CLEANUP_KEYS)
+    if helper.canonical_json(previous) != parts[0]:
+        raise helper.ContractError("Janitor cleanup_report first line is not canonical")
+    return previous, parts[1]
+
+def _validate_carriers(state: dict, carrier: dict) -> tuple[dict | None, dict | None]:
+    publication = None
+    if carrier.get("publication_report"):
+        publication = helper.parse_publication_report(
+            carrier["publication_report"],
+            carrier.get("publication_report_digest"),
+            task_short_id=state["task_short_id"],
+            root=ROOT,
+        )
+        if carrier.get("release_notes_path") != publication["notes_report"]["path"] or carrier.get("release_notes_digest") != publication["notes_digest"]:
+            raise helper.ContractError("cleanup notes carrier does not match publication report")
+        helper.parse_notes_report(
+            publication["notes_report"],
+            ROOT,
+            state["task_short_id"],
+            expected_tag=publication["release_tag"],
+            expected_target=publication["target_commit"],
+        )
+    release = None
+    if carrier.get("release_report"):
+        expected_publication = carrier.get("publication_report_digest") or None
+        expected_notes = carrier.get("release_notes_digest") or None
+        release = helper.parse_release_report(
+            carrier["release_report"],
+            carrier.get("release_report_digest"),
+            expected_publication_digest=expected_publication,
+            expected_notes_digest=expected_notes,
+            expected_tag=publication["release_tag"] if publication else None,
+            expected_target=publication["target_commit"] if publication else None,
+        )
+        if publication and release["publication_report_digest"] != carrier["publication_report_digest"]:
+            raise helper.ContractError("cleanup release/publication report digest mismatch")
+        if release["notes_digest"] != carrier.get("release_notes_digest"):
+            raise helper.ContractError("cleanup release/notes digest mismatch")
+    return publication, release
+
+def _cleanup_report(state: dict, session: str, payload: dict, *, operation_digest: str, unresolved: bool, blocker: str) -> tuple[str, str]:
     publication = payload.get("publication_report", "")
     release = payload.get("release_report", "")
     notes_path = payload.get("release_notes_path", "")
-    value = {"schema": "puber_cleanup_report_v1", "operation_digest": payload.get("operation_id", ""), "cleanup_session_id": session, "cleanup_mode": "report_only", "publication_report": publication, "publication_report_digest": payload.get("publication_report_digest", ""), "release_report": release, "release_report_digest": payload.get("release_report_digest", ""), "release_notes_path": notes_path, "release_notes_digest": payload.get("release_notes_digest", ""), "unresolved": unresolved, "destructive_action": False, "blocker_reason": blocker}
+    value = {"schema": "puber_cleanup_report_v1", "operation_digest": operation_digest, "cleanup_session_id": session, "cleanup_mode": "report_only", "publication_report": publication, "publication_report_digest": payload.get("publication_report_digest", ""), "release_report": release, "release_report_digest": payload.get("release_report_digest", ""), "release_notes_path": notes_path, "release_notes_digest": payload.get("release_notes_digest", ""), "unresolved": unresolved, "destructive_action": False, "blocker_reason": blocker}
     encoded = helper.canonical_json(value)
     return encoded, helper.sha256_bytes(encoded.encode("utf-8"))
 
@@ -52,36 +104,34 @@ def main() -> int:
     except helper.ContractError as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 2
-    prior_unresolved = False
-    prior_blocker = ""
     try:
+        prior_unresolved = False
+        prior_blocker = ""
+        prior_session = None
         if edge["key"] == "task_janitor_blocked":
-            previous = helper.parse_closed_json(payload["cleanup_report"], "puber_cleanup_report_v1", helper.CLEANUP_KEYS)
-            prior_session = previous["cleanup_session_id"]
-            if not isinstance(prior_session, str) or not prior_session:
-                raise helper.ContractError("prior cleanup report has no exact Session")
-            session = _eligible_session(state)
-            if session != prior_session:
-                raise helper.ContractError("prior cleanup Session is not the exact current eligible Session")
-            if previous["publication_report"]:
-                helper.parse_publication_report(previous["publication_report"], previous["publication_report_digest"], task_short_id=state["task_short_id"], root=ROOT)
-            if previous["release_report"]:
-                helper.parse_release_report(previous["release_report"], previous["release_report_digest"])
-            if previous["release_notes_path"]:
-                helper.validate_notes_path(ROOT, previous["release_notes_path"], task_short_id=state["task_short_id"])
-            carrier = {**payload, "publication_report": previous["publication_report"], "publication_report_digest": previous["publication_report_digest"], "release_report": previous["release_report"], "release_report_digest": previous["release_report_digest"], "release_notes_path": previous["release_notes_path"], "release_notes_digest": previous["release_notes_digest"], "operation_id": previous["operation_digest"]}
+            previous, janitor_suffix = _parse_janitor_report(payload["cleanup_report"])
+            prior_session = helper.require_string(previous["cleanup_session_id"], "cleanup_session_id")
+            carrier = {
+                **payload,
+                "branch_name": payload.get("branch_name", ""),
+                "publication_report": previous["publication_report"],
+                "publication_report_digest": previous["publication_report_digest"],
+                "release_report": previous["release_report"],
+                "release_report_digest": previous["release_report_digest"],
+                "release_notes_path": previous["release_notes_path"],
+                "release_notes_digest": previous["release_notes_digest"],
+            }
             prior_unresolved = previous["unresolved"]
-            prior_blocker = previous["blocker_reason"]
+            prior_blocker = janitor_suffix
+            fresh = helper.attest(ROOT, state, "cleanup", edge["key"])
+            operation_digest = fresh["binding"].provenance_fingerprint
+            session = _session_for_cleanup(state, prior_session)
         else:
-            helper.attest(ROOT, state, "cleanup", edge["key"])
-            session = _eligible_session(state)
+            fresh = helper.attest(ROOT, state, "cleanup", edge["key"])
+            operation_digest = fresh["binding"].provenance_fingerprint
+            session = _session_for_cleanup(state)
             carrier = payload
-            if carrier.get("publication_report"):
-                helper.parse_publication_report(carrier["publication_report"], carrier["publication_report_digest"], task_short_id=state["task_short_id"], root=ROOT)
-            if carrier.get("release_report"):
-                helper.parse_release_report(carrier["release_report"], carrier["release_report_digest"])
-            if carrier.get("release_notes_path"):
-                helper.validate_notes_path(ROOT, carrier["release_notes_path"], task_short_id=state["task_short_id"])
+        _validate_carriers(state, carrier)
         declarations = helper.declarations(state["task"].get("body"))
         version = declarations.get("release_version")
         branch = carrier.get("branch_name") or declarations.get("release_branch", "")
@@ -91,7 +141,7 @@ def main() -> int:
             raise helper.ContractError("cleanup branch carrier is not safe")
         carrier["branch_name"] = branch
         blocker = carrier.get("blocker_reason", "") or prior_blocker
-        report, report_digest = _cleanup_report(state, session, carrier, unresolved=prior_unresolved or bool(blocker), blocker=blocker)
+        report, report_digest = _cleanup_report(state, session, carrier, operation_digest=operation_digest, unresolved=prior_unresolved or bool(blocker), blocker=blocker)
         fields = {"cleanup_report": report, "workspace_path": str(ROOT), "branch_name": branch, "pr_url": carrier.get("pr_url", ""), "cleanup_mode": "report_only", "cleanup_session_id": session, "task_short_id": state["task_short_id"], "publication_report": carrier.get("publication_report", ""), "publication_report_digest": carrier.get("publication_report_digest", ""), "release_report": carrier.get("release_report", ""), "release_report_digest": carrier.get("release_report_digest", ""), "release_notes_path": carrier.get("release_notes_path", ""), "release_notes_digest": carrier.get("release_notes_digest", "")}
         helper.emit_exact(ROOT, "cleanup_task_janitor", "task_janitor", fields)
         return 0

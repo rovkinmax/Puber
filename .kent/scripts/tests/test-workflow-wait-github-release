@@ -62,7 +62,7 @@ if "/releases/assets/2" in endpoint:
  sys.stdout.buffer.write(open(os.environ["PUBER_CHECKSUM"],"rb").read()); sys.exit(0)
 if "/releases/tags/" in endpoint:
  apk=open(os.environ["PUBER_APK"],"rb").read(); checksum=open(os.environ["PUBER_CHECKSUM"],"rb").read()
- print(json.dumps({"tag_name":tag,"target_commitish":target,"name":"Puber "+tag,"draft":False,"prerelease":False,"html_url":"https://github.com/rovkinmax/Puber/releases/tag/"+tag,"body":open(os.environ["PUBER_BODY"],encoding="utf-8").read(),"assets":[{"id":1,"name":"puber-"+tag+".apk","size":len(apk),"browser_download_url":"https://example.invalid/apk"},{"id":2,"name":"puber-"+tag+".apk.sha256","size":len(checksum),"browser_download_url":"https://example.invalid/checksum"}]})); sys.exit(0)
+ print(json.dumps({"tag_name":tag,"target_commitish":"master","name":"Puber "+tag,"draft":False,"prerelease":False,"html_url":"https://github.com/rovkinmax/Puber/releases/tag/"+tag,"body":open(os.environ["PUBER_BODY"],encoding="utf-8").read(),"assets":[{"id":1,"name":"puber-"+tag+".apk","size":len(apk),"browser_download_url":"https://example.invalid/apk"},{"id":2,"name":"puber-"+tag+".apk.sha256","size":len(checksum),"browser_download_url":"https://example.invalid/checksum"}]})); sys.exit(0)
 sys.exit(3)
 """,
         encoding="utf-8",
@@ -79,6 +79,13 @@ sys.exit(3)
     output = json.loads(result.stdout)
     assert output["transition"] == "release_release_published"
     assert json.loads(output["publication_report"])["unresolved"] is False
-    assert json.loads(output["release_report"])["unresolved"] is False
+    release_report = json.loads(output["release_report"])
+    assert release_report["unresolved"] is False
+    assert release_report["observation_operation_digest"] and release_report["observation_provenance_fingerprint"]
+    assert release_report["release"]["target_commitish"] == "master"
+    assert release_report["release"]["remote_tag_target"] == target
+    assert release_report["checksum"]["apk_asset_id"] == 1
+    assert release_report["checksum"]["checksum_asset_id"] == 2
+    assert release_report["checksum"]["apk_checksum_equal"] is True
     assert body_file.read_text(encoding="utf-8").startswith("puber_release_notes_v1")
 print("workflow-wait-github-release: passed")

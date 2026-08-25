@@ -29,8 +29,21 @@ def _report_carriers(payload: dict, state: dict) -> tuple[dict, dict]:
         raise helper.ContractError("release_run carrier is stale or switched")
     return publication, run
 
-def _release_report(run: dict, jobs: dict, release: dict, publication: dict, notes_digest: str, checksum: dict) -> tuple[str, str]:
-    value = {"schema": "puber_release_report_v1", "run": run, "jobs": jobs, "release": release, "assets": release["assets"], "checksum": checksum, "notes_digest": notes_digest, "publication_report_digest": publication["digest"], "unresolved": False}
+def _release_report(run: dict, jobs: dict, release: dict, publication_digest: str, notes_digest: str, observation: dict) -> tuple[str, str]:
+    metadata = {key: release[key] for key in helper.RELEASE_METADATA_KEYS}
+    value = {
+        "schema": "puber_release_report_v1",
+        "observation_operation_digest": observation["operation"].operation_digest,
+        "observation_provenance_fingerprint": observation["binding"].provenance_fingerprint,
+        "run": run,
+        "jobs": {"run": jobs["run"], "job": jobs["job"]},
+        "release": metadata,
+        "assets": release["assets"],
+        "checksum": release["checksum"],
+        "notes_digest": notes_digest,
+        "publication_report_digest": publication_digest,
+        "unresolved": False,
+    }
     encoded = helper.canonical_json(value)
     return encoded, helper.sha256_bytes(encoded.encode("utf-8"))
 
@@ -46,6 +59,15 @@ def main() -> int:
         if run == helper.NOT_SELECTED_RUN:
             run = helper.discover_release_run(ROOT, payload["release_tag"], payload["target_commit"])
             payload["release_run"] = helper.canonical_json(run)
+        observation = helper.attest(
+            ROOT,
+            state,
+            "monitor",
+            edge["key"],
+            kind="observe_release",
+            run_tuple=helper.selected_run_context(run),
+            project_fields={"release_tag": payload["release_tag"]},
+        )
         run_for_api, jobs = helper.read_release_run(ROOT, run, payload["target_commit"], payload["release_tag"])
         release = helper.read_release(ROOT, payload["release_tag"], payload["target_commit"])
         notes = helper.parse_notes_report(publication["notes_report"], ROOT, state["task_short_id"], expected_tag=payload["release_tag"], expected_target=payload["target_commit"])
@@ -58,10 +80,10 @@ def main() -> int:
             release = helper.read_release(ROOT, payload["release_tag"], payload["target_commit"])
             if release.get("body") != notes_bytes.decode("utf-8"):
                 raise helper.ContractError("release notes post-edit readback mismatch")
-        final_publication, final_publication_digest = helper.publication_report(publication["operation_digest"], publication["pr_url"], publication["release_version"], publication["release_tag"], publication["target_commit"], notes, tag_phase="tag_published", tag_status=publication["tag_status"], unresolved=False)
+        final_publication, final_publication_digest = helper.publication_report(publication["operation_digest"], publication["pr_url"], publication["release_version"], publication["release_tag"], publication["target_commit"], notes, tag_phase="tag_published", tag_status=publication["tag_status"], unresolved=False, previous_operation_digest=publication.get("previous_operation_digest", ""))
         publication_final = helper.parse_publication_report(final_publication, final_publication_digest, expected_pr=publication["pr_url"], expected_version=publication["release_version"], expected_tag=publication["release_tag"], expected_target=publication["target_commit"], task_short_id=state["task_short_id"], root=ROOT)
-        publication_final["digest"] = final_publication_digest
-        report, report_digest = _release_report(run, {"run": run_for_api, "job": jobs}, release, publication_final, notes["sha256"], {"apk_sha256": helper.sha256_bytes(helper.gh_api_bytes(ROOT, f"repos/{helper.REPOSITORY}/releases/assets/{next(asset['id'] for asset in release['assets'] if asset['name'].endswith('.apk'))}")), "apk_name": next(asset["name"] for asset in release["assets"] if asset["name"].endswith(".apk")), "checksum_name": next(asset["name"] for asset in release["assets"] if asset["name"].endswith(".apk.sha256"))})
+        report, report_digest = _release_report(run, {"run": run_for_api, "job": jobs}, release, final_publication_digest, notes["sha256"], observation)
+        helper.parse_release_report(report, report_digest, expected_publication_digest=final_publication_digest, expected_notes_digest=notes["sha256"], expected_tag=payload["release_tag"], expected_target=payload["target_commit"])
         helper.emit_exact(ROOT, "release_release_published", "cleanup", {"release_report": report, "publication_report": final_publication, "publication_report_digest": final_publication_digest, "release_notes_path": notes["path"], "release_notes_digest": notes["sha256"], "release_run": helper.canonical_json(run), "release_report_digest": report_digest})
         return 0
     except helper.ContractError as error:
