@@ -32,7 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -134,9 +137,13 @@ private fun DeviceSettingsList(
     val rootAnchorRestorePending = LocalRootAnchorRestorePending.current
     val rootFocusRestoreVersion = LocalRootFocusRestoreVersion.current
     val onRootAnchorFocusRestored = LocalRootAnchorFocusRestored.current
+    var handledRootFocusRestoreVersion by remember {
+        mutableIntStateOf(0)
+    }
     val focusIntent = deviceSettingsFocusIntent(
         rootAnchorRestorePending = rootAnchorRestorePending,
         rootFocusRestoreVersion = rootFocusRestoreVersion,
+        handledRootFocusRestoreVersion = handledRootFocusRestoreVersion,
     )
     val rootReturnFocusRestorer = if (rootAnchorRestorePending) {
         Modifier.focusRestorer(speedTestLauncherFocusRequester)
@@ -146,14 +153,19 @@ private fun DeviceSettingsList(
 
     PreserveLazyListAnchorOnRootReturn(listState)
 
-    LaunchedEffect(focusIntent) {
+    LaunchedEffect(focusIntent, rootFocusRestoreVersion) {
         when (focusIntent) {
             DeviceSettingsFocusIntent.InitialList -> {
                 delay(100)
                 initialFocusRequester.requestFocus()
             }
-            DeviceSettingsFocusIntent.SpeedTestLauncher ->
-                speedTestLauncherFocusRequester.requestFocus()
+            DeviceSettingsFocusIntent.SpeedTestLauncher -> {
+                requestRootReturnFocus(
+                    requestFocus = speedTestLauncherFocusRequester::requestFocus,
+                    awaitRetryFrame = { withFrameNanos { } },
+                )
+                handledRootFocusRestoreVersion = rootFocusRestoreVersion
+            }
             DeviceSettingsFocusIntent.None -> Unit
         }
     }
@@ -185,12 +197,22 @@ internal enum class DeviceSettingsFocusIntent {
 internal fun deviceSettingsFocusIntent(
     rootAnchorRestorePending: Boolean,
     rootFocusRestoreVersion: Int,
+    handledRootFocusRestoreVersion: Int,
 ): DeviceSettingsFocusIntent = when {
-    rootAnchorRestorePending && rootFocusRestoreVersion > 0 ->
+    rootFocusRestoreVersion > handledRootFocusRestoreVersion ->
         DeviceSettingsFocusIntent.SpeedTestLauncher
     !rootAnchorRestorePending && rootFocusRestoreVersion == 0 ->
         DeviceSettingsFocusIntent.InitialList
     else -> DeviceSettingsFocusIntent.None
+}
+
+internal suspend fun requestRootReturnFocus(
+    requestFocus: () -> Boolean,
+    awaitRetryFrame: suspend () -> Unit,
+) {
+    while (!requestFocus()) {
+        awaitRetryFrame()
+    }
 }
 
 @Composable

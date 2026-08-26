@@ -121,7 +121,7 @@ internal class DeviceSettingsPushBackFocusTest {
         }
         assertEquals(anchorBefore, anchorAfter)
 
-        composeRule.mainClock.advanceTimeBy(200)
+        composeRule.mainClock.advanceTimeBy(600)
         composeRule.waitForIdle()
 
         launcher.assertIsFocused()
