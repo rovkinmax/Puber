@@ -46,14 +46,14 @@ internal class PlayerUIMapper(
                 url = "",
             )
         )
-        val duplicateLanguages = subtitles
-            ?.groupingBy { it.lang }
-            ?.eachCount()
-            ?.filterValues { it > 1 }
-            ?.keys
-            .orEmpty()
+        val playableSubtitles = subtitles.orEmpty()
+        val duplicateLanguages = playableSubtitles
+            .groupingBy { it.lang }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
         val duplicateLanguageCounters = mutableMapOf<String, Int>()
-        subtitles?.forEachIndexed { index, sub ->
+        playableSubtitles.forEachIndexed { index, sub ->
             val duplicateIndex = duplicateLanguageCounters.compute(sub.lang) { _, count ->
                 count?.inc() ?: 1
             } ?: 1
@@ -67,6 +67,7 @@ internal class PlayerUIMapper(
                     },
                     language = sub.lang,
                     url = sub.url,
+                    isEmbedded = sub.embed == true,
                 )
             )
         }
