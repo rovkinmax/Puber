@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.player.vm
 
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
+import com.kino.puber.ui.feature.player.model.isOff
 
 internal class AudioTrackPreferenceResolver {
 
@@ -25,11 +26,13 @@ internal class AudioTrackPreferenceResolver {
         tracks: List<SubtitleTrackUIState>,
         preferredLang: String?,
         preferredUrl: String?,
+        preferredPlayerTrackId: String? = null,
     ): Int {
         val matchers = listOf(
             { exactSubtitleUrlMatch(tracks, preferredUrl) },
             { stableSubtitleUrlMatch(tracks, preferredUrl) },
-            { unambiguousSubtitleLanguageMatch(tracks, preferredLang) },
+            { exactPlayerTrackIdMatch(tracks, preferredPlayerTrackId) },
+            { subtitleLanguageMatch(tracks, preferredLang) },
         )
         return matchers.firstNotNullOfOrNull { matcher ->
             matcher().takeIf { it >= 0 }
@@ -40,7 +43,7 @@ internal class AudioTrackPreferenceResolver {
         tracks: List<SubtitleTrackUIState>,
         preferredUrl: String?,
     ): Int {
-        if (preferredUrl == null) return NO_MATCH
+        if (preferredUrl.isNullOrEmpty()) return NO_MATCH
         return tracks.indexOfFirst { it.url == preferredUrl }
     }
 
@@ -48,8 +51,17 @@ internal class AudioTrackPreferenceResolver {
         tracks: List<SubtitleTrackUIState>,
         preferredUrl: String?,
     ): Int {
-        val preferredKey = preferredUrl?.stableSubtitleKey() ?: return NO_MATCH
+        if (preferredUrl.isNullOrEmpty()) return NO_MATCH
+        val preferredKey = preferredUrl.stableSubtitleKey()
         return tracks.indexOfFirst { it.url.stableSubtitleKey() == preferredKey }
+    }
+
+    private fun exactPlayerTrackIdMatch(
+        tracks: List<SubtitleTrackUIState>,
+        preferredPlayerTrackId: String?,
+    ): Int {
+        if (preferredPlayerTrackId.isNullOrEmpty()) return NO_MATCH
+        return tracks.indexOfFirst { it.playerTrackId == preferredPlayerTrackId }
     }
 
     private fun exactLabelMatch(
@@ -89,13 +101,17 @@ internal class AudioTrackPreferenceResolver {
         return tracks.indexOfFirst { it.language == preferredLang }
     }
 
-    private fun unambiguousSubtitleLanguageMatch(
+    private fun subtitleLanguageMatch(
         tracks: List<SubtitleTrackUIState>,
         preferredLang: String?,
     ): Int {
         if (preferredLang == null) return NO_MATCH
-        val matches = tracks.withIndex().filter { it.value.language == preferredLang }
-        return matches.singleOrNull()?.index ?: NO_MATCH
+        if (preferredLang.isEmpty()) return tracks.indexOfFirst { it.isOff }
+        val matches = tracks.withIndex().filter {
+            sameSubtitleLanguage(it.value.language, preferredLang)
+        }
+        val manifestMatches = matches.filter { it.value.playerTrackId != null }
+        return manifestMatches.singleOrNull()?.index ?: matches.singleOrNull()?.index ?: NO_MATCH
     }
 
     /** Extracts voice type from HLS labels like "03. Многоголосый. Red Head Sound (RUS)". */
