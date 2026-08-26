@@ -50,6 +50,7 @@ import com.kino.puber.R
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.navigation.component.LocalRootAnchorFocusRestored
 import com.kino.puber.core.ui.navigation.component.LocalRootAnchorRestorePending
+import com.kino.puber.core.ui.navigation.component.LocalRootFocusRestoreVersion
 import com.kino.puber.core.ui.navigation.component.PreserveLazyListAnchorOnRootReturn
 import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.core.ui.uikit.model.CommonAction
@@ -131,6 +132,7 @@ private fun DeviceSettingsList(
     val initialFocusRequester = remember { FocusRequester() }
     val speedTestLauncherFocusRequester = remember { FocusRequester() }
     val rootAnchorRestorePending = LocalRootAnchorRestorePending.current
+    val rootFocusRestoreVersion = LocalRootFocusRestoreVersion.current
     val onRootAnchorFocusRestored = LocalRootAnchorFocusRestored.current
     val rootReturnFocusRestorer = if (rootAnchorRestorePending) {
         Modifier.focusRestorer(speedTestLauncherFocusRequester)
@@ -140,8 +142,10 @@ private fun DeviceSettingsList(
 
     PreserveLazyListAnchorOnRootReturn(listState)
 
-    LaunchedEffect(Unit) {
-        if (!rootAnchorRestorePending) {
+    LaunchedEffect(rootAnchorRestorePending, rootFocusRestoreVersion) {
+        if (rootAnchorRestorePending && rootFocusRestoreVersion > 0) {
+            speedTestLauncherFocusRequester.requestFocus()
+        } else if (!rootAnchorRestorePending) {
             delay(100)
             initialFocusRequester.requestFocus()
         }

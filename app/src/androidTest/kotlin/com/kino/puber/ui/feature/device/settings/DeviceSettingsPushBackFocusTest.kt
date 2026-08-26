@@ -125,7 +125,7 @@ internal class DeviceSettingsPushBackFocusTest {
             PuberTheme {
                 FlowComponent(
                     scopeName = "DeviceSettingsPushBackFocusTest",
-                    screen = DeviceSettingsFocusProbeScreen,
+                    screen = DeviceSettingsFocusProbeFlowScreen,
                     moduleFactory = { scopeId, _ ->
                         module {
                             scope(named(scopeId)) {
@@ -168,6 +168,17 @@ private object DeviceSettingsFocusProbeHost {
     fun anchor(): Pair<Int, Int> {
         val state = requireNotNull(listState)
         return state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset
+    }
+}
+
+@Parcelize
+private data object DeviceSettingsFocusProbeFlowScreen : RootPuberScreen {
+    @Composable
+    override fun Content() {
+        FlowComponent(
+            scopeName = "DeviceSettingsFocusProbeInnerFlow",
+            screen = DeviceSettingsFocusProbeScreen,
+        )
     }
 }
 
