@@ -1,6 +1,8 @@
 package com.kino.puber.ui.feature.device.settings
 
 import android.app.Activity
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -100,7 +102,7 @@ internal class DeviceSettingsPushBackFocusTest {
         }
         composeRule.onNodeWithTag(SPEED_TEST_DESTINATION_TEST_TAG).assertIsFocused()
         composeRule.runOnIdle {
-            DeviceSettingsFocusProbeHost.back()
+            DeviceSettingsFocusProbeHost.pressBack()
         }
 
         composeRule.waitUntil(timeoutMillis = 1_500) {
@@ -123,6 +125,11 @@ internal class DeviceSettingsPushBackFocusTest {
     private fun setProbeContent() {
         composeRule.setContent {
             PuberTheme {
+                val backDispatcher = requireNotNull(LocalOnBackPressedDispatcherOwner.current)
+                    .onBackPressedDispatcher
+                SideEffect {
+                    DeviceSettingsFocusProbeHost.recordBackDispatcher(backDispatcher)
+                }
                 FlowComponent(
                     scopeName = "DeviceSettingsPushBackFocusTest",
                     screen = DeviceSettingsFocusProbeFlowScreen,
@@ -148,21 +155,24 @@ internal class DeviceSettingsPushBackFocusTest {
 }
 
 private object DeviceSettingsFocusProbeHost {
-    private var router: AppRouter? = null
+    private var backDispatcher: OnBackPressedDispatcher? = null
     private var listState: LazyListState? = null
 
     fun clear() {
-        router = null
+        backDispatcher = null
         listState = null
     }
 
-    fun record(router: AppRouter, listState: LazyListState) {
-        this.router = router
+    fun recordBackDispatcher(backDispatcher: OnBackPressedDispatcher) {
+        this.backDispatcher = backDispatcher
+    }
+
+    fun record(listState: LazyListState) {
         this.listState = listState
     }
 
-    fun back() {
-        requireNotNull(router).back()
+    fun pressBack() {
+        requireNotNull(backDispatcher).onBackPressed()
     }
 
     fun anchor(): Pair<Int, Int> {
@@ -189,7 +199,7 @@ private data object DeviceSettingsFocusProbeScreen : RootPuberScreen {
         val router = requireNotNull(LocalPuberKoinScope.current).get<AppRouter>()
         val listState = rememberLazyListState()
         SideEffect {
-            DeviceSettingsFocusProbeHost.record(router, listState)
+            DeviceSettingsFocusProbeHost.record(listState)
         }
         DeviceSettingsContent(
             state = DeviceSettingsState.Success(
