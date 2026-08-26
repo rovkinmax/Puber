@@ -120,6 +120,15 @@ internal class DeviceSettingsPushBackFocusTest {
             DeviceSettingsFocusProbeHost.anchor()
         }
         assertEquals(anchorBefore, anchorAfter)
+
+        composeRule.mainClock.advanceTimeBy(200)
+        composeRule.waitForIdle()
+
+        launcher.assertIsFocused()
+        val settledAnchor = composeRule.runOnIdle {
+            DeviceSettingsFocusProbeHost.anchor()
+        }
+        assertEquals(anchorBefore, settledAnchor)
     }
 
     private fun setProbeContent() {

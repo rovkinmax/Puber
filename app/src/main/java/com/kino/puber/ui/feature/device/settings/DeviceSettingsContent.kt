@@ -134,6 +134,10 @@ private fun DeviceSettingsList(
     val rootAnchorRestorePending = LocalRootAnchorRestorePending.current
     val rootFocusRestoreVersion = LocalRootFocusRestoreVersion.current
     val onRootAnchorFocusRestored = LocalRootAnchorFocusRestored.current
+    val focusIntent = deviceSettingsFocusIntent(
+        rootAnchorRestorePending = rootAnchorRestorePending,
+        rootFocusRestoreVersion = rootFocusRestoreVersion,
+    )
     val rootReturnFocusRestorer = if (rootAnchorRestorePending) {
         Modifier.focusRestorer(speedTestLauncherFocusRequester)
     } else {
@@ -142,12 +146,15 @@ private fun DeviceSettingsList(
 
     PreserveLazyListAnchorOnRootReturn(listState)
 
-    LaunchedEffect(rootAnchorRestorePending, rootFocusRestoreVersion) {
-        if (rootAnchorRestorePending && rootFocusRestoreVersion > 0) {
-            speedTestLauncherFocusRequester.requestFocus()
-        } else if (!rootAnchorRestorePending) {
-            delay(100)
-            initialFocusRequester.requestFocus()
+    LaunchedEffect(focusIntent) {
+        when (focusIntent) {
+            DeviceSettingsFocusIntent.InitialList -> {
+                delay(100)
+                initialFocusRequester.requestFocus()
+            }
+            DeviceSettingsFocusIntent.SpeedTestLauncher ->
+                speedTestLauncherFocusRequester.requestFocus()
+            DeviceSettingsFocusIntent.None -> Unit
         }
     }
 
@@ -167,6 +174,23 @@ private fun DeviceSettingsList(
             }
             .testTag(SPEED_TEST_LAUNCHER_TEST_TAG),
     )
+}
+
+internal enum class DeviceSettingsFocusIntent {
+    None,
+    InitialList,
+    SpeedTestLauncher,
+}
+
+internal fun deviceSettingsFocusIntent(
+    rootAnchorRestorePending: Boolean,
+    rootFocusRestoreVersion: Int,
+): DeviceSettingsFocusIntent = when {
+    rootAnchorRestorePending && rootFocusRestoreVersion > 0 ->
+        DeviceSettingsFocusIntent.SpeedTestLauncher
+    !rootAnchorRestorePending && rootFocusRestoreVersion == 0 ->
+        DeviceSettingsFocusIntent.InitialList
+    else -> DeviceSettingsFocusIntent.None
 }
 
 @Composable
