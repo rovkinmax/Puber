@@ -30,7 +30,7 @@ enum class TabType(val title: Int, val enabled: Boolean = true) : Parcelable {
     Home(R.string.main_tabs_home, enabled = false),
     Search(R.string.main_tabs_search),
     Favourites(R.string.main_tabs_favorites),
-    Bookmarks(R.string.main_tabs_bookmarks, enabled = false),
+    Bookmarks(R.string.main_tabs_bookmarks),
     History(R.string.main_tabs_history),
     Movies(R.string.main_tabs_movies),
     Series(R.string.main_tabs_series),

@@ -65,6 +65,8 @@ class NavigationPreferencesRepository private constructor(
         fixedConfiguration?.let { return it.visibleTabs }
         if (mode == NavigationMode.TopTabs) {
             migrateTopTabsIfNeeded()
+        } else {
+            migrateSideDrawerIfNeeded()
         }
         val key = tabsKeyForMode(mode)
         val stored = persistentPreferences.getString(key, null)
@@ -74,17 +76,37 @@ class NavigationPreferencesRepository private constructor(
 
     private fun migrateTopTabsIfNeeded() {
         val currentVersion = persistentPreferences.getInt(KEY_TOP_TABS_SCHEMA_VERSION, 0)
-        if (currentVersion >= TOP_TABS_SCHEMA_VERSION_HISTORY) return
+        if (currentVersion >= TOP_TABS_SCHEMA_VERSION_BOOKMARKS) return
 
         val stored = persistentPreferences.getString(KEY_TOP_TABS, null)
-        val currentTabs = stored
+        var currentTabs = stored
             ?.let(::deserializeTabs)
             ?: resolveTabNames(TOP_TABS_DEFAULT_TAB_NAMES)
-        val normalizedTabs = normalizeTopTabsForHistory(currentTabs)
+        if (currentVersion < TOP_TABS_SCHEMA_VERSION_HISTORY) {
+            currentTabs = normalizeTopTabsForHistory(currentTabs)
+        }
+        if (currentVersion < TOP_TABS_SCHEMA_VERSION_BOOKMARKS) {
+            currentTabs = insertBookmarksTab(currentTabs)
+        }
         val editor = persistentPreferences.edit()
-        editor.putString(KEY_TOP_TABS, serializeTabs(normalizedTabs))
-        editor.putInt(KEY_TOP_TABS_SCHEMA_VERSION, TOP_TABS_SCHEMA_VERSION_HISTORY)
+        editor.putString(KEY_TOP_TABS, serializeTabs(currentTabs))
+        editor.putInt(KEY_TOP_TABS_SCHEMA_VERSION, TOP_TABS_SCHEMA_VERSION_BOOKMARKS)
         editor.apply()
+    }
+
+    private fun migrateSideDrawerIfNeeded() {
+        val currentVersion = persistentPreferences.getInt(KEY_DRAWER_SCHEMA_VERSION, 0)
+        if (currentVersion >= DRAWER_SCHEMA_VERSION_BOOKMARKS) return
+
+        val stored = persistentPreferences.getString(KEY_DRAWER_TABS, null) ?: return
+        val currentTabs = insertBookmarksTab(
+            tabs = deserializeTabs(stored),
+            fallbackAnchor = TabType.Favourites,
+        )
+        persistentPreferences.edit()
+            .putString(KEY_DRAWER_TABS, serializeTabs(currentTabs))
+            .putInt(KEY_DRAWER_SCHEMA_VERSION, DRAWER_SCHEMA_VERSION_BOOKMARKS)
+            .apply()
     }
 
     private fun normalizeTopTabsForHistory(tabs: List<TabType>): List<TabType> {
@@ -100,11 +122,32 @@ class NavigationPreferencesRepository private constructor(
         return normalized
     }
 
+    private fun insertBookmarksTab(
+        tabs: List<TabType>,
+        fallbackAnchor: TabType = TabType.Home,
+    ): List<TabType> {
+        val normalized = tabs.filterNot { it == TabType.Bookmarks }.toMutableList()
+        val anchorIndex = normalized.indexOf(fallbackAnchor)
+        normalized.add(index = if (anchorIndex >= 0) anchorIndex + 1 else 0, element = TabType.Bookmarks)
+        return normalized
+    }
+
     fun setVisibleTabs(mode: NavigationMode, tabs: List<TabType>) {
         if (fixedConfiguration != null) return
         val key = tabsKeyForMode(mode)
         val withSettings = ensureRequiredTabs(mode, tabs).filterNot { it.isOptionalContentTab() }
-        persistentPreferences.edit().putString(key, serializeTabs(withSettings)).apply()
+        val editor = persistentPreferences.edit().putString(key, serializeTabs(withSettings))
+        when (mode) {
+            NavigationMode.SideDrawer -> editor.putInt(
+                KEY_DRAWER_SCHEMA_VERSION,
+                DRAWER_SCHEMA_VERSION_BOOKMARKS,
+            )
+            NavigationMode.TopTabs -> editor.putInt(
+                KEY_TOP_TABS_SCHEMA_VERSION,
+                TOP_TABS_SCHEMA_VERSION_BOOKMARKS,
+            )
+        }
+        editor.apply()
     }
 
     fun setShowCartoonsTab(show: Boolean) {
@@ -212,16 +255,20 @@ class NavigationPreferencesRepository private constructor(
         const val PREFS_NAME = "navigation_preferences"
         const val KEY_NAVIGATION_MODE = "navigation_mode"
         const val KEY_DRAWER_TABS = "drawer_tabs_visible"
+        const val KEY_DRAWER_SCHEMA_VERSION = "drawer_tabs_schema_version"
         const val KEY_TOP_TABS = "toptabs_tabs_visible"
         const val KEY_TOP_TABS_SCHEMA_VERSION = "toptabs_schema_version"
         const val KEY_SHOW_CARTOONS_TAB = "show_cartoons_tab"
         const val KEY_SHOW_ANIME_TAB = "show_anime_tab"
         const val KEY_SHOW_ANIME = "show_anime"
         const val TOP_TABS_SCHEMA_VERSION_HISTORY = 1
+        const val TOP_TABS_SCHEMA_VERSION_BOOKMARKS = 2
+        const val DRAWER_SCHEMA_VERSION_BOOKMARKS = 1
         const val SEPARATOR = ","
 
         val TOP_TABS_DEFAULT_TAB_NAMES = listOf(
             "Home",
+            "Bookmarks",
             "Movies",
             "Series",
             "Collections",

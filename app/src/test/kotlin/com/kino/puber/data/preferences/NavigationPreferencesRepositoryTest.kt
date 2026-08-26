@@ -18,11 +18,13 @@ import org.junit.jupiter.api.Test
 
 private const val TOP_TABS_KEY = "toptabs_tabs_visible"
 private const val SIDE_DRAWER_KEY = "drawer_tabs_visible"
+private const val SIDE_DRAWER_SCHEMA_VERSION_KEY = "drawer_tabs_schema_version"
 private const val TOP_TABS_SCHEMA_VERSION_KEY = "toptabs_schema_version"
 private const val SHOW_CARTOONS_TAB_KEY = "show_cartoons_tab"
 private const val SHOW_ANIME_TAB_KEY = "show_anime_tab"
 private const val SHOW_ANIME_KEY = "show_anime"
-private const val HISTORY_SCHEMA_VERSION = 1
+private const val BOOKMARKS_SCHEMA_VERSION = 2
+private const val DRAWER_BOOKMARKS_SCHEMA_VERSION = 1
 
 internal class NavigationPreferencesRepositoryTest {
 
@@ -36,6 +38,7 @@ internal class NavigationPreferencesRepositoryTest {
             listOf(
                 TabType.Search,
                 TabType.Favourites,
+                TabType.Bookmarks,
                 TabType.History,
                 TabType.Movies,
                 TabType.Series,
@@ -53,7 +56,7 @@ internal class NavigationPreferencesRepositoryTest {
     }
 
     @Test
-    fun storedSideDrawerSelection_isReturnedWithoutInsertionOrReordering() {
+    fun storedSideDrawerSelection_insertsBookmarksAfterFavourites() {
         val fixture = fixture(
             storedDrawerTabs = "Movies,Favourites,Settings",
         )
@@ -61,15 +64,32 @@ internal class NavigationPreferencesRepositoryTest {
         val tabs = fixture.repository.getVisibleTabs(NavigationMode.SideDrawer)
 
         assertEquals(
-            listOf(TabType.Movies, TabType.Favourites, TabType.Settings),
+            listOf(TabType.Movies, TabType.Favourites, TabType.Bookmarks, TabType.Settings),
             tabs,
         )
         assertFalse(TabType.History in tabs)
+        assertEquals(
+            DRAWER_BOOKMARKS_SCHEMA_VERSION,
+            fixture.preferences.values[SIDE_DRAWER_SCHEMA_VERSION_KEY],
+        )
+        assertEquals(1, fixture.preferences.transactions.size)
+    }
+
+    @Test
+    fun currentSideDrawerSchema_preservesBookmarkRemoval() {
+        val fixture = fixture(
+            storedDrawerTabs = "Favourites,Movies,Settings",
+            storedDrawerSchemaVersion = DRAWER_BOOKMARKS_SCHEMA_VERSION,
+        )
+
+        val tabs = fixture.repository.getVisibleTabs(NavigationMode.SideDrawer)
+
+        assertEquals(listOf(TabType.Favourites, TabType.Movies, TabType.Settings), tabs)
         assertTrue(fixture.preferences.transactions.isEmpty())
     }
 
     @Test
-    fun defaultTopTabs_placeHistoryAfterCollectionsAndPersistSchema() {
+    fun defaultTopTabs_includeBookmarksAndPlaceHistoryAfterCollections() {
         val fixture = fixture()
 
         val tabs = fixture.repository.getVisibleTabs(NavigationMode.TopTabs)
@@ -77,6 +97,7 @@ internal class NavigationPreferencesRepositoryTest {
         assertEquals(
             listOf(
                 TabType.Home,
+                TabType.Bookmarks,
                 TabType.Movies,
                 TabType.Series,
                 TabType.Collections,
@@ -89,7 +110,10 @@ internal class NavigationPreferencesRepositoryTest {
             setOf(TOP_TABS_KEY, TOP_TABS_SCHEMA_VERSION_KEY),
             fixture.preferences.transactions.single().keys,
         )
-        assertEquals(HISTORY_SCHEMA_VERSION, fixture.preferences.values[TOP_TABS_SCHEMA_VERSION_KEY])
+        assertEquals(
+            BOOKMARKS_SCHEMA_VERSION,
+            fixture.preferences.values[TOP_TABS_SCHEMA_VERSION_KEY],
+        )
     }
 
     @Test
@@ -103,6 +127,7 @@ internal class NavigationPreferencesRepositoryTest {
         assertEquals(
             listOf(
                 TabType.Home,
+                TabType.Bookmarks,
                 TabType.Movies,
                 TabType.Series,
                 TabType.Collections,
@@ -119,7 +144,7 @@ internal class NavigationPreferencesRepositoryTest {
         val tabs = fixture.repository.getVisibleTabs(NavigationMode.TopTabs)
 
         assertEquals(
-            listOf(TabType.Home, TabType.Series, TabType.Movies, TabType.History),
+            listOf(TabType.Home, TabType.Bookmarks, TabType.Series, TabType.Movies, TabType.History),
             tabs,
         )
     }
@@ -131,9 +156,25 @@ internal class NavigationPreferencesRepositoryTest {
         val tabs = fixture.repository.getVisibleTabs(NavigationMode.TopTabs)
 
         assertEquals(
-            listOf(TabType.Home, TabType.Movies, TabType.DocMovies, TabType.History),
+            listOf(TabType.Home, TabType.Bookmarks, TabType.Movies, TabType.DocMovies, TabType.History),
             tabs,
         )
+    }
+
+    @Test
+    fun versionOneMigration_insertsBookmarksWithoutRestoringRemovedHistory() {
+        val fixture = fixture(
+            storedTabs = "Home,Movies,Series",
+            storedTopTabsSchemaVersion = 1,
+        )
+
+        val tabs = fixture.repository.getVisibleTabs(NavigationMode.TopTabs)
+
+        assertEquals(
+            listOf(TabType.Home, TabType.Bookmarks, TabType.Movies, TabType.Series),
+            tabs,
+        )
+        assertEquals(BOOKMARKS_SCHEMA_VERSION, fixture.preferences.values[TOP_TABS_SCHEMA_VERSION_KEY])
     }
 
     @Test
@@ -150,7 +191,7 @@ internal class NavigationPreferencesRepositoryTest {
     }
 
     @Test
-    fun userCanRemoveHistoryAfterVersionOneWhileSearchAndSettingsStayOutside() {
+    fun userCanCustomizeTabsAfterCurrentMigrationWhileSearchAndSettingsStayOutside() {
         val fixture = fixture()
         fixture.repository.getVisibleTabs(NavigationMode.TopTabs)
 
@@ -159,13 +200,14 @@ internal class NavigationPreferencesRepositoryTest {
             tabs = listOf(
                 TabType.Search,
                 TabType.Home,
+                TabType.Bookmarks,
                 TabType.Movies,
                 TabType.Settings,
             ),
         )
         val tabs = fixture.repository.getVisibleTabs(NavigationMode.TopTabs)
 
-        assertEquals(listOf(TabType.Home, TabType.Movies), tabs)
+        assertEquals(listOf(TabType.Home, TabType.Bookmarks, TabType.Movies), tabs)
         assertFalse(TabType.History in tabs)
         assertFalse(TabType.Search in tabs)
         assertFalse(TabType.Settings in tabs)
@@ -278,6 +320,7 @@ internal class NavigationPreferencesRepositoryTest {
         assertEquals(
             listOf(
                 TabType.Home,
+                TabType.Bookmarks,
                 TabType.Movies,
                 TabType.Series,
                 TabType.Cartoons,
@@ -290,6 +333,7 @@ internal class NavigationPreferencesRepositoryTest {
         assertEquals(
             listOf(
                 TabType.Favourites,
+                TabType.Bookmarks,
                 TabType.Movies,
                 TabType.Series,
                 TabType.Cartoons,
@@ -309,6 +353,7 @@ internal class NavigationPreferencesRepositoryTest {
         assertEquals(
             listOf(
                 TabType.Home,
+                TabType.Bookmarks,
                 TabType.Movies,
                 TabType.Series,
                 TabType.Cartoons,
@@ -320,6 +365,7 @@ internal class NavigationPreferencesRepositoryTest {
         assertEquals(
             listOf(
                 TabType.Home,
+                TabType.Bookmarks,
                 TabType.Movies,
                 TabType.Series,
                 TabType.Anime,
@@ -338,11 +384,18 @@ internal class NavigationPreferencesRepositoryTest {
         )
 
         assertEquals(
-            listOf(TabType.Home, TabType.Movies, TabType.Series, TabType.Collections, TabType.History),
+            listOf(
+                TabType.Home,
+                TabType.Bookmarks,
+                TabType.Movies,
+                TabType.Series,
+                TabType.Collections,
+                TabType.History,
+            ),
             fixture.repository.getVisibleTabs(NavigationMode.TopTabs),
         )
         assertEquals(
-            listOf(TabType.Favourites, TabType.Movies, TabType.Settings),
+            listOf(TabType.Favourites, TabType.Bookmarks, TabType.Movies, TabType.Settings),
             fixture.repository.getVisibleTabs(NavigationMode.SideDrawer),
         )
     }
@@ -359,11 +412,24 @@ internal class NavigationPreferencesRepositoryTest {
         )
 
         assertEquals(
-            listOf(TabType.Favourites, TabType.Movies, TabType.Anime, TabType.Collections, TabType.Settings),
+            listOf(
+                TabType.Favourites,
+                TabType.Bookmarks,
+                TabType.Movies,
+                TabType.Anime,
+                TabType.Collections,
+                TabType.Settings,
+            ),
             moviesFixture.repository.getVisibleTabs(NavigationMode.SideDrawer),
         )
         assertEquals(
-            listOf(TabType.Favourites, TabType.Cartoons, TabType.History, TabType.Settings),
+            listOf(
+                TabType.Favourites,
+                TabType.Bookmarks,
+                TabType.Cartoons,
+                TabType.History,
+                TabType.Settings,
+            ),
             boundaryFixture.repository.getVisibleTabs(NavigationMode.SideDrawer),
         )
     }
@@ -371,6 +437,8 @@ internal class NavigationPreferencesRepositoryTest {
     private fun fixture(
         storedTabs: String? = null,
         storedDrawerTabs: String? = null,
+        storedTopTabsSchemaVersion: Int? = null,
+        storedDrawerSchemaVersion: Int? = null,
         showCartoonsTab: Boolean? = null,
         showAnimeTab: Boolean? = null,
         showAnime: Boolean? = null,
@@ -378,6 +446,8 @@ internal class NavigationPreferencesRepositoryTest {
         val preferences = TestPreferences()
         storedTabs?.let { preferences.values[TOP_TABS_KEY] = it }
         storedDrawerTabs?.let { preferences.values[SIDE_DRAWER_KEY] = it }
+        storedTopTabsSchemaVersion?.let { preferences.values[TOP_TABS_SCHEMA_VERSION_KEY] = it }
+        storedDrawerSchemaVersion?.let { preferences.values[SIDE_DRAWER_SCHEMA_VERSION_KEY] = it }
         showCartoonsTab?.let { preferences.values[SHOW_CARTOONS_TAB_KEY] = it }
         showAnimeTab?.let { preferences.values[SHOW_ANIME_TAB_KEY] = it }
         showAnime?.let { preferences.values[SHOW_ANIME_KEY] = it }
