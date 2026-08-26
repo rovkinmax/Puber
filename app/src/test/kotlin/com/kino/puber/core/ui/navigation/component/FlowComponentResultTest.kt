@@ -5,12 +5,38 @@ import com.kino.puber.core.ui.navigation.Command
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.navigation.RootPuberScreen
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 class FlowComponentResultTest {
+
+    @Test
+    fun physicalBack_routesUnhandledPopThroughAppRouter() {
+        val router = mockk<AppRouter>(relaxed = true)
+        every { router.dispatchBackPressed() } returns false
+
+        val allowVoyagerPop = onBackPressed(router)
+
+        assertFalse(allowVoyagerPop)
+        verify(exactly = 1) { router.dispatchBackPressed() }
+        verify(exactly = 1) { router.back() }
+    }
+
+    @Test
+    fun physicalBack_doesNotEnqueuePop_whenScreenDispatcherHandlesIt() {
+        val router = mockk<AppRouter>(relaxed = true)
+        every { router.dispatchBackPressed() } returns true
+
+        val allowVoyagerPop = onBackPressed(router)
+
+        assertFalse(allowVoyagerPop)
+        verify(exactly = 1) { router.dispatchBackPressed() }
+        verify(exactly = 0) { router.back() }
+    }
 
     @Test
     fun rootScreenWithRootRouter_routesResultNavigationToRoot() {
