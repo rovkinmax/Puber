@@ -732,6 +732,55 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
     }
 
     @Test
+    fun tracksUpdated_addsAndSelectsManifestOnlySubtitle_withLanguagePreference() {
+        val vm = startedVM()
+        val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
+        val manifestTrack = testSubtitleTracks.first().copy(
+            index = 1,
+            label = "Ukrainian HLS",
+            language = "uk",
+            playerTrackId = "hls-ukrainian",
+            playerGroupIndex = 0,
+            playerTrackIndex = 0,
+        )
+
+        callbackSlot.captured.onTracksUpdated(audioTracks, 0, listOf(manifestTrack))
+        vm.onAction(PlayerAction.SelectSubtitle(3))
+
+        val selectedTrack = contentState(vm).subtitleTracks[3]
+        assertEquals("uk", selectedTrack.language)
+        assertEquals("hls-ukrainian", selectedTrack.playerTrackId)
+        verify { playbackController.selectSubtitle(selectedTrack) }
+        verify { interactor.saveTrackPreferences(42, "eng", "English", "uk", null) }
+    }
+
+    @Test
+    fun tracksUpdated_defersUrlLessLanguagePreference_untilManifestTracksAppear() {
+        every { interactor.getPreferredSubtitleLang(42) } returns "ukr"
+        every { interactor.getPreferredSubtitleUrl(42) } returns ""
+        val vm = startedVM()
+        val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
+        val manifestTrack = testSubtitleTracks.first().copy(
+            index = 1,
+            label = "Ukrainian HLS",
+            language = "uk",
+            playerTrackId = "hls-ukrainian",
+            playerGroupIndex = 0,
+            playerTrackIndex = 0,
+        )
+
+        callbackSlot.captured.onTracksUpdated(audioTracks, 0, emptyList())
+        verify(exactly = 0) { playbackController.selectSubtitle(any()) }
+
+        callbackSlot.captured.onTracksUpdated(audioTracks, 0, listOf(manifestTrack))
+
+        val selectedTrack = contentState(vm).subtitleTracks[3]
+        assertEquals(3, contentState(vm).selectedSubtitleIndex)
+        assertEquals("hls-ukrainian", selectedTrack.playerTrackId)
+        verify { playbackController.selectSubtitle(selectedTrack) }
+    }
+
+    @Test
     fun tracksUpdated_restoresPreferredSubtitleByUrl_beforeLanguage() {
         every { interactor.getPreferredSubtitleLang(42) } returns "rus"
         every { interactor.getPreferredSubtitleUrl(42) } returns "https://test/subtitles/rus-forced.vtt"

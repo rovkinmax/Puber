@@ -15,7 +15,19 @@ internal data class SubtitleTrackUIState(
     val label: String,
     val language: String,
     val url: String,
+    val isEmbedded: Boolean = false,
+    val isForced: Boolean? = null,
+    val playerTrackId: String? = null,
+    val playerGroupIndex: Int? = null,
+    val playerTrackIndex: Int? = null,
 )
+
+internal val SubtitleTrackUIState.isOff: Boolean
+    get() = language.isEmpty() &&
+        url.isEmpty() &&
+        playerTrackId == null &&
+        playerGroupIndex == null &&
+        playerTrackIndex == null
 
 @Immutable
 internal data class SoundModeUIState(
