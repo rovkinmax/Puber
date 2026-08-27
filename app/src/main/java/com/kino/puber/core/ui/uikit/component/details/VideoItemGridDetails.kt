@@ -30,11 +30,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.kino.puber.core.ui.uikit.component.Rating
 import com.kino.puber.core.ui.uikit.component.RatingUIState
+import com.kino.puber.core.ui.uikit.component.SkeletonAsyncImage
 import com.kino.puber.core.ui.uikit.component.modifier.placeholder
 import com.kino.puber.core.ui.uikit.model.Lorem
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
@@ -167,23 +167,17 @@ private fun VideoDetailsPoster(
     Box(
         modifier = modifier,
     ) {
-        val imageUrls = remember(imageUrl, imageFallbackUrls) {
-            (listOf(imageUrl) + imageFallbackUrls)
-                .filter { it.isNotBlank() }
-                .distinct()
-        }
+        val imageUrls = rememberPosterImageUrls(imageUrl, imageFallbackUrls)
         var urlIndex by remember(imageUrls) { mutableIntStateOf(0) }
         val currentUrl = imageUrls.getOrNull(urlIndex)
+        val imageRequest = rememberPosterImageRequest(currentUrl)
 
-        AsyncImage(
+        SkeletonAsyncImage(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth()
                 .placeholder(visible = currentUrl.isNullOrEmpty()),
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(currentUrl)
-                .crossfade(true)
-                .build(),
+            model = imageRequest,
             onError = {
                 if (urlIndex < imageUrls.lastIndex) {
                     urlIndex++
@@ -226,6 +220,29 @@ private fun VideoDetailsPoster(
                     )
                 )
         )
+    }
+}
+
+@Composable
+private fun rememberPosterImageUrls(
+    imageUrl: String,
+    imageFallbackUrls: List<String>,
+): List<String> = remember(imageUrl, imageFallbackUrls) {
+    (listOf(imageUrl) + imageFallbackUrls)
+        .filter { it.isNotBlank() }
+        .distinct()
+}
+
+@Composable
+private fun rememberPosterImageRequest(imageUrl: String?): ImageRequest? {
+    val context = LocalContext.current
+    return remember(imageUrl) {
+        imageUrl?.let {
+            ImageRequest.Builder(context)
+                .data(it)
+                .crossfade(true)
+                .build()
+        }
     }
 }
 

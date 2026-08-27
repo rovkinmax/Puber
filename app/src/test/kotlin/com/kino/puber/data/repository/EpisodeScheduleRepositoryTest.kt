@@ -14,10 +14,19 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
+import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 internal class EpisodeScheduleRepositoryTest {
@@ -249,6 +258,119 @@ internal class EpisodeScheduleRepositoryTest {
         coVerify(exactly = 2) { api.findTvByImdbId("tt123") }
         coVerify(exactly = 2) { api.getTvDetails(101) }
         coVerify(exactly = 2) { api.getTvSeasonDetails(101, 2) }
+    }
+
+    @Test
+    fun coldLoad_doesNotRunApiContinuationsOnCallerThread() = runTest {
+        every { api.isConfigured } returns true
+        val callbackThreads = mutableListOf<String>()
+        coEvery { api.findTvByImdbId("tt123") } coAnswers {
+            callbackThreads += Thread.currentThread().name
+            Result.success(101)
+        }
+        coEvery { api.getTvDetails(101) } coAnswers {
+            callbackThreads += Thread.currentThread().name
+            Result.success(
+                TmdbTvDetailsResponse(
+                    id = 101,
+                    nextEpisodeToAir = null,
+                    seasons = listOf(
+                        TmdbSeasonSummaryResponse(
+                            id = 2,
+                            seasonNumber = 2,
+                            airDate = "2026-08-23",
+                        ),
+                    ),
+                ),
+            )
+        }
+        coEvery { api.getTvSeasonDetails(101, 2) } coAnswers {
+            callbackThreads += Thread.currentThread().name
+            Result.success(
+                TmdbSeasonDetailsResponse(
+                    id = 2,
+                    seasonNumber = 2,
+                    airDate = null,
+                    episodes = emptyList(),
+                ),
+            )
+        }
+        val callerDispatcher = Executors
+            .newSingleThreadExecutor { runnable -> Thread(runnable, "details-main") }
+            .asCoroutineDispatcher()
+
+        try {
+            withContext(callerDispatcher) {
+                repository().getSchedule("tt123")
+            }
+        } finally {
+            callerDispatcher.close()
+        }
+
+        assertEquals(3, callbackThreads.size)
+        assertTrue(callbackThreads.none { it == "details-main" }, callbackThreads.toString())
+    }
+
+    @Test
+    fun concurrentNormalizedRequests_shareOneColdLoad() = runTest {
+        every { api.isConfigured } returns true
+        val loadStarted = CompletableDeferred<Unit>()
+        val releaseLoad = CompletableDeferred<Unit>()
+        var findCalls = 0
+        coEvery { api.findTvByImdbId("tt123") } coAnswers {
+            findCalls += 1
+            loadStarted.complete(Unit)
+            releaseLoad.await()
+            Result.success(101)
+        }
+        coEvery { api.getTvDetails(101) } returns Result.success(
+            TmdbTvDetailsResponse(id = 101, nextEpisodeToAir = null, seasons = emptyList()),
+        )
+        val repository = repository()
+
+        val first = async(start = CoroutineStart.UNDISPATCHED) {
+            repository.getSchedule("tt123")
+        }
+        loadStarted.await()
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            repository.getSchedule("123")
+        }
+        releaseLoad.complete(Unit)
+
+        assertEquals(EpisodeScheduleResult.NoUpcomingReleases, first.await())
+        assertEquals(EpisodeScheduleResult.NoUpcomingReleases, second.await())
+        assertEquals(1, findCalls)
+    }
+
+    @Test
+    fun cancelledColdLoad_propagatesAndSubsequentRequestRetries() = runTest {
+        every { api.isConfigured } returns true
+        val firstCallStarted = CompletableDeferred<Unit>()
+        var findCalls = 0
+        coEvery { api.findTvByImdbId("tt123") } coAnswers {
+            findCalls += 1
+            if (findCalls == 1) {
+                firstCallStarted.complete(Unit)
+                awaitCancellation()
+            }
+            Result.success(101)
+        }
+        coEvery { api.getTvDetails(101) } returns Result.success(
+            TmdbTvDetailsResponse(id = 101, nextEpisodeToAir = null, seasons = emptyList()),
+        )
+        val repository = repository()
+
+        val cancelled = async(start = CoroutineStart.UNDISPATCHED) {
+            repository.getSchedule("tt123")
+        }
+        firstCallStarted.await()
+        cancelled.cancelAndJoin()
+
+        assertEquals(
+            EpisodeScheduleResult.NoUpcomingReleases,
+            repository.getSchedule("tt123"),
+        )
+        assertEquals(2, findCalls)
     }
 
     private fun repository(): EpisodeScheduleRepository {

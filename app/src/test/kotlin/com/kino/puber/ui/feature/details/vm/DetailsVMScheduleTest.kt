@@ -22,6 +22,7 @@ import com.kino.puber.domain.model.ScheduleProvider
 import com.kino.puber.domain.model.ScheduledEpisode
 import com.kino.puber.domain.model.ScheduledSeason
 import com.kino.puber.ui.feature.details.model.DetailsAction
+import com.kino.puber.ui.feature.details.model.DetailsCastMemberUIState
 import com.kino.puber.ui.feature.details.model.DetailsInfoUIState
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
@@ -179,6 +180,27 @@ class DetailsVMScheduleTest {
 
         assertTrue((vm.testStateValue as DetailsScreenState.Content).isWatched)
         verify(exactly = 1) { mapper.map(item, false, episodeSchedule) }
+    }
+
+    @Test
+    fun scheduleLoad_sameItemCompletion_doesNotRestartCastEnrichment() {
+        val item = testItem.copy(imdb = "tt123")
+        val castCards = listOf(
+            DetailsCastMemberUIState(
+                actorQuery = "Actor",
+                displayName = "Actor",
+            ),
+        )
+        coEvery { interactor.getItemDetails(ITEM_ID) } returns item
+        coEvery { interactor.getTmdbCast("tt123") } returns emptyList()
+        coEvery { episodeScheduleInteractor.getSchedule("tt123") } returns
+            EpisodeScheduleResult.Available(episodeSchedule)
+        every { mapper.map(item, false) } returns content(castCards = castCards)
+        every { mapper.map(item, false, episodeSchedule) } returns content(castCards = castCards)
+
+        startedVM()
+
+        coVerify(exactly = 1) { interactor.getTmdbCast("tt123") }
     }
 
     @Test
@@ -430,6 +452,7 @@ class DetailsVMScheduleTest {
     private fun content(
         isInWatchlist: Boolean = false,
         isWatched: Boolean = false,
+        castCards: List<DetailsCastMemberUIState> = emptyList(),
     ): DetailsScreenState.Content {
         return DetailsScreenState.Content(
             details = VideoDetailsUIState.Loading,
@@ -438,7 +461,7 @@ class DetailsVMScheduleTest {
                 ratings = emptyList(),
                 primaryRows = emptyList(),
                 secondaryRows = emptyList(),
-                castCards = emptyList(),
+                castCards = castCards,
             ),
             buttons = emptyList(),
             isInWatchlist = isInWatchlist,
