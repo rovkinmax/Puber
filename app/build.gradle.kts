@@ -180,8 +180,21 @@ android {
             versionCode = Versions.VersionCode
             resValue("string", "app_name", "Puber")
         }
+
+        create("instrumentation") {
+            dimension = "buildType"
+            applicationIdSuffix = ".instrumentation"
+            resValue("string", "app_name", "Puber(Instrumentation)")
+        }
     }
 
+}
+
+androidComponents {
+    beforeVariants { variantBuilder ->
+        variantBuilder.enableAndroidTest =
+            variantBuilder.productFlavors.any { (_, flavor) -> flavor == "instrumentation" }
+    }
 }
 
 kotlin {
@@ -293,13 +306,17 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation(libs.androidx.profileinstaller)
-    baselineProfile(project(":baselineprofile"))
 }
 
 baselineProfile {
     saveInSrc = true
     automaticGenerationDuringBuild = false
     mergeIntoMain = true
+    variants {
+        create("instrumentationRelease") {
+            from(project(":baselineprofile"))
+        }
+    }
     warnings {
         maxAgpVersion = false
     }
