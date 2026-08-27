@@ -388,8 +388,8 @@ internal class PlayerVM(
         if (subtitleIndex >= 0) {
             applySubtitleSelection(subtitleIndex, persist = false)
         }
-        val waitsForManifestLanguage = !subtitleLang.isNullOrEmpty() && subtitleUrl.isNullOrEmpty()
-        return subtitleIndex >= 0 || !waitsForManifestLanguage || hasDiscoveredSubtitleTracks
+        val hasSubtitlePreference = !subtitleLang.isNullOrEmpty() || !subtitleUrl.isNullOrEmpty()
+        return subtitleIndex >= 0 || !hasSubtitlePreference || hasDiscoveredSubtitleTracks
     }
 
     override fun onAction(action: UIAction) {
@@ -1373,7 +1373,8 @@ internal class PlayerVM(
             audioLang = audioTrack?.language?.takeIf { it.isNotEmpty() },
             audioLabel = audioTrack?.label?.takeIf { it.isNotEmpty() },
             subtitleLang = subtitle?.language?.takeIf { it.isNotEmpty() },
-            subtitleUrl = subtitle?.url?.takeIf { it.isNotEmpty() },
+            subtitleUrl = subtitle?.url?.takeIf { it.isNotEmpty() }
+                ?: subtitle?.playerTrackId?.takeIf { it.isNotEmpty() },
         )
     }
 

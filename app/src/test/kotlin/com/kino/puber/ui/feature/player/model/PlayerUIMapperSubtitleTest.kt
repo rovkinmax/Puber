@@ -60,13 +60,14 @@ internal class PlayerUIMapperSubtitleTest {
                 SubtitleLink(
                     lang = "rus",
                     url = "https://cdn.test/subtitles/russian-forced.vtt",
-                    embed = false,
+                    embed = true,
                 ),
             )
         )
 
         assertEquals(listOf("rus variant 1", "rus variant 2"), result.drop(1).map { it.label })
         assertEquals(listOf("rus", "rus"), result.drop(1).map { it.language })
-        assertEquals(listOf(true, false), result.drop(1).map { it.isEmbedded })
+        assertEquals(listOf(true, true), result.drop(1).map { it.isEmbedded })
+        assertEquals(listOf(false, true), result.drop(1).map { it.isForced })
     }
 }
