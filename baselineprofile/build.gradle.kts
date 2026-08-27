@@ -20,6 +20,8 @@ android {
         create("instrumentation") {
             dimension = "buildType"
             testInstrumentationRunnerArguments["targetAppId"] = "com.kino.puber.instrumentation"
+            testInstrumentationRunnerArguments["baselineMockPort"] =
+                providers.gradleProperty("puber.baselineMockPort").get()
         }
     }
 
@@ -39,4 +41,5 @@ dependencies {
     implementation(libs.androidx.test.ext.junit)
     implementation(libs.androidx.uiautomator)
     implementation(libs.androidx.test.runner)
+    implementation(libs.mockwebserver3)
 }

@@ -5,6 +5,7 @@ package com.kino.puber.data.di
 import android.net.ConnectivityManager
 import com.kino.puber.core.session.SessionEventBus
 import com.kino.puber.data.api.KinoPubApiClient
+import com.kino.puber.data.api.config.KinoPubConfig
 import com.kino.puber.data.repository.AppUpdateDownloader
 import com.kino.puber.data.repository.AppUpdateInstaller
 import com.kino.puber.data.repository.AppUpdatePreferencesRepository
@@ -43,9 +44,11 @@ import androidx.media3.database.StandaloneDatabaseProvider
 val apiModule = module {
     single { SessionEventBus() }
     single {
-        OkHttpClient.Builder()
-            .dns(DnsOverHttpsFactory.create())
-            .build()
+        OkHttpClient.Builder().apply {
+            if (!KinoPubConfig.IS_PINNED_ENDPOINT) {
+                dns(DnsOverHttpsFactory.create())
+            }
+        }.build()
     }
     single {
         KinoPubApiClient(
@@ -88,7 +91,7 @@ val repositoryModule = module {
     singleOf(::TmdbIdRepository)
     singleOf(::SkipSegmentRepository)
     singleOf(::SkipSegmentService)
-    singleOf(::NavigationPreferencesRepository)
+    single { NavigationPreferencesRepository(androidContext()) }
     single<androidx.media3.datasource.cache.Cache> {
         val cacheDir = java.io.File(androidContext().externalCacheDir ?: androidContext().cacheDir, "media_cache")
         SimpleCache(

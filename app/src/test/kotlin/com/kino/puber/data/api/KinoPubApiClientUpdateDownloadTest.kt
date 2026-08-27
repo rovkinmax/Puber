@@ -4,16 +4,13 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.util.Log
+import android.util.Base64
 import com.kino.puber.core.session.SessionEventBus
 import com.kino.puber.data.repository.ICryptoPreferenceRepository
-import com.sun.net.httpserver.HttpExchange
-import com.sun.net.httpserver.HttpServer
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
-import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -41,12 +38,15 @@ internal class KinoPubApiClientUpdateDownloadTest {
             mockkStatic(Log::class)
             every { Log.isLoggable(any(), any()) } returns false
             every { Log.println(any(), any(), any()) } returns 0
+            mockkStatic(Base64::class)
+            every { Base64.decode(any<ByteArray>(), any()) } returns "api.test".toByteArray()
         }
 
         @JvmStatic
         @AfterAll
         fun tearDownAndroidLogging() {
             unmockkStatic(Log::class)
+            unmockkStatic(Base64::class)
         }
     }
 
@@ -60,9 +60,12 @@ internal class KinoPubApiClientUpdateDownloadTest {
         }
         val progress = mutableListOf<Int>()
 
-        withServer(handler = { it.respond(status = 200, body = body) }) { url ->
+        MockWebServerTestSupport().use { server ->
+            server.route("/update.apk") {
+                server.response(status = 200, body = body)
+            }
             val result = client(cacheDir).downloadUpdateAsset(
-                url = url,
+                url = server.url("/update.apk"),
                 targetFile = target,
                 onProgress = progress::add,
             )
@@ -90,9 +93,12 @@ internal class KinoPubApiClientUpdateDownloadTest {
             writeBytes(byteArrayOf(1, 2, 3))
         }
 
-        withServer(handler = { it.respond(status = 404, body = ByteArray(0)) }) { url ->
+        MockWebServerTestSupport().use { server ->
+            server.route("/update.apk") {
+                server.response(status = 404, body = ByteArray(0))
+            }
             val result = client(cacheDir).downloadUpdateAsset(
-                url = url,
+                url = server.url("/update.apk"),
                 targetFile = target,
                 onProgress = {},
             )
@@ -119,21 +125,28 @@ internal class KinoPubApiClientUpdateDownloadTest {
             writeBytes(byteArrayOf(1, 2, 3))
         }
 
-        withServer(
-            handler = { exchange ->
-                exchange.sendResponseHeaders(200, 0)
-                exchange.responseBody.use { output ->
-                    output.write(ByteArray(8 * 1024) { 7 })
-                    output.flush()
-                    requestStarted.countDown()
-                    releaseResponse.await(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                    output.write(ByteArray(8 * 1024) { 8 })
-                }
-            },
-        ) { url ->
+        MockWebServerTestSupport().use { server ->
+            server.route("/update.apk") {
+                server.streamingResponse(
+                    status = 200,
+                    chunks = listOf(
+                        ByteArray(8 * 1024) { 7 },
+                        ByteArray(8 * 1024) { 8 },
+                    ),
+                    afterChunk = { index ->
+                        if (index == 0) {
+                            requestStarted.countDown()
+                            releaseResponse.await(
+                                REQUEST_TIMEOUT_SECONDS,
+                                TimeUnit.SECONDS,
+                            )
+                        }
+                    },
+                )
+            }
             val result = async(Dispatchers.IO) {
                 client(cacheDir).downloadUpdateAsset(
-                    url = url,
+                    url = server.url("/update.apk"),
                     targetFile = target,
                     onProgress = {},
                 )
@@ -186,28 +199,6 @@ internal class KinoPubApiClientUpdateDownloadTest {
             sessionEventBus = SessionEventBus(),
             mainApiBaseUrl = "http://127.0.0.1/",
         )
-    }
-
-    private suspend fun withServer(
-        handler: (HttpExchange) -> Unit,
-        block: suspend (url: String) -> Unit,
-    ) {
-        val server = HttpServer.create(
-            InetSocketAddress(InetAddress.getLoopbackAddress(), 0),
-            0,
-        )
-        server.createContext("/update.apk", handler)
-        server.start()
-        try {
-            block("http://127.0.0.1:${server.address.port}/update.apk")
-        } finally {
-            server.stop(0)
-        }
-    }
-
-    private fun HttpExchange.respond(status: Int, body: ByteArray) {
-        sendResponseHeaders(status, body.size.toLong())
-        responseBody.use { it.write(body) }
     }
 
     private fun downloadFileFor(target: java.io.File): java.io.File =

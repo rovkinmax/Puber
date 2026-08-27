@@ -6,21 +6,17 @@ import android.net.NetworkCapabilities
 import android.util.Log
 import com.kino.puber.core.session.SessionEventBus
 import com.kino.puber.data.repository.ICryptoPreferenceRepository
-import com.sun.net.httpserver.HttpExchange
-import com.sun.net.httpserver.HttpServer
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
-import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -48,11 +44,10 @@ internal class KinoPubApiClientHistoryTest {
         @TempDir cacheDir: Path,
     ) = runTest {
         val request = AtomicReference<CapturedRequest>()
-        withServer(
-            path = "/v1/history",
-            handler = { exchange ->
-                request.set(exchange.capture())
-                exchange.respond(
+        MockWebServerTestSupport().use { server ->
+            server.route("/v1/history") { recordedRequest ->
+                request.set(recordedRequest.captureRequest())
+                server.response(
                     status = 200,
                     body = """
                         {
@@ -66,9 +61,8 @@ internal class KinoPubApiClientHistoryTest {
                         }
                     """.trimIndent(),
                 )
-            },
-        ) { baseUrl ->
-            val result = client(cacheDir, baseUrl).getHistoryData(page = 3)
+            }
+            val result = client(cacheDir, server.url("/v1/")).getHistoryData(page = 3)
 
             assertTrue(result.isSuccess, result.exceptionOrNull()?.stackTraceToString())
             assertEquals(3, result.getOrThrow().pagination.current)
@@ -77,8 +71,10 @@ internal class KinoPubApiClientHistoryTest {
         assertEquals(
             CapturedRequest(
                 method = "GET",
+                path = "/v1/history",
                 query = "page=3",
                 cacheControl = "no-store",
+                pragma = null,
             ),
             request.get(),
         )
@@ -89,14 +85,13 @@ internal class KinoPubApiClientHistoryTest {
         @TempDir cacheDir: Path,
     ) = runTest {
         val request = AtomicReference<CapturedRequest>()
-        withServer(
-            path = "/v1/history/clear-for-media",
-            handler = { exchange ->
-                request.set(exchange.capture())
-                exchange.respond(status = 422, body = """{"error":"synthetic rejection"}""")
-            },
-        ) { baseUrl ->
-            val result = client(cacheDir, baseUrl).clearExactMediaHistory(mediaId = 73_001)
+        MockWebServerTestSupport().use { server ->
+            server.route("/v1/history/clear-for-media") { recordedRequest ->
+                request.set(recordedRequest.captureRequest())
+                server.response(status = 422, body = """{"error":"synthetic rejection"}""")
+            }
+            val result = client(cacheDir, server.url("/v1/"))
+                .clearExactMediaHistory(mediaId = 73_001)
 
             assertTrue(result.isFailure)
             assertTrue(
@@ -109,8 +104,10 @@ internal class KinoPubApiClientHistoryTest {
         assertEquals(
             CapturedRequest(
                 method = "POST",
+                path = "/v1/history/clear-for-media",
                 query = "id=73001",
                 cacheControl = "no-store",
+                pragma = null,
             ),
             request.get(),
         )
@@ -141,43 +138,4 @@ internal class KinoPubApiClientHistoryTest {
             mainApiBaseUrl = baseUrl,
         )
     }
-
-    private suspend fun withServer(
-        path: String,
-        handler: (HttpExchange) -> Unit,
-        block: suspend (baseUrl: String) -> Unit,
-    ) {
-        val server = HttpServer.create(
-            InetSocketAddress(InetAddress.getLoopbackAddress(), 0),
-            0,
-        )
-        server.createContext(path, handler)
-        server.start()
-        try {
-            block("http://127.0.0.1:${server.address.port}/v1/")
-        } finally {
-            server.stop(0)
-        }
-    }
-
-    private fun HttpExchange.capture(): CapturedRequest {
-        return CapturedRequest(
-            method = requestMethod,
-            query = requestURI.rawQuery,
-            cacheControl = requestHeaders.getFirst("Cache-Control"),
-        )
-    }
-
-    private fun HttpExchange.respond(status: Int, body: String) {
-        val bytes = body.toByteArray()
-        responseHeaders.add("Content-Type", "application/json")
-        sendResponseHeaders(status, bytes.size.toLong())
-        responseBody.use { it.write(bytes) }
-    }
-
-    private data class CapturedRequest(
-        val method: String,
-        val query: String?,
-        val cacheControl: String?,
-    )
 }
