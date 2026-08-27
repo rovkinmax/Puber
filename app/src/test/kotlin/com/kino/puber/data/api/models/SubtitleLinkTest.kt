@@ -51,4 +51,22 @@ internal class SubtitleLinkTest {
         assertFalse(regularSubtitle.isForced)
         assertFalse(unforcedSubtitle.isForced)
     }
+
+    @Test
+    fun isForced_usesApiFlagInsteadOfUrlHeuristic() {
+        val forcedSubtitle = SubtitleLink(
+            lang = "rus",
+            url = "https://cdn.test/subtitles/russian.srt",
+            forced = true,
+            file = "/a/71/29725.srt",
+        )
+        val regularSubtitle = SubtitleLink(
+            lang = "rus",
+            url = "https://cdn.test/subtitles/russian-forced.srt",
+            forced = false,
+        )
+
+        assertTrue(forcedSubtitle.isForced)
+        assertFalse(regularSubtitle.isForced)
+    }
 }

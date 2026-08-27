@@ -17,15 +17,17 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsManifest
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.hls.playlist.HlsMultivariantPlaylist
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.source.BehindLiveWindowException
-import androidx.media3.extractor.DefaultExtractorsFactory
-import okhttp3.OkHttpClient
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
 import com.kino.puber.BuildConfig
 import com.kino.puber.R
 import com.kino.puber.data.api.models.SubtitleLink
@@ -35,6 +37,7 @@ import com.kino.puber.ui.feature.player.model.BufferPreset
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 import com.kino.puber.ui.feature.player.model.isOff
 import java.util.Locale
+import okhttp3.OkHttpClient
 
 internal interface PlaybackControl {
     interface Callback : PlaybackEventSink {
@@ -346,6 +349,7 @@ internal class PlaybackController(
         exoPlayer = null
         trackSelector = null
         dataSourceFactory = null
+        pendingSubtitleTrack = null
     }
 
     @OptIn(UnstableApi::class)
@@ -367,10 +371,13 @@ internal class PlaybackController(
 
     private fun buildMediaItem(streamUrl: String, subtitles: List<SubtitleLink>?): MediaItem {
         val builder = MediaItem.Builder().setUri(streamUrl)
-        if (streamUrl.isHlsStreamUrl()) {
+        val isHlsStream = streamUrl.isHlsStreamUrl()
+        if (isHlsStream) {
             builder.setMimeType(MimeTypes.APPLICATION_M3U8)
         }
-        if (!subtitles.isNullOrEmpty()) {
+        // KinoPub HLS manifests already contain the API subtitle list as renditions.
+        // Adding the API URLs again creates a second set of Media3 text tracks.
+        if (!isHlsStream && !subtitles.isNullOrEmpty()) {
             val subtitleConfigs = subtitles.mapNotNull { sub ->
                 if (!sub.shouldSideLoad) return@mapNotNull null
                 val subtitleUrl = sub.url
@@ -423,9 +430,8 @@ internal class PlaybackController(
     private fun setMediaSource(player: ExoPlayer, mediaItem: MediaItem, streamUrl: String) {
         val dsFactory = dataSourceFactory ?: return
         if (streamUrl.isHlsStreamUrl()) {
-            // DefaultMediaSourceFactory merges MediaItem subtitle configurations with the HLS source.
-            // Creating HlsMediaSource directly silently drops every side-loaded subtitle configuration.
-            val hlsSource = createMediaSourceFactory(dsFactory)
+            val hlsSource = HlsMediaSource.Factory(dsFactory)
+                .setAllowChunklessPreparation(true)
                 .setLoadErrorHandlingPolicy(HlsErrorPolicy())
                 .createMediaSource(mediaItem)
             player.setMediaSource(hlsSource)
@@ -575,6 +581,8 @@ internal class PlaybackController(
     private fun notifyTracksUpdated(callback: PlaybackControl.Callback?) {
         val player = exoPlayer ?: return
         val audioGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        val textGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        if (audioGroups.isEmpty() && textGroups.isEmpty()) return
         val audioTracks = audioGroups.mapIndexed { index, group ->
             val format = group.getTrackFormat(0)
             val label = format.label ?: format.language ?: "Track ${index + 1}"
@@ -585,29 +593,85 @@ internal class PlaybackController(
             )
         }
         val selectedIndex = audioGroups.indexOfFirst { it.isSelected }.coerceAtLeast(0)
+        val hlsSubtitles = (player.currentManifest as? HlsManifest)
+            ?.multivariantPlaylist
+            ?.subtitles
+            .orEmpty()
+        callback?.onTracksUpdated(
+            audioTracks,
+            selectedIndex,
+            buildSubtitleTracks(textGroups, hlsSubtitles),
+        )
+    }
+
+    private fun buildSubtitleTracks(
+        textGroups: List<Tracks.Group>,
+        hlsSubtitles: List<HlsMultivariantPlaylist.Rendition>,
+    ): List<SubtitleTrackUIState> {
         var subtitleIndex = 0
-        val subtitleTracks = player.currentTracks.groups
-            .filter { it.type == C.TRACK_TYPE_TEXT }
-            .flatMapIndexed { groupIndex, group ->
-                (0 until group.length).map { trackIndex ->
-                    val format = group.getTrackFormat(trackIndex)
-                    subtitleIndex += 1
-                    SubtitleTrackUIState(
-                        index = subtitleIndex,
-                        label = format.label
-                            ?: format.language
-                            ?: context.getString(R.string.player_subtitle_unknown, subtitleIndex),
-                        language = format.language.orEmpty(),
-                        url = "",
-                        isEmbedded = true,
-                        isForced = format.selectionFlags and C.SELECTION_FLAG_FORCED != 0,
-                        playerTrackId = format.id,
-                        playerGroupIndex = groupIndex,
-                        playerTrackIndex = trackIndex,
-                    )
-                }
+        val textTrackCount = textGroups.sumOf { it.length }
+        return textGroups.flatMapIndexed { groupIndex, group ->
+            (0 until group.length).map { trackIndex ->
+                val format = group.getTrackFormat(trackIndex)
+                subtitleIndex += 1
+                buildSubtitleTrack(
+                    index = subtitleIndex,
+                    format = format,
+                    hlsRendition = findHlsRendition(
+                        format = format,
+                        renditionIndex = subtitleIndex - 1,
+                        textTrackCount = textTrackCount,
+                        hlsSubtitles = hlsSubtitles,
+                    ),
+                    groupIndex = groupIndex,
+                    trackIndex = trackIndex,
+                )
             }
-        callback?.onTracksUpdated(audioTracks, selectedIndex, subtitleTracks)
+        }
+    }
+
+    private fun findHlsRendition(
+        format: Format,
+        renditionIndex: Int,
+        textTrackCount: Int,
+        hlsSubtitles: List<HlsMultivariantPlaylist.Rendition>,
+    ): HlsMultivariantPlaylist.Rendition? {
+        return hlsSubtitles.filter { rendition ->
+            format.id != null && rendition.format.id == format.id
+        }.singleOrNull() ?: hlsSubtitles.filter { rendition ->
+            rendition.format.label == format.label &&
+                sameSubtitleLanguage(
+                    rendition.format.language.orEmpty(),
+                    format.language.orEmpty(),
+                )
+        }.singleOrNull() ?: hlsSubtitles.getOrNull(renditionIndex)
+            .takeIf { hlsSubtitles.size == textTrackCount }
+    }
+
+    private fun buildSubtitleTrack(
+        index: Int,
+        format: Format,
+        hlsRendition: HlsMultivariantPlaylist.Rendition?,
+        groupIndex: Int,
+        trackIndex: Int,
+    ): SubtitleTrackUIState {
+        val identityFormat = hlsRendition?.format
+        val language = format.language ?: identityFormat?.language.orEmpty()
+        val fallbackLabel = format.label
+            ?: identityFormat?.label
+            ?: context.getString(R.string.player_subtitle_unknown, index)
+        return SubtitleTrackUIState(
+            index = index,
+            label = subtitleTrackDisplayLabel(language, fallbackLabel),
+            language = language,
+            url = "",
+            isForced = (format.selectionFlags or (identityFormat?.selectionFlags ?: 0)) and
+                C.SELECTION_FLAG_FORCED != 0,
+            playerTrackId = format.id ?: identityFormat?.id,
+            playerTrackUri = hlsRendition?.url?.toString(),
+            playerGroupIndex = groupIndex,
+            playerTrackIndex = trackIndex,
+        )
     }
 
     private fun applyPendingSubtitleSelection() {
@@ -619,16 +683,14 @@ internal class PlaybackController(
         val stableKey = track.url.stableSubtitleKey()
         val textGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
         val target = findTextTrack(track, stableKey, textGroups)
+        if (target == null) return
         val builder = player.trackSelectionParameters
             .buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-            .setPreferredTextLanguage(track.language)
-        if (target != null) {
-            builder.setOverrideForType(
+            .setOverrideForType(
                 TrackSelectionOverride(target.group.mediaTrackGroup, target.trackIndex),
             )
-        }
         player.trackSelectionParameters = builder.build()
     }
 
@@ -643,11 +705,8 @@ internal class PlaybackController(
             track.playerTrackId != null && format.id == track.playerTrackId
         } ?: findTextTrackBy(textGroups) { format ->
             stableKey.isNotEmpty() && (format.id == stableKey || format.label == stableKey)
-        } ?: findUnambiguousTextTrackByLanguage(textGroups, track.language)
-        ?: findTextTrackByPlayerCoordinates(textGroups, track)
-        ?: track.takeUnless { it.isEmbedded }?.let {
-            findTextTrackBySubtitleIndex(textGroups, it.index)
-        }
+        } ?: findTextTrackByPlayerCoordinates(textGroups, track)
+            ?: findUnambiguousTextTrackByLanguage(textGroups, track.language)
     }
 
     private fun findTextTrackByPlayerCoordinates(
@@ -661,23 +720,6 @@ internal class PlaybackController(
         } else {
             null
         }
-    }
-
-    // Media3 may not expose SubtitleConfiguration id/label for every source type.
-    // The current track list still preserves the subtitle configuration order.
-    private fun findTextTrackBySubtitleIndex(
-        textGroups: List<Tracks.Group>,
-        subtitleIndex: Int,
-    ): TextTrackSelection? {
-        val targetIndex = subtitleIndex - 1
-        if (targetIndex < 0) return null
-        return textGroups
-            .flatMap { group ->
-                (0 until group.length).map { trackIndex ->
-                    TextTrackSelection(group = group, trackIndex = trackIndex)
-                }
-            }
-            .getOrNull(targetIndex)
     }
 
     private fun findUnambiguousTextTrackByLanguage(
@@ -701,13 +743,13 @@ internal class PlaybackController(
         textGroups: List<Tracks.Group>,
         predicate: (Format) -> Boolean,
     ): TextTrackSelection? {
-        return textGroups.firstNotNullOfOrNull { group ->
-            (0 until group.length).firstNotNullOfOrNull { trackIndex ->
+        return textGroups.flatMap { group ->
+            (0 until group.length).mapNotNull { trackIndex ->
                 group.getTrackFormat(trackIndex).takeIf(predicate)?.let {
                     TextTrackSelection(group = group, trackIndex = trackIndex)
                 }
             }
-        }
+        }.singleOrNull()
     }
 
     private data class TextTrackSelection(

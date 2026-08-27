@@ -11,7 +11,14 @@ internal class SubtitleTrackMergerTest {
     private val merger = SubtitleTrackMerger()
 
     @Test
-    fun merge_matchesExactExternalIdentity_beforeEmbeddedLanguage() {
+    fun subtitleTrackDisplayLabel_hidesManifestNumberingAndUsesLowercaseIso3Language() {
+        assertEquals("rus", subtitleTrackDisplayLabel("RU", "RUS #03"))
+        assertEquals("spa", subtitleTrackDisplayLabel("es-ES", "SPA #01"))
+        assertEquals("Unknown", subtitleTrackDisplayLabel("", "Unknown"))
+    }
+
+    @Test
+    fun merge_usesPlayerTracksAsBackbone_andEnrichesExactIdentity() {
         val apiTracks = listOf(
             offTrack(),
             apiTrack(
@@ -19,14 +26,12 @@ internal class SubtitleTrackMergerTest {
                 label = "Russian embedded",
                 language = "rus",
                 url = "https://api.test/subtitles/embedded-rus.srt",
-                embedded = true,
             ),
             apiTrack(
                 index = 2,
                 label = "Russian external",
                 language = "rus",
                 url = "https://api.test/subtitles/external-rus.srt",
-                embedded = false,
             ),
         )
         val playerTracks = listOf(
@@ -49,20 +54,21 @@ internal class SubtitleTrackMergerTest {
         val result = merger.merge(apiTracks, playerTracks)
 
         assertEquals(
-            listOf("Off", "Russian embedded", "Russian external"),
+            listOf("Off", "external-rus.srt", "Русские полные"),
             result.map { it.label },
         )
-        assertEquals("hls-russian-full", result[1].playerTrackId)
-        assertEquals("rus", result[1].language)
-        assertEquals("external-rus.srt", result[2].playerTrackId)
+        assertEquals("external-rus.srt", result[1].playerTrackId)
+        assertEquals("https://api.test/subtitles/external-rus.srt", result[1].url)
+        assertEquals("hls-russian-full", result[2].playerTrackId)
+        assertEquals("ru", result[2].language)
     }
 
     @Test
-    fun merge_matchesEmbeddedVariants_byForcedMetadata() {
+    fun merge_doesNotPairSameLanguageVariants_withoutExactIdentity() {
         val apiTracks = listOf(
             offTrack(),
-            apiTrack(1, "Russian full", "rus", embedded = true, forced = false),
-            apiTrack(2, "Russian forced", "rus", embedded = true, forced = true),
+            apiTrack(1, "Russian full", "rus", forced = false),
+            apiTrack(2, "Russian forced", "rus", forced = true),
         )
         val playerTracks = listOf(
             playerTrack(1, "Russian forced HLS", "ru", "forced", 0, forced = true),
@@ -71,10 +77,11 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(apiTracks, playerTracks)
 
-        assertEquals("full", result[1].playerTrackId)
-        assertFalse(result[1].isForced!!)
-        assertEquals("forced", result[2].playerTrackId)
-        assertTrue(result[2].isForced!!)
+        assertEquals(listOf("Off", "Russian forced HLS", "Russian full HLS"), result.map { it.label })
+        assertEquals("forced", result[1].playerTrackId)
+        assertTrue(result[1].isForced!!)
+        assertEquals("full", result[2].playerTrackId)
+        assertFalse(result[2].isForced!!)
     }
 
     @Test
@@ -96,7 +103,7 @@ internal class SubtitleTrackMergerTest {
     }
 
     @Test
-    fun merge_doesNotCollapseExternalAndManifestTracks_byLanguageAlone() {
+    fun merge_dropsUnmatchedApiTrack_whenPlayerTracksAreAvailable() {
         val apiTracks = listOf(
             offTrack(),
             apiTrack(
@@ -104,7 +111,6 @@ internal class SubtitleTrackMergerTest {
                 label = "Russian external",
                 language = "rus",
                 url = "https://api.test/subtitles/external.srt",
-                embedded = false,
             ),
         )
         val playerTracks = listOf(
@@ -113,9 +119,107 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(apiTracks, playerTracks)
 
-        assertEquals(listOf("Off", "Russian external", "Russian HLS"), result.map { it.label })
-        assertEquals("https://api.test/subtitles/external.srt", result[1].url)
-        assertEquals("hls-russian", result[2].playerTrackId)
+        assertEquals(listOf("Off", "Russian HLS"), result.map { it.label })
+        assertEquals("", result[1].url)
+        assertEquals("hls-russian", result[1].playerTrackId)
+    }
+
+    @Test
+    fun merge_doesNotTreatDisplayLabelAsTrackIdentity() {
+        val apiTrack = apiTrack(
+            index = 1,
+            label = "Spanish API",
+            language = "spa",
+            url = "https://api.test/subtitles/spanish.srt",
+        )
+        val playerTrack = playerTrack(
+            index = 1,
+            label = "spanish.srt",
+            language = "rus",
+            id = "hls-russian",
+            groupIndex = 0,
+        )
+
+        val result = merger.merge(listOf(offTrack(), apiTrack), listOf(playerTrack))
+
+        assertEquals("", result[1].url)
+        assertEquals("rus", result[1].language)
+        assertEquals("hls-russian", result[1].playerTrackId)
+    }
+
+    @Test
+    fun merge_keepsManifestOrder_forSameLanguageVariants() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack(1, "rus #1", "rus"),
+            apiTrack(2, "rus #2", "rus"),
+            apiTrack(3, "rus #3", "rus"),
+            apiTrack(4, "spa", "spa"),
+        )
+        val playerTracks = listOf(
+            playerTrack(1, "Russian 1", "ru", "rus-1", 0),
+            playerTrack(2, "Spanish", "es", "spa", 1),
+            playerTrack(3, "Russian 2", "ru", "rus-2", 2),
+            playerTrack(4, "Russian 3", "ru", "rus-3", 3),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(
+            listOf("Off", "Russian 1", "Spanish", "Russian 2", "Russian 3"),
+            result.map { it.label },
+        )
+        assertEquals(listOf(null, 0, 1, 2, 3), result.map { it.playerGroupIndex })
+        assertEquals("rus-3", result[4].playerTrackId)
+    }
+
+    @Test
+    fun merge_usesApiFilePathToMatchHlsRenditionUri_whenLanguageOrderDiffers() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack(
+                index = 1,
+                label = "rus #1",
+                language = "rus",
+                sourceFile = "/a/71/first.srt",
+            ),
+            apiTrack(
+                index = 2,
+                label = "rus #2",
+                language = "rus",
+                sourceFile = "/b/82/second.srt",
+            ),
+        )
+        val playerTracks = listOf(
+            playerTrack(
+                index = 1,
+                label = "Russian 2",
+                language = "ru",
+                id = "subs:Russian #02",
+                groupIndex = 0,
+                uri = "https://cdn.test/pd/subtitle/token/b/82/second.srt",
+            ),
+            playerTrack(
+                index = 2,
+                label = "Russian 1",
+                language = "ru",
+                id = "subs:Russian #01",
+                groupIndex = 1,
+                uri = "https://cdn.test/pd/subtitle/token/a/71/first.srt",
+            ),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(listOf(0, 1), result.drop(1).map { it.playerGroupIndex })
+        assertEquals(
+            listOf("subs:Russian #02", "subs:Russian #01"),
+            result.drop(1).map { it.playerTrackId },
+        )
+        assertEquals(
+            listOf("/b/82/second.srt", "/a/71/first.srt"),
+            result.drop(1).map { it.sourceFile },
+        )
     }
 
     @Test
@@ -125,7 +229,6 @@ internal class SubtitleTrackMergerTest {
             label = "Russian external",
             language = "rus",
             url = "https://old-cdn.test/subtitles/russian.vtt?token=expired",
-            embedded = false,
         )
         val playerTrack = playerTrack(
             index = 1,
@@ -137,18 +240,18 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(listOf(offTrack(), apiTrack), listOf(playerTrack))
 
-        assertEquals(listOf("Off", "Russian external"), result.map { it.label })
+        assertEquals(listOf("Off", "russian.vtt"), result.map { it.label })
         assertEquals(playerTrack.playerTrackId, result[1].playerTrackId)
-        assertEquals("rus", result[1].language)
+        assertEquals("ru", result[1].language)
+        assertEquals(apiTrack.url, result[1].url)
     }
 
     @Test
-    fun merge_keepsUnmatchedEmbeddedAndManifestTracks_withoutFalseLanguageMatch() {
+    fun merge_usesOnlyManifestTracks_whenApiIdentityDoesNotMatch() {
         val embeddedRussian = apiTrack(
             index = 1,
             label = "Russian embedded",
             language = "rus",
-            embedded = true,
         )
         val manifestEnglish = playerTrack(
             index = 1,
@@ -163,10 +266,23 @@ internal class SubtitleTrackMergerTest {
             listOf(manifestEnglish),
         )
 
-        assertEquals(listOf("Off", "Russian embedded", "English HLS"), result.map { it.label })
-        assertEquals(listOf("", "rus", "en"), result.map { it.language })
-        assertEquals(null, result[1].playerTrackId)
-        assertEquals("hls-english", result[2].playerTrackId)
+        assertEquals(listOf("Off", "English HLS"), result.map { it.label })
+        assertEquals(listOf("", "en"), result.map { it.language })
+        assertEquals("hls-english", result[1].playerTrackId)
+    }
+
+    @Test
+    fun merge_exposesOnlyOff_untilPlayerTracksAreDiscovered() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack(1, "Russian full", "rus"),
+            apiTrack(2, "Russian forced", "rus"),
+        )
+
+        val result = merger.merge(apiTracks, emptyList())
+
+        assertEquals(listOf("Off"), result.map { it.label })
+        assertEquals(listOf(0), result.map { it.index })
     }
 
     private fun offTrack() = SubtitleTrackUIState(
@@ -181,15 +297,15 @@ internal class SubtitleTrackMergerTest {
         label: String,
         language: String,
         url: String = "",
-        embedded: Boolean,
         forced: Boolean? = null,
+        sourceFile: String? = null,
     ) = SubtitleTrackUIState(
         index = index,
         label = label,
         language = language,
         url = url,
-        isEmbedded = embedded,
         isForced = forced,
+        sourceFile = sourceFile,
     )
 
     private fun playerTrack(
@@ -199,14 +315,15 @@ internal class SubtitleTrackMergerTest {
         id: String,
         groupIndex: Int,
         forced: Boolean = false,
+        uri: String? = null,
     ) = SubtitleTrackUIState(
         index = index,
         label = label,
         language = language,
         url = "",
-        isEmbedded = true,
         isForced = forced,
         playerTrackId = id,
+        playerTrackUri = uri,
         playerGroupIndex = groupIndex,
         playerTrackIndex = 0,
     )
