@@ -68,6 +68,7 @@ internal class PlayerUIMapper(
                     language = sub.lang,
                     url = sub.url,
                     isEmbedded = sub.embed == true,
+                    isForced = sub.isForced,
                 )
             )
         }

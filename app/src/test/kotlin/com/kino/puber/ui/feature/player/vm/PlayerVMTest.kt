@@ -751,7 +751,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         assertEquals("uk", selectedTrack.language)
         assertEquals("hls-ukrainian", selectedTrack.playerTrackId)
         verify { playbackController.selectSubtitle(selectedTrack) }
-        verify { interactor.saveTrackPreferences(42, "eng", "English", "uk", null) }
+        verify { interactor.saveTrackPreferences(42, "eng", "English", "uk", "hls-ukrainian") }
     }
 
     @Test
