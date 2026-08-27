@@ -12,12 +12,6 @@ internal class PlayerUIMapperSubtitleTest {
 
     private val context = mockk<Context>(relaxed = true).also { context ->
         every { context.getString(R.string.player_subtitles_off) } returns "Off"
-        every {
-            context.getString(R.string.player_subtitle_variant_label, any(), any())
-        } answers {
-            val formatArgs = secondArg<Array<out Any>>()
-            "${formatArgs[0]} variant ${formatArgs[1]}"
-        }
     }
     private val mapper = PlayerUIMapper(context)
 
@@ -31,13 +25,19 @@ internal class PlayerUIMapperSubtitleTest {
     }
 
     @Test
-    fun mapSubtitleTracks_preservesLanguagesAndEmbedMetadata_inApiOrder() {
+    fun mapSubtitleTracks_preservesLanguagesAndIdentityMetadata_inApiOrder() {
         val embeddedUrl = "https://cdn.test/subtitles/russian.vtt"
         val externalUrl = "https://cdn.test/subtitles/english.vtt"
 
         val result = mapper.mapSubtitleTracks(
             listOf(
-                SubtitleLink(lang = "rus", url = embeddedUrl, embed = true),
+                SubtitleLink(
+                    lang = "rus",
+                    url = embeddedUrl,
+                    embed = true,
+                    forced = false,
+                    file = "/a/71/russian.vtt",
+                ),
                 SubtitleLink(lang = "eng", url = externalUrl, embed = false),
             )
         )
@@ -45,7 +45,8 @@ internal class PlayerUIMapperSubtitleTest {
         assertEquals(listOf(0, 1, 2), result.map { it.index })
         assertEquals(listOf("", "rus", "eng"), result.map { it.language })
         assertEquals(listOf("", embeddedUrl, externalUrl), result.map { it.url })
-        assertEquals(listOf(false, true, false), result.map { it.isEmbedded })
+        assertEquals(listOf(null, "/a/71/russian.vtt", null), result.map { it.sourceFile })
+        assertEquals(listOf(null, false, null), result.map { it.isForced })
     }
 
     @Test
@@ -56,18 +57,26 @@ internal class PlayerUIMapperSubtitleTest {
                     lang = "rus",
                     url = "https://cdn.test/subtitles/russian-full.vtt",
                     embed = true,
+                    forced = false,
                 ),
                 SubtitleLink(
                     lang = "rus",
                     url = "https://cdn.test/subtitles/russian-forced.vtt",
                     embed = true,
+                    forced = true,
                 ),
             )
         )
 
-        assertEquals(listOf("rus variant 1", "rus variant 2"), result.drop(1).map { it.label })
+        assertEquals(listOf("rus", "rus"), result.drop(1).map { it.label })
         assertEquals(listOf("rus", "rus"), result.drop(1).map { it.language })
-        assertEquals(listOf(true, true), result.drop(1).map { it.isEmbedded })
+        assertEquals(
+            listOf(
+                "https://cdn.test/subtitles/russian-full.vtt",
+                "https://cdn.test/subtitles/russian-forced.vtt",
+            ),
+            result.drop(1).map { it.url },
+        )
         assertEquals(listOf(false, true), result.drop(1).map { it.isForced })
     }
 }

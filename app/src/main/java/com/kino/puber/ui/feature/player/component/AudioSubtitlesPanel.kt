@@ -205,7 +205,10 @@ private fun RowScope.SubtitleColumn(
     panelFocusRequester: FocusRequester?,
     onSubtitleSelected: (Int) -> Unit,
 ) {
-    val labels = remember(subtitleTracks) { subtitleTracks.map { it.label } }
+    val forcedLabel = stringResource(R.string.player_subtitle_forced)
+    val labels = remember(subtitleTracks, forcedLabel) {
+        subtitleTracks.map { it.subtitlePickerLabel(forcedLabel) }
+    }
     SettingsPanelColumn(
         header = stringResource(R.string.player_panel_subtitles),
         items = labels,
@@ -215,6 +218,10 @@ private fun RowScope.SubtitleColumn(
         firstItemFocusRequester = panelFocusRequester,
         itemTestTag = { index -> PlayerScreenTestTags.panelItem("subtitle", index) },
     )
+}
+
+internal fun SubtitleTrackUIState.subtitlePickerLabel(forcedLabel: String): String {
+    return if (isForced == true) "$label · $forcedLabel" else label
 }
 
 @Composable

@@ -718,9 +718,10 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
     @Test
     fun selectSubtitle_updatesStateAndDelegates() {
         val vm = startedVM()
+        callbackSlot.captured.onTracksUpdated(testContentState.audioTracks, 0, testDiscoveredSubtitleTracks)
         vm.onAction(PlayerAction.SelectSubtitle(1))
         assertEquals(1, contentState(vm).selectedSubtitleIndex)
-        verify { playbackController.selectSubtitle(testSubtitleTracks[1]) }
+        verify { playbackController.selectSubtitle(contentState(vm).subtitleTracks[1]) }
     }
 
     @Test
@@ -732,64 +733,15 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
     }
 
     @Test
-    fun tracksUpdated_addsAndSelectsManifestOnlySubtitle_withLanguagePreference() {
-        val vm = startedVM()
-        val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
-        val manifestTrack = testSubtitleTracks.first().copy(
-            index = 1,
-            label = "Ukrainian HLS",
-            language = "uk",
-            playerTrackId = "hls-ukrainian",
-            playerGroupIndex = 0,
-            playerTrackIndex = 0,
-        )
-
-        callbackSlot.captured.onTracksUpdated(audioTracks, 0, listOf(manifestTrack))
-        vm.onAction(PlayerAction.SelectSubtitle(3))
-
-        val selectedTrack = contentState(vm).subtitleTracks[3]
-        assertEquals("uk", selectedTrack.language)
-        assertEquals("hls-ukrainian", selectedTrack.playerTrackId)
-        verify { playbackController.selectSubtitle(selectedTrack) }
-        verify { interactor.saveTrackPreferences(42, "eng", "English", "uk", "hls-ukrainian") }
-    }
-
-    @Test
-    fun tracksUpdated_defersUrlLessLanguagePreference_untilManifestTracksAppear() {
-        every { interactor.getPreferredSubtitleLang(42) } returns "ukr"
-        every { interactor.getPreferredSubtitleUrl(42) } returns ""
-        val vm = startedVM()
-        val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
-        val manifestTrack = testSubtitleTracks.first().copy(
-            index = 1,
-            label = "Ukrainian HLS",
-            language = "uk",
-            playerTrackId = "hls-ukrainian",
-            playerGroupIndex = 0,
-            playerTrackIndex = 0,
-        )
-
-        callbackSlot.captured.onTracksUpdated(audioTracks, 0, emptyList())
-        verify(exactly = 0) { playbackController.selectSubtitle(any()) }
-
-        callbackSlot.captured.onTracksUpdated(audioTracks, 0, listOf(manifestTrack))
-
-        val selectedTrack = contentState(vm).subtitleTracks[3]
-        assertEquals(3, contentState(vm).selectedSubtitleIndex)
-        assertEquals("hls-ukrainian", selectedTrack.playerTrackId)
-        verify { playbackController.selectSubtitle(selectedTrack) }
-    }
-
-    @Test
     fun tracksUpdated_restoresPreferredSubtitleByUrl_beforeLanguage() {
         every { interactor.getPreferredSubtitleLang(42) } returns "rus"
         every { interactor.getPreferredSubtitleUrl(42) } returns "https://test/subtitles/rus-forced.vtt"
         val vm = startedVM()
 
         val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
-        callbackSlot.captured.onTracksUpdated(tracks, 0)
+        callbackSlot.captured.onTracksUpdated(tracks, 0, testDiscoveredSubtitleTracks)
 
-        verify { playbackController.selectSubtitle(testSubtitleTracks[2]) }
+        verify { playbackController.selectSubtitle(contentState(vm).subtitleTracks[2]) }
         assertEquals(2, contentState(vm).selectedSubtitleIndex)
     }
 
@@ -801,9 +753,9 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         val vm = startedVM()
 
         val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
-        callbackSlot.captured.onTracksUpdated(tracks, 0)
+        callbackSlot.captured.onTracksUpdated(tracks, 0, testDiscoveredSubtitleTracks)
 
-        verify { playbackController.selectSubtitle(testSubtitleTracks[2]) }
+        verify { playbackController.selectSubtitle(contentState(vm).subtitleTracks[2]) }
         assertEquals(2, contentState(vm).selectedSubtitleIndex)
     }
 
@@ -814,7 +766,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         val vm = startedVM()
 
         val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
-        callbackSlot.captured.onTracksUpdated(tracks, 0)
+        callbackSlot.captured.onTracksUpdated(tracks, 0, testDiscoveredSubtitleTracks)
 
         verify(exactly = 0) { playbackController.selectSubtitle(any()) }
         assertEquals(0, contentState(vm).selectedSubtitleIndex)
@@ -828,10 +780,10 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         val vm = startedVM()
 
         val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
-        callbackSlot.captured.onTracksUpdated(tracks, 0)
+        callbackSlot.captured.onTracksUpdated(tracks, 0, testDiscoveredSubtitleTracks)
 
         verify { playbackController.selectAudioTrack(1) }
-        verify { playbackController.selectSubtitle(testSubtitleTracks[2]) }
+        verify { playbackController.selectSubtitle(contentState(vm).subtitleTracks[2]) }
         verify(exactly = 0) { interactor.saveTrackPreferences(any(), any(), any(), any(), any()) }
         assertEquals(1, contentState(vm).selectedAudioTrackIndex)
         assertEquals(2, contentState(vm).selectedSubtitleIndex)
