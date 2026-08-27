@@ -78,10 +78,14 @@ val repositoryModule = module {
             tmdbApiClient = get(),
         )
     }
+    single {
+        TmdbCastRepository(
+            apiClient = get(),
+        )
+    }
     singleOf(::ItemDetailsRepository)
     singleOf(::PlayerPreferencesRepository)
     singleOf(::TmdbIdRepository)
-    singleOf(::TmdbCastRepository)
     singleOf(::SkipSegmentRepository)
     singleOf(::SkipSegmentService)
     singleOf(::NavigationPreferencesRepository)

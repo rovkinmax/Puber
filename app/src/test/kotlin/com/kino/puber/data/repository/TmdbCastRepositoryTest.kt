@@ -12,7 +12,16 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -179,6 +188,102 @@ internal class TmdbCastRepositoryTest {
             ),
             TmdbCastRepository(client).getCast("tt0003001").map { it.profileUrl },
         )
+    }
+
+    @Test
+    fun coldLoad_doesNotRunApiContinuationsOnCallerThread() = runTest {
+        val client = configuredClient()
+        val callbackThreads = mutableListOf<String>()
+        coEvery { client.findMediaByImdbId("tt0004001") } coAnswers {
+            callbackThreads += Thread.currentThread().name
+            Result.success(TmdbMediaRef(id = 13, kind = TmdbMediaKind.MOVIE))
+        }
+        coEvery { client.getMovieCredits(13) } coAnswers {
+            callbackThreads += Thread.currentThread().name
+            Result.success(TmdbCreditsResponse(listOf(TmdbCastCredit(name = "Actor"))))
+        }
+        coEvery { client.getConfiguration() } coAnswers {
+            callbackThreads += Thread.currentThread().name
+            Result.success(configuration())
+        }
+        val repository = TmdbCastRepository(client)
+        val callerDispatcher = Executors
+            .newSingleThreadExecutor { runnable -> Thread(runnable, "details-main") }
+            .asCoroutineDispatcher()
+
+        try {
+            withContext(callerDispatcher) {
+                repository.getCast("tt0004001")
+            }
+        } finally {
+            callerDispatcher.close()
+        }
+
+        assertTrue(callbackThreads.isNotEmpty())
+        assertTrue(callbackThreads.none { it == "details-main" }, callbackThreads.toString())
+    }
+
+    @Test
+    fun concurrentNormalizedRequests_shareOneColdLoad() = runTest {
+        val client = configuredClient()
+        val loadStarted = CompletableDeferred<Unit>()
+        val releaseLoad = CompletableDeferred<Unit>()
+        var findCalls = 0
+        coEvery { client.findMediaByImdbId("tt0005001") } coAnswers {
+            findCalls += 1
+            loadStarted.complete(Unit)
+            releaseLoad.await()
+            Result.success(TmdbMediaRef(id = 14, kind = TmdbMediaKind.MOVIE))
+        }
+        coEvery { client.getMovieCredits(14) } returns
+            Result.success(TmdbCreditsResponse(listOf(TmdbCastCredit(name = "Actor"))))
+        coEvery { client.getConfiguration() } returns Result.success(configuration())
+        val repository = TmdbCastRepository(client)
+
+        val first = async(start = CoroutineStart.UNDISPATCHED) {
+            repository.getCast("tt0005001")
+        }
+        loadStarted.await()
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            repository.getCast("TT0005001")
+        }
+        releaseLoad.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf("Actor"), first.await().map { it.name })
+        assertEquals(listOf("Actor"), second.await().map { it.name })
+        assertEquals(1, findCalls)
+    }
+
+    @Test
+    fun cancelledColdLoad_propagatesAndSubsequentRequestRetries() = runTest {
+        val client = configuredClient()
+        val firstCallStarted = CompletableDeferred<Unit>()
+        var findCalls = 0
+        coEvery { client.findMediaByImdbId("tt0006001") } coAnswers {
+            findCalls += 1
+            if (findCalls == 1) {
+                firstCallStarted.complete(Unit)
+                awaitCancellation()
+            }
+            Result.success(TmdbMediaRef(id = 15, kind = TmdbMediaKind.MOVIE))
+        }
+        coEvery { client.getMovieCredits(15) } returns
+            Result.success(TmdbCreditsResponse(listOf(TmdbCastCredit(name = "Recovered actor"))))
+        coEvery { client.getConfiguration() } returns Result.success(configuration())
+        val repository = TmdbCastRepository(client)
+
+        val cancelled = async(start = CoroutineStart.UNDISPATCHED) {
+            repository.getCast("tt0006001")
+        }
+        firstCallStarted.await()
+        cancelled.cancelAndJoin()
+
+        assertEquals(
+            listOf("Recovered actor"),
+            repository.getCast("tt0006001").map { it.name },
+        )
+        assertEquals(2, findCalls)
     }
 
     private fun configuredClient(): TmdbApiClient {

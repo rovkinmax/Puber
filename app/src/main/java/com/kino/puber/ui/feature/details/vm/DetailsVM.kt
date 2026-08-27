@@ -98,7 +98,9 @@ internal class DetailsVM(
                 item = item,
                 currentItem = { currentItem },
                 launchRequest = { block -> launch { block() } },
-                onScheduleChanged = ::remapCurrentItem,
+                onScheduleChanged = {
+                    remapCurrentItem(refreshCastEnrichment = false)
+                },
             )
         }
     }
@@ -218,6 +220,7 @@ internal class DetailsVM(
         item: Item,
         isInWatchlist: Boolean,
         isWatched: Boolean? = null,
+        refreshCastEnrichment: Boolean = true,
     ) {
         val state = stateValue as? DetailsScreenState.Content
         scheduleController.clearIfIdentityChanged(item)
@@ -232,7 +235,9 @@ internal class DetailsVM(
                 trailerUrl = state?.trailerUrl,
             )
         )
-        startCastEnrichment(item)
+        if (refreshCastEnrichment) {
+            startCastEnrichment(item)
+        }
     }
 
     private fun preserveCastPhotos(
@@ -610,10 +615,14 @@ internal class DetailsVM(
         remapCurrentItem()
     }
 
-    private fun remapCurrentItem() {
+    private fun remapCurrentItem(refreshCastEnrichment: Boolean = true) {
         val item = currentItem ?: return
         val watchlist = (stateValue as? DetailsScreenState.Content)?.isInWatchlist ?: false
-        updateCurrentItem(item, watchlist)
+        updateCurrentItem(
+            item = item,
+            isInWatchlist = watchlist,
+            refreshCastEnrichment = refreshCastEnrichment,
+        )
     }
 
     private fun Boolean.toStatus(): Int = if (this) WATCHED_STATUS else UNWATCHED_STATUS

@@ -9,10 +9,14 @@ import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.TmdbImageConfiguration
 import com.kino.puber.data.api.models.TmdbMediaKind
 import com.kino.puber.data.api.normalizedImdbTitleIdOrNull
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.minutes
 
 class TmdbCastRepository(
     private val apiClient: TmdbApiClient,
+    private val workerDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
 
     private val castCache: TypedTtlCache<String, List<TmdbCastMember>> =
@@ -27,7 +31,9 @@ class TmdbCastRepository(
         }
 
         return castCache.getOrPut(normalizedImdbId) {
-            loadCast(normalizedImdbId)
+            withContext(workerDispatcher) {
+                loadCast(normalizedImdbId)
+            }
         }
     }
 
