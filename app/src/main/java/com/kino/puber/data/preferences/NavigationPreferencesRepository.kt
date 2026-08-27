@@ -1,6 +1,7 @@
 package com.kino.puber.data.preferences
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,47 +15,73 @@ data class ContentPreferences(
     val showAnime: Boolean,
 )
 
-class NavigationPreferencesRepository(context: Context) {
+class NavigationPreferencesRepository private constructor(
+    private val prefs: SharedPreferences?,
+    private val fixedConfiguration: FixedNavigationConfiguration?,
+) {
 
-    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    constructor(context: Context) : this(
+        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE),
+        fixedConfiguration = null,
+    )
+
+    internal constructor(
+        navigationMode: NavigationMode,
+        visibleTabs: List<TabType>,
+        contentPreferences: ContentPreferences,
+    ) : this(
+        prefs = null,
+        fixedConfiguration = FixedNavigationConfiguration(
+            navigationMode = navigationMode,
+            visibleTabs = visibleTabs.toList(),
+            contentPreferences = contentPreferences,
+        ),
+    )
+
     private val _contentPreferences = MutableStateFlow(
-        ContentPreferences(
-            showCartoonsTab = prefs.getBoolean(KEY_SHOW_CARTOONS_TAB, false),
-            showAnimeTab = prefs.getBoolean(KEY_SHOW_ANIME_TAB, false),
-            showAnime = prefs.getBoolean(KEY_SHOW_ANIME, true),
-        )
+        fixedConfiguration?.contentPreferences ?: ContentPreferences(
+            showCartoonsTab = persistentPreferences.getBoolean(KEY_SHOW_CARTOONS_TAB, false),
+            showAnimeTab = persistentPreferences.getBoolean(KEY_SHOW_ANIME_TAB, false),
+            showAnime = persistentPreferences.getBoolean(KEY_SHOW_ANIME, true),
+        ),
     )
     val contentPreferences: StateFlow<ContentPreferences> = _contentPreferences.asStateFlow()
 
     fun getNavigationMode(): NavigationMode {
-        val name = prefs.getString(KEY_NAVIGATION_MODE, NavigationMode.TopTabs.name)
+        fixedConfiguration?.let { return it.navigationMode }
+        val name = persistentPreferences.getString(
+            KEY_NAVIGATION_MODE,
+            NavigationMode.TopTabs.name,
+        )
         return NavigationMode.entries.find { it.name == name } ?: NavigationMode.TopTabs
     }
 
     fun setNavigationMode(mode: NavigationMode) {
-        prefs.edit().putString(KEY_NAVIGATION_MODE, mode.name).apply()
+        if (fixedConfiguration != null) return
+        persistentPreferences.edit().putString(KEY_NAVIGATION_MODE, mode.name).apply()
     }
 
     fun getVisibleTabs(mode: NavigationMode): List<TabType> {
+        fixedConfiguration?.let { return it.visibleTabs }
         if (mode == NavigationMode.TopTabs) {
             migrateTopTabsIfNeeded()
         }
         val key = tabsKeyForMode(mode)
-        val stored = prefs.getString(key, null)
+        val stored = persistentPreferences.getString(key, null)
         val baseTabs = stored?.let(::deserializeTabs) ?: defaultTabsForMode(mode)
         return insertOptionalTabs(baseTabs)
     }
 
     private fun migrateTopTabsIfNeeded() {
-        val currentVersion = prefs.getInt(KEY_TOP_TABS_SCHEMA_VERSION, 0)
+        val currentVersion = persistentPreferences.getInt(KEY_TOP_TABS_SCHEMA_VERSION, 0)
         if (currentVersion >= TOP_TABS_SCHEMA_VERSION_HISTORY) return
 
-        val stored = prefs.getString(KEY_TOP_TABS, null)
+        val stored = persistentPreferences.getString(KEY_TOP_TABS, null)
         val currentTabs = stored
             ?.let(::deserializeTabs)
             ?: resolveTabNames(TOP_TABS_DEFAULT_TAB_NAMES)
         val normalizedTabs = normalizeTopTabsForHistory(currentTabs)
-        val editor = prefs.edit()
+        val editor = persistentPreferences.edit()
         editor.putString(KEY_TOP_TABS, serializeTabs(normalizedTabs))
         editor.putInt(KEY_TOP_TABS_SCHEMA_VERSION, TOP_TABS_SCHEMA_VERSION_HISTORY)
         editor.apply()
@@ -74,25 +101,34 @@ class NavigationPreferencesRepository(context: Context) {
     }
 
     fun setVisibleTabs(mode: NavigationMode, tabs: List<TabType>) {
+        if (fixedConfiguration != null) return
         val key = tabsKeyForMode(mode)
         val withSettings = ensureRequiredTabs(mode, tabs).filterNot { it.isOptionalContentTab() }
-        prefs.edit().putString(key, serializeTabs(withSettings)).apply()
+        persistentPreferences.edit().putString(key, serializeTabs(withSettings)).apply()
     }
 
     fun setShowCartoonsTab(show: Boolean) {
-        prefs.edit().putBoolean(KEY_SHOW_CARTOONS_TAB, show).apply()
+        if (fixedConfiguration != null) return
+        persistentPreferences.edit().putBoolean(KEY_SHOW_CARTOONS_TAB, show).apply()
         _contentPreferences.update { it.copy(showCartoonsTab = show) }
     }
 
     fun setShowAnimeTab(show: Boolean) {
-        prefs.edit().putBoolean(KEY_SHOW_ANIME_TAB, show).apply()
+        if (fixedConfiguration != null) return
+        persistentPreferences.edit().putBoolean(KEY_SHOW_ANIME_TAB, show).apply()
         _contentPreferences.update { it.copy(showAnimeTab = show) }
     }
 
     fun setShowAnime(show: Boolean) {
-        prefs.edit().putBoolean(KEY_SHOW_ANIME, show).apply()
+        if (fixedConfiguration != null) return
+        persistentPreferences.edit().putBoolean(KEY_SHOW_ANIME, show).apply()
         _contentPreferences.update { it.copy(showAnime = show) }
     }
+
+    private val persistentPreferences: SharedPreferences
+        get() = checkNotNull(prefs) {
+            "Persistent navigation preferences are unavailable for a fixed configuration"
+        }
 
     private fun defaultTabsForMode(mode: NavigationMode): List<TabType> {
         return when (mode) {
@@ -165,6 +201,12 @@ class NavigationPreferencesRepository(context: Context) {
             TabType.entries.find { it.name == name }
         }
     }
+
+    private data class FixedNavigationConfiguration(
+        val navigationMode: NavigationMode,
+        val visibleTabs: List<TabType>,
+        val contentPreferences: ContentPreferences,
+    )
 
     private companion object {
         const val PREFS_NAME = "navigation_preferences"

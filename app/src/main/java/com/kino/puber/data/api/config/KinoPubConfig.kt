@@ -10,6 +10,12 @@ data class ApiEndpointPreset(
     val extraBaseUrl: String,
 )
 
+enum class ApiEndpointMode {
+    DEFAULT,
+    CUSTOM,
+    PINNED,
+}
+
 object KinoPubConfig {
 
     private val defaultDomain: String by lazy {
@@ -17,8 +23,13 @@ object KinoPubConfig {
         String(Base64.decode(encoded.reversed().toByteArray(), Base64.DEFAULT)).trim()
     }
 
+    private data class EndpointOverride(
+        val preset: ApiEndpointPreset,
+        val mode: ApiEndpointMode,
+    )
+
     @Volatile
-    private var domainOverride: String? = null
+    private var endpointOverride: EndpointOverride? = null
 
     private val defaultEndpoint: ApiEndpointPreset
         get() {
@@ -49,15 +60,18 @@ object KinoPubConfig {
     )
 
     private val activeEndpoint: ApiEndpointPreset
-        get() = domainOverride
-            ?.let(::resolveEndpoint)
+        get() = endpointOverride
+            ?.preset
             ?: defaultEndpoint
 
     val DEFAULT_API_DOMAIN: String get() = defaultDomain
     val CURRENT_API_DOMAIN: String get() = activeEndpoint.domain
     val CURRENT_API_HOST: String get() = activeEndpoint.apiHost
     val CURRENT_ENDPOINT: ApiEndpointPreset get() = activeEndpoint
-    val CUSTOM_API_DOMAIN: String? get() = domainOverride
+    val CURRENT_ENDPOINT_MODE: ApiEndpointMode
+        get() = endpointOverride?.mode ?: ApiEndpointMode.DEFAULT
+    val IS_PINNED_ENDPOINT: Boolean get() = CURRENT_ENDPOINT_MODE == ApiEndpointMode.PINNED
+    val CUSTOM_API_DOMAIN: String? get() = endpointOverride?.preset?.domain
     val BUILT_IN_ENDPOINTS: List<ApiEndpointPreset>
         get() = listOf(defaultEndpoint, aladorEndpoint, legacyCdnEndpoint)
 
@@ -70,7 +84,25 @@ object KinoPubConfig {
     const val GRANT_TYPE_REFRESH_TOKEN = "refresh_token"
 
     fun setDomainOverride(domain: String?) {
-        domainOverride = domain
+        endpointOverride = domain?.let {
+            EndpointOverride(
+                preset = resolveEndpoint(it),
+                mode = ApiEndpointMode.CUSTOM,
+            )
+        }
+    }
+
+    fun setPinnedEndpoint(endpoint: ApiEndpointPreset) {
+        endpointOverride = EndpointOverride(
+            preset = endpoint,
+            mode = ApiEndpointMode.PINNED,
+        )
+    }
+
+    fun clearPinnedEndpoint() {
+        if (CURRENT_ENDPOINT_MODE == ApiEndpointMode.PINNED) {
+            endpointOverride = null
+        }
     }
 
     private fun resolveEndpoint(domain: String): ApiEndpointPreset {

@@ -5,16 +5,12 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.util.Log
 import com.kino.puber.core.session.SessionEventBus
-import com.kino.puber.domain.interactor.speedtest.SpeedTestServer
 import com.kino.puber.data.repository.ICryptoPreferenceRepository
-import com.sun.net.httpserver.HttpExchange
-import com.sun.net.httpserver.HttpServer
+import com.kino.puber.domain.interactor.speedtest.SpeedTestServer
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
-import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
@@ -27,9 +23,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import okhttp3.Cache
 import okhttp3.OkHttpClient
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -63,26 +59,25 @@ internal class KinoPubApiClientSpeedTestTest {
         val requests = AtomicInteger()
         val capturedHeaders = CopyOnWriteArrayList<ProbeHeaders>()
 
-        withServer(
-            handler = { exchange ->
+        MockWebServerTestSupport().use { server ->
+            server.route("/probe") { recordedRequest ->
                 requests.incrementAndGet()
                 capturedHeaders +=
                     ProbeHeaders(
-                        cacheControl = exchange.requestHeaders.getFirst("Cache-Control"),
-                        pragma = exchange.requestHeaders.getFirst("Pragma"),
+                        cacheControl = recordedRequest.headers["Cache-Control"],
+                        pragma = recordedRequest.headers["Pragma"],
                     )
-                exchange.respond(status = 200, body = body)
-            },
-        ) { url ->
+                server.response(status = 200, body = body)
+            }
             val client = client(cacheDir)
             val first = client.streamSpeedTest(
                 server = SpeedTestServer.AMSTERDAM,
-                url = url,
+                url = server.url("/probe"),
                 expectedBytes = body.size.toLong(),
             )
             val second = client.streamSpeedTest(
                 server = SpeedTestServer.AMSTERDAM,
-                url = url,
+                url = server.url("/probe"),
                 expectedBytes = body.size.toLong(),
             )
 
@@ -108,18 +103,17 @@ internal class KinoPubApiClientSpeedTestTest {
         @TempDir cacheDir: Path,
     ) = runTest {
         val requests = AtomicInteger()
-        withServer(
-            handler = { exchange ->
+        MockWebServerTestSupport().use { server ->
+            server.route("/probe") {
                 if (requests.incrementAndGet() == 1) {
-                    exchange.respond(status = 408, body = ByteArray(0))
+                    server.response(status = 408, body = ByteArray(0))
                 } else {
-                    exchange.respond(status = 200, body = ByteArray(1))
+                    server.response(status = 200, body = ByteArray(1))
                 }
-            },
-        ) { url ->
+            }
             val result = client(cacheDir).streamSpeedTest(
                 server = SpeedTestServer.AMSTERDAM,
-                url = url,
+                url = server.url("/probe"),
                 expectedBytes = 1L,
             )
 
@@ -136,10 +130,11 @@ internal class KinoPubApiClientSpeedTestTest {
         val body = ByteArray(64 * 1024) { 7 }
         val progress = mutableListOf<Long>()
 
-        withServer(handler = { it.respond(status = 200, body = body) }) { url ->
+        MockWebServerTestSupport().use { server ->
+            server.route("/probe") { server.response(status = 200, body = body) }
             val result = client(cacheDir).streamSpeedTest(
                 server = SpeedTestServer.MOSCOW,
-                url = url,
+                url = server.url("/probe"),
                 expectedBytes = body.size.toLong(),
                 onProgress = { progress += it.downloadedBytes },
             )
@@ -162,25 +157,26 @@ internal class KinoPubApiClientSpeedTestTest {
         val progressObserved = CountDownLatch(1)
         val responseContinuedAfterProgress = AtomicBoolean()
 
-        withServer(
-            handler = { exchange ->
-                exchange.sendResponseHeaders(
-                    200,
-                    (firstChunk.size + secondChunk.size).toLong(),
+        MockWebServerTestSupport().use { server ->
+            server.route("/probe") {
+                server.streamingResponse(
+                    status = 200,
+                    chunks = listOf(firstChunk, secondChunk),
+                    afterChunk = { index ->
+                        if (index == 0) {
+                            responseContinuedAfterProgress.set(
+                                progressObserved.await(
+                                    STREAM_PROGRESS_TIMEOUT_SECONDS,
+                                    TimeUnit.SECONDS,
+                                ),
+                            )
+                        }
+                    },
                 )
-                exchange.responseBody.use { output ->
-                    output.write(firstChunk)
-                    output.flush()
-                    responseContinuedAfterProgress.set(
-                        progressObserved.await(STREAM_PROGRESS_TIMEOUT_SECONDS, TimeUnit.SECONDS),
-                    )
-                    output.write(secondChunk)
-                }
-            },
-        ) { url ->
+            }
             val result = client(cacheDir).streamSpeedTest(
                 server = SpeedTestServer.MOSCOW,
-                url = url,
+                url = server.url("/probe"),
                 expectedBytes = (firstChunk.size + secondChunk.size).toLong(),
                 onProgress = {
                     if (it.downloadedBytes > 0L) {
@@ -202,10 +198,11 @@ internal class KinoPubApiClientSpeedTestTest {
     fun streamSpeedTest_returnsFailureForHttpError(
         @TempDir cacheDir: Path,
     ) = runTest {
-        withServer(handler = { it.respond(status = 503, body = ByteArray(0)) }) { url ->
+        MockWebServerTestSupport().use { server ->
+            server.route("/probe") { server.response(status = 503, body = ByteArray(0)) }
             val result = client(cacheDir).streamSpeedTest(
                 server = SpeedTestServer.AMSTERDAM,
-                url = url,
+                url = server.url("/probe"),
                 expectedBytes = 100,
             )
 
@@ -219,10 +216,11 @@ internal class KinoPubApiClientSpeedTestTest {
         @TempDir cacheDir: Path,
     ) = runTest {
         val body = ByteArray(16 * 1024) { 5 }
-        withServer(handler = { it.respond(status = 200, body = body) }) { url ->
+        MockWebServerTestSupport().use { server ->
+            server.route("/probe") { server.response(status = 200, body = body) }
             val result = client(cacheDir).streamSpeedTest(
                 server = SpeedTestServer.AMSTERDAM,
-                url = url,
+                url = server.url("/probe"),
                 expectedBytes = body.size.toLong() + 1L,
             )
 
@@ -237,23 +235,21 @@ internal class KinoPubApiClientSpeedTestTest {
     ) = runTest {
         val body = ByteArray(256 * 1024) { 3 }
         val requests = AtomicInteger()
-        withServer(
-            handler = { exchange ->
+        MockWebServerTestSupport().use { server ->
+            server.route("/probe") {
                 requests.incrementAndGet()
-                exchange.sendResponseHeaders(200, 0)
-                exchange.responseBody.use { output ->
-                    repeat(64) {
-                        output.write(body)
-                        output.flush()
+                server.streamingResponse(
+                    status = 200,
+                    chunks = List(64) { body },
+                    afterChunk = {
                         Thread.sleep(2)
-                    }
-                }
-            },
-        ) { url ->
+                    },
+                )
+            }
             val result = async {
                 client(cacheDir).streamSpeedTest(
                     server = SpeedTestServer.AMSTERDAM,
-                    url = url,
+                    url = server.url("/probe"),
                     expectedBytes = body.size.toLong() * 64,
                 )
             }
@@ -306,31 +302,8 @@ internal class KinoPubApiClientSpeedTestTest {
         )
     }
 
-    private suspend fun withServer(
-        handler: (HttpExchange) -> Unit,
-        block: suspend (url: String) -> Unit,
-    ) {
-        val server = HttpServer.create(
-            InetSocketAddress(InetAddress.getLoopbackAddress(), 0),
-            0,
-        )
-        server.createContext("/probe", handler)
-        server.start()
-        try {
-            block("http://127.0.0.1:${server.address.port}/probe")
-        } finally {
-            server.stop(0)
-        }
-    }
-
-    private fun HttpExchange.respond(status: Int, body: ByteArray) {
-        sendResponseHeaders(status, body.size.toLong())
-        responseBody.use { it.write(body) }
-    }
-
     private data class ProbeHeaders(
         val cacheControl: String?,
         val pragma: String?,
     )
-
 }

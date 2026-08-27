@@ -185,6 +185,11 @@ android {
             dimension = "buildType"
             applicationIdSuffix = ".instrumentation"
             resValue("string", "app_name", "Puber(Instrumentation)")
+            buildConfigField(
+                "int",
+                "BASELINE_MOCK_PORT",
+                providers.gradleProperty("puber.baselineMockPort").get(),
+            )
         }
     }
 
@@ -297,11 +302,13 @@ dependencies {
     testImplementation(libs.coroutines.test)
     testImplementation(libs.mockk)
     testImplementation(libs.ktor.client.mock)
+    testImplementation(libs.mockwebserver3)
 
     detektPlugins(libs.detekt.compose.rules)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+    androidTestImplementation(libs.mockwebserver3)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 

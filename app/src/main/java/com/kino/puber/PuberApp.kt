@@ -23,6 +23,7 @@ import com.kino.puber.domain.interactor.api.ApiDomainInteractor
 import okio.Path.Companion.toOkioPath
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
+import org.koin.core.module.Module
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
@@ -36,23 +37,46 @@ private val handlersModule = module {
     singleOf(::DefaultErrorHandler) { bind<ErrorHandler>() }
 }
 
-class PuberApp : Application(), SingletonImageLoader.Factory {
+open class PuberApp : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
 
+        if (!shouldInitializeRuntime()) return
+
+        configureRuntime()
         initDi()
         initLogger()
     }
+
+    /**
+     * Allows an instrumentation-only control process to avoid initializing
+     * the measured application runtime while preparing its sandbox.
+     */
+    protected open fun shouldInitializeRuntime(): Boolean = true
+
+    /**
+     * Allows an instrumentation-only application subclass to configure a
+     * deterministic endpoint before any Koin definition is created.
+     */
+    protected open fun configureRuntime() = Unit
+
+    /**
+     * Allows an instrumentation-only application subclass to replace
+     * production dependencies without changing the production module graph.
+     */
+    protected open fun runtimeModules(): List<Module> = emptyList()
 
     private fun initDi() {
         val koinApplication = startKoin {
             androidContext(this@PuberApp)
             modules(
-                resourceModule,
-                handlersModule,
-                apiModule,
-                repositoryModule,
-                interactorModule,
+                listOf(
+                    resourceModule,
+                    handlersModule,
+                    apiModule,
+                    repositoryModule,
+                    interactorModule,
+                ) + runtimeModules(),
             )
         }
         koinApplication.koin.get<ApiDomainInteractor>().initialize()

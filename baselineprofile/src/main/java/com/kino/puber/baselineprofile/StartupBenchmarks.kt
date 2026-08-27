@@ -37,19 +37,68 @@ class StartupBenchmarks {
     @Test
     fun startupWithProfile() = startup(
         CompilationMode.Partial(
-            baselineProfileMode = BaselineProfileMode.Require
-        )
+            baselineProfileMode = BaselineProfileMode.Require,
+        ),
     )
 
-    private fun startup(compilationMode: CompilationMode) =
-        benchmarkRule.measureRepeated(
-            packageName = packageName,
-            metrics = listOf(StartupTimingMetric()),
-            iterations = 5,
-            startupMode = StartupMode.COLD,
-            compilationMode = compilationMode,
-        ) {
-            pressHome()
-            startActivityAndWait()
+    private fun startup(compilationMode: CompilationMode) {
+        val backend = BaselineProfileTestControl.createBackend(
+            InstrumentationRegistry.getArguments(),
+        )
+
+        var journeyPrepared = false
+        var benchmarkFailure: Throwable? = null
+        try {
+            backend.start()
+            backend.awaitReady()
+
+            benchmarkRule.measureRepeated(
+                packageName = packageName,
+                metrics = listOf(StartupTimingMetric()),
+                iterations = 5,
+                startupMode = StartupMode.COLD,
+                compilationMode = compilationMode,
+                setupBlock = {
+                    if (journeyPrepared) {
+                        BaselineProfileTestControl.verify(
+                            targetPackageName = packageName,
+                            backend = backend,
+                        )
+                    }
+                    BaselineProfileTestControl.prepare(
+                        targetPackageName = packageName,
+                        backend = backend,
+                        scenario = BaselineScenario.Startup,
+                    )
+                    journeyPrepared = true
+                },
+            ) {
+                pressHome()
+                startActivityAndWait()
+            }
+        } catch (failure: Throwable) {
+            benchmarkFailure = failure
+            throw failure
+        } finally {
+            val verificationFailure = if (journeyPrepared) {
+                runCatching {
+                    BaselineProfileTestControl.verify(
+                        targetPackageName = packageName,
+                        backend = backend,
+                    )
+                }.exceptionOrNull()
+            } else {
+                null
+            }
+            val cleanupFailure = runCatching(backend::close).exceptionOrNull()
+            val secondaryFailure = verificationFailure?.also { failure ->
+                cleanupFailure?.let(failure::addSuppressed)
+            } ?: cleanupFailure
+
+            if (secondaryFailure != null) {
+                benchmarkFailure?.addSuppressed(secondaryFailure)
+                    ?: throw secondaryFailure
+            }
         }
+    }
 }

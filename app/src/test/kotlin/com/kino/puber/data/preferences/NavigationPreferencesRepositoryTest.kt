@@ -236,6 +236,37 @@ internal class NavigationPreferencesRepositoryTest {
     }
 
     @Test
+    fun fixedConfiguration_remainsStableWithoutPersistentState() {
+        val fixedTabs = listOf(
+            TabType.Home,
+            TabType.Movies,
+            TabType.Series,
+            TabType.Collections,
+            TabType.History,
+        )
+        val fixedContentPreferences = ContentPreferences(
+            showCartoonsTab = false,
+            showAnimeTab = false,
+            showAnime = false,
+        )
+        val repository = NavigationPreferencesRepository(
+            navigationMode = NavigationMode.TopTabs,
+            visibleTabs = fixedTabs,
+            contentPreferences = fixedContentPreferences,
+        )
+
+        repository.setNavigationMode(NavigationMode.SideDrawer)
+        repository.setVisibleTabs(NavigationMode.TopTabs, listOf(TabType.Home))
+        repository.setShowCartoonsTab(true)
+        repository.setShowAnimeTab(true)
+        repository.setShowAnime(true)
+
+        assertEquals(NavigationMode.TopTabs, repository.getNavigationMode())
+        assertEquals(fixedTabs, repository.getVisibleTabs(NavigationMode.TopTabs))
+        assertEquals(fixedContentPreferences, repository.contentPreferences.value)
+    }
+
+    @Test
     fun optionalTabs_areInsertedCanonicallyInBothNavigationModes() {
         val fixture = fixture(
             storedTabs = "Home,Movies,Series,Collections,History",

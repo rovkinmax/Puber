@@ -2,137 +2,58 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CACHE_FILE="${PUBER_BASELINE_AUTH_CACHE:-"$ROOT_DIR/.todo/baseline-profile-auth.env"}"
-TARGET_PACKAGE="com.kino.puber.instrumentation"
-MAIN_ACTIVITY="${TARGET_PACKAGE}/com.kino.puber.MainActivity"
-AUTH_RECEIVER="${TARGET_PACKAGE}/com.kino.puber.profile.BaselineProfileAuthReceiver"
-AUTH_PROVIDER_URI="content://${TARGET_PACKAGE}.profile.auth/tokens"
+PROPERTIES_FILE="$ROOT_DIR/gradle.properties"
+GRADLEW="$ROOT_DIR/gradlew"
+AGENTW="$ROOT_DIR/tools/agentw"
 
-load_cached_auth() {
-    if [[ -f "$CACHE_FILE" ]]; then
-        # shellcheck source=/dev/null
-        source "$CACHE_FILE"
-    fi
+fail() {
+    echo "Baseline profile generation: $*" >&2
+    exit 1
 }
 
-decode_base64() {
-    local value="$1"
-    local decoded
+[[ -x "$GRADLEW" ]] || fail "Gradle wrapper is missing or not executable: $GRADLEW"
+[[ -f "$PROPERTIES_FILE" ]] || fail "Gradle properties file is missing: $PROPERTIES_FILE"
 
-    if decoded="$(printf '%s' "$value" | base64 --decode 2>/dev/null)"; then
-        printf '%s' "$decoded"
-        return
-    fi
+MOCK_PORT="$(
+    awk -F= '
+        $1 == "puber.baselineMockPort" {
+            gsub(/[[:space:]]/, "", $2)
+            print $2
+            exit
+        }
+    ' "$PROPERTIES_FILE"
+)"
 
-    printf '%s' "$value" | base64 -D
-}
+[[ "$MOCK_PORT" =~ ^[0-9]+$ ]] || fail \
+    "puber.baselineMockPort is missing or invalid in $PROPERTIES_FILE"
+(( MOCK_PORT >= 1024 && MOCK_PORT <= 65535 )) || fail \
+    "puber.baselineMockPort must be between 1024 and 65535 (found $MOCK_PORT)"
 
-cache_auth() {
-    mkdir -p "$(dirname "$CACHE_FILE")"
-    {
-        printf 'PUBER_BASELINE_ACCESS_TOKEN=%q\n' "$PUBER_BASELINE_ACCESS_TOKEN"
-        printf 'PUBER_BASELINE_REFRESH_TOKEN=%q\n' "$PUBER_BASELINE_REFRESH_TOKEN"
-        if [[ -n "${PUBER_BASELINE_USERNAME:-}" ]]; then
-            printf 'PUBER_BASELINE_USERNAME=%q\n' "$PUBER_BASELINE_USERNAME"
-        fi
-        if [[ -n "${PUBER_BASELINE_API_DOMAIN:-}" ]]; then
-            printf 'PUBER_BASELINE_API_DOMAIN=%q\n' "$PUBER_BASELINE_API_DOMAIN"
-        fi
-    } > "$CACHE_FILE"
-    chmod 600 "$CACHE_FILE"
-}
+for argument in "$@"; do
+    case "$argument" in
+        *accessToken*|*refreshToken*|*username*|*apiDomain*|*PUBER_BASELINE*)
+            fail "credential-bearing arguments are not accepted: $argument"
+            ;;
+    esac
+done
 
-export_auth_from_device() {
-    local output
-    local access_token_base64
-    local refresh_token_base64
-    local username_base64
-    local api_domain_base64
+if [[ -x "$AGENTW" ]]; then
+    GRADLE_COMMAND=("$AGENTW")
+else
+    GRADLE_COMMAND=("$GRADLEW")
+fi
 
-    output="$(adb shell content query --uri "$AUTH_PROVIDER_URI")"
+echo "Generating baseline profiles with the benchmark-owned MockWebServer."
+echo "Mock origin: http://127.0.0.1:$MOCK_PORT"
+echo "The instrumentation APK supplies synthetic auth and loopback-only networking."
+echo "No credentials, token cache, OAuth flow, or production backend is used."
 
-    access_token_base64="$(printf '%s\n' "$output" | sed -n 's/.*name=access_token, value_base64=//p' | tail -n 1)"
-    refresh_token_base64="$(printf '%s\n' "$output" | sed -n 's/.*name=refresh_token, value_base64=//p' | tail -n 1)"
-    username_base64="$(printf '%s\n' "$output" | sed -n 's/.*name=username, value_base64=//p' | tail -n 1)"
-    api_domain_base64="$(printf '%s\n' "$output" | sed -n 's/.*name=api_domain, value_base64=//p' | tail -n 1)"
+if ! "${GRADLE_COMMAND[@]}" :app:generateBaselineProfile "$@"; then
+    echo >&2
+    echo "Baseline profile generation failed." >&2
+    echo "Check that a leased TV emulator is available and that the mock-backed" >&2
+    echo "instrumentation variants can build and reach 127.0.0.1:$MOCK_PORT." >&2
+    exit 1
+fi
 
-    if [[ -z "$access_token_base64" || -z "$refresh_token_base64" ]]; then
-        echo "Unable to export auth tokens from $TARGET_PACKAGE." >&2
-        echo "Content query output:" >&2
-        echo "$output" >&2
-        return 1
-    fi
-
-    PUBER_BASELINE_ACCESS_TOKEN="$(decode_base64 "$access_token_base64")"
-    PUBER_BASELINE_REFRESH_TOKEN="$(decode_base64 "$refresh_token_base64")"
-    PUBER_BASELINE_USERNAME=""
-    PUBER_BASELINE_API_DOMAIN=""
-    if [[ -n "$username_base64" ]]; then
-        PUBER_BASELINE_USERNAME="$(decode_base64 "$username_base64")"
-    fi
-    if [[ -n "$api_domain_base64" ]]; then
-        PUBER_BASELINE_API_DOMAIN="$(decode_base64 "$api_domain_base64")"
-    fi
-    export PUBER_BASELINE_ACCESS_TOKEN
-    export PUBER_BASELINE_REFRESH_TOKEN
-    export PUBER_BASELINE_USERNAME
-    export PUBER_BASELINE_API_DOMAIN
-
-    if [[ -z "$PUBER_BASELINE_ACCESS_TOKEN" || -z "$PUBER_BASELINE_REFRESH_TOKEN" ]]; then
-        echo "Exported auth payload did not contain both access and refresh tokens." >&2
-        return 1
-    fi
-
-    cache_auth
-}
-
-bootstrap_auth_if_needed() {
-    if [[ -n "${PUBER_BASELINE_ACCESS_TOKEN:-}" && -n "${PUBER_BASELINE_REFRESH_TOKEN:-}" ]]; then
-        return
-    fi
-
-    load_cached_auth
-    if [[ -n "${PUBER_BASELINE_ACCESS_TOKEN:-}" && -n "${PUBER_BASELINE_REFRESH_TOKEN:-}" ]]; then
-        return
-    fi
-
-    echo "No cached baseline-profile auth tokens found."
-    echo "Installing instrumentationNonMinifiedRelease and starting the OAuth device-code flow in the dedicated instrumentation sandbox."
-    (cd "$ROOT_DIR" && ./gradlew :app:installInstrumentationNonMinifiedRelease)
-
-    adb shell am force-stop "$TARGET_PACKAGE" >/dev/null 2>&1 || true
-    adb shell am start -n "$MAIN_ACTIVITY" >/dev/null
-
-    echo
-    echo "Complete authorization on the TV/emulator screen, then press Enter here."
-    echo "Tokens will be exported through the nonMinifiedRelease-only receiver and cached at:"
-    echo "$CACHE_FILE"
-    read -r
-
-    export_auth_from_device
-}
-
-run_generation() {
-    local gradle_args=(
-        ":app:generateBaselineProfile"
-        "-Pandroid.testInstrumentationRunnerArguments.puber.baselineProfile.accessToken=$PUBER_BASELINE_ACCESS_TOKEN"
-        "-Pandroid.testInstrumentationRunnerArguments.puber.baselineProfile.refreshToken=$PUBER_BASELINE_REFRESH_TOKEN"
-    )
-
-    if [[ -n "${PUBER_BASELINE_USERNAME:-}" ]]; then
-        gradle_args+=(
-            "-Pandroid.testInstrumentationRunnerArguments.puber.baselineProfile.username=$PUBER_BASELINE_USERNAME"
-        )
-    fi
-
-    if [[ -n "${PUBER_BASELINE_API_DOMAIN:-}" ]]; then
-        gradle_args+=(
-            "-Pandroid.testInstrumentationRunnerArguments.puber.baselineProfile.apiDomain=$PUBER_BASELINE_API_DOMAIN"
-        )
-    fi
-
-    (cd "$ROOT_DIR" && ./gradlew "${gradle_args[@]}")
-}
-
-bootstrap_auth_if_needed
-run_generation
+echo "Baseline profiles generated from the local mock backend."
