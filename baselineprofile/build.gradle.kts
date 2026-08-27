@@ -17,13 +17,9 @@ android {
 
     flavorDimensions += "buildType"
     productFlavors {
-        create("dev") {
+        create("instrumentation") {
             dimension = "buildType"
-            testInstrumentationRunnerArguments["targetAppId"] = "com.kino.puber.stage"
-        }
-        create("prod") {
-            dimension = "buildType"
-            testInstrumentationRunnerArguments["targetAppId"] = "com.kino.puber"
+            testInstrumentationRunnerArguments["targetAppId"] = "com.kino.puber.instrumentation"
         }
     }
 

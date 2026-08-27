@@ -66,12 +66,14 @@ Use the helper script:
 ./tools/generate-baseline-profile.sh
 ```
 
-On the first run, if no tokens are provided and `.todo/baseline-profile-auth.env` does not exist, the script:
+Baseline profile generation uses the dedicated `com.kino.puber.instrumentation` application sandbox, so it never
+installs or seeds authorization in the normal development or production package. On the first run, if no tokens are
+provided and `.todo/baseline-profile-auth.env` does not exist, the script:
 
-1. Installs `devNonMinifiedRelease`.
-2. Starts the app with the normal OAuth device-code flow.
+1. Installs `instrumentationNonMinifiedRelease`.
+2. Starts the instrumentation app with the OAuth device-code flow.
 3. Waits while you enter the code manually.
-4. Exports tokens through a provider that is registered only for `devNonMinifiedRelease` and `prodNonMinifiedRelease`.
+4. Exports tokens through a provider registered only for the instrumentation non-minified release variant.
 5. Stores tokens locally in `.todo/baseline-profile-auth.env` with file mode `600`.
 6. Runs `./gradlew :app:generateBaselineProfile`.
 
@@ -102,7 +104,8 @@ The helper ultimately passes these values to the profile instrumentation tests:
   -Pandroid.testInstrumentationRunnerArguments.puber.baselineProfile.refreshToken="$PUBER_BASELINE_REFRESH_TOKEN"
 ```
 
-The profile auth receiver/provider are not packaged in `prodRelease`.
+The profile auth receiver/provider are packaged only in `instrumentationNonMinifiedRelease`, not in normal dev or
+production APKs.
 
 ## Verification
 
@@ -117,7 +120,7 @@ Run:
 To sanity-check that the generated profile is available to the benchmark APK on an emulator, run:
 
 ```bash
-./gradlew :baselineprofile:connectedDevBenchmarkReleaseAndroidTest \
+./gradlew :baselineprofile:connectedInstrumentationBenchmarkReleaseAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.kino.puber.baselineprofile.StartupBenchmarks#startupWithProfile \
   -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR
 ```

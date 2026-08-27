@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CACHE_FILE="${PUBER_BASELINE_AUTH_CACHE:-"$ROOT_DIR/.todo/baseline-profile-auth.env"}"
-TARGET_PACKAGE="${PUBER_BASELINE_TARGET_PACKAGE:-com.kino.puber.stage}"
+TARGET_PACKAGE="com.kino.puber.instrumentation"
 MAIN_ACTIVITY="${TARGET_PACKAGE}/com.kino.puber.MainActivity"
 AUTH_RECEIVER="${TARGET_PACKAGE}/com.kino.puber.profile.BaselineProfileAuthReceiver"
 AUTH_PROVIDER_URI="content://${TARGET_PACKAGE}.profile.auth/tokens"
@@ -97,8 +97,8 @@ bootstrap_auth_if_needed() {
     fi
 
     echo "No cached baseline-profile auth tokens found."
-    echo "Installing devNonMinifiedRelease and starting the normal OAuth device-code flow."
-    (cd "$ROOT_DIR" && ./gradlew :app:installDevNonMinifiedRelease)
+    echo "Installing instrumentationNonMinifiedRelease and starting the OAuth device-code flow in the dedicated instrumentation sandbox."
+    (cd "$ROOT_DIR" && ./gradlew :app:installInstrumentationNonMinifiedRelease)
 
     adb shell am force-stop "$TARGET_PACKAGE" >/dev/null 2>&1 || true
     adb shell am start -n "$MAIN_ACTIVITY" >/dev/null

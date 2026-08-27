@@ -14,9 +14,10 @@ import org.junit.runner.RunWith
 
 /**
  * Measures cold startup time with and without Baseline Profile.
- * Run after generating the profile to quantify improvement.
+ * Run after generating the profile to quantify improvement in the dedicated
+ * instrumentation application sandbox.
  *
- * Run: ./gradlew :baselineprofile:connectedDevBenchmarkReleaseAndroidTest \
+ * Run: ./gradlew :baselineprofile:connectedInstrumentationBenchmarkReleaseAndroidTest \
  *   -Pandroid.testInstrumentationRunnerArguments.class=com.kino.puber.baselineprofile.StartupBenchmarks
  */
 @LargeTest
