@@ -374,15 +374,22 @@ data class SubtitleLink(
     val url: String,
     val shift: Int? = null,
     val embed: Boolean? = null,
+    val forced: Boolean? = null,
+    val file: String? = null,
 ) {
     val shouldSideLoad: Boolean
         get() = embed != true
 
-    // KinoPub does not expose a forced flag separately, but marks the variant in the subtitle path.
+    // Older API responses may omit the dedicated forced flag.
+    val forcedState: Boolean?
+        get() = forced ?: true.takeIf {
+            FORCED_SUBTITLE_TOKEN.containsMatchIn(
+                url.substringBefore('?').substringBefore('#'),
+            )
+        }
+
     val isForced: Boolean
-        get() = FORCED_SUBTITLE_TOKEN.containsMatchIn(
-            url.substringBefore('?').substringBefore('#'),
-        )
+        get() = forcedState == true
 }
 
 private val FORCED_SUBTITLE_TOKEN = Regex(

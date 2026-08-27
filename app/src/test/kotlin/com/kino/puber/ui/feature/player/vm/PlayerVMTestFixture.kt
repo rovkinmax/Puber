@@ -200,6 +200,17 @@ internal abstract class PlayerVMTestFixture {
         ),
     )
 
+    protected val testDiscoveredSubtitleTracks = testSubtitleTracks.drop(1).mapIndexed { index, track ->
+        track.copy(
+            index = index + 1,
+            url = "",
+            playerTrackId = track.url,
+            playerTrackUri = track.url,
+            playerGroupIndex = index,
+            playerTrackIndex = 0,
+        )
+    }
+
     protected val testContentState = PlayerContentState(
         title = "Breaking Bad",
         subtitle = "S1E1",
