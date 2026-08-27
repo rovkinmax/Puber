@@ -132,6 +132,40 @@ internal class AudioTrackPreferenceResolverTest {
     }
 
     @Test
+    fun findSubtitleTrackIndex_usesSavedManifestIdentity_forSameLanguageVariants() {
+        val tracks = listOf(
+            subtitleTrack(index = 0, language = "", url = ""),
+            subtitleTrack(index = 1, language = "rus", url = "", playerTrackId = "rus-full"),
+            subtitleTrack(index = 2, language = "rus", url = "", playerTrackId = "rus-forced"),
+        )
+
+        val result = resolver.findSubtitleTrackIndex(
+            tracks = tracks,
+            preferredLang = "rus",
+            preferredUrl = "rus-forced",
+        )
+
+        assertEquals(2, result)
+    }
+
+    @Test
+    fun findSubtitleTrackIndex_doesNotGuessBetweenSameLanguageVariants() {
+        val tracks = listOf(
+            subtitleTrack(index = 0, language = "", url = ""),
+            subtitleTrack(index = 1, language = "rus", url = "", playerTrackId = "rus-full"),
+            subtitleTrack(index = 2, language = "rus", url = "", playerTrackId = "rus-forced"),
+        )
+
+        val result = resolver.findSubtitleTrackIndex(
+            tracks = tracks,
+            preferredLang = "rus",
+            preferredUrl = null,
+        )
+
+        assertEquals(-1, result)
+    }
+
+    @Test
     fun findSubtitleTrackIndex_returnsNoMatch_untilPreferredManifestLanguageAppears() {
         val tracks = listOf(
             subtitleTrack(index = 0, language = "", url = ""),
