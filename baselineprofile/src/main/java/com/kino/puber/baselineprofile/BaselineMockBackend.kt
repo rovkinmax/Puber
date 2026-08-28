@@ -77,6 +77,25 @@ class BaselineMockBackend(
         }
     }
 
+    fun awaitStartupHomeRequest(timeoutMs: Int = 10_000) {
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        while (System.nanoTime() < deadline) {
+            val observed = synchronized(lock) {
+                val route = activeRoutes.firstOrNull(::isStartupHomeRoute)
+                route != null && (matchedCounts[route] ?: 0) > 0
+            }
+            if (observed) {
+                return
+            }
+            Thread.sleep(LIVENESS_POLL_MS)
+        }
+        error("Target-originated Home request was not observed within ${timeoutMs}ms")
+    }
+
+    private fun isStartupHomeRoute(route: BaselineMockRoute): Boolean =
+        route.path == STARTUP_HOME_PATH &&
+            route.query == mapOf(STARTUP_HOME_TYPE_QUERY to STARTUP_HOME_TYPE)
+
     fun reset(scenario: BaselineScenario) {
         synchronized(lock) {
             check(started) { "Call start() before reset()" }
@@ -236,7 +255,13 @@ class BaselineMockBackend(
                         query = mapOf("type" to type) + page,
                         body = fixtures.items,
                         required = (homeJourney && page.isEmpty()) ||
-                            (contentJourney && page["page"] == "1"),
+                            (contentJourney && page["page"] == "1") ||
+                            (
+                                scenario == BaselineScenario.Startup &&
+                                    type == STARTUP_HOME_TYPE &&
+                                    shortcut == STARTUP_HOME_SHORTCUT &&
+                                    page.isEmpty()
+                                ),
                     )
                 }
             }
@@ -303,6 +328,13 @@ class BaselineMockBackend(
             .body(body)
             .build()
 
+    private companion object {
+        const val STARTUP_HOME_PATH = "/v1/items/fresh"
+        const val STARTUP_HOME_SHORTCUT = "fresh"
+        const val STARTUP_HOME_TYPE_QUERY = "type"
+        const val STARTUP_HOME_TYPE = "movie"
+        const val LIVENESS_POLL_MS = 50L
+    }
 }
 
 enum class BaselineScenario {

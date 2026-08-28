@@ -46,6 +46,7 @@ class BaselineProfileGenerator {
         ) {
             pressHome()
             startActivityAndWait()
+            BaselineProfileTestControl.awaitStartupReady(backend)
             device.waitForIdle()
         }
     }
@@ -161,6 +162,7 @@ class BaselineProfileGenerator {
             baselineProfileRule.collect(
                 packageName = packageName,
                 includeInStartupProfile = includeInStartupProfile,
+                filterPredicate = BaselineProfileRuleFilter::include,
                 profileBlock = profileBlock,
             )
         } catch (failure: Throwable) {

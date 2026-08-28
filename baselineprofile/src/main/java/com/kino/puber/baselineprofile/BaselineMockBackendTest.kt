@@ -78,6 +78,11 @@ class BaselineMockBackendTest {
         backend.reset(BaselineScenario.Startup)
         val firstGeneration = backend.generationId
         assertTrue(backend.verify().missingRequiredRoutes.isNotEmpty())
+        assertTrue(
+            backend.requiredRoutes.any {
+                it.path == "/v1/items/fresh" && it.query == mapOf("type" to "movie")
+            },
+        )
 
         backend.requiredRoutes.forEach { route -> request(backend.url(route)) }
         val verified = backend.verify()
@@ -87,6 +92,28 @@ class BaselineMockBackendTest {
         backend.reset(BaselineScenario.BrowseAndDetails)
         assertTrue(backend.generationId > firstGeneration)
         assertEquals(0, backend.verify().matchedRequests)
+    }
+
+    @Test
+    fun startupRequiresARealTargetHomeRequest() {
+        backend.reset(BaselineScenario.Startup)
+
+        val route = backend.requiredRoutes.single {
+            it.path == "/v1/items/fresh" && it.query == mapOf("type" to "movie")
+        }
+        assertEquals(200, request(backend.url(route)).code)
+        backend.awaitStartupHomeRequest()
+        assertTrue(backend.verify().matchedRoutes.containsKey(route.description))
+    }
+
+    @Test
+    fun profileRuleFilterExcludesInstrumentationOnlyRules() {
+        assertTrue(BaselineProfileRuleFilter.include("Lcom/kino/puber/MainActivity;"))
+        assertFalse(
+            BaselineProfileRuleFilter.include(
+                "SPLcom/kino/puber/profile/BaselineProfileApp;->configureRuntime()V",
+            ),
+        )
     }
 
     @Test

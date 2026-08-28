@@ -11,6 +11,10 @@ fail() {
     exit 1
 }
 
+ANDROID_SERIAL_VALUE="${ANDROID_SERIAL:-}"
+[[ -n "${ANDROID_SERIAL_VALUE//[[:space:]]/}" ]] || fail \
+    "ANDROID_SERIAL must be explicitly set to a nonblank leased device serial"
+
 [[ -x "$GRADLEW" ]] || fail "Gradle wrapper is missing or not executable: $GRADLEW"
 [[ -f "$PROPERTIES_FILE" ]] || fail "Gradle properties file is missing: $PROPERTIES_FILE"
 
