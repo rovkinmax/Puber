@@ -60,6 +60,7 @@ class StartupBenchmarks {
                 compilationMode = compilationMode,
                 setupBlock = {
                     if (journeyPrepared) {
+                        backend.awaitStartupHomeRequest()
                         BaselineProfileTestControl.verify(
                             targetPackageName = packageName,
                             backend = backend,
@@ -82,6 +83,7 @@ class StartupBenchmarks {
         } finally {
             val verificationFailure = if (journeyPrepared) {
                 runCatching {
+                    backend.awaitStartupHomeRequest()
                     BaselineProfileTestControl.verify(
                         targetPackageName = packageName,
                         backend = backend,
