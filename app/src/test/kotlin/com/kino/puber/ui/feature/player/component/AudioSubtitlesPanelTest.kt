@@ -10,14 +10,14 @@ internal class AudioSubtitlesPanelTest {
     fun subtitlePickerLabel_marksForcedTrack_withoutManifestNumbering() {
         val track = subtitleTrack(label = "rus", isForced = true)
 
-        assertEquals("rus · форсированные", track.subtitlePickerLabel("форсированные"))
+        assertEquals("rus · частичные", track.subtitlePickerLabel("частичные"))
     }
 
     @Test
     fun subtitlePickerLabel_keepsRegularTrackLanguageOnly() {
         val track = subtitleTrack(label = "rus", isForced = false)
 
-        assertEquals("rus", track.subtitlePickerLabel("форсированные"))
+        assertEquals("rus", track.subtitlePickerLabel("частичные"))
     }
 
     private fun subtitleTrack(label: String, isForced: Boolean) = SubtitleTrackUIState(
