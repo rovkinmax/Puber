@@ -372,6 +372,33 @@ internal class SubtitleTrackMergerTest {
         )
     }
 
+    /**
+     * Renditions and API subtitles share no identifier, so coverage cannot be proven per
+     * track. When the manifest offers fewer renditions of a language than the API has
+     * subtitles for it, nothing is hidden — a duplicate row is better than a lost subtitle.
+     */
+    @Test
+    fun merge_keepsSideLoadedTracks_whenTheManifestHasFewerRenditionsOfTheirLanguage() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack(1, "rus", "rus", url = "https://api.test/pd/a", sourceFile = "/1/11/1.srt"),
+            apiTrack(2, "rus", "rus", url = "https://api.test/pd/b", sourceFile = "/2/22/2.srt"),
+        )
+        val playerTracks = listOf(
+            playerTrack(1, "", "ru", "0:", 0, uri = "https://cdn.test/hls/rus01.m3u8", descriptiveLabel = "RUS #01"),
+            playerTrack(2, "", "ru", "1:1/11/1.srt", 1),
+            playerTrack(3, "", "ru", "2:2/22/2.srt", 2),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(4, result.size)
+        assertEquals(
+            listOf("https://api.test/pd/a", "https://api.test/pd/b"),
+            result.drop(2).map { it.url },
+        )
+    }
+
     @Test
     fun merge_matchesSideLoadedTrack_ignoringTheMergedChildIndexPrefix() {
         val apiTracks = listOf(
