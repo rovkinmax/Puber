@@ -95,6 +95,7 @@ internal class PlaybackController(
     private val ac3FallbackPolicy = Ac3FallbackPolicy()
     private val callbackGate = PlaybackCallbackGate()
     private val mediaItemFactory = PlaybackMediaItemFactory()
+    private val subtitleTrackSelector = SubtitleTrackSelector()
 
     @OptIn(UnstableApi::class)
     private val bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
@@ -647,6 +648,7 @@ internal class PlaybackController(
                     ),
                     groupIndex = groupIndex,
                     trackIndex = trackIndex,
+                    groupId = group.mediaTrackGroup.id,
                 )
             }
         }
@@ -676,6 +678,7 @@ internal class PlaybackController(
         hlsRendition: HlsMultivariantPlaylist.Rendition?,
         groupIndex: Int,
         trackIndex: Int,
+        groupId: String,
     ): SubtitleTrackUIState {
         val identityFormat = hlsRendition?.format
         val language = format.language ?: identityFormat?.language.orEmpty()
@@ -691,6 +694,7 @@ internal class PlaybackController(
             isForced = (format.selectionFlags or (identityFormat?.selectionFlags ?: 0)) and
                 C.SELECTION_FLAG_FORCED != 0,
             playerTrackId = format.id ?: identityFormat?.id,
+            playerTrackGroupId = groupId,
             playerTrackUri = hlsRendition?.url?.toString(),
             playerGroupIndex = groupIndex,
             playerTrackIndex = trackIndex,
@@ -703,82 +707,34 @@ internal class PlaybackController(
 
     private fun applySubtitleTrackSelection(track: SubtitleTrackUIState) {
         val player = exoPlayer ?: return
-        val stableKey = track.url.stableSubtitleKey()
         val textGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-        val target = findTextTrack(track, stableKey, textGroups)
-        if (target == null) return
-        val builder = player.trackSelectionParameters
+        val target = subtitleTrackSelector.select(track, textGroups.toPlayerTextTracks())
+            ?: return
+        val targetGroup = textGroups.getOrNull(target.groupIndex) ?: return
+        player.trackSelectionParameters = player.trackSelectionParameters
             .buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
             .setOverrideForType(
-                TrackSelectionOverride(target.group.mediaTrackGroup, target.trackIndex),
+                TrackSelectionOverride(targetGroup.mediaTrackGroup, target.trackIndex),
             )
-        player.trackSelectionParameters = builder.build()
+            .build()
     }
 
-    private fun findTextTrack(
-        track: SubtitleTrackUIState,
-        stableKey: String,
-        textGroups: List<Tracks.Group>,
-    ): TextTrackSelection? {
-        // Side-loaded configurations carry the stable key as both id and label, and
-        // manifest renditions carry their own id, so the raw API url is never a Format id.
-        return findTextTrackBy(textGroups) { format ->
-            track.playerTrackId != null && format.id == track.playerTrackId
-        } ?: findTextTrackBy(textGroups) { format ->
-            stableKey.isNotEmpty() && (format.id == stableKey || format.label == stableKey)
-        } ?: findTextTrackByPlayerCoordinates(textGroups, track)
-            ?: findUnambiguousTextTrackByLanguage(textGroups, track.language)
-    }
-
-    private fun findTextTrackByPlayerCoordinates(
-        textGroups: List<Tracks.Group>,
-        track: SubtitleTrackUIState,
-    ): TextTrackSelection? {
-        val group = track.playerGroupIndex?.let(textGroups::getOrNull)
-        val trackIndex = track.playerTrackIndex
-        return if (group != null && trackIndex != null && trackIndex in 0 until group.length) {
-            TextTrackSelection(group = group, trackIndex = trackIndex)
-        } else {
-            null
-        }
-    }
-
-    private fun findUnambiguousTextTrackByLanguage(
-        textGroups: List<Tracks.Group>,
-        language: String,
-    ): TextTrackSelection? {
-        if (language.isEmpty()) return null
-        val matches = textGroups.flatMap { group ->
-            (0 until group.length).mapNotNull { trackIndex ->
-                group.getTrackFormat(trackIndex).takeIf { format ->
-                    format.language?.let { sameSubtitleLanguage(it, language) } == true
-                }?.let {
-                    TextTrackSelection(group = group, trackIndex = trackIndex)
-                }
+    private fun List<Tracks.Group>.toPlayerTextTracks(): List<PlayerTextTrack> =
+        flatMapIndexed { groupIndex, group ->
+            (0 until group.length).map { trackIndex ->
+                val format = group.getTrackFormat(trackIndex)
+                PlayerTextTrack(
+                    groupId = group.mediaTrackGroup.id,
+                    groupIndex = groupIndex,
+                    trackIndex = trackIndex,
+                    formatId = format.id,
+                    formatLabel = format.label,
+                    language = format.language,
+                )
             }
         }
-        return matches.singleOrNull()
-    }
-
-    private fun findTextTrackBy(
-        textGroups: List<Tracks.Group>,
-        predicate: (Format) -> Boolean,
-    ): TextTrackSelection? {
-        return textGroups.flatMap { group ->
-            (0 until group.length).mapNotNull { trackIndex ->
-                group.getTrackFormat(trackIndex).takeIf(predicate)?.let {
-                    TextTrackSelection(group = group, trackIndex = trackIndex)
-                }
-            }
-        }.singleOrNull()
-    }
-
-    private data class TextTrackSelection(
-        val group: Tracks.Group,
-        val trackIndex: Int,
-    )
 
     private companion object {
         const val MIN_DURATION_FOR_QUALITY_INCREASE_MS = 10_000
