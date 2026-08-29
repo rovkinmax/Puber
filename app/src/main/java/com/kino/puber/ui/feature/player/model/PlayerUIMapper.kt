@@ -51,7 +51,7 @@ internal class PlayerUIMapper(
                     label = sub.lang,
                     language = sub.lang,
                     url = sub.url,
-                    isForced = sub.forcedState,
+                    isForced = sub.forced,
                     sourceFile = sub.file,
                 )
             )

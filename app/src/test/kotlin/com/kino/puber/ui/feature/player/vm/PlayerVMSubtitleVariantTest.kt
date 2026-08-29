@@ -77,24 +77,6 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
     }
 
     @Test
-    fun tracksUpdated_defersUrlPreference_untilPlayerTrackAppears() {
-        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns
-            "https://test/subtitles/rus-forced.vtt"
-        val vm = startedVM()
-        val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
-
-        callbackSlot.captured.onTracksUpdated(audioTracks, 0, emptyList())
-        verify(exactly = 0) { playbackController.selectSubtitle(any()) }
-
-        callbackSlot.captured.onTracksUpdated(audioTracks, 0, testDiscoveredSubtitleTracks)
-
-        val selectedTrack = contentState(vm).subtitleTracks[2]
-        assertEquals(2, contentState(vm).selectedSubtitleIndex)
-        verify { playbackController.selectSubtitle(selectedTrack) }
-    }
-
-    @Test
     fun tracksUpdated_restoresForcedManifestSubtitleBySavedIdentity() {
         every { interactor.getPreferredSubtitleLang(42) } returns "rus"
         every { interactor.getPreferredSubtitleUrl(42) } returns "hls-russian-forced"

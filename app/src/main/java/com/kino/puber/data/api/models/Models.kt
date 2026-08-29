@@ -379,20 +379,7 @@ data class SubtitleLink(
 ) {
     val shouldSideLoad: Boolean
         get() = embed != true
-
-    // Older API responses may omit the dedicated forced flag.
-    val forcedState: Boolean?
-        get() = forced ?: true.takeIf {
-            FORCED_SUBTITLE_TOKEN.containsMatchIn(
-                url.substringBefore('?').substringBefore('#'),
-            )
-        }
 }
-
-private val FORCED_SUBTITLE_TOKEN = Regex(
-    pattern = """(^|[/_.-])forced([/_.-]|$)""",
-    option = RegexOption.IGNORE_CASE,
-)
 
 @Serializable
 data class TVChannel(
