@@ -1,6 +1,8 @@
 package com.kino.puber.data.api.models
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -28,17 +30,17 @@ internal class SubtitleLinkTest {
     }
 
     @Test
-    fun isForced_detectsForcedMarkerInPath_ignoringCaseAndQuery() {
+    fun forcedState_detectsForcedMarkerInPath_ignoringCaseAndQuery() {
         val subtitle = SubtitleLink(
             lang = "rus",
             url = "https://cdn.test/subtitles/RUS-FORCED.vtt?token=forced-value",
         )
 
-        assertTrue(subtitle.isForced)
+        assertEquals(true, subtitle.forcedState)
     }
 
     @Test
-    fun isForced_doesNotUseQueryOrPartialWordAsMarker() {
+    fun forcedState_doesNotUseQueryOrPartialWordAsMarker() {
         val regularSubtitle = SubtitleLink(
             lang = "rus",
             url = "https://cdn.test/subtitles/russian.vtt?mode=forced",
@@ -48,12 +50,12 @@ internal class SubtitleLinkTest {
             url = "https://cdn.test/subtitles/russian-unforced.vtt",
         )
 
-        assertFalse(regularSubtitle.isForced)
-        assertFalse(unforcedSubtitle.isForced)
+        assertNull(regularSubtitle.forcedState)
+        assertNull(unforcedSubtitle.forcedState)
     }
 
     @Test
-    fun isForced_usesApiFlagInsteadOfUrlHeuristic() {
+    fun forcedState_usesApiFlagInsteadOfUrlHeuristic() {
         val forcedSubtitle = SubtitleLink(
             lang = "rus",
             url = "https://cdn.test/subtitles/russian.srt",
@@ -66,7 +68,7 @@ internal class SubtitleLinkTest {
             forced = false,
         )
 
-        assertTrue(forcedSubtitle.isForced)
-        assertFalse(regularSubtitle.isForced)
+        assertEquals(true, forcedSubtitle.forcedState)
+        assertEquals(false, regularSubtitle.forcedState)
     }
 }
