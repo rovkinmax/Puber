@@ -409,14 +409,14 @@ internal class PlayerVM(
             ?.preset
             ?: BufferPreset.AUTO
         val fastDns = content?.fastDnsEnabled ?: true
-        val streamUrl = interactor.selectStreamUrl(media.files, qualityIndex) ?: return
-        playbackController.prepare(streamUrl, media.subtitles, savedPosition, bufferPreset, fastDns)
+        val stream = interactor.selectStreamUrl(media.files, qualityIndex) ?: return
+        playbackController.prepare(stream, media.subtitles, savedPosition, bufferPreset, fastDns)
     }
 
     private fun switchStreamUrl(qualityIndex: Int) {
         val media = currentMedia ?: return
-        val streamUrl = interactor.selectStreamUrl(media.files, qualityIndex) ?: return
-        playbackController.switchStream(streamUrl, media.subtitles)
+        val stream = interactor.selectStreamUrl(media.files, qualityIndex) ?: return
+        playbackController.switchStream(stream, media.subtitles)
     }
 
     /**
