@@ -140,18 +140,8 @@ internal class AudioTrackPreferenceResolverTest {
     fun findSubtitleTrackIndex_doesNotGuessWhenStableIdentityMatchesMultipleTracks() {
         val tracks = listOf(
             subtitleTrack(index = 0, language = "", url = ""),
-            subtitleTrack(
-                index = 1,
-                language = "rus",
-                url = "",
-                playerTrackUri = "https://cdn.test/a/russian.srt",
-            ),
-            subtitleTrack(
-                index = 2,
-                language = "rus",
-                url = "",
-                playerTrackUri = "https://cdn.test/b/russian.srt",
-            ),
+            subtitleTrack(index = 1, language = "rus", url = "", playerTrackUri = "https://cdn.test/a/russian.srt"),
+            subtitleTrack(index = 2, language = "rus", url = "", playerTrackUri = "https://cdn.test/b/russian.srt"),
         )
 
         val result = resolver.findSubtitleTrackIndex(
