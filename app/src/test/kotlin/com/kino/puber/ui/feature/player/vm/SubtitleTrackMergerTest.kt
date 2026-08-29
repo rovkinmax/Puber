@@ -344,8 +344,52 @@ internal class SubtitleTrackMergerTest {
         assertEquals(listOf("Off", "Русский", "Английский"), result.map { it.label })
     }
 
+    /**
+     * Real KinoPub data: the API lists two subtitles, the manifest publishes three
+     * renditions covering both languages, and Media3 prefixes side-loaded track ids with
+     * the merged child index. The renditions win and the side-loaded copies disappear.
+     */
     @Test
-    fun merge_hidesSideLoadedCopy_whenManifestPublishesTheSameSubtitle() {
+    fun merge_hidesSideLoadedCopies_whenManifestCoversTheirLanguages() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack(1, "eng", "eng", url = "https://api.test/pd/xyz", sourceFile = "/9/24/2871466.srt"),
+            apiTrack(2, "rus", "rus", url = "https://api.test/pd/abc", sourceFile = "/1/92/2871463.srt"),
+        )
+        val playerTracks = listOf(
+            playerTrack(1, "", "ru", "0:", 0, uri = "https://cdn.test/hls/rus01.m3u8", descriptiveLabel = "RUS #01"),
+            playerTrack(2, "", "ru", "0:", 1, uri = "https://cdn.test/hls/rus02.m3u8", descriptiveLabel = "RUS #02"),
+            playerTrack(3, "", "en", "0:", 2, uri = "https://cdn.test/hls/eng03.m3u8", descriptiveLabel = "ENG #03"),
+            playerTrack(4, "", "en", "1:9/24/2871466.srt", 3),
+            playerTrack(5, "", "ru", "2:1/92/2871463.srt", 4),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(
+            listOf("Off", "Русский · вариант 1", "Русский · вариант 2", "Английский"),
+            result.map { it.label },
+        )
+    }
+
+    @Test
+    fun merge_matchesSideLoadedTrack_ignoringTheMergedChildIndexPrefix() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack(1, "ukr", "ukr", url = "https://api.test/pd/abc", sourceFile = "/1/92/2871463.srt"),
+        )
+        val playerTracks = listOf(
+            playerTrack(1, "", "uk", "2:1/92/2871463.srt", 0),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(listOf("Off", "Украинский"), result.map { it.label })
+        assertEquals("https://api.test/pd/abc", result[1].url)
+    }
+
+    @Test
+    fun merge_hidesSideLoadedCopy_whenManifestCoversItsLanguage() {
         val apiTracks = listOf(
             offTrack(),
             apiTrack(1, "rus", "rus", url = "https://api.test/subtitles/rus.srt"),
