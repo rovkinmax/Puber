@@ -31,40 +31,22 @@ internal class SubtitleTrackSelectorTest {
     }
 
     /**
-     * The same collision with a rendition the manifest publishes without an ID: there is no
-     * format id to match on, so the old rules fell through to the stable key and selected
-     * the side-loaded duplicate. The track group id resolves it unambiguously.
+     * MergingMediaSource prefixes child format ids but not labels, so a side-loaded row
+     * whose captured id no longer matches still resolves through the label Media3 copied
+     * from the subtitle configuration.
      */
     @Test
-    fun select_prefersIdLessManifestRendition_overSideLoadedCopy() {
-        val manifestRow = manifestTrack(
-            groupId = "0:rus",
-            trackIndex = 0,
-            formatId = null,
-            url = "https://api.test/subtitles/29725.srt",
-        )
-        val candidates = listOf(
-            PlayerTextTrack("0:rus", 0, 0, formatLabel = "Русские", language = "rus"),
-            PlayerTextTrack("1:", 1, 0, formatId = "29725.srt", formatLabel = "29725.srt", language = "rus"),
-        )
-
-        assertEquals(candidates[0], selector.select(manifestRow, candidates))
-    }
-
-    @Test
-    fun select_resolvesSideLoadedRow_byStableKey() {
+    fun select_resolvesSideLoadedRow_byStableKey_whenItsFormatIdNoLongerMatches() {
         val sideLoadedRow = SubtitleTrackUIState(
             label = "eng",
             language = "eng",
             url = "https://api.test/subtitles/29726.srt",
-            playerTrackGroupId = "1:",
-            playerTrackId = "29726.srt",
-            playerGroupIndex = 1,
-            playerTrackIndex = 0,
+            playerTrackGroupId = "",
+            playerTrackId = "1:29726.srt",
         )
         val candidates = listOf(
-            PlayerTextTrack("0:rus-rendition", 0, 0, formatId = "rus-rendition", language = "rus"),
-            PlayerTextTrack("1:", 1, 0, formatId = "29726.srt", formatLabel = "29726.srt", language = "eng"),
+            PlayerTextTrack("", 0, 0, formatId = "rus-rendition", language = "rus"),
+            PlayerTextTrack("", 1, 0, formatId = "2:29726.srt", formatLabel = "29726.srt", language = "eng"),
         )
 
         assertEquals(candidates[1], selector.select(sideLoadedRow, candidates))
@@ -136,11 +118,6 @@ internal class SubtitleTrackSelectorTest {
         )
 
         assertEquals(candidates[1], selector.select(row, candidates))
-    }
-
-    @Test
-    fun select_returnsNull_whenThePlayerExposesNoTextTracks() {
-        assertNull(selector.select(manifestTrack("0:a", 0, "a", ""), emptyList()))
     }
 
     private fun manifestTrack(

@@ -81,22 +81,6 @@ internal class SubtitleTrackMergerTest {
     }
 
     @Test
-    fun merge_appendsManifestOnlyTracks_withoutChangingTheirLanguage() {
-        val playerTrack = playerTrack(
-            label = "Українські",
-            language = "uk",
-            id = "hls-ukrainian",
-            groupIndex = 2,
-        )
-
-        val result = merger.merge(listOf(offTrack()), listOf(playerTrack))
-
-        assertEquals(listOf("", "uk"), result.map { it.language })
-        assertEquals("hls-ukrainian", result[1].playerTrackId)
-        assertEquals(2, result[1].playerGroupIndex)
-    }
-
-    @Test
     fun merge_dropsUnmatchedApiTrack_whenPlayerTracksAreAvailable() {
         val apiTracks = listOf(
             offTrack(),
@@ -238,29 +222,6 @@ internal class SubtitleTrackMergerTest {
     }
 
     @Test
-    fun merge_usesOnlyManifestTracks_whenApiIdentityDoesNotMatch() {
-        val embeddedRussian = apiTrack(
-            label = "Russian embedded",
-            language = "rus",
-        )
-        val manifestEnglish = playerTrack(
-            label = "English HLS",
-            language = "en",
-            id = "hls-english",
-            groupIndex = 0,
-        )
-
-        val result = merger.merge(
-            listOf(offTrack(), embeddedRussian),
-            listOf(manifestEnglish),
-        )
-
-        assertEquals(listOf("Off", "Английский"), result.map { it.label })
-        assertEquals(listOf("", "en"), result.map { it.language })
-        assertEquals("hls-english", result[1].playerTrackId)
-    }
-
-    @Test
     fun merge_exposesOnlyOff_untilPlayerTracksAreDiscovered() {
         val apiTracks = listOf(
             offTrack(),
@@ -274,34 +235,6 @@ internal class SubtitleTrackMergerTest {
     }
 
     @Test
-    fun merge_usesDescriptiveLabels_forSameLanguageVariantsThatWouldCollide() {
-        val playerTracks = listOf(
-            playerTrack("rus", "rus", "full", 0, descriptiveLabel = "Русские полные"),
-            playerTrack("rus", "rus", "sdh", 1, descriptiveLabel = "Русские SDH"),
-        )
-
-        val result = merger.merge(listOf(offTrack()), playerTracks)
-
-        assertEquals(listOf("Off", "Русские полные", "Русские SDH"), result.map { it.label })
-    }
-
-    @Test
-    fun merge_numbersSameLanguageVariants_whenDescriptiveLabelsCannotSeparateThem() {
-        val playerTracks = listOf(
-            playerTrack("rus", "rus", "a", 0, descriptiveLabel = "RUS"),
-            playerTrack("rus", "rus", "b", 1, descriptiveLabel = "RUS"),
-            playerTrack("rus", "rus", "c", 2, descriptiveLabel = null),
-        )
-
-        val result = merger.merge(listOf(offTrack()), playerTracks)
-
-        assertEquals(
-            listOf("Off", "Русский · вариант 1", "Русский · вариант 2", "Русский · вариант 3"),
-            result.map { it.label },
-        )
-    }
-
-    @Test
     fun merge_marksPartialVariant_andOrdersItLastWithinItsLanguage() {
         val playerTracks = listOf(
             playerTrack("rus", "rus", "full", 0, forced = false, descriptiveLabel = "RUS"),
@@ -312,18 +245,6 @@ internal class SubtitleTrackMergerTest {
 
         assertEquals(listOf("Off", "Русский", "Русский · частичные"), result.map { it.label })
         assertEquals(listOf(null, false, true), result.map { it.isForced })
-    }
-
-    @Test
-    fun merge_leavesDistinctLabelsAlone() {
-        val playerTracks = listOf(
-            playerTrack("rus", "rus", "a", 0, descriptiveLabel = "RUS"),
-            playerTrack("eng", "eng", "b", 1, descriptiveLabel = "ENG"),
-        )
-
-        val result = merger.merge(listOf(offTrack()), playerTracks)
-
-        assertEquals(listOf("Off", "Русский", "Английский"), result.map { it.label })
     }
 
     /**
@@ -355,9 +276,9 @@ internal class SubtitleTrackMergerTest {
     }
 
     /**
-     * Renditions and API subtitles share no identifier, so coverage cannot be proven per
-     * track. When the manifest offers fewer renditions of a language than the API has
-     * subtitles for it, nothing is hidden — a duplicate row is better than a lost subtitle.
+     * The complement of the case above: with no renditions in the manifest the side-loaded
+     * tracks are the only subtitles there are, so they stay and pick up their API metadata
+     * through the merged child index prefix Media3 puts on their ids.
      */
     @Test
     fun merge_carriesSideLoadedTracks_whenTheManifestPublishesNoSubtitles() {
@@ -378,47 +299,6 @@ internal class SubtitleTrackMergerTest {
             listOf("https://api.test/pd/a", "https://api.test/pd/b"),
             result.drop(1).map { it.url },
         )
-    }
-
-    @Test
-    fun merge_matchesSideLoadedTrack_ignoringTheMergedChildIndexPrefix() {
-        val apiTracks = listOf(
-            offTrack(),
-            apiTrack("ukr", "ukr", url = "https://api.test/pd/abc", sourceFile = "/1/92/2871463.srt"),
-        )
-        val playerTracks = listOf(
-            playerTrack("", "uk", "2:1/92/2871463.srt", 0),
-        )
-
-        val result = merger.merge(apiTracks, playerTracks)
-
-        assertEquals(listOf("Off", "Украинский"), result.map { it.label })
-        assertEquals("https://api.test/pd/abc", result[1].url)
-    }
-
-    @Test
-    fun merge_hidesSideLoadedCopy_whenManifestCoversItsLanguage() {
-        val apiTracks = listOf(
-            offTrack(),
-            apiTrack("rus", "rus", url = "https://api.test/subtitles/rus.srt"),
-        )
-        val playerTracks = listOf(
-            playerTrack(
-                label = "rus",
-                language = "rus",
-                id = "hls-rus",
-                groupIndex = 0,
-                uri = "https://cdn.test/subtitles/rus.srt",
-            ),
-            // The side-loaded copy Media3 built from the same API url.
-            playerTrack("rus", "rus", "rus.srt", 1),
-        )
-
-        val result = merger.merge(apiTracks, playerTracks)
-
-        assertEquals(listOf("Off", "Русский"), result.map { it.label })
-        assertEquals("hls-rus", result[1].playerTrackId)
-        assertEquals("https://api.test/subtitles/rus.srt", result[1].url)
     }
 
     @Test

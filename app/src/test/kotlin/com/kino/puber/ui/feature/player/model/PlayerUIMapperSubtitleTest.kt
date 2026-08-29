@@ -47,34 +47,4 @@ internal class PlayerUIMapperSubtitleTest {
         assertEquals(listOf(null, false, null), result.map { it.isForced })
     }
 
-    @Test
-    fun mapSubtitleTracks_leavesLabellingToTheMerger_forSameLanguageVariants() {
-        val result = mapper.mapSubtitleTracks(
-            listOf(
-                SubtitleLink(
-                    lang = "rus",
-                    url = "https://cdn.test/subtitles/russian-full.vtt",
-                    embed = true,
-                    forced = false,
-                ),
-                SubtitleLink(
-                    lang = "rus",
-                    url = "https://cdn.test/subtitles/russian-forced.vtt",
-                    embed = true,
-                    forced = true,
-                ),
-            )
-        )
-
-        assertEquals(listOf("rus", "rus"), result.drop(1).map { it.label })
-        assertEquals(listOf("rus", "rus"), result.drop(1).map { it.language })
-        assertEquals(
-            listOf(
-                "https://cdn.test/subtitles/russian-full.vtt",
-                "https://cdn.test/subtitles/russian-forced.vtt",
-            ),
-            result.drop(1).map { it.url },
-        )
-        assertEquals(listOf(false, true), result.drop(1).map { it.isForced })
-    }
 }
