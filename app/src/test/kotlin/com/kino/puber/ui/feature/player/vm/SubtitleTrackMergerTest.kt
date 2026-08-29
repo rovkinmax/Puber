@@ -128,7 +128,12 @@ internal class SubtitleTrackMergerTest {
         val apiTracks = listOf(
             offTrack(),
             apiTrack(label = "rus #1", language = "rus", sourceFile = "/a/71/first.srt"),
-            apiTrack(label = "rus #2", language = "rus", sourceFile = "/b/82/second.srt"),
+            apiTrack(
+                label = "rus #2",
+                language = "rus",
+                forced = true,
+                sourceFile = "/b/82/second.srt",
+            ),
         )
         val playerTracks = listOf(
             playerTrack(
@@ -136,28 +141,29 @@ internal class SubtitleTrackMergerTest {
                 language = "ru",
                 id = "subs:Russian #02",
                 groupIndex = 0,
-                uri = "https://cdn.test/pd/subtitle/token/b/82/second.srt",
+                uri = "https://cdn.test/hls/token/subtitles/b/82/second.srt/index.m3u8?loc=nl",
             ),
             playerTrack(
                 label = "Russian 1",
                 language = "ru",
                 id = "subs:Russian #01",
                 groupIndex = 1,
-                uri = "https://cdn.test/pd/subtitle/token/a/71/first.srt",
+                uri = "https://cdn.test/hls/token/subtitles/a/71/first.srt/index.m3u8?loc=nl",
             ),
         )
 
         val result = merger.merge(apiTracks, playerTracks)
 
-        assertEquals(listOf(0, 1), result.drop(1).map { it.playerGroupIndex })
+        assertEquals(listOf(1, 0), result.drop(1).map { it.playerGroupIndex })
         assertEquals(
-            listOf("subs:Russian #02", "subs:Russian #01"),
+            listOf("subs:Russian #01", "subs:Russian #02"),
             result.drop(1).map { it.playerTrackId },
         )
         assertEquals(
-            listOf("/b/82/second.srt", "/a/71/first.srt"),
+            listOf("/a/71/first.srt", "/b/82/second.srt"),
             result.drop(1).map { it.sourceFile },
         )
+        assertTrue(result[2].isForced!!)
     }
 
     @Test

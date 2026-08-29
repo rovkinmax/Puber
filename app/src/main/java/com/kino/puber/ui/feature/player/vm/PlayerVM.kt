@@ -676,8 +676,13 @@ internal class PlayerVM(
         val currentState = (stateValue as? PlayerViewState.Content)?.content ?: return
         if (currentState.selectedQualityIndex == index) return
 
+        resetTrackRestoreState()
         updateContent {
-            copy(selectedQualityIndex = index)
+            copy(
+                selectedQualityIndex = index,
+                subtitleTracks = subtitleTracks.filter { it.isOff },
+                selectedSubtitleIndex = 0,
+            )
         }
         switchStreamUrl(index)
     }
