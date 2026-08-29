@@ -2,7 +2,6 @@ package com.kino.puber.ui.feature.player.vm
 
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 import com.kino.puber.ui.feature.player.model.isOff
-import java.util.Locale
 
 internal class SubtitleTrackMerger(
     private val labeler: SubtitleLabeler,
@@ -54,37 +53,34 @@ internal class SubtitleTrackMerger(
     }
 
     private fun orderingLanguage(track: SubtitleTrackUIState): String =
-        track.language.trim().lowercase(Locale.ROOT)
+        canonicalSubtitleLanguage(track.language)
 
     /**
      * Every external subtitle is side-loaded because the manifest contents are unknown
      * before preparation, so a subtitle the manifest also publishes shows up twice. The
      * two tracks resolve to the same API entry, and the manifest rendition wins.
      */
+    /**
+     * Every external subtitle is side-loaded because the manifest contents are unknown
+     * before preparation. Once they are known, a side-loaded subtitle whose language the
+     * manifest already publishes is redundant: the renditions are segmented with the
+     * stream and are what the KinoPub web player offers.
+     */
     private fun enrichPlayerTracks(
         playerSubtitles: List<SubtitleTrackUIState>,
         apiSubtitles: List<SubtitleTrackUIState>,
     ): List<SubtitleTrackUIState> {
+        val manifestLanguages = playerSubtitles
+            .filter { it.isFromManifest }
+            .mapTo(mutableSetOf()) { canonicalSubtitleLanguage(it.language) }
         val apiMatches = playerSubtitles.map { track -> findExactIdentityMatch(track, apiSubtitles) }
-        val redundant = mutableSetOf<Int>()
-        val owners = mutableMapOf<Int, Int>()
-        apiMatches.withIndex()
-            .mapNotNull { (position, apiIndex) -> apiIndex?.let { it to position } }
-            .groupBy({ it.first }, { it.second })
-            .forEach { (apiIndex, positions) ->
-                val fromManifest = positions.filter { playerSubtitles[it].playerTrackUri != null }
-                if (fromManifest.size == 1 && positions.size > 1) {
-                    redundant += positions - fromManifest.toSet()
-                    owners[apiIndex] = fromManifest.single()
-                } else {
-                    owners[apiIndex] = positions.first()
-                }
-            }
-
+        val claimedApiIndices = mutableSetOf<Int>()
         return playerSubtitles.mapIndexedNotNull { position, playerTrack ->
-            if (position in redundant) return@mapIndexedNotNull null
+            if (playerTrack.isRedundantSideLoad(manifestLanguages)) {
+                return@mapIndexedNotNull null
+            }
             apiMatches[position]
-                ?.takeIf { apiIndex -> owners[apiIndex] == position }
+                ?.takeIf(claimedApiIndices::add)
                 ?.let { apiIndex -> playerTrack.withApiMetadata(apiSubtitles[apiIndex]) }
                 ?: playerTrack
         }
@@ -96,7 +92,7 @@ internal class SubtitleTrackMerger(
     ): Int? {
         val playerIdentities = listOfNotNull(
             playerTrack.playerTrackUri,
-            playerTrack.playerTrackId,
+            playerTrack.playerTrackId?.withoutMergedSourcePrefix(),
         ).filter { it.isNotEmpty() }
         if (playerIdentities.isEmpty()) return null
         return apiTracks.indices.filter { apiIndex ->
@@ -119,3 +115,16 @@ internal class SubtitleTrackMerger(
         isForced = apiTrack.isForced ?: isForced,
     )
 }
+
+private val SubtitleTrackUIState.isFromManifest: Boolean
+    get() = playerTrackUri != null
+
+private fun SubtitleTrackUIState.isRedundantSideLoad(manifestLanguages: Set<String>): Boolean =
+    !isFromManifest &&
+        language.isNotBlank() &&
+        canonicalSubtitleLanguage(language) in manifestLanguages
+
+// MergingMediaSource rewrites child track ids to "<childIndex>:<originalId>".
+private fun String.withoutMergedSourcePrefix(): String = MERGED_SOURCE_PREFIX.replace(this, "")
+
+private val MERGED_SOURCE_PREFIX = Regex("""^\d+:""")
