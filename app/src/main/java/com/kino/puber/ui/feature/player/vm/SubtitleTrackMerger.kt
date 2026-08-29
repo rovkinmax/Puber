@@ -12,7 +12,6 @@ internal class SubtitleTrackMerger(
         playerTracks: List<SubtitleTrackUIState>,
     ): List<SubtitleTrackUIState> {
         val offTrack = apiTracks.firstOrNull { it.isOff } ?: SubtitleTrackUIState(
-            index = 0,
             label = "",
             language = "",
             url = "",
@@ -20,13 +19,12 @@ internal class SubtitleTrackMerger(
         val apiSubtitles = apiTracks.filterNot { it.isOff }
         val playerSubtitles = playerTracks.filterNot { it.isOff }
         if (playerSubtitles.isEmpty()) {
-            return listOf(offTrack.copy(index = 0))
+            return listOf(offTrack)
         }
 
         val enrichedPlayerTracks = enrichPlayerTracks(playerSubtitles, apiSubtitles)
         val orderedPlayerTracks = orderByLanguage(enrichedPlayerTracks)
-        return (listOf(offTrack) + labeler.apply(orderedPlayerTracks))
-            .mapIndexed { index, track -> track.copy(index = index) }
+        return listOf(offTrack) + labeler.apply(orderedPlayerTracks)
     }
 
     /**

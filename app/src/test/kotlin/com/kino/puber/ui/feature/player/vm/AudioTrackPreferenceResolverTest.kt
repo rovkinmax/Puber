@@ -276,7 +276,6 @@ internal class AudioTrackPreferenceResolverTest {
         groupIndex: Int? = playerTrackId?.let { index - 1 },
         trackIndex: Int? = groupIndex?.let { 0 },
     ) = SubtitleTrackUIState(
-        index = index,
         label = "Track $index",
         language = language,
         url = url,

@@ -73,7 +73,7 @@ internal class SubtitleLabeler(
  */
 internal fun SubtitleTrackUIState.readableDescriptiveLabel(): String? {
     val candidate = descriptiveLabel?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val isFileName = SUBTITLE_FILE_NAME.containsMatchIn(candidate) ||
+    val isFileName = SUBTITLE_FILE_EXTENSION.containsMatchIn(candidate) ||
         candidate == sourceFile ||
         candidate == url.stableSubtitleKey()
     val isLanguageCode = candidate.count(Char::isLetter) <= SHORTEST_DESCRIPTIVE_LABEL
@@ -81,8 +81,3 @@ internal fun SubtitleTrackUIState.readableDescriptiveLabel(): String? {
 }
 
 private const val SHORTEST_DESCRIPTIVE_LABEL = 3
-
-private val SUBTITLE_FILE_NAME = Regex(
-    pattern = """\.(srt|vtt|webvtt|ass|ssa|ttml|xml)$""",
-    option = RegexOption.IGNORE_CASE,
-)

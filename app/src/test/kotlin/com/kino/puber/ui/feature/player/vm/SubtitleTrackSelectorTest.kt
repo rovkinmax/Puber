@@ -54,7 +54,6 @@ internal class SubtitleTrackSelectorTest {
     @Test
     fun select_resolvesSideLoadedRow_byStableKey() {
         val sideLoadedRow = SubtitleTrackUIState(
-            index = 1,
             label = "eng",
             language = "eng",
             url = "https://api.test/subtitles/29726.srt",
@@ -119,7 +118,7 @@ internal class SubtitleTrackSelectorTest {
 
     @Test
     fun select_returnsNull_ratherThanGuessing_whenNothingIdentifiesTheTrack() {
-        val row = SubtitleTrackUIState(index = 1, label = "rus", language = "", url = "")
+        val row = SubtitleTrackUIState(label = "rus", language = "", url = "")
         val candidates = listOf(
             PlayerTextTrack("", 0, 0, language = "rus"),
             PlayerTextTrack("", 1, 0, language = "rus"),
@@ -130,7 +129,7 @@ internal class SubtitleTrackSelectorTest {
 
     @Test
     fun select_matchesByLanguage_asLastResort() {
-        val row = SubtitleTrackUIState(index = 1, label = "ukr", language = "ukr", url = "")
+        val row = SubtitleTrackUIState(label = "ukr", language = "ukr", url = "")
         val candidates = listOf(
             PlayerTextTrack("", 0, 0, language = "rus"),
             PlayerTextTrack("", 1, 0, language = "uk"),
@@ -151,7 +150,6 @@ internal class SubtitleTrackSelectorTest {
         url: String,
         groupIndex: Int = 0,
     ) = SubtitleTrackUIState(
-        index = 1,
         label = "rus",
         language = "rus",
         url = url,

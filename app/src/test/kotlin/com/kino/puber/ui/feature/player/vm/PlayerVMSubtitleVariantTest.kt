@@ -25,7 +25,6 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
         val vm = startedVM()
         val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
         val manifestTrack = testSubtitleTracks.first().copy(
-            index = 1,
             label = "Ukrainian HLS",
             language = "uk",
             playerTrackId = "hls-ukrainian",
@@ -59,7 +58,6 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
         val vm = startedVM()
         val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
         val manifestTrack = testSubtitleTracks.first().copy(
-            index = 1,
             label = "Ukrainian HLS",
             language = "uk",
             playerTrackId = "hls-ukrainian",
@@ -104,7 +102,6 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
         val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
         val manifestTracks = listOf(
             testSubtitleTracks.first().copy(
-                index = 1,
                 label = "Russian full",
                 language = "ru",
                 isForced = false,
@@ -113,7 +110,6 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
                 playerTrackIndex = 0,
             ),
             testSubtitleTracks.first().copy(
-                index = 2,
                 label = "Russian forced",
                 language = "ru",
                 isForced = true,
@@ -139,9 +135,9 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
         val vm = startedVM()
         val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
         val manifestTracks = listOf(
-            manifestTrack(1, "English 1", "manifest-eng-1", groupIndex = 5),
-            manifestTrack(2, "English 2", "manifest-eng-2", groupIndex = 6),
-            manifestTrack(3, "English 3", "manifest-eng-3", groupIndex = 7),
+            manifestTrack("English 1", "manifest-eng-1", groupIndex = 5),
+            manifestTrack("English 2", "manifest-eng-2", groupIndex = 6),
+            manifestTrack("English 3", "manifest-eng-3", groupIndex = 7),
         )
         callbackSlot.captured.onTracksUpdated(audioTracks, 0, manifestTracks)
         vm.onAction(PlayerAction.SelectSubtitle(2))
@@ -161,8 +157,8 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
         val vm = startedVM()
         val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
         val manifestTracks = listOf(
-            manifestTrack(1, "English 1", "manifest-eng-1", groupIndex = 5),
-            manifestTrack(2, "English 2", "manifest-eng-2", groupIndex = 6),
+            manifestTrack("English 1", "manifest-eng-1", groupIndex = 5),
+            manifestTrack("English 2", "manifest-eng-2", groupIndex = 6),
         )
         callbackSlot.captured.onTracksUpdated(audioTracks, 0, manifestTracks)
         vm.onAction(PlayerAction.SelectSubtitle(2))
@@ -263,12 +259,10 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
     }
 
     private fun manifestTrack(
-        index: Int,
         label: String,
         id: String,
         groupIndex: Int,
     ) = SubtitleTrackUIState(
-        index = index,
         label = label,
         language = "en",
         url = "",
