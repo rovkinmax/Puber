@@ -92,17 +92,11 @@ internal class SubtitleLabelerTest {
 
     @Test
     fun apply_fallsBackToPositionalName_whenNothingIdentifiesTheLanguage() {
-        val labels = labeler.apply(listOf(track(""), track("", descriptive = "Комментарии режиссёра")))
-            .map { it.label }
+        val labels = labeler.apply(
+            listOf(track(""), track("", descriptive = "Комментарии режиссёра"), track("qqq")),
+        ).map { it.label }
 
-        assertEquals(listOf("Субтитры 1", "Комментарии режиссёра"), labels)
-    }
-
-    @Test
-    fun apply_leavesUnknownLanguageCodeVisible_ratherThanInventingAName() {
-        val labels = labeler.apply(listOf(track("qqq"))).map { it.label }
-
-        assertEquals(listOf("Субтитры 1"), labels)
+        assertEquals(listOf("Субтитры 1", "Комментарии режиссёра", "Субтитры 3"), labels)
     }
 
     private fun track(

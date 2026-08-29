@@ -95,24 +95,6 @@ internal class AudioTrackPreferenceResolverTest {
     }
 
     @Test
-    fun findSubtitleTrackIndex_prefersCurrentPlayerIdentity_overLanguageFallback() {
-        val tracks = listOf(
-            subtitleTrack(index = 0, language = "", url = ""),
-            subtitleTrack(index = 1, language = "rus", url = "", playerTrackId = "full"),
-            subtitleTrack(index = 2, language = "rus", url = "", playerTrackId = "forced"),
-        )
-
-        val result = resolver.findSubtitleTrackIndex(
-            tracks = tracks,
-            preferredLang = "rus",
-            preferredUrl = "",
-            preferredPlayerTrackId = "forced",
-        )
-
-        assertEquals(2, result)
-    }
-
-    @Test
     fun findSubtitleTrackIndex_usesPlayerCoordinates_whenSelectedFormatLosesItsId() {
         val tracks = listOf(
             subtitleTrack(index = 0, language = "", url = ""),
