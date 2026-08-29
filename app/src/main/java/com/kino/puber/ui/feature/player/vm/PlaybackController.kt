@@ -682,12 +682,10 @@ internal class PlaybackController(
     ): SubtitleTrackUIState {
         val identityFormat = hlsRendition?.format
         val language = format.language ?: identityFormat?.language.orEmpty()
-        val fallbackLabel = format.label
-            ?: identityFormat?.label
-            ?: context.getString(R.string.player_subtitle_unknown, index)
+        // SubtitleLabeler builds every visible label once the full track list is known.
         return SubtitleTrackUIState(
             index = index,
-            label = subtitleTrackDisplayLabel(language, fallbackLabel),
+            label = "",
             language = language,
             url = "",
             descriptiveLabel = format.label ?: identityFormat?.label,
