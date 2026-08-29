@@ -110,7 +110,6 @@ internal class SubtitleLabelerTest {
         descriptive: String? = null,
         forced: Boolean = false,
     ) = SubtitleTrackUIState(
-        index = 0,
         label = "",
         language = language,
         url = "",
