@@ -17,6 +17,8 @@ internal data class SubtitleTrackUIState(
     val url: String,
     val isForced: Boolean? = null,
     val sourceFile: String? = null,
+    /** Raw manifest/container label, kept to disambiguate same-language variants. */
+    val descriptiveLabel: String? = null,
     val playerTrackId: String? = null,
     val playerTrackUri: String? = null,
     val playerGroupIndex: Int? = null,

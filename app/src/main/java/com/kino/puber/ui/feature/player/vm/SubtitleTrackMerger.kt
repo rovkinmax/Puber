@@ -4,7 +4,11 @@ import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 import com.kino.puber.ui.feature.player.model.isOff
 import java.util.Locale
 
-internal class SubtitleTrackMerger {
+internal class SubtitleTrackMerger(
+    private val variantLabel: (label: String, ordinal: Int) -> String = { label, ordinal ->
+        "$label ($ordinal)"
+    },
+) {
 
     fun merge(
         apiTracks: List<SubtitleTrackUIState>,
@@ -31,10 +35,43 @@ internal class SubtitleTrackMerger {
                 }
                 ?: playerTrack
         }
-        return (listOf(offTrack) + enrichedPlayerTracks).mapIndexed { index, track ->
-            track.copy(index = index)
+        return (listOf(offTrack) + disambiguateLabels(enrichedPlayerTracks))
+            .mapIndexed { index, track -> track.copy(index = index) }
+    }
+
+    /**
+     * Two tracks that share a language and a forced flag collapse to the same picker row.
+     * Prefer the raw manifest labels when they tell the variants apart, and fall back to
+     * an explicit ordinal when they do not.
+     */
+    private fun disambiguateLabels(
+        tracks: List<SubtitleTrackUIState>,
+    ): List<SubtitleTrackUIState> {
+        val collisions = tracks.groupBy(::pickerRowKey).filterValues { it.size > 1 }
+        if (collisions.isEmpty()) return tracks
+
+        val descriptiveKeys = collisions.filterValues(::hasDistinctDescriptiveLabels).keys
+        val ordinals = mutableMapOf<String, Int>()
+        return tracks.map { track ->
+            val key = pickerRowKey(track)
+            when {
+                key !in collisions -> track
+                key in descriptiveKeys -> track.copy(label = track.descriptiveLabel.orEmpty().trim())
+                else -> {
+                    val ordinal = ordinals.merge(key, 1, Int::plus) ?: 1
+                    track.copy(label = variantLabel(track.label, ordinal))
+                }
+            }
         }
     }
+
+    private fun hasDistinctDescriptiveLabels(group: List<SubtitleTrackUIState>): Boolean {
+        val labels = group.mapNotNull { track -> track.descriptiveLabel?.trim()?.takeIf(String::isNotEmpty) }
+        return labels.size == group.size && labels.toSet().size == group.size
+    }
+
+    private fun pickerRowKey(track: SubtitleTrackUIState): String =
+        "${track.label}\u0000${track.isForced == true}"
 
     private fun findExactIdentityMatch(
         playerTrack: SubtitleTrackUIState,
