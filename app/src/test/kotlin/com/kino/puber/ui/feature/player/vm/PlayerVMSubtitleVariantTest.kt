@@ -13,6 +13,8 @@ import org.junit.jupiter.api.extension.RegisterExtension
 internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
 
     companion object {
+        private const val MAX_TRACK_UPDATES = 15
+
         @JvmField
         @RegisterExtension
         val mainDispatcher = MainDispatcherExtension()
@@ -169,6 +171,95 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
 
         assertEquals(2, contentState(vm).selectedSubtitleIndex)
         assertEquals("manifest-eng-2", contentState(vm).subtitleTracks[2].playerTrackId)
+    }
+
+    @Test
+    fun tracksUpdated_keepsAudioTracks_whenUpdateCarriesOnlyTextTracks() {
+        val vm = startedVM()
+        val audioTracks = listOf(
+            AudioTrackUIState(0, "English", "eng"),
+            AudioTrackUIState(1, "Russian", "rus"),
+        )
+        callbackSlot.captured.onTracksUpdated(audioTracks, 1, testDiscoveredSubtitleTracks)
+
+        callbackSlot.captured.onTracksUpdated(emptyList(), 0, testDiscoveredSubtitleTracks)
+
+        assertEquals(audioTracks, contentState(vm).audioTracks)
+        assertEquals(1, contentState(vm).selectedAudioTrackIndex)
+    }
+
+    @Test
+    fun tracksUpdated_stopsRetryingRestore_whenSubtitleTracksNeverAppear() {
+        every { interactor.getPreferredAudioLang(42) } returns "rus"
+        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
+        every { interactor.getPreferredSubtitleUrl(42) } returns ""
+        val vm = startedVM()
+        val audioTracks = listOf(
+            AudioTrackUIState(0, "English", "eng"),
+            AudioTrackUIState(1, "Russian", "rus"),
+        )
+
+        repeat(MAX_TRACK_UPDATES) {
+            callbackSlot.captured.onTracksUpdated(audioTracks, 0, emptyList())
+        }
+
+        // The audio restore must run once, not once per deferred subtitle retry.
+        verify(exactly = 1) { playbackController.selectAudioTrack(any()) }
+        assertEquals(0, contentState(vm).selectedSubtitleIndex)
+    }
+
+    @Test
+    fun tracksUpdated_appliesAudioRestoreOnce_andLetsLaterUserChoiceStand() {
+        every { interactor.getPreferredAudioLang(42) } returns "eng"
+        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
+        every { interactor.getPreferredSubtitleUrl(42) } returns ""
+        val vm = startedVM()
+        val audioTracks = listOf(
+            AudioTrackUIState(0, "English", "eng"),
+            AudioTrackUIState(1, "Russian", "rus"),
+        )
+
+        callbackSlot.captured.onTracksUpdated(audioTracks, 0, emptyList())
+        vm.onAction(PlayerAction.SelectAudioTrack(1))
+        callbackSlot.captured.onTracksUpdated(audioTracks, 1, emptyList())
+
+        assertEquals(1, contentState(vm).selectedAudioTrackIndex)
+        // Restored once on the first update, never re-applied over the user's choice.
+        verify(exactly = 1) { playbackController.selectAudioTrack(0) }
+    }
+
+    @Test
+    fun audioSelection_keepsStoredSubtitlePreference_whileSubtitleTracksAreUnknown() {
+        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
+        every { interactor.getPreferredSubtitleUrl(42) } returns "https://api.test/subtitles/rus.srt"
+        val vm = startedVM()
+        val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
+        callbackSlot.captured.onTracksUpdated(audioTracks, 0, emptyList())
+
+        vm.onAction(PlayerAction.SelectAudioTrack(0))
+
+        verify {
+            interactor.saveTrackPreferences(
+                42,
+                "eng",
+                "English",
+                "rus",
+                "https://api.test/subtitles/rus.srt",
+            )
+        }
+    }
+
+    @Test
+    fun subtitleSelection_persistsOffChoice_onceSubtitleTracksAreKnown() {
+        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
+        every { interactor.getPreferredSubtitleUrl(42) } returns "https://api.test/subtitles/rus.srt"
+        val vm = startedVM()
+        val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
+        callbackSlot.captured.onTracksUpdated(audioTracks, 0, testDiscoveredSubtitleTracks)
+
+        vm.onAction(PlayerAction.SelectSubtitle(0))
+
+        verify { interactor.saveTrackPreferences(42, "eng", "English", null, null) }
     }
 
     private fun manifestTrack(
