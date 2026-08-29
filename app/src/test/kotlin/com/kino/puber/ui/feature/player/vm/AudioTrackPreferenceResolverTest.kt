@@ -137,6 +137,33 @@ internal class AudioTrackPreferenceResolverTest {
     }
 
     @Test
+    fun findSubtitleTrackIndex_matchesApiFileToHlsRenditionPlaylist() {
+        val tracks = listOf(
+            subtitleTrack(index = 0, language = "", url = ""),
+            subtitleTrack(
+                index = 1,
+                language = "rus",
+                url = "",
+                playerTrackUri = "https://cdn.test/hls/token/subtitles/e/53/full.srt/index.m3u8?loc=nl",
+            ),
+            subtitleTrack(
+                index = 2,
+                language = "rus",
+                url = "",
+                playerTrackUri = "https://cdn.test/hls/token/subtitles/e/b5/forced.srt/index.m3u8?loc=nl",
+            ),
+        )
+
+        val result = resolver.findSubtitleTrackIndex(
+            tracks = tracks,
+            preferredLang = "rus",
+            preferredUrl = "https://api.test/subtitles/e/b5/forced.srt?token=expired",
+        )
+
+        assertEquals(2, result)
+    }
+
+    @Test
     fun findSubtitleTrackIndex_doesNotGuessWhenStableIdentityMatchesMultipleTracks() {
         val tracks = listOf(
             subtitleTrack(index = 0, language = "", url = ""),
