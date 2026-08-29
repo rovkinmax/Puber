@@ -72,13 +72,7 @@ internal class SubtitleTrackSelectorTest {
 
     @Test
     fun select_picksCorrectVariant_whenGroupIdsAreBlankAndLanguagesCollide() {
-        val row = manifestTrack(
-            groupId = "",
-            trackIndex = 0,
-            formatId = "forced-rus",
-            url = "",
-            groupIndex = 1,
-        )
+        val row = manifestTrack(groupId = "", trackIndex = 0, formatId = "forced-rus", url = "", groupIndex = 1)
         val candidates = listOf(
             PlayerTextTrack("", 0, 0, formatId = "full-rus", language = "rus"),
             PlayerTextTrack("", 1, 0, formatId = "forced-rus", language = "rus"),
