@@ -335,6 +335,89 @@ internal class SubtitleTrackMergerTest {
         assertEquals(listOf("Off", "rus", "eng"), result.map { it.label })
     }
 
+    @Test
+    fun merge_hidesSideLoadedCopy_whenManifestPublishesTheSameSubtitle() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack(1, "rus", "rus", url = "https://api.test/subtitles/rus.srt"),
+        )
+        val playerTracks = listOf(
+            playerTrack(
+                index = 1,
+                label = "rus",
+                language = "rus",
+                id = "hls-rus",
+                groupIndex = 0,
+                uri = "https://cdn.test/subtitles/rus.srt",
+            ),
+            // The side-loaded copy Media3 built from the same API url.
+            playerTrack(2, "rus", "rus", "rus.srt", 1),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(listOf("Off", "rus"), result.map { it.label })
+        assertEquals("hls-rus", result[1].playerTrackId)
+        assertEquals("https://api.test/subtitles/rus.srt", result[1].url)
+    }
+
+    @Test
+    fun merge_keepsSideLoadedTrack_whenTheManifestDoesNotPublishIt() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack(1, "rus", "rus", url = "https://api.test/subtitles/rus.srt"),
+            apiTrack(2, "eng", "eng", url = "https://api.test/subtitles/eng.srt"),
+        )
+        val playerTracks = listOf(
+            playerTrack(
+                index = 1,
+                label = "rus",
+                language = "rus",
+                id = "hls-rus",
+                groupIndex = 0,
+                uri = "https://cdn.test/subtitles/rus.srt",
+            ),
+            playerTrack(2, "eng", "eng", "eng.srt", 1),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(listOf("Off", "rus", "eng"), result.map { it.label })
+        assertEquals("https://api.test/subtitles/eng.srt", result[2].url)
+    }
+
+    @Test
+    fun merge_keepsBothManifestRenditions_whenTheyResolveToOneApiEntry() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack(1, "rus", "rus", url = "https://api.test/subtitles/rus.srt"),
+        )
+        val playerTracks = listOf(
+            playerTrack(
+                index = 1,
+                label = "rus",
+                language = "rus",
+                id = "a",
+                groupIndex = 0,
+                uri = "https://cdn.test/subtitles/rus.srt",
+                descriptiveLabel = "RUS A",
+            ),
+            playerTrack(
+                index = 2,
+                label = "rus",
+                language = "rus",
+                id = "b",
+                groupIndex = 1,
+                uri = "https://cdn.test/subtitles/rus.srt",
+                descriptiveLabel = "RUS B",
+            ),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(listOf("Off", "RUS A", "RUS B"), result.map { it.label })
+    }
+
     private fun offTrack() = SubtitleTrackUIState(
         index = 0,
         label = "Off",
