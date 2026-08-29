@@ -24,6 +24,9 @@ import androidx.media3.exoplayer.hls.playlist.HlsMultivariantPlaylist
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.source.BehindLiveWindowException
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
@@ -372,27 +375,26 @@ internal class PlaybackController(
 
     private fun buildMediaItem(streamUrl: String, subtitles: List<SubtitleLink>?): MediaItem {
         val builder = MediaItem.Builder().setUri(streamUrl)
-        val isHlsStream = streamUrl.isHlsStreamUrl()
-        if (isHlsStream) {
+        if (streamUrl.isHlsStreamUrl()) {
             builder.setMimeType(MimeTypes.APPLICATION_M3U8)
         }
-        // KinoPub HLS manifests already contain the API subtitle list as renditions.
-        // Adding the API URLs again creates a second set of Media3 text tracks.
-        if (!isHlsStream && !subtitles.isNullOrEmpty()) {
-            val subtitleConfigs = subtitles.mapNotNull { sub ->
-                if (!sub.shouldSideLoad) return@mapNotNull null
-                val subtitleUrl = sub.url
-                val stableKey = subtitleUrl.stableSubtitleKey()
-                MediaItem.SubtitleConfiguration.Builder(subtitleUrl.toUri())
-                    .setMimeType(subtitleMimeType(subtitleUrl))
-                    .setLanguage(sub.lang)
-                    .setLabel(stableKey)
-                    .setId(stableKey)
-                    .build()
-            }
-            if (subtitleConfigs.isNotEmpty()) {
-                builder.setSubtitleConfigurations(subtitleConfigs)
-            }
+        // Every external subtitle is attached, including ones an HLS manifest may also
+        // publish as a rendition: the manifest contents are unknown until the source is
+        // prepared, and a rendition that turns out to duplicate an API entry is dropped
+        // from the picker afterwards by SubtitleTrackMerger.
+        val subtitleConfigs = subtitles.orEmpty().mapNotNull { sub ->
+            if (!sub.shouldSideLoad) return@mapNotNull null
+            val subtitleUrl = sub.url
+            val stableKey = subtitleUrl.stableSubtitleKey()
+            MediaItem.SubtitleConfiguration.Builder(subtitleUrl.toUri())
+                .setMimeType(subtitleMimeType(subtitleUrl))
+                .setLanguage(sub.lang)
+                .setLabel(stableKey)
+                .setId(stableKey)
+                .build()
+        }
+        if (subtitleConfigs.isNotEmpty()) {
+            builder.setSubtitleConfigurations(subtitleConfigs)
         }
         return builder.build()
     }
@@ -430,15 +432,34 @@ internal class PlaybackController(
     @OptIn(UnstableApi::class)
     private fun setMediaSource(player: ExoPlayer, mediaItem: MediaItem, streamUrl: String) {
         val dsFactory = dataSourceFactory ?: return
-        if (streamUrl.isHlsStreamUrl()) {
-            val hlsSource = HlsMediaSource.Factory(dsFactory)
-                .setAllowChunklessPreparation(true)
-                .setLoadErrorHandlingPolicy(HlsErrorPolicy())
-                .createMediaSource(mediaItem)
-            player.setMediaSource(hlsSource)
-        } else {
+        if (!streamUrl.isHlsStreamUrl()) {
+            // DefaultMediaSourceFactory side-loads the subtitle configurations itself.
             player.setMediaItem(mediaItem)
+            return
         }
+        val hlsSource = HlsMediaSource.Factory(dsFactory)
+            .setAllowChunklessPreparation(true)
+            .setLoadErrorHandlingPolicy(HlsErrorPolicy())
+            .createMediaSource(mediaItem)
+        player.setMediaSource(withSideLoadedSubtitles(hlsSource, mediaItem, dsFactory))
+    }
+
+    // HlsMediaSource.Factory ignores MediaItem subtitle configurations, so an API subtitle
+    // missing from the manifest would otherwise be unreachable on an HLS stream.
+    @OptIn(UnstableApi::class)
+    private fun withSideLoadedSubtitles(
+        source: MediaSource,
+        mediaItem: MediaItem,
+        dsFactory: DataSource.Factory,
+    ): MediaSource {
+        val subtitleConfigs = mediaItem.localConfiguration?.subtitleConfigurations.orEmpty()
+        if (subtitleConfigs.isEmpty()) return source
+        val subtitleSources = subtitleConfigs.map { config ->
+            SingleSampleMediaSource.Factory(dsFactory)
+                .setLoadErrorHandlingPolicy(HlsErrorPolicy())
+                .createMediaSource(config, C.TIME_UNSET)
+        }
+        return MergingMediaSource(source, *subtitleSources.toTypedArray())
     }
 
     data class DebugInfo(

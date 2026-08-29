@@ -24,17 +24,43 @@ internal class SubtitleTrackMerger(
             return listOf(offTrack.copy(index = 0))
         }
 
-        val availableApiIndices = apiSubtitles.indices.toMutableSet()
-        val enrichedPlayerTracks = playerSubtitles.map { playerTrack ->
-            findExactIdentityMatch(playerTrack, apiSubtitles, availableApiIndices)
-                ?.let { apiIndex ->
-                    availableApiIndices.remove(apiIndex)
-                    playerTrack.withApiMetadata(apiSubtitles[apiIndex])
-                }
-                ?: playerTrack
-        }
+        val enrichedPlayerTracks = enrichPlayerTracks(playerSubtitles, apiSubtitles)
         return (listOf(offTrack) + disambiguateLabels(enrichedPlayerTracks))
             .mapIndexed { index, track -> track.copy(index = index) }
+    }
+
+    /**
+     * Every external subtitle is side-loaded because the manifest contents are unknown
+     * before preparation, so a subtitle the manifest also publishes shows up twice. The
+     * two tracks resolve to the same API entry, and the manifest rendition wins.
+     */
+    private fun enrichPlayerTracks(
+        playerSubtitles: List<SubtitleTrackUIState>,
+        apiSubtitles: List<SubtitleTrackUIState>,
+    ): List<SubtitleTrackUIState> {
+        val apiMatches = playerSubtitles.map { track -> findExactIdentityMatch(track, apiSubtitles) }
+        val redundant = mutableSetOf<Int>()
+        val owners = mutableMapOf<Int, Int>()
+        apiMatches.withIndex()
+            .mapNotNull { (position, apiIndex) -> apiIndex?.let { it to position } }
+            .groupBy({ it.first }, { it.second })
+            .forEach { (apiIndex, positions) ->
+                val fromManifest = positions.filter { playerSubtitles[it].playerTrackUri != null }
+                if (fromManifest.size == 1 && positions.size > 1) {
+                    redundant += positions - fromManifest.toSet()
+                    owners[apiIndex] = fromManifest.single()
+                } else {
+                    owners[apiIndex] = positions.first()
+                }
+            }
+
+        return playerSubtitles.mapIndexedNotNull { position, playerTrack ->
+            if (position in redundant) return@mapIndexedNotNull null
+            apiMatches[position]
+                ?.takeIf { apiIndex -> owners[apiIndex] == position }
+                ?.let { apiIndex -> playerTrack.withApiMetadata(apiSubtitles[apiIndex]) }
+                ?: playerTrack
+        }
     }
 
     /**
@@ -74,14 +100,13 @@ internal class SubtitleTrackMerger(
     private fun findExactIdentityMatch(
         playerTrack: SubtitleTrackUIState,
         apiTracks: List<SubtitleTrackUIState>,
-        availableApiIndices: Set<Int>,
     ): Int? {
         val playerIdentities = listOfNotNull(
             playerTrack.playerTrackUri,
             playerTrack.playerTrackId,
         ).filter { it.isNotEmpty() }
         if (playerIdentities.isEmpty()) return null
-        return availableApiIndices.filter { apiIndex ->
+        return apiTracks.indices.filter { apiIndex ->
             val apiTrack = apiTracks[apiIndex]
             val apiIdentities = listOfNotNull(apiTrack.sourceFile, apiTrack.url)
                 .filter { it.isNotEmpty() }
