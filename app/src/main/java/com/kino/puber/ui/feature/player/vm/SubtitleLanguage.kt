@@ -7,7 +7,7 @@ internal fun sameSubtitleLanguage(first: String, second: String): Boolean {
     return canonicalSubtitleLanguage(first) == canonicalSubtitleLanguage(second)
 }
 
-private fun canonicalSubtitleLanguage(language: String): String {
+internal fun canonicalSubtitleLanguage(language: String): String {
     val normalized = language
         .trim()
         .lowercase(Locale.ROOT)
