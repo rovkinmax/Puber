@@ -20,6 +20,8 @@ internal data class SubtitleTrackUIState(
     /** Raw manifest/container label, kept to disambiguate same-language variants. */
     val descriptiveLabel: String? = null,
     val playerTrackId: String? = null,
+    /** Media3 `TrackGroup.id`, unique per group once side-loaded subtitles are merged. */
+    val playerTrackGroupId: String? = null,
     val playerTrackUri: String? = null,
     val playerGroupIndex: Int? = null,
     val playerTrackIndex: Int? = null,
@@ -29,6 +31,7 @@ internal val SubtitleTrackUIState.isOff: Boolean
     get() = language.isEmpty() &&
         url.isEmpty() &&
         playerTrackId == null &&
+        playerTrackGroupId == null &&
         playerTrackUri == null &&
         playerGroupIndex == null &&
         playerTrackIndex == null
