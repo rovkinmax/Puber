@@ -11,7 +11,6 @@ internal data class AudioTrackUIState(
 
 @Immutable
 internal data class SubtitleTrackUIState(
-    val index: Int,
     val label: String,
     val language: String,
     val url: String,

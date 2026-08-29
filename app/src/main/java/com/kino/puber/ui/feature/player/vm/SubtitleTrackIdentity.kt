@@ -33,7 +33,7 @@ private fun String.subtitleIdentityPathOrNull(): String? {
     }
 }
 
-private val SUBTITLE_FILE_EXTENSION = Regex(
+internal val SUBTITLE_FILE_EXTENSION = Regex(
     pattern = """\.(srt|vtt|webvtt|ass|ssa|ttml|xml)$""",
     option = RegexOption.IGNORE_CASE,
 )

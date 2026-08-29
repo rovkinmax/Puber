@@ -19,7 +19,6 @@ internal class PlayerUIMapperSubtitleTest {
     fun mapSubtitleTracks_returnsOnlyOffTrack_whenInputIsEmpty() {
         val result = mapper.mapSubtitleTracks(emptyList())
 
-        assertEquals(listOf(0), result.map { it.index })
         assertEquals(listOf(""), result.map { it.language })
         assertEquals(listOf(""), result.map { it.url })
     }
@@ -42,7 +41,6 @@ internal class PlayerUIMapperSubtitleTest {
             )
         )
 
-        assertEquals(listOf(0, 1, 2), result.map { it.index })
         assertEquals(listOf("", "rus", "eng"), result.map { it.language })
         assertEquals(listOf("", embeddedUrl, externalUrl), result.map { it.url })
         assertEquals(listOf(null, "/a/71/russian.vtt", null), result.map { it.sourceFile })
@@ -50,7 +48,7 @@ internal class PlayerUIMapperSubtitleTest {
     }
 
     @Test
-    fun mapSubtitleTracks_keepsSameLanguageVariantsDistinct() {
+    fun mapSubtitleTracks_leavesLabellingToTheMerger_forSameLanguageVariants() {
         val result = mapper.mapSubtitleTracks(
             listOf(
                 SubtitleLink(
