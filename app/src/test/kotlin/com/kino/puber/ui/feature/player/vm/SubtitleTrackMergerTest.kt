@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test
 
 internal class SubtitleTrackMergerTest {
 
-    private val merger = SubtitleTrackMerger()
+    private val merger = SubtitleTrackMerger(variantLabel = { label, ordinal -> "$label #$ordinal" })
 
     @Test
     fun subtitleTrackDisplayLabel_hidesManifestNumberingAndUsesLowercaseIso3Language() {
@@ -285,6 +285,56 @@ internal class SubtitleTrackMergerTest {
         assertEquals(listOf(0), result.map { it.index })
     }
 
+    @Test
+    fun merge_usesDescriptiveLabels_forSameLanguageVariantsThatWouldCollide() {
+        val playerTracks = listOf(
+            playerTrack(1, "rus", "rus", "full", 0, descriptiveLabel = "Русские полные"),
+            playerTrack(2, "rus", "rus", "sdh", 1, descriptiveLabel = "Русские SDH"),
+        )
+
+        val result = merger.merge(listOf(offTrack()), playerTracks)
+
+        assertEquals(listOf("Off", "Русские полные", "Русские SDH"), result.map { it.label })
+    }
+
+    @Test
+    fun merge_numbersSameLanguageVariants_whenDescriptiveLabelsCannotSeparateThem() {
+        val playerTracks = listOf(
+            playerTrack(1, "rus", "rus", "a", 0, descriptiveLabel = "RUS"),
+            playerTrack(2, "rus", "rus", "b", 1, descriptiveLabel = "RUS"),
+            playerTrack(3, "rus", "rus", "c", 2, descriptiveLabel = null),
+        )
+
+        val result = merger.merge(listOf(offTrack()), playerTracks)
+
+        assertEquals(listOf("Off", "rus #1", "rus #2", "rus #3"), result.map { it.label })
+    }
+
+    @Test
+    fun merge_keepsForcedVariantUntouched_becauseThePickerAlreadyMarksIt() {
+        val playerTracks = listOf(
+            playerTrack(1, "rus", "rus", "full", 0, forced = false, descriptiveLabel = "RUS"),
+            playerTrack(2, "rus", "rus", "forced", 1, forced = true, descriptiveLabel = "RUS"),
+        )
+
+        val result = merger.merge(listOf(offTrack()), playerTracks)
+
+        assertEquals(listOf("Off", "rus", "rus"), result.map { it.label })
+        assertEquals(listOf(null, false, true), result.map { it.isForced })
+    }
+
+    @Test
+    fun merge_leavesDistinctLabelsAlone() {
+        val playerTracks = listOf(
+            playerTrack(1, "rus", "rus", "a", 0, descriptiveLabel = "RUS"),
+            playerTrack(2, "eng", "eng", "b", 1, descriptiveLabel = "ENG"),
+        )
+
+        val result = merger.merge(listOf(offTrack()), playerTracks)
+
+        assertEquals(listOf("Off", "rus", "eng"), result.map { it.label })
+    }
+
     private fun offTrack() = SubtitleTrackUIState(
         index = 0,
         label = "Off",
@@ -316,12 +366,14 @@ internal class SubtitleTrackMergerTest {
         groupIndex: Int,
         forced: Boolean = false,
         uri: String? = null,
+        descriptiveLabel: String? = null,
     ) = SubtitleTrackUIState(
         index = index,
         label = label,
         language = language,
         url = "",
         isForced = forced,
+        descriptiveLabel = descriptiveLabel,
         playerTrackId = id,
         playerTrackUri = uri,
         playerGroupIndex = groupIndex,
