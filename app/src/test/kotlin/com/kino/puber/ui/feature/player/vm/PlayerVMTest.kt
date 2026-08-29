@@ -71,7 +71,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
     fun onStart_preparesPlayer() {
         startedVM()
         verify { playbackController.setCallback(any()) }
-        verify { playbackController.prepare("https://test/v.m3u8", any(), any()) }
+        verify { playbackController.prepare(testStream, any(), any()) }
     }
 
     @Test
