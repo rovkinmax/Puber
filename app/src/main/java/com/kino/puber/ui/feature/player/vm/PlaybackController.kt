@@ -36,6 +36,7 @@ import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.BufferPreset
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 import com.kino.puber.ui.feature.player.model.isOff
+import java.net.URI
 import java.util.Locale
 import okhttp3.OkHttpClient
 
@@ -767,6 +768,16 @@ internal class PlaybackController(
     }
 }
 
-private fun String.isHlsStreamUrl(): Boolean {
-    return contains(".m3u8", ignoreCase = true) || contains("hls", ignoreCase = true)
+// Matches only the URL path: a host such as "hls.cdn.example" or a query
+// parameter must not turn a progressive stream into an HLS one, because the
+// answer also decides whether API subtitles are side-loaded.
+internal fun String.isHlsStreamUrl(): Boolean {
+    val path = runCatching { URI(this).path }.getOrNull()
+        ?: substringBefore('?').substringBefore('#').substringAfter("://").substringAfter('/', "")
+    if (path.isEmpty()) return false
+    if (path.endsWith(M3U8_EXTENSION, ignoreCase = true)) return true
+    return path.split('/').any { segment -> HLS_PATH_SEGMENT.matches(segment) }
 }
+
+private const val M3U8_EXTENSION = ".m3u8"
+private val HLS_PATH_SEGMENT = Regex("""hls\d*""", RegexOption.IGNORE_CASE)
