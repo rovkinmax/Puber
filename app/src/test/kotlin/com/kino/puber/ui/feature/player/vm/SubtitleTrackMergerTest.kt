@@ -378,24 +378,23 @@ internal class SubtitleTrackMergerTest {
      * subtitles for it, nothing is hidden — a duplicate row is better than a lost subtitle.
      */
     @Test
-    fun merge_keepsSideLoadedTracks_whenTheManifestHasFewerRenditionsOfTheirLanguage() {
+    fun merge_carriesSideLoadedTracks_whenTheManifestPublishesNoSubtitles() {
         val apiTracks = listOf(
             offTrack(),
             apiTrack(1, "rus", "rus", url = "https://api.test/pd/a", sourceFile = "/1/11/1.srt"),
-            apiTrack(2, "rus", "rus", url = "https://api.test/pd/b", sourceFile = "/2/22/2.srt"),
+            apiTrack(2, "eng", "eng", url = "https://api.test/pd/b", sourceFile = "/2/22/2.srt"),
         )
         val playerTracks = listOf(
-            playerTrack(1, "", "ru", "0:", 0, uri = "https://cdn.test/hls/rus01.m3u8", descriptiveLabel = "RUS #01"),
-            playerTrack(2, "", "ru", "1:1/11/1.srt", 1),
-            playerTrack(3, "", "ru", "2:2/22/2.srt", 2),
+            playerTrack(1, "", "ru", "1:1/11/1.srt", 0),
+            playerTrack(2, "", "en", "2:2/22/2.srt", 1),
         )
 
         val result = merger.merge(apiTracks, playerTracks)
 
-        assertEquals(4, result.size)
+        assertEquals(listOf("Off", "Русский", "Английский"), result.map { it.label })
         assertEquals(
             listOf("https://api.test/pd/a", "https://api.test/pd/b"),
-            result.drop(2).map { it.url },
+            result.drop(1).map { it.url },
         )
     }
 
@@ -442,7 +441,7 @@ internal class SubtitleTrackMergerTest {
     }
 
     @Test
-    fun merge_keepsSideLoadedTrack_whenTheManifestDoesNotPublishIt() {
+    fun merge_hidesSideLoadedTrack_evenWhenItsLanguageIsMissingFromTheManifest() {
         val apiTracks = listOf(
             offTrack(),
             apiTrack(1, "rus", "rus", url = "https://api.test/subtitles/rus.srt"),
@@ -462,8 +461,7 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(apiTracks, playerTracks)
 
-        assertEquals(listOf("Off", "Русский", "Английский"), result.map { it.label })
-        assertEquals("https://api.test/subtitles/eng.srt", result[2].url)
+        assertEquals(listOf("Off", "Русский"), result.map { it.label })
     }
 
     @Test
