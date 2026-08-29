@@ -666,6 +666,7 @@ internal class PlaybackController(
             label = subtitleTrackDisplayLabel(language, fallbackLabel),
             language = language,
             url = "",
+            descriptiveLabel = format.label ?: identityFormat?.label,
             isForced = (format.selectionFlags or (identityFormat?.selectionFlags ?: 0)) and
                 C.SELECTION_FLAG_FORCED != 0,
             playerTrackId = format.id ?: identityFormat?.id,
