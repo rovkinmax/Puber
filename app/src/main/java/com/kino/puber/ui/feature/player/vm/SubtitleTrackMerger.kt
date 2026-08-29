@@ -57,26 +57,24 @@ internal class SubtitleTrackMerger(
 
     /**
      * Every external subtitle is side-loaded because the manifest contents are unknown
-     * before preparation, so a subtitle the manifest also publishes shows up twice. The
-     * two tracks resolve to the same API entry, and the manifest rendition wins.
-     */
-    /**
-     * Every external subtitle is side-loaded because the manifest contents are unknown
-     * before preparation. Once they are known, a side-loaded subtitle whose language the
-     * manifest already publishes is redundant: the renditions are segmented with the
-     * stream and are what the KinoPub web player offers.
+     * before preparation, so a subtitle the manifest also publishes shows up twice.
+     *
+     * The two sets share no identifier — a rendition is addressed by its HLS playlist URL,
+     * an API subtitle by its file path — so coverage is decided per language by count: the
+     * side-loaded copies of a language are hidden only when the manifest offers at least as
+     * many renditions of it. Anything short of that keeps the side-loaded tracks, so a
+     * subtitle is never hidden behind a rendition that cannot stand in for it.
      */
     private fun enrichPlayerTracks(
         playerSubtitles: List<SubtitleTrackUIState>,
         apiSubtitles: List<SubtitleTrackUIState>,
     ): List<SubtitleTrackUIState> {
-        val manifestLanguages = playerSubtitles
-            .filter { it.isFromManifest }
-            .mapTo(mutableSetOf()) { canonicalSubtitleLanguage(it.language) }
+        val coveredLanguages = coveredLanguages(playerSubtitles)
         val apiMatches = playerSubtitles.map { track -> findExactIdentityMatch(track, apiSubtitles) }
         val claimedApiIndices = mutableSetOf<Int>()
         return playerSubtitles.mapIndexedNotNull { position, playerTrack ->
-            if (playerTrack.isRedundantSideLoad(manifestLanguages)) {
+            val language = canonicalSubtitleLanguage(playerTrack.language)
+            if (!playerTrack.isFromManifest && language in coveredLanguages) {
                 return@mapIndexedNotNull null
             }
             apiMatches[position]
@@ -85,6 +83,20 @@ internal class SubtitleTrackMerger(
                 ?: playerTrack
         }
     }
+
+    private fun coveredLanguages(playerSubtitles: List<SubtitleTrackUIState>): Set<String> {
+        val (manifest, sideLoaded) = playerSubtitles.partition { it.isFromManifest }
+        val manifestCounts = manifest.countByLanguage()
+        return sideLoaded.countByLanguage()
+            .filterKeys { it.isNotBlank() }
+            .filter { (language, sideLoadedCount) ->
+                manifestCounts.getOrDefault(language, 0) >= sideLoadedCount
+            }
+            .keys
+    }
+
+    private fun List<SubtitleTrackUIState>.countByLanguage(): Map<String, Int> =
+        groupingBy { canonicalSubtitleLanguage(it.language) }.eachCount()
 
     private fun findExactIdentityMatch(
         playerTrack: SubtitleTrackUIState,
@@ -118,11 +130,6 @@ internal class SubtitleTrackMerger(
 
 private val SubtitleTrackUIState.isFromManifest: Boolean
     get() = playerTrackUri != null
-
-private fun SubtitleTrackUIState.isRedundantSideLoad(manifestLanguages: Set<String>): Boolean =
-    !isFromManifest &&
-        language.isNotBlank() &&
-        canonicalSubtitleLanguage(language) in manifestLanguages
 
 // MergingMediaSource rewrites child track ids to "<childIndex>:<originalId>".
 private fun String.withoutMergedSourcePrefix(): String = MERGED_SOURCE_PREFIX.replace(this, "")
