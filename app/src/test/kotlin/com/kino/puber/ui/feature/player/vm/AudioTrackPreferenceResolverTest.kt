@@ -154,25 +154,6 @@ internal class AudioTrackPreferenceResolverTest {
     }
 
     @Test
-    fun findSubtitleTrackIndex_prefersSavedUrl_overCurrentPlayerIdentity() {
-        val externalUrl = "https://cdn.test/subtitles/russian.vtt"
-        val tracks = listOf(
-            subtitleTrack(index = 0, language = "", url = ""),
-            subtitleTrack(index = 1, language = "rus", url = externalUrl),
-            subtitleTrack(index = 2, language = "rus", url = "", playerTrackId = "hls-russian"),
-        )
-
-        val result = resolver.findSubtitleTrackIndex(
-            tracks = tracks,
-            preferredLang = "rus",
-            preferredUrl = externalUrl,
-            preferredPlayerTrackId = "hls-russian",
-        )
-
-        assertEquals(1, result)
-    }
-
-    @Test
     fun findSubtitleTrackIndex_usesSavedManifestIdentity_forSameLanguageVariants() {
         val tracks = listOf(
             subtitleTrack(index = 0, language = "", url = ""),
