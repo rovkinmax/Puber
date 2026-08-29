@@ -159,9 +159,16 @@ internal class PlayerVM(
     private val progressTracker = ProgressTracker()
     private val audioTrackPreferenceResolver = AudioTrackPreferenceResolver()
     private val subtitleTrackMerger = SubtitleTrackMerger(
-        variantLabel = { label, ordinal ->
-            resources.getString(R.string.player_subtitle_variant_label, label, ordinal)
-        },
+        labeler = SubtitleLabeler(
+            displayLanguageTag = resources.getString(R.string.player_subtitle_language_locale),
+            forcedQualifier = resources.getString(R.string.player_subtitle_forced),
+            variantLabel = { label, ordinal ->
+                resources.getString(R.string.player_subtitle_variant_label, label, ordinal)
+            },
+            unknownLabel = { position ->
+                resources.getString(R.string.player_subtitle_unknown, position)
+            },
+        ),
     )
     private val debugOverlayEnabled = interactor.isDebugOverlayEnabled()
 
