@@ -139,6 +139,9 @@ internal class PlayerVM(
     private var dismissedSegmentType: SkipSegmentType? = null
     private var countdownDismissed = false
     private var tracksRestoredForCurrentMedia = false
+    private var audioRestoredForCurrentMedia = false
+    private var subtitleTracksDiscovered = false
+    private var subtitleRestoreAttempts = 0
     private var episodeSwitchInProgress = false
     private var lastPositionMs: Long = 0L
     private var contentChanges = ContentChangeSet.empty()
@@ -155,7 +158,11 @@ internal class PlayerVM(
     private val controlsStateMachine = ControlsStateMachine()
     private val progressTracker = ProgressTracker()
     private val audioTrackPreferenceResolver = AudioTrackPreferenceResolver()
-    private val subtitleTrackMerger = SubtitleTrackMerger()
+    private val subtitleTrackMerger = SubtitleTrackMerger(
+        variantLabel = { label, ordinal ->
+            resources.getString(R.string.player_subtitle_variant_label, label, ordinal)
+        },
+    )
     private val debugOverlayEnabled = interactor.isDebugOverlayEnabled()
 
     private val playbackCallback = object : PlaybackControl.Callback {
@@ -197,6 +204,14 @@ internal class PlayerVM(
                 it.playerGroupIndex != null && it.playerTrackIndex != null
             }
             val effectivePlayerTracks = subtitleTracks.ifEmpty { previousPlayerTracks }
+            // A tracks update may carry only one track type; never let the other list be cleared.
+            val effectiveAudioTracks = audioTracks.ifEmpty { currentContent.audioTracks }
+            val effectiveAudioIndex = if (audioTracks.isEmpty()) {
+                currentContent.selectedAudioTrackIndex
+            } else {
+                selectedIndex
+            }
+            subtitleTracksDiscovered = subtitleTracksDiscovered || effectivePlayerTracks.isNotEmpty()
             val mergedSubtitleTracks = subtitleTrackMerger.merge(apiSubtitleTracks, effectivePlayerTracks)
             val mergedSelectedIndex = previousSubtitle?.let { selectedTrack ->
                 audioTrackPreferenceResolver.findSubtitleTrackIndex(
@@ -210,15 +225,19 @@ internal class PlayerVM(
             }?.takeIf { it >= 0 } ?: 0
             updateContent {
                 copy(
-                    audioTracks = audioTracks,
-                    selectedAudioTrackIndex = selectedIndex,
+                    audioTracks = effectiveAudioTracks,
+                    selectedAudioTrackIndex = effectiveAudioIndex,
                     subtitleTracks = mergedSubtitleTracks,
                     selectedSubtitleIndex = mergedSelectedIndex,
                 )
             }
             if (!tracksRestoredForCurrentMedia) {
                 tracksRestoredForCurrentMedia = true
-                if (!restoreTrackPreferences(hasDiscoveredSubtitleTracks = effectivePlayerTracks.isNotEmpty())) {
+                val restored = restoreTrackPreferences(
+                    hasDiscoveredSubtitleTracks = effectivePlayerTracks.isNotEmpty(),
+                )
+                if (!restored && subtitleRestoreAttempts < MAX_SUBTITLE_RESTORE_ATTEMPTS) {
+                    subtitleRestoreAttempts++
                     tracksRestoredForCurrentMedia = false
                 }
             }
@@ -327,6 +346,12 @@ internal class PlayerVM(
         loadSkipSegments(item, resolved.seasonNumber, resolved.episodeNumber, token)
     }
 
+    private fun resetTrackRestoreState() {
+        audioRestoredForCurrentMedia = false
+        subtitleTracksDiscovered = false
+        subtitleRestoreAttempts = 0
+    }
+
     private fun showInitialContent(
         contentState: PlayerContentState,
         resumeDialog: ResumeDialogState?,
@@ -386,36 +411,50 @@ internal class PlayerVM(
         playbackController.switchStream(streamUrl, media.subtitles)
     }
 
+    /**
+     * Returns false only while the subtitle preference is still waiting for the player to
+     * report its text tracks, which asks the caller for another attempt.
+     */
     private fun restoreTrackPreferences(hasDiscoveredSubtitleTracks: Boolean): Boolean {
-        val preferredLabel = interactor.getPreferredAudioLabel(params.itemId)
-        val preferredLang = interactor.getPreferredAudioLang(params.itemId)
-        val subtitleLang = interactor.getPreferredSubtitleLang(params.itemId)
-        val subtitleUrl = interactor.getPreferredSubtitleUrl(params.itemId)
         val content = (stateValue as? PlayerViewState.Content)?.content ?: return false
+        restoreAudioTrackPreference(content)
+        return restoreSubtitlePreference(content, hasDiscoveredSubtitleTracks)
+    }
+
+    // Applied at most once per media so retrying the subtitle restore never re-applies
+    // the stored audio track over a selection the user made in the meantime.
+    private fun restoreAudioTrackPreference(content: PlayerContentState) {
+        if (audioRestoredForCurrentMedia || content.audioTracks.isEmpty()) return
+        audioRestoredForCurrentMedia = true
         val audioIndex = audioTrackPreferenceResolver.findAudioTrackIndex(
             tracks = content.audioTracks,
-            preferredLabel = preferredLabel,
-            preferredLang = preferredLang,
+            preferredLabel = interactor.getPreferredAudioLabel(params.itemId),
+            preferredLang = interactor.getPreferredAudioLang(params.itemId),
         )
-
         if (audioIndex >= 0) {
             applyAudioTrackSelection(audioIndex, persist = false)
         }
+    }
 
-        val subtitleIndex = if (hasDiscoveredSubtitleTracks) {
-            audioTrackPreferenceResolver.findSubtitleTrackIndex(
-                tracks = content.subtitleTracks,
-                preferredLang = subtitleLang,
-                preferredUrl = subtitleUrl,
-            )
-        } else {
-            -1
-        }
+    private fun restoreSubtitlePreference(
+        content: PlayerContentState,
+        hasDiscoveredSubtitleTracks: Boolean,
+    ): Boolean {
+        val subtitleLang = interactor.getPreferredSubtitleLang(params.itemId)
+        val subtitleUrl = interactor.getPreferredSubtitleUrl(params.itemId)
+        val hasSubtitlePreference = !subtitleLang.isNullOrEmpty() || !subtitleUrl.isNullOrEmpty()
+        if (!hasSubtitlePreference) return true
+        if (!hasDiscoveredSubtitleTracks) return false
+
+        val subtitleIndex = audioTrackPreferenceResolver.findSubtitleTrackIndex(
+            tracks = content.subtitleTracks,
+            preferredLang = subtitleLang,
+            preferredUrl = subtitleUrl,
+        )
         if (subtitleIndex >= 0) {
             applySubtitleSelection(subtitleIndex, persist = false)
         }
-        val hasSubtitlePreference = !subtitleLang.isNullOrEmpty() || !subtitleUrl.isNullOrEmpty()
-        return subtitleIndex >= 0 || !hasSubtitlePreference || hasDiscoveredSubtitleTracks
+        return true
     }
 
     override fun onAction(action: UIAction) {
@@ -658,6 +697,7 @@ internal class PlayerVM(
         val position = playbackController.currentPosition
         updateContent { copy(selectedBufferPresetIndex = index) }
         tracksRestoredForCurrentMedia = false
+        resetTrackRestoreState()
         initializePlayer(savedPosition = position)
     }
 
@@ -669,6 +709,7 @@ internal class PlayerVM(
         val position = playbackController.currentPosition
         updateContent { copy(fastDnsEnabled = newValue) }
         tracksRestoredForCurrentMedia = false
+        resetTrackRestoreState()
         initializePlayer(savedPosition = position)
     }
 
@@ -700,6 +741,7 @@ internal class PlayerVM(
         dismissedSegmentType = null
         countdownDismissed = false
         tracksRestoredForCurrentMedia = false
+        resetTrackRestoreState()
 
         updateViewState(PlayerViewState.Loading)
         startPreparingPlayback(
@@ -1394,14 +1436,26 @@ internal class PlayerVM(
         val state = (stateValue as? PlayerViewState.Content)?.content ?: return
         val audioTrack = state.audioTracks.getOrNull(state.selectedAudioTrackIndex)
         val subtitle = state.subtitleTracks.getOrNull(state.selectedSubtitleIndex)
+        // Before the player reports its text tracks the picker holds nothing but "off",
+        // so persisting it would silently drop the preference we still have to restore.
+        val subtitleLang = if (subtitleTracksDiscovered) {
+            subtitle?.language?.takeIf { it.isNotEmpty() }
+        } else {
+            interactor.getPreferredSubtitleLang(params.itemId)
+        }
+        val subtitleUrl = if (subtitleTracksDiscovered) {
+            subtitle?.url?.takeIf { it.isNotEmpty() }
+                ?: subtitle?.playerTrackUri?.takeIf { it.isNotEmpty() }
+                ?: subtitle?.playerTrackId?.takeIf { it.isNotEmpty() }
+        } else {
+            interactor.getPreferredSubtitleUrl(params.itemId)
+        }
         interactor.saveTrackPreferences(
             itemId = params.itemId,
             audioLang = audioTrack?.language?.takeIf { it.isNotEmpty() },
             audioLabel = audioTrack?.label?.takeIf { it.isNotEmpty() },
-            subtitleLang = subtitle?.language?.takeIf { it.isNotEmpty() },
-            subtitleUrl = subtitle?.url?.takeIf { it.isNotEmpty() }
-                ?: subtitle?.playerTrackUri?.takeIf { it.isNotEmpty() }
-                ?: subtitle?.playerTrackId?.takeIf { it.isNotEmpty() },
+            subtitleLang = subtitleLang,
+            subtitleUrl = subtitleUrl,
         )
     }
 
@@ -1476,5 +1530,8 @@ internal class PlayerVM(
         const val EARLY_NEXT_EPISODE_OFFSET_MS = 30_000L
         const val SEEK_JUMP_THRESHOLD_MS = 2_000L
         const val SKIP_COUNTDOWN_SEC = 7
+        // Bounds the wait for player text tracks so a stream that simply has none
+        // does not re-run the restore on every single track update.
+        const val MAX_SUBTITLE_RESTORE_ATTEMPTS = 10
     }
 }
