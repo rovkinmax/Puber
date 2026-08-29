@@ -825,6 +825,22 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
     }
 
     @Test
+    fun selectQuality_clearsDiscoveredSubtitles_whenReplacementHasNone() {
+        val vm = startedVM()
+        callbackSlot.captured.onTracksUpdated(
+            testContentState.audioTracks,
+            0,
+            testDiscoveredSubtitleTracks,
+        )
+
+        vm.onAction(PlayerAction.SelectQuality(1))
+        callbackSlot.captured.onTracksUpdated(testContentState.audioTracks, 0, emptyList())
+
+        assertEquals(testSubtitleTracks.take(1), contentState(vm).subtitleTracks)
+        assertEquals(0, contentState(vm).selectedSubtitleIndex)
+    }
+
+    @Test
     fun selectQuality_doesNothing_whenSameIndex() {
         val vm = startedVM()
         vm.onAction(PlayerAction.SelectQuality(0))

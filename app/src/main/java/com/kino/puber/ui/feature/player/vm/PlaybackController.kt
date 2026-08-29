@@ -377,12 +377,12 @@ internal class PlaybackController(
         if (stream.isHls) {
             builder.setMimeType(MimeTypes.APPLICATION_M3U8)
         }
-        // Every external subtitle is attached, including ones an HLS manifest may also
-        // publish as a rendition: the manifest contents are unknown until the source is
-        // prepared, and a rendition that turns out to duplicate an API entry is dropped
-        // from the picker afterwards by SubtitleTrackMerger.
+        // Every API subtitle is attached to HLS because `embed` describes the original
+        // source file, not the generated manifest. The manifest remains authoritative:
+        // SubtitleTrackMerger hides every side-loaded fallback when it publishes subtitles.
+        // Progressive sources skip API tracks already embedded in their source container.
         val subtitleConfigs = subtitles.orEmpty().mapNotNull { sub ->
-            if (!sub.shouldSideLoad) return@mapNotNull null
+            if (!sub.shouldSideLoad(stream.isHls)) return@mapNotNull null
             val subtitleUrl = sub.url
             val stableKey = subtitleUrl.stableSubtitleKey()
             MediaItem.SubtitleConfiguration.Builder(subtitleUrl.toUri())

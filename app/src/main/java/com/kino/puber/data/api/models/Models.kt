@@ -377,8 +377,7 @@ data class SubtitleLink(
     val forced: Boolean? = null,
     val file: String? = null,
 ) {
-    val shouldSideLoad: Boolean
-        get() = embed != true
+    fun shouldSideLoad(isHls: Boolean): Boolean = isHls || embed != true
 }
 
 @Serializable
