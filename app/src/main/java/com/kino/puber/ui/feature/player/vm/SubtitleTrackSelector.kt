@@ -35,7 +35,6 @@ internal class SubtitleTrackSelector {
         if (candidates.isEmpty()) return null
         return matchByTrackGroupId(track, candidates)
             ?: matchByFormatId(track, candidates)
-            ?: matchByStableKey(track, candidates)
             ?: matchByCoordinates(track, candidates)
             ?: matchByLanguage(track, candidates)
     }
@@ -58,23 +57,6 @@ internal class SubtitleTrackSelector {
     ): PlayerTextTrack? {
         val formatId = track.playerTrackId?.takeIf { it.isNotEmpty() } ?: return null
         return candidates.filter { it.formatId == formatId }.singleOrNull()
-    }
-
-    /**
-     * The stable key identifies the side-loaded copy Media3 built from the API url, which
-     * carries it as both format id and label. A row backed by a manifest rendition must
-     * never resolve here: it holds the same API url after merging, and matching on it
-     * would select the hidden side-loaded duplicate instead of the rendition.
-     */
-    private fun matchByStableKey(
-        track: SubtitleTrackUIState,
-        candidates: List<PlayerTextTrack>,
-    ): PlayerTextTrack? {
-        if (track.playerTrackUri != null) return null
-        val stableKey = track.url.stableSubtitleKey().takeIf { it.isNotEmpty() } ?: return null
-        return candidates
-            .filter { it.formatId == stableKey || it.formatLabel == stableKey }
-            .singleOrNull()
     }
 
     /** Positional fallback for tracks the manifest exposes without any usable identity. */

@@ -30,28 +30,6 @@ internal class SubtitleTrackSelectorTest {
         assertEquals(candidates[0], selector.select(manifestRow, candidates))
     }
 
-    /**
-     * MergingMediaSource prefixes child format ids but not labels, so a side-loaded row
-     * whose captured id no longer matches still resolves through the label Media3 copied
-     * from the subtitle configuration.
-     */
-    @Test
-    fun select_resolvesSideLoadedRow_byStableKey_whenItsFormatIdNoLongerMatches() {
-        val sideLoadedRow = SubtitleTrackUIState(
-            label = "eng",
-            language = "eng",
-            url = "https://api.test/subtitles/29726.srt",
-            playerTrackGroupId = "",
-            playerTrackId = "1:29726.srt",
-        )
-        val candidates = listOf(
-            PlayerTextTrack("", 0, 0, formatId = "rus-rendition", language = "rus"),
-            PlayerTextTrack("", 1, 0, formatId = "2:29726.srt", formatLabel = "29726.srt", language = "eng"),
-        )
-
-        assertEquals(candidates[1], selector.select(sideLoadedRow, candidates))
-    }
-
     @Test
     fun select_survivesTrackGroupsBeingReordered() {
         val row = manifestTrack(
