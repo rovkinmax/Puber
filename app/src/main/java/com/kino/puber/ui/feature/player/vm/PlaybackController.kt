@@ -701,9 +701,9 @@ internal class PlaybackController(
         stableKey: String,
         textGroups: List<Tracks.Group>,
     ): TextTrackSelection? {
+        // Side-loaded configurations carry the stable key as both id and label, and
+        // manifest renditions carry their own id, so the raw API url is never a Format id.
         return findTextTrackBy(textGroups) { format ->
-            track.url.isNotEmpty() && format.id == track.url
-        } ?: findTextTrackBy(textGroups) { format ->
             track.playerTrackId != null && format.id == track.playerTrackId
         } ?: findTextTrackBy(textGroups) { format ->
             stableKey.isNotEmpty() && (format.id == stableKey || format.label == stableKey)

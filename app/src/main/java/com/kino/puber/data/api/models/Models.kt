@@ -387,9 +387,6 @@ data class SubtitleLink(
                 url.substringBefore('?').substringBefore('#'),
             )
         }
-
-    val isForced: Boolean
-        get() = forcedState == true
 }
 
 private val FORCED_SUBTITLE_TOKEN = Regex(
