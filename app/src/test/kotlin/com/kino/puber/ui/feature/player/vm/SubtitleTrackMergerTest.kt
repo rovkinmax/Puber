@@ -8,14 +8,14 @@ import org.junit.jupiter.api.Test
 
 internal class SubtitleTrackMergerTest {
 
-    private val merger = SubtitleTrackMerger(variantLabel = { label, ordinal -> "$label #$ordinal" })
+    private val merger = SubtitleTrackMerger(labeler = testLabeler())
 
-    @Test
-    fun subtitleTrackDisplayLabel_hidesManifestNumberingAndUsesLowercaseIso3Language() {
-        assertEquals("rus", subtitleTrackDisplayLabel("RU", "RUS #03"))
-        assertEquals("spa", subtitleTrackDisplayLabel("es-ES", "SPA #01"))
-        assertEquals("Unknown", subtitleTrackDisplayLabel("", "Unknown"))
-    }
+    private fun testLabeler() = SubtitleLabeler(
+        displayLanguageTag = "ru",
+        forcedQualifier = "частичные",
+        variantLabel = { label, ordinal -> "$label · вариант $ordinal" },
+        unknownLabel = { position -> "Субтитры $position" },
+    )
 
     @Test
     fun merge_usesPlayerTracksAsBackbone_andEnrichesExactIdentity() {
@@ -54,7 +54,7 @@ internal class SubtitleTrackMergerTest {
         val result = merger.merge(apiTracks, playerTracks)
 
         assertEquals(
-            listOf("Off", "external-rus.srt", "Русские полные"),
+            listOf("Off", "Русский · вариант 1", "Русский · вариант 2"),
             result.map { it.label },
         )
         assertEquals("external-rus.srt", result[1].playerTrackId)
@@ -77,11 +77,11 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(apiTracks, playerTracks)
 
-        assertEquals(listOf("Off", "Russian forced HLS", "Russian full HLS"), result.map { it.label })
-        assertEquals("forced", result[1].playerTrackId)
-        assertTrue(result[1].isForced!!)
-        assertEquals("full", result[2].playerTrackId)
-        assertFalse(result[2].isForced!!)
+        assertEquals(listOf("Off", "Русский", "Русский · частичные"), result.map { it.label })
+        assertEquals("full", result[1].playerTrackId)
+        assertFalse(result[1].isForced!!)
+        assertEquals("forced", result[2].playerTrackId)
+        assertTrue(result[2].isForced!!)
     }
 
     @Test
@@ -119,7 +119,7 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(apiTracks, playerTracks)
 
-        assertEquals(listOf("Off", "Russian HLS"), result.map { it.label })
+        assertEquals(listOf("Off", "Русский"), result.map { it.label })
         assertEquals("", result[1].url)
         assertEquals("hls-russian", result[1].playerTrackId)
     }
@@ -148,7 +148,7 @@ internal class SubtitleTrackMergerTest {
     }
 
     @Test
-    fun merge_keepsManifestOrder_forSameLanguageVariants() {
+    fun merge_groupsVariantsByLanguage_keepingManifestOrderWithinEachLanguage() {
         val apiTracks = listOf(
             offTrack(),
             apiTrack(1, "rus #1", "rus"),
@@ -166,11 +166,17 @@ internal class SubtitleTrackMergerTest {
         val result = merger.merge(apiTracks, playerTracks)
 
         assertEquals(
-            listOf("Off", "Russian 1", "Spanish", "Russian 2", "Russian 3"),
+            listOf(
+                "Off",
+                "Русский · вариант 1",
+                "Русский · вариант 2",
+                "Русский · вариант 3",
+                "Испанский",
+            ),
             result.map { it.label },
         )
-        assertEquals(listOf(null, 0, 1, 2, 3), result.map { it.playerGroupIndex })
-        assertEquals("rus-3", result[4].playerTrackId)
+        assertEquals(listOf(null, 0, 2, 3, 1), result.map { it.playerGroupIndex })
+        assertEquals(listOf("rus-1", "rus-2", "rus-3", "spa"), result.drop(1).map { it.playerTrackId })
     }
 
     @Test
@@ -240,7 +246,7 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(listOf(offTrack(), apiTrack), listOf(playerTrack))
 
-        assertEquals(listOf("Off", "russian.vtt"), result.map { it.label })
+        assertEquals(listOf("Off", "Русский"), result.map { it.label })
         assertEquals(playerTrack.playerTrackId, result[1].playerTrackId)
         assertEquals("ru", result[1].language)
         assertEquals(apiTrack.url, result[1].url)
@@ -266,7 +272,7 @@ internal class SubtitleTrackMergerTest {
             listOf(manifestEnglish),
         )
 
-        assertEquals(listOf("Off", "English HLS"), result.map { it.label })
+        assertEquals(listOf("Off", "Английский"), result.map { it.label })
         assertEquals(listOf("", "en"), result.map { it.language })
         assertEquals("hls-english", result[1].playerTrackId)
     }
@@ -307,11 +313,14 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(listOf(offTrack()), playerTracks)
 
-        assertEquals(listOf("Off", "rus #1", "rus #2", "rus #3"), result.map { it.label })
+        assertEquals(
+            listOf("Off", "Русский · вариант 1", "Русский · вариант 2", "Русский · вариант 3"),
+            result.map { it.label },
+        )
     }
 
     @Test
-    fun merge_keepsForcedVariantUntouched_becauseThePickerAlreadyMarksIt() {
+    fun merge_marksPartialVariant_andOrdersItLastWithinItsLanguage() {
         val playerTracks = listOf(
             playerTrack(1, "rus", "rus", "full", 0, forced = false, descriptiveLabel = "RUS"),
             playerTrack(2, "rus", "rus", "forced", 1, forced = true, descriptiveLabel = "RUS"),
@@ -319,7 +328,7 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(listOf(offTrack()), playerTracks)
 
-        assertEquals(listOf("Off", "rus", "rus"), result.map { it.label })
+        assertEquals(listOf("Off", "Русский", "Русский · частичные"), result.map { it.label })
         assertEquals(listOf(null, false, true), result.map { it.isForced })
     }
 
@@ -332,7 +341,7 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(listOf(offTrack()), playerTracks)
 
-        assertEquals(listOf("Off", "rus", "eng"), result.map { it.label })
+        assertEquals(listOf("Off", "Русский", "Английский"), result.map { it.label })
     }
 
     @Test
@@ -356,7 +365,7 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(apiTracks, playerTracks)
 
-        assertEquals(listOf("Off", "rus"), result.map { it.label })
+        assertEquals(listOf("Off", "Русский"), result.map { it.label })
         assertEquals("hls-rus", result[1].playerTrackId)
         assertEquals("https://api.test/subtitles/rus.srt", result[1].url)
     }
@@ -382,7 +391,7 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(apiTracks, playerTracks)
 
-        assertEquals(listOf("Off", "rus", "eng"), result.map { it.label })
+        assertEquals(listOf("Off", "Русский", "Английский"), result.map { it.label })
         assertEquals("https://api.test/subtitles/eng.srt", result[2].url)
     }
 
