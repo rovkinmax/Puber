@@ -21,30 +21,12 @@ internal class SubtitleTrackMergerTest {
     fun merge_usesPlayerTracksAsBackbone_andEnrichesExactIdentity() {
         val apiTracks = listOf(
             offTrack(),
-            apiTrack(
-                label = "Russian embedded",
-                language = "rus",
-                url = "https://api.test/subtitles/embedded-rus.srt",
-            ),
-            apiTrack(
-                label = "Russian external",
-                language = "rus",
-                url = "https://api.test/subtitles/external-rus.srt",
-            ),
+            apiTrack(label = "Russian embedded", language = "rus", url = "https://api.test/subtitles/embedded-rus.srt"),
+            apiTrack(label = "Russian external", language = "rus", url = "https://api.test/subtitles/external-rus.srt"),
         )
         val playerTracks = listOf(
-            playerTrack(
-                label = "external-rus.srt",
-                language = "rus",
-                id = "external-rus.srt",
-                groupIndex = 0,
-            ),
-            playerTrack(
-                label = "Русские полные",
-                language = "ru",
-                id = "hls-russian-full",
-                groupIndex = 1,
-            ),
+            playerTrack(label = "external-rus.srt", language = "rus", id = "external-rus.srt", groupIndex = 0),
+            playerTrack(label = "Русские полные", language = "ru", id = "hls-russian-full", groupIndex = 1),
         )
 
         val result = merger.merge(apiTracks, playerTracks)
@@ -84,11 +66,7 @@ internal class SubtitleTrackMergerTest {
     fun merge_dropsUnmatchedApiTrack_whenPlayerTracksAreAvailable() {
         val apiTracks = listOf(
             offTrack(),
-            apiTrack(
-                label = "Russian external",
-                language = "rus",
-                url = "https://api.test/subtitles/external.srt",
-            ),
+            apiTrack(label = "Russian external", language = "rus", url = "https://api.test/subtitles/external.srt"),
         )
         val playerTracks = listOf(
             playerTrack("Russian HLS", "ru", "hls-russian", 0),
@@ -103,17 +81,8 @@ internal class SubtitleTrackMergerTest {
 
     @Test
     fun merge_doesNotTreatDisplayLabelAsTrackIdentity() {
-        val apiTrack = apiTrack(
-            label = "Spanish API",
-            language = "spa",
-            url = "https://api.test/subtitles/spanish.srt",
-        )
-        val playerTrack = playerTrack(
-            label = "spanish.srt",
-            language = "rus",
-            id = "hls-russian",
-            groupIndex = 0,
-        )
+        val apiTrack = apiTrack(label = "Spanish API", language = "spa", url = "https://api.test/subtitles/spanish.srt")
+        val playerTrack = playerTrack(label = "spanish.srt", language = "rus", id = "hls-russian", groupIndex = 0)
 
         val result = merger.merge(listOf(offTrack(), apiTrack), listOf(playerTrack))
 
@@ -158,16 +127,8 @@ internal class SubtitleTrackMergerTest {
     fun merge_usesApiFilePathToMatchHlsRenditionUri_whenLanguageOrderDiffers() {
         val apiTracks = listOf(
             offTrack(),
-            apiTrack(
-                label = "rus #1",
-                language = "rus",
-                sourceFile = "/a/71/first.srt",
-            ),
-            apiTrack(
-                label = "rus #2",
-                language = "rus",
-                sourceFile = "/b/82/second.srt",
-            ),
+            apiTrack(label = "rus #1", language = "rus", sourceFile = "/a/71/first.srt"),
+            apiTrack(label = "rus #2", language = "rus", sourceFile = "/b/82/second.srt"),
         )
         val playerTracks = listOf(
             playerTrack(
