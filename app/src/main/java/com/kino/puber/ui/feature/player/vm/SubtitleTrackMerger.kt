@@ -5,9 +5,7 @@ import com.kino.puber.ui.feature.player.model.isOff
 import java.util.Locale
 
 internal class SubtitleTrackMerger(
-    private val variantLabel: (label: String, ordinal: Int) -> String = { label, ordinal ->
-        "$label ($ordinal)"
-    },
+    private val variantLabel: (label: String, ordinal: Int) -> String,
 ) {
 
     fun merge(
