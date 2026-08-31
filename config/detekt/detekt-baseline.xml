@@ -23,6 +23,7 @@
     <ID>BracesOnWhenStatements:UpdatePromptVM.kt$UpdatePromptVM$-&gt;</ID>
     <ID>ComplexCondition:AppUpdateDownload.kt$AppUpdateDownloader$char.isLetterOrDigit() || char == '.' || char == '_' || char == '-'</ID>
     <ID>CyclomaticComplexMethod:KinoPubApiClient.kt$KinoPubApiClient$suspend fun downloadUpdateAsset( url: String, targetFile: File, onProgress: (Int) -&gt; Unit, ): Result&lt;File&gt;</ID>
+    <ID>CyclomaticComplexMethod:KinoPubTransferTransport.kt$KinoPubTransferTransport$suspend fun downloadUpdateAsset( url: String, targetFile: File, onProgress: (Int) -&gt; Unit, ): Result&lt;File&gt;</ID>
     <ID>LargeClass:KinoPubApiClient.kt$KinoPubApiClient</ID>
     <ID>LargeClass:PlayerVM.kt$PlayerVM : PuberVM</ID>
     <ID>LongMethod:CollectionCard.kt$@Composable internal fun CollectionCard( state: CollectionUIState, onClick: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
