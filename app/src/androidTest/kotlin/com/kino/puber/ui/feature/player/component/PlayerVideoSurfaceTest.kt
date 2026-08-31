@@ -3,7 +3,6 @@ package com.kino.puber.ui.feature.player.component
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -41,8 +40,6 @@ internal class PlayerVideoSurfaceTest {
                     PlayerVideoSurface(
                         content = contentState.value,
                         exoPlayer = { player },
-                        onAction = {},
-                        focusRequester = FocusRequester(),
                         playerViewFactory = { context ->
                             player = player ?: ExoPlayer.Builder(context).build()
                             PlayerView(context).also(playerViewReference::set)
@@ -114,8 +111,6 @@ internal class PlayerVideoSurfaceTest {
                 PlayerVideoSurface(
                     content = contentState.value,
                     exoPlayer = { player },
-                    onAction = {},
-                    focusRequester = FocusRequester(),
                     playerViewFactory = { context ->
                         player = ExoPlayer.Builder(context).build()
                         object : PlayerView(context) {
@@ -164,8 +159,6 @@ internal class PlayerVideoSurfaceTest {
                         PlayerVideoSurface(
                             content = contentState.value,
                             exoPlayer = { player },
-                            onAction = {},
-                            focusRequester = FocusRequester(),
                             playerViewFactory = { context ->
                                 player = player ?: ExoPlayer.Builder(context).build()
                                 PlayerView(context).also(playerViewReference::set)

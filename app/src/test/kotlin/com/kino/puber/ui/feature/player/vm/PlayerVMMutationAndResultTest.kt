@@ -8,6 +8,7 @@ import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.SkipSegmentType
 import com.kino.puber.data.api.models.Video
 import com.kino.puber.domain.interactor.player.WatchedDetailsRefreshException
+import com.kino.puber.ui.feature.player.model.FocusTarget
 import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
 import com.kino.puber.util.MainDispatcherExtension
@@ -217,6 +218,7 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
         assertTrue(contentState(vm).isCurrentMediaWatched)
         verify(exactly = 1) { errorHandler.map(refreshFailure) }
         vm.onAction(PlayerAction.OnBackPressed)
+        vm.onAction(PlayerAction.OnBackPressed)
         verifyContentChangeResult(ContentChangeType.Watched, ContentChangeType.PlaybackProgress)
     }
 
@@ -324,6 +326,7 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
 
         vm.onAction(PlayerAction.EpisodeWatchedChanged(currentEpisodeItem, watched = true))
         vm.onAction(PlayerAction.OnBackPressed)
+        vm.onAction(PlayerAction.OnBackPressed)
 
         assertTrue(contentState(vm).isCurrentMediaWatched)
         verifyContentChangeResult(ContentChangeType.Watched, ContentChangeType.PlaybackProgress)
@@ -414,10 +417,22 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
         )
         val vm = startedVM()
 
+        mainDispatcher.dispatcher.scheduler.advanceTimeBy(3_001L)
+        assertFalse(contentState(vm).controlsVisible)
+
         callbackSlot.captured.onPlaybackEnded()
 
         assertNull(contentState(vm).nextEpisodeCountdown)
         assertTrue(contentState(vm).controlsVisible)
+        assertEquals(FocusTarget.Buttons, contentState(vm).controlsFocusTarget)
+
+        mainDispatcher.dispatcher.scheduler.advanceTimeBy(3_001L)
+
+        assertTrue(contentState(vm).controlsVisible)
+        assertEquals(FocusTarget.Buttons, contentState(vm).controlsFocusTarget)
+        vm.onAction(PlayerAction.OnBackPressed)
+        assertFalse(contentState(vm).controlsVisible)
+        verify(exactly = 0) { router.back(any(), any()) }
     }
 
     @Test
@@ -428,6 +443,7 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
         val vm = startedVM()
 
         callbackSlot.captured.onPlaybackEnded()
+        vm.onAction(PlayerAction.OnBackPressed)
         vm.onAction(PlayerAction.OnBackPressed)
 
         verifyContentChangeResult(ContentChangeType.Watched, ContentChangeType.PlaybackProgress)
@@ -457,6 +473,7 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
             )
         )
         vm.onAction(PlayerAction.OnBackPressed)
+        vm.onAction(PlayerAction.OnBackPressed)
 
         verifyContentChangeResult(ContentChangeType.Watched, ContentChangeType.PlaybackProgress)
     }
@@ -479,6 +496,7 @@ internal class PlayerVMMutationAndResultTest : PlayerVMTestFixture() {
                 watched = true,
             )
         )
+        vm.onAction(PlayerAction.OnBackPressed)
         vm.onAction(PlayerAction.OnBackPressed)
 
         verifyContentChangeResult(ContentChangeType.Watched, ContentChangeType.PlaybackProgress)

@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -40,6 +41,7 @@ import com.kino.puber.ui.feature.player.model.SpeedUIState
 @Composable
 internal fun VideoSettingsPanel(
     visible: Boolean,
+    isFocusOwner: Boolean,
     qualities: List<QualityUIState>,
     selectedQualityIndex: Int,
     speeds: List<SpeedUIState>,
@@ -63,6 +65,18 @@ internal fun VideoSettingsPanel(
         enter = slideInVertically(initialOffsetY = { it }),
         exit = slideOutVertically(targetOffsetY = { it }),
     ) {
+        val initialFocusTarget = when {
+            qualities.isNotEmpty() -> VideoSettingsFocusTarget.Quality
+            speeds.isNotEmpty() -> VideoSettingsFocusTarget.Speed
+            aspectRatios.isNotEmpty() -> VideoSettingsFocusTarget.AspectRatio
+            bufferPresets.isNotEmpty() -> VideoSettingsFocusTarget.Buffer
+            else -> VideoSettingsFocusTarget.FastDns
+        }
+        val panelFocusRequester = rememberRequestingFocusRequester(
+            focusKey = initialFocusTarget,
+            isFocusOwner = isFocusOwner,
+        )
+
         VideoSettingsPanelContainer {
             VideoSettingsColumns(
                 state = VideoSettingsPanelState(
@@ -75,7 +89,8 @@ internal fun VideoSettingsPanel(
                     bufferPresets = bufferPresets,
                     selectedBufferPresetIndex = selectedBufferPresetIndex,
                 ),
-                panelFocusRequester = rememberRequestingFocusRequester(),
+                panelFocusRequester = panelFocusRequester,
+                initialFocusTarget = initialFocusTarget,
                 actions = VideoSettingsActions(
                     onQualitySelected = onQualitySelected,
                     onSpeedSelected = onSpeedSelected,
@@ -83,9 +98,23 @@ internal fun VideoSettingsPanel(
                     onBufferPresetSelected = onBufferPresetSelected,
                 ),
             )
-            FastDnsToggle(checked = fastDnsEnabled, onToggle = onToggleFastDns)
+            FastDnsToggle(
+                checked = fastDnsEnabled,
+                onToggle = onToggleFastDns,
+                focusRequester = panelFocusRequester.takeIf {
+                    initialFocusTarget == VideoSettingsFocusTarget.FastDns
+                },
+            )
         }
     }
+}
+
+private enum class VideoSettingsFocusTarget {
+    Quality,
+    Speed,
+    AspectRatio,
+    Buffer,
+    FastDns,
 }
 
 private data class VideoSettingsPanelState(
@@ -128,6 +157,7 @@ private fun VideoSettingsPanelContainer(content: @Composable ColumnScope.() -> U
 private fun ColumnScope.VideoSettingsColumns(
     state: VideoSettingsPanelState,
     panelFocusRequester: FocusRequester,
+    initialFocusTarget: VideoSettingsFocusTarget,
     actions: VideoSettingsActions,
 ) {
     Row(
@@ -137,13 +167,22 @@ private fun ColumnScope.VideoSettingsColumns(
             .padding(top = 24.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        QualityColumn(state, panelFocusRequester, actions.onQualitySelected)
+        QualityColumn(
+            state = state,
+            panelFocusRequester = panelFocusRequester.takeIf {
+                initialFocusTarget == VideoSettingsFocusTarget.Quality
+            },
+            onQualitySelected = actions.onQualitySelected,
+        )
         SettingsPanelColumn(
             header = stringResource(R.string.player_panel_speed),
             items = remember(state.speeds) { state.speeds.map { it.label } },
             selectedIndex = state.selectedSpeedIndex,
             onItemSelected = actions.onSpeedSelected,
             modifier = Modifier.weight(1f),
+            firstItemFocusRequester = panelFocusRequester.takeIf {
+                initialFocusTarget == VideoSettingsFocusTarget.Speed
+            },
         )
         SettingsPanelColumn(
             header = stringResource(R.string.player_panel_aspect_ratio),
@@ -151,6 +190,9 @@ private fun ColumnScope.VideoSettingsColumns(
             selectedIndex = state.selectedAspectRatioIndex,
             onItemSelected = actions.onAspectRatioSelected,
             modifier = Modifier.weight(1f),
+            firstItemFocusRequester = panelFocusRequester.takeIf {
+                initialFocusTarget == VideoSettingsFocusTarget.AspectRatio
+            },
         )
         SettingsPanelColumn(
             header = stringResource(R.string.player_panel_buffer),
@@ -158,6 +200,9 @@ private fun ColumnScope.VideoSettingsColumns(
             selectedIndex = state.selectedBufferPresetIndex,
             onItemSelected = actions.onBufferPresetSelected,
             modifier = Modifier.weight(1f),
+            firstItemFocusRequester = panelFocusRequester.takeIf {
+                initialFocusTarget == VideoSettingsFocusTarget.Buffer
+            },
         )
     }
 }
@@ -165,7 +210,7 @@ private fun ColumnScope.VideoSettingsColumns(
 @Composable
 private fun RowScope.QualityColumn(
     state: VideoSettingsPanelState,
-    panelFocusRequester: FocusRequester,
+    panelFocusRequester: FocusRequester?,
     onQualitySelected: (Int) -> Unit,
 ) {
     if (state.qualities.isEmpty()) return
@@ -183,12 +228,14 @@ private fun RowScope.QualityColumn(
 private fun FastDnsToggle(
     checked: Boolean,
     onToggle: () -> Unit,
+    focusRequester: FocusRequester?,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     Row(
         modifier = Modifier
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
             .highlightOnFocus(isFocused)
             .clickable(
                 interactionSource = interactionSource,

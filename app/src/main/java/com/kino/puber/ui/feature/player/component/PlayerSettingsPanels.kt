@@ -21,6 +21,8 @@ internal fun PlayerSettingsPanels(
 
     AudioSubtitlesPanel(
         visible = content.activePanel == ActivePanel.AudioSubtitles,
+        isFocusOwner = content.resumeDialog == null &&
+            content.activePanel == ActivePanel.AudioSubtitles,
         soundModes = content.soundModes,
         selectedSoundModeIndex = content.selectedSoundModeIndex,
         audioTracks = content.audioTracks,
@@ -36,6 +38,8 @@ internal fun PlayerSettingsPanels(
 
     VideoSettingsPanel(
         visible = content.activePanel == ActivePanel.VideoSettings,
+        isFocusOwner = content.resumeDialog == null &&
+            content.activePanel == ActivePanel.VideoSettings,
         qualities = content.qualities,
         selectedQualityIndex = content.selectedQualityIndex,
         speeds = content.speeds,
@@ -56,6 +60,7 @@ internal fun PlayerSettingsPanels(
     EpisodesPanel(
         visible = content.activePanel == ActivePanel.Episodes,
         episodes = content.episodes,
+        initialFocusedItemId = content.currentEpisodeId,
         onEpisodeSelected = { item -> onAction(PlayerAction.SelectEpisodeById(item.id)) },
         onEpisodeContextMenu = { episodeContextMenuItem = it },
         onBackPressed = rememberAction(onAction, PlayerAction.ClosePanel),
