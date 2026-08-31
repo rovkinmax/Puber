@@ -3,13 +3,14 @@ package com.kino.puber.baselineprofile
 import android.content.Context
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicLong
-import mockwebserver3.Dispatcher
-import mockwebserver3.MockResponse
-import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
 import okhttp3.HttpUrl
 import org.json.JSONArray
 import org.json.JSONObject
+import com.kino.puber.playertestfixtures.server.HermeticRequestJournal
+import com.kino.puber.playertestfixtures.server.HermeticTestServer
+import com.kino.puber.playertestfixtures.server.QueryMatchMode as HermeticQueryMatchMode
+import com.kino.puber.playertestfixtures.server.ResponsePlan
 
 /**
  * A route-based backend for profile and macrobenchmark journeys.
@@ -23,17 +24,15 @@ class BaselineMockBackend(
     private val fixtures: BaselineFixtures = BaselineFixtures.synthetic(),
 ) : Closeable {
 
-    private val server = MockWebServer()
+    private val server = HermeticTestServer(port)
     private val generation = AtomicLong(0)
     private val lock = Any()
     private var activeScenario = BaselineScenario.Startup
     private var activeRoutes: List<BaselineMockRoute> = emptyList()
-    private val matchedCounts = linkedMapOf<BaselineMockRoute, Int>()
-    private val unknownRequests = mutableListOf<BaselineRequest>()
     private var started = false
 
     val baseUrl: String
-        get() = server.url("/").toString()
+        get() = server.baseUrl
 
     val generationId: Long
         get() = generation.get()
@@ -45,10 +44,13 @@ class BaselineMockBackend(
 
     val requestJournal: BaselineRequestJournal
         get() = synchronized(lock) {
+            val snapshot = server.requestJournal
             BaselineRequestJournal(
                 generationId = generationId,
-                matched = matchedCounts.toMap(),
-                unknown = unknownRequests.toList(),
+                matched = activeRoutes.associateWith { route ->
+                    snapshot.matchedRoutes[route.description] ?: 0
+                },
+                unknown = snapshot.unknownRequests.map(BaselineRequest::from),
             )
         }
 
@@ -56,8 +58,7 @@ class BaselineMockBackend(
         synchronized(lock) {
             check(!started) { "BaselineMockBackend is already started" }
             fixtures.validate()
-            server.dispatcher = routeDispatcher()
-            server.start(port)
+            server.start()
             started = true
             reset(activeScenario)
         }
@@ -82,7 +83,8 @@ class BaselineMockBackend(
         while (System.nanoTime() < deadline) {
             val observed = synchronized(lock) {
                 val route = activeRoutes.firstOrNull(::isStartupHomeRoute)
-                route != null && (matchedCounts[route] ?: 0) > 0
+                route != null &&
+                    (server.requestJournal.matchedRoutes[route.description] ?: 0) > 0
             }
             if (observed) {
                 return
@@ -101,27 +103,47 @@ class BaselineMockBackend(
             check(started) { "Call start() before reset()" }
             activeScenario = scenario
             activeRoutes = routesFor(scenario)
-            matchedCounts.clear()
-            unknownRequests.clear()
+            server.reset(
+                activeRoutes.map { route ->
+                    server.route(
+                        id = route.description,
+                        method = route.method,
+                        path = route.path,
+                        query = route.query,
+                        queryMode = route.queryMode.toHermetic(),
+                        response = ResponsePlan.Text(
+                            status = 200,
+                            body = route.body,
+                            contentType = "application/json; charset=utf-8",
+                        ),
+                        required = route.required,
+                        minimumRequests = route.minimumRequests,
+                    )
+                },
+            )
             generation.incrementAndGet()
         }
     }
 
     fun verify(): BaselineVerification {
         synchronized(lock) {
+            val snapshot = server.requestJournal
+            val matched = activeRoutes.associateWith { route ->
+                snapshot.matchedRoutes[route.description] ?: 0
+            }
             val missing = activeRoutes
-                .filter { it.required && (matchedCounts[it] ?: 0) < it.minimumRequests }
+                .filter { it.required && (matched[it] ?: 0) < it.minimumRequests }
                 .map { it.description }
                 .toMutableList()
             if (activeScenario == BaselineScenario.BrowseAndDetails) {
-                val detailIds = matchedCounts
+                val detailIds = matched
                     .filter { (route, count) ->
                         count > 0 && route.path.startsWith("/v1/items/") &&
                             route.path.removePrefix("/v1/items/").toIntOrNull() != null
                     }
                     .map { it.key.path.removePrefix("/v1/items/").toInt() }
                     .toSet()
-                val similarIds = matchedCounts
+                val similarIds = matched
                     .filter { (route, count) ->
                         count > 0 && route.path == "/v1/items/similar"
                     }
@@ -134,12 +156,12 @@ class BaselineMockBackend(
             return BaselineVerification(
                 generationId = generationId,
                 scenario = activeScenario,
-                matchedRequests = matchedCounts.values.sum(),
-                matchedRoutes = matchedCounts
+                matchedRequests = matched.values.sum(),
+                matchedRoutes = matched
                     .filterValues { it > 0 }
                     .entries
                     .associate { (route, count) -> route.description to count },
-                unknownRequests = unknownRequests.toList(),
+                unknownRequests = snapshot.unknownRequests.map(BaselineRequest::from),
                 missingRequiredRoutes = missing,
             )
         }
@@ -147,9 +169,7 @@ class BaselineMockBackend(
 
     fun url(route: BaselineMockRoute): String {
         check(started) { "Call start() before url()" }
-        return server.url(route.path).newBuilder().apply {
-            route.query.forEach { (name, value) -> addQueryParameter(name, value) }
-        }.build().toString()
+        return server.url(route.path, route.query)
     }
 
     override fun close() {
@@ -157,23 +177,6 @@ class BaselineMockBackend(
             if (!started) return
             started = false
             server.close()
-        }
-    }
-
-    private fun routeDispatcher() = object : Dispatcher() {
-        override fun dispatch(request: RecordedRequest): MockResponse {
-            synchronized(lock) {
-                val route = activeRoutes.firstOrNull { it.matches(request) }
-                if (route == null) {
-                    unknownRequests += BaselineRequest.from(request)
-                    return jsonResponse(
-                        code = 404,
-                        body = """{"error":"unknown baseline route"}""",
-                    )
-                }
-                matchedCounts[route] = (matchedCounts[route] ?: 0) + 1
-                return jsonResponse(body = route.body)
-            }
         }
     }
 
@@ -321,13 +324,6 @@ class BaselineMockBackend(
         return routes
     }
 
-    private fun jsonResponse(code: Int = 200, body: String): MockResponse =
-        MockResponse.Builder()
-            .code(code)
-            .addHeader("Content-Type", "application/json; charset=utf-8")
-            .body(body)
-            .build()
-
     private companion object {
         const val STARTUP_HOME_PATH = "/v1/items/fresh"
         const val STARTUP_HOME_SHORTCUT = "fresh"
@@ -393,6 +389,9 @@ data class BaselineRequest(
     companion object {
         fun from(request: RecordedRequest): BaselineRequest =
             BaselineRequest(request.method, request.url.encodedPath)
+
+        fun from(request: HermeticRequestJournal.RequestEntry): BaselineRequest =
+            BaselineRequest(request.method, request.path)
     }
 }
 
@@ -649,3 +648,9 @@ private fun JSONObject.optionalString(name: String): String? =
     }
 
 private fun <T> List<T>.nullIfEmpty(): List<T>? = takeIf(List<T>::isNotEmpty)
+
+private fun QueryMatchMode.toHermetic(): HermeticQueryMatchMode =
+    when (this) {
+        QueryMatchMode.Exact -> HermeticQueryMatchMode.Exact
+        QueryMatchMode.Contains -> HermeticQueryMatchMode.Contains
+    }

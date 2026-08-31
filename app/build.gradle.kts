@@ -298,21 +298,31 @@ dependencies {
 
     // Testing
     testImplementation(libs.junit5)
+    testImplementation(libs.junit)
     testRuntimeOnly(libs.junit5.launcher)
+    testRuntimeOnly(libs.junit5.vintage)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.mockk)
+    testImplementation(libs.robolectric)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.mockwebserver3)
+    testImplementation(project(":player-test-fixtures"))
 
     detektPlugins(libs.detekt.compose.rules)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.mockwebserver3)
+    add("instrumentationImplementation", project(":player-test-fixtures"))
+    add("instrumentationImplementation", libs.mockwebserver3)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation(libs.androidx.profileinstaller)
+}
+
+android.testOptions {
+    unitTests.isIncludeAndroidResources = true
 }
 
 baselineProfile {

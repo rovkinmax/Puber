@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -52,6 +53,7 @@ internal fun PlayerProgressBar(
     onTogglePlayPause: () -> Unit = {},
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester = remember { FocusRequester() },
+    downFocusRequester: FocusRequester? = null,
 ) {
     val progress = remember(currentPosition, duration) { progressOf(currentPosition, duration) }
     val bufferedProgress = remember(bufferedPosition, duration) { progressOf(bufferedPosition, duration) }
@@ -83,6 +85,7 @@ internal fun PlayerProgressBar(
             shimmerProgress = shimmerProgress,
             isBuffering = isBuffering,
             focusRequester = focusRequester,
+            downFocusRequester = downFocusRequester,
             onSeekForward = onSeekForward,
             onSeekBackward = onSeekBackward,
             onTogglePlayPause = onTogglePlayPause,
@@ -115,6 +118,7 @@ private fun ProgressBarRow(
     shimmerProgress: Float,
     isBuffering: Boolean,
     focusRequester: FocusRequester,
+    downFocusRequester: FocusRequester?,
     onSeekForward: () -> Unit,
     onSeekBackward: () -> Unit,
     onTogglePlayPause: () -> Unit,
@@ -130,6 +134,7 @@ private fun ProgressBarRow(
             shimmerProgress = shimmerProgress,
             isBuffering = isBuffering,
             focusRequester = focusRequester,
+            downFocusRequester = downFocusRequester,
             onSeekForward = onSeekForward,
             onSeekBackward = onSeekBackward,
             onTogglePlayPause = onTogglePlayPause,
@@ -164,6 +169,7 @@ private fun SeekTrack(
     shimmerProgress: Float,
     isBuffering: Boolean,
     focusRequester: FocusRequester,
+    downFocusRequester: FocusRequester?,
     onSeekForward: () -> Unit,
     onSeekBackward: () -> Unit,
     onTogglePlayPause: () -> Unit,
@@ -172,6 +178,11 @@ private fun SeekTrack(
     Box(
         modifier = modifier
             .height(TRACK_TOUCH_HEIGHT)
+            .then(
+                downFocusRequester?.let { target ->
+                    Modifier.focusProperties { down = target }
+                } ?: Modifier,
+            )
             .focusRequester(focusRequester)
             .focusable()
             .onKeyEvent { keyEvent ->

@@ -4,6 +4,7 @@ import com.kino.puber.R
 import com.kino.puber.core.content.ContentChangeSet
 import com.kino.puber.core.content.ContentChangeType
 import com.kino.puber.core.error.DefaultErrorHandler
+import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
@@ -23,6 +24,7 @@ import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -315,6 +317,22 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         vm.onAction(PlayerAction.OpenAudioSubtitlesPanel)
         vm.onAction(PlayerAction.ClosePanel)
         assertEquals(ActivePanel.None, contentState(vm).activePanel)
+    }
+
+    @Test
+    fun rebindRouter_routesPanelBackThroughRecreatedFlowRouter() {
+        val previousRouter = router
+        val recreatedRouter = mockk<AppRouter>(relaxed = true)
+        val vm = startedVM()
+        vm.onAction(PlayerAction.OpenAudioSubtitlesPanel)
+
+        vm.rebindRouter(recreatedRouter)
+        vm.onBackPressed()
+
+        assertEquals(ActivePanel.None, contentState(vm).activePanel)
+        verify { previousRouter.removeBackDispatcher(vm) }
+        verify { recreatedRouter.addBackDispatcher(vm) }
+        verify(exactly = 0) { previousRouter.addBackDispatcher(vm) }
     }
 
     // endregion

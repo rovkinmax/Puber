@@ -1,41 +1,39 @@
 package com.kino.puber.data.api
 
-import java.net.InetAddress
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockResponseBody
-import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import com.kino.puber.playertestfixtures.server.HermeticTestServer
+import com.kino.puber.playertestfixtures.server.QueryMatchMode
+import com.kino.puber.playertestfixtures.server.ResponsePlan
 import okio.Buffer
 import okio.BufferedSink
 
 internal class MockWebServerTestSupport : AutoCloseable {
 
-    private val routes = ConcurrentHashMap<String, (RecordedRequest) -> MockResponse>()
-    private val server = MockWebServer().apply {
-        dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse =
-                routes[request.url.encodedPath]?.invoke(request)
-                    ?: response(
-                        status = 404,
-                        body = """{"error":"unexpected test route"}""",
-                    )
-        }
-    }
+    private val server = HermeticTestServer()
 
     init {
-        server.start(InetAddress.getLoopbackAddress(), 0)
+        server.start()
     }
 
     val requestCount: Int
-        get() = server.requestCount
+        get() = server.requestJournal.entries.size
 
-    fun url(path: String): String = server.url(path).toString()
+    fun url(path: String): String = server.url(path)
 
     fun route(path: String, handler: (RecordedRequest) -> MockResponse) {
-        routes[normalizePath(path)] = handler
+        val normalizedPath = normalizePath(path)
+        server.addRoute(
+            server.route(
+                id = normalizedPath,
+                method = "*",
+                path = normalizedPath,
+                queryMode = QueryMatchMode.Contains,
+                response = ResponsePlan.Dynamic(handler),
+            ),
+        )
     }
 
     fun response(status: Int, body: String): MockResponse =

@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 rootProject.name = "Puber"
 include(":app")
 include(":baselineprofile")
+include(":player-test-fixtures")

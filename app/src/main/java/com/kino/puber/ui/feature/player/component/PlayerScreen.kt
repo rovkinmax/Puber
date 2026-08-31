@@ -6,6 +6,8 @@ import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import cafe.adriel.voyager.core.screen.ScreenKey
 import com.kino.puber.core.di.DIScope
+import com.kino.puber.core.di.LocalPuberKoinScope
+import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.FullscreenPuberScreen
 import com.kino.puber.core.ui.uikit.component.LifecycleAction
 import com.kino.puber.core.ui.uikit.component.ScaffoldMessage
@@ -59,7 +61,8 @@ internal data class PlayerScreen(private val params: PlayerScreenParams) : Fulls
     @Composable
     override fun Content() = DIScope(scopeName = key, moduleFactory = ::buildModule) {
         val vm = puberViewModel<PlayerVM>()
-        val state by vm.collectViewState()
+        val currentRouter = LocalPuberKoinScope.current!!.get<AppRouter>()
+        val state by vm.collectViewState(currentRouter = currentRouter)
         val onAction: (UIAction) -> Unit = remember(vm) { vm::onAction }
 
         LifecycleAction(

@@ -27,9 +27,11 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.CoroutineContext
 
-abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel(),
+abstract class PuberVM<ViewState>(router: AppRouter) : ViewModel(),
     BackButtonDispatcher {
 
+    protected var router: AppRouter = router
+        private set
     protected open val errorHandler: ErrorHandler? = null
     protected abstract val initialViewState: ViewState
     private val mutableViewState: MutableStateFlow<ViewState> by lazy {
@@ -134,22 +136,26 @@ abstract class PuberVM<ViewState>(protected val router: AppRouter) : ViewModel()
     }
 
     @Composable
-    fun collectViewState(initial: ViewState = stateValue): State<ViewState> {
+    fun collectViewState(
+        initial: ViewState = stateValue,
+        currentRouter: AppRouter = router,
+    ): State<ViewState> {
         ensureStarted()
-        DisposableEffect(this@PuberVM) {
-            registerBackDispatcher()
+        DisposableEffect(this@PuberVM, currentRouter) {
+            rebindRouter(currentRouter)
+            currentRouter.addBackDispatcher(this@PuberVM)
             onDispose {
-                removeBackDispatcher()
+                currentRouter.removeBackDispatcher(this@PuberVM)
             }
         }
         return viewState.collectAsStateWithLifecycle(initial)
     }
 
-    private fun registerBackDispatcher() {
-        router.addBackDispatcher(this)
-    }
-
-    private fun removeBackDispatcher() {
-        router.removeBackDispatcher(this)
+    @VisibleForTesting
+    internal fun rebindRouter(currentRouter: AppRouter) {
+        if (router !== currentRouter) {
+            router.removeBackDispatcher(this)
+            router = currentRouter
+        }
     }
 }

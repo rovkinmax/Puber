@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.player.vm
 
 import com.kino.puber.ui.feature.player.model.ActivePanel
 import com.kino.puber.ui.feature.player.model.FocusTarget
+import com.kino.puber.ui.feature.player.model.PlayerContentState
 
 internal class ControlsStateMachine {
 
@@ -101,4 +102,14 @@ internal class ControlsStateMachine {
             state = state.copy(controlsVisible = false, focusTarget = null)
         }
     }
+}
+
+internal fun PlayerContentState.withControlsState(
+    state: ControlsStateMachine.State,
+): PlayerContentState {
+    return copy(
+        controlsVisible = state.controlsVisible,
+        controlsFocusTarget = state.focusTarget,
+        activePanel = state.activePanel,
+    )
 }

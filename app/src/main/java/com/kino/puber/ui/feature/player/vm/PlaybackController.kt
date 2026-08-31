@@ -2,7 +2,6 @@ package com.kino.puber.ui.feature.player.vm
 
 import android.content.Context
 import androidx.annotation.OptIn
-import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -23,7 +22,6 @@ import androidx.media3.exoplayer.source.BehindLiveWindowException
 import androidx.media3.extractor.DefaultExtractorsFactory
 import okhttp3.OkHttpClient
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
@@ -35,7 +33,6 @@ import com.kino.puber.data.repository.PlayerPreferencesRepository
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.BufferPreset
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
-import java.util.Locale
 
 internal interface PlaybackControl {
     interface Callback : PlaybackEventSink {
@@ -78,10 +75,13 @@ internal class PlaybackController(
 
     private var exoPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
-    private var callback: PlaybackControl.Callback? = null
-    private var ac3FallbackApplied = false
+    private var playerListener: Player.Listener? = null
+    private var callbackSession: PlaybackCallbackGate.Session? = null
     private var useFastDns = true
     private var pendingSubtitleTrack: SubtitleTrackUIState? = null
+    private val ac3FallbackPolicy = Ac3FallbackPolicy()
+    private val callbackGate = PlaybackCallbackGate()
+    private val mediaItemFactory = PlaybackMediaItemFactory()
 
     @OptIn(UnstableApi::class)
     private val bandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
@@ -97,49 +97,65 @@ internal class PlaybackController(
         get() = playbackSnapshot().shouldKeepScreenOn
     override val bufferedPosition: Long get() = exoPlayer?.bufferedPosition ?: 0L
     
-    private val playerListener = object : Player.Listener {
-        override fun onIsPlayingChanged(isPlaying: Boolean) {
-            notifyPlaybackState()
-        }
-
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            exoPlayer?.let { player ->
-                PlaybackTransitions.dispatchPlaybackState(
-                    engine = ExoPlayerPlaybackEngine(player),
-                    playbackState = playbackState,
-                    sink = callback,
-                )
+    private fun createPlayerListener(session: PlaybackCallbackGate.Session) =
+        object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                notifyPlaybackState(session)
             }
-            when (playbackState) {
-                Player.STATE_READY -> notifyTracksUpdated()
-                else -> {}
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                callbackGate.dispatch(session) { callback ->
+                    exoPlayer?.let { player ->
+                        PlaybackTransitions.dispatchPlaybackState(
+                            engine = ExoPlayerPlaybackEngine(player),
+                            playbackState = playbackState,
+                            sink = callback,
+                        )
+                    }
+                    if (playbackState == Player.STATE_READY) {
+                        notifyTracksUpdated(callback)
+                    }
+                }
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                notifyPlaybackState(session)
+            }
+
+            override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                notifyPlaybackState(session)
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                callbackGate.dispatch(session) { callback ->
+                    notifyTracksUpdated(callback)
+                    applyPendingSubtitleSelection()
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                callbackGate.dispatch(session) { callback ->
+                    val cause = error.cause
+                    when {
+                        cause is BehindLiveWindowException -> recoverBehindLiveWindow()
+                        cause.isAc3DecoderInitializationException() -> when (
+                            val decision = ac3FallbackPolicy.onDecoderInitializationFailure(
+                                exoPlayer?.currentPosition ?: 0L,
+                            )
+                        ) {
+                            is Ac3FallbackPolicy.Decision.Retry ->
+                                disableAc3AndRetry(decision.positionMs)
+                            Ac3FallbackPolicy.Decision.Terminal -> callback?.onError(
+                                context.getString(R.string.player_error_playback)
+                            )
+                        }
+                        else -> callback?.onError(
+                            error.localizedMessage ?: context.getString(R.string.player_error_playback)
+                        )
+                    }
+                }
             }
         }
-
-        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-            notifyPlaybackState()
-        }
-
-        override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
-            notifyPlaybackState()
-        }
-
-        override fun onTracksChanged(tracks: Tracks) {
-            notifyTracksUpdated()
-            applyPendingSubtitleSelection()
-        }
-
-        override fun onPlayerError(error: PlaybackException) {
-            val cause = error.cause
-            when {
-                cause is BehindLiveWindowException -> recoverBehindLiveWindow()
-                cause.isAc3DecoderInitializationException() -> disableAc3AndRetry()
-                else -> callback?.onError(
-                    error.localizedMessage ?: context.getString(R.string.player_error_playback)
-                )
-            }
-        }
-    }
 
     private fun recoverBehindLiveWindow() {
         exoPlayer?.let { player ->
@@ -153,7 +169,7 @@ internal class PlaybackController(
     }
 
     override fun setCallback(callback: PlaybackControl.Callback) {
-        this.callback = callback
+        callbackGate.setCallback(callback)
     }
 
     @OptIn(UnstableApi::class)
@@ -165,7 +181,7 @@ internal class PlaybackController(
         fastDns: Boolean,
     ) {
         release()
-        ac3FallbackApplied = false
+        ac3FallbackPolicy.reset()
         useFastDns = fastDns
 
         val bufferParams = DeviceBufferConfig.resolve(context, bufferPreset)
@@ -215,8 +231,8 @@ internal class PlaybackController(
             .setHandleAudioBecomingNoisy(true)
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             .build()
-            .apply { addListener(playerListener) }
         exoPlayer = player
+        bindCallbackSession(player)
 
         val mediaItem = buildMediaItem(streamUrl, subtitles)
         setMediaSource(player, mediaItem, streamUrl)
@@ -245,6 +261,7 @@ internal class PlaybackController(
 
     override fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?) {
         val player = exoPlayer ?: return
+        bindCallbackSession(player)
         val engine = ExoPlayerPlaybackEngine(player)
         PlaybackTransitions.switchStream(
             engine = engine,
@@ -252,6 +269,15 @@ internal class PlaybackController(
             subtitles = subtitles,
         )
         notifyPlaybackState()
+    }
+
+    private fun bindCallbackSession(player: ExoPlayer) {
+        val session = callbackGate.beginSession()
+        val listener = createPlayerListener(session)
+        playerListener?.let(player::removeListener)
+        player.addListener(listener)
+        callbackSession = session
+        playerListener = listener
     }
 
     override fun play() {
@@ -306,7 +332,10 @@ internal class PlaybackController(
     }
 
     override fun release() {
-        exoPlayer?.removeListener(playerListener)
+        callbackGate.invalidate()
+        callbackSession = null
+        playerListener?.let { exoPlayer?.removeListener(it) }
+        playerListener = null
         exoPlayer?.release()
         exoPlayer = null
         trackSelector = null
@@ -314,16 +343,9 @@ internal class PlaybackController(
     }
 
     @OptIn(UnstableApi::class)
-    private fun disableAc3AndRetry() {
-        if (ac3FallbackApplied) {
-            callback?.onError(context.getString(R.string.player_error_playback))
-            return
-        }
-        ac3FallbackApplied = true
-
+    private fun disableAc3AndRetry(positionMs: Long) {
         val player = exoPlayer ?: return
         val selector = trackSelector ?: return
-        val position = player.currentPosition
 
         player.stop()
 
@@ -332,39 +354,13 @@ internal class PlaybackController(
             .setExceedAudioConstraintsIfNecessary(false)
             .build()
 
-        player.seekTo(position)
+        player.seekTo(positionMs)
         player.prepare()
         player.playWhenReady = true
     }
 
     private fun buildMediaItem(streamUrl: String, subtitles: List<SubtitleLink>?): MediaItem {
-        val builder = MediaItem.Builder().setUri(streamUrl)
-        if (!subtitles.isNullOrEmpty()) {
-            val subtitleConfigs = subtitles.map { sub ->
-                val stableKey = sub.url.stableSubtitleKey()
-                MediaItem.SubtitleConfiguration.Builder(sub.url.toUri())
-                    .setMimeType(subtitleMimeType(sub.url))
-                    .setLanguage(sub.lang)
-                    .setLabel(stableKey)
-                    .setId(stableKey)
-                    .build()
-            }
-            builder.setSubtitleConfigurations(subtitleConfigs)
-        }
-        return builder.build()
-    }
-
-    private fun subtitleMimeType(url: String): String {
-        val normalizedUrl = url
-            .substringBefore('?')
-            .substringBefore('#')
-            .lowercase(Locale.ROOT)
-        return when {
-            normalizedUrl.endsWith(".vtt") || normalizedUrl.endsWith(".webvtt") -> MimeTypes.TEXT_VTT
-            normalizedUrl.endsWith(".ass") || normalizedUrl.endsWith(".ssa") -> MimeTypes.TEXT_SSA
-            normalizedUrl.endsWith(".ttml") || normalizedUrl.endsWith(".xml") -> MimeTypes.APPLICATION_TTML
-            else -> MimeTypes.APPLICATION_SUBRIP
-        }
+        return mediaItemFactory.build(streamUrl, subtitles)
     }
 
     @OptIn(UnstableApi::class)
@@ -388,10 +384,12 @@ internal class PlaybackController(
     private fun setMediaSource(player: ExoPlayer, mediaItem: MediaItem, streamUrl: String) {
         val dsFactory = dataSourceFactory ?: return
         if (streamUrl.contains(".m3u8") || streamUrl.contains("hls")) {
-            val hlsSource = HlsMediaSource.Factory(dsFactory)
-                .setAllowChunklessPreparation(true)
+            val hlsMediaItem = mediaItem.buildUpon()
+                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                .build()
+            val hlsSource = createMediaSourceFactory(dsFactory)
                 .setLoadErrorHandlingPolicy(HlsErrorPolicy())
-                .createMediaSource(mediaItem)
+                .createMediaSource(hlsMediaItem)
             player.setMediaSource(hlsSource)
         } else {
             player.setMediaItem(mediaItem)
@@ -464,11 +462,17 @@ internal class PlaybackController(
     }
 
     private fun notifyPlaybackState() {
-        val player = exoPlayer ?: return
-        PlaybackTransitions.dispatchPlaybackSnapshot(
-            engine = ExoPlayerPlaybackEngine(player),
-            sink = callback,
-        )
+        callbackSession?.let(::notifyPlaybackState)
+    }
+
+    private fun notifyPlaybackState(session: PlaybackCallbackGate.Session) {
+        callbackGate.dispatch(session) { callback ->
+            val player = exoPlayer ?: return@dispatch
+            PlaybackTransitions.dispatchPlaybackSnapshot(
+                engine = ExoPlayerPlaybackEngine(player),
+                sink = callback,
+            )
+        }
     }
 
     private inner class ExoPlayerPlaybackEngine(
@@ -530,7 +534,7 @@ internal class PlaybackController(
         }
     }
 
-    private fun notifyTracksUpdated() {
+    private fun notifyTracksUpdated(callback: PlaybackControl.Callback?) {
         val player = exoPlayer ?: return
         val audioGroups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
         if (audioGroups.isEmpty()) return

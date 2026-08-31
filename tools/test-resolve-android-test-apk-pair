@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly RESOLVER="$ROOT/tools/resolve-android-test-apk-pair"
+readonly TMP="$(mktemp -d "${TMPDIR:-/tmp}/puber-apk-pair-test.XXXXXX")"
+trap 'rm -rf -- "$TMP"' EXIT
+
+fail() {
+    echo "FAIL: $*" >&2
+    exit 1
+}
+
+assert_rejected() {
+    if "$@" >/dev/null 2>&1; then
+        fail "expected rejection: $*"
+    fi
+}
+
+make_analyzer() {
+    local path="$TMP/apkanalyzer"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1 $2" == "manifest application-id" ]]; then
+    case "$3" in
+        *target.apk) echo "com.kino.puber.instrumentation" ;;
+        *app-test.apk) echo "com.kino.puber.instrumentation" ;;
+        *wrong-target-package.apk) echo "com.kino.puber.instrumentation" ;;
+        *wrong-runner.apk) echo "com.kino.puber.instrumentation" ;;
+        *baseline-test.apk) echo "com.kino.puber.baselineprofile" ;;
+        *) exit 1 ;;
+    esac
+else
+    case "$3" in
+        *target.apk) echo '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.kino.puber.instrumentation"/>' ;;
+        *app-test.apk) echo '<manifest><instrumentation android:name="androidx.test.runner.AndroidJUnitRunner" android:targetPackage="com.kino.puber.instrumentation"/></manifest>' ;;
+        *wrong-target-package.apk) echo '<manifest><instrumentation android:name="androidx.test.runner.AndroidJUnitRunner" android:targetPackage="com.example.other"/></manifest>' ;;
+        *wrong-runner.apk) echo '<manifest><instrumentation android:name="com.example.WrongRunner" android:targetPackage="com.kino.puber.instrumentation"/></manifest>' ;;
+        *baseline-test.apk) echo '<manifest><instrumentation android:name="androidx.test.runner.AndroidJUnitRunner" android:targetPackage="com.kino.puber.baselineprofile"/></manifest>' ;;
+        *) exit 1 ;;
+    esac
+fi
+EOF
+    chmod +x "$path"
+    echo "$path"
+}
+
+write_metadata() {
+    local metadata="$1"
+    local apk_name="$2"
+    mkdir -p "$(dirname "$metadata")"
+    : > "$(dirname "$metadata")/$apk_name"
+    jq -n --arg output "$apk_name" \
+        '{elements: [{type: "SINGLE", filters: [], outputFile: $output}]}' > "$metadata"
+}
+
+analyzer="$(make_analyzer)"
+target_meta="$TMP/target/output-metadata.json"
+app_test_meta="$TMP/app-test/output-metadata.json"
+baseline_test_meta="$TMP/baseline-test/output-metadata.json"
+wrong_target_package_meta="$TMP/wrong-target-package/output-metadata.json"
+wrong_runner_meta="$TMP/wrong-runner/output-metadata.json"
+build_started="$(date +%s)"
+write_metadata "$target_meta" target.apk
+write_metadata "$app_test_meta" app-test.apk
+write_metadata "$baseline_test_meta" baseline-test.apk
+write_metadata "$wrong_target_package_meta" wrong-target-package.apk
+write_metadata "$wrong_runner_meta" wrong-runner.apk
+
+mkdir -p "$TMP/no-tools"
+missing_analyzer_output="$TMP/missing-analyzer.txt"
+if env -u APKANALYZER \
+    ANDROID_HOME="$TMP/missing-android-home" \
+    PATH="$TMP/no-tools" \
+    /bin/bash "$RESOLVER" >"$missing_analyzer_output" 2>&1; then
+    fail "missing apkanalyzer was accepted"
+else
+    missing_analyzer_status=$?
+fi
+[[ "$missing_analyzer_status" -eq 1 ]] ||
+    fail "missing apkanalyzer exited with $missing_analyzer_status instead of 1"
+[[ "$(cat "$missing_analyzer_output")" == \
+    "resolve-android-test-apk-pair: apkanalyzer is not available" ]] ||
+    fail "missing apkanalyzer diagnostic was not bounded"
+
+valid_app="$(env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$target_meta" --test-metadata "$app_test_meta" \
+    --built-after "$build_started")" || fail "valid app pair rejected"
+[[ "$(jq -r .pairing_contract <<<"$valid_app")" == "app-android-test" ]] ||
+    fail "app contract missing from output"
+
+valid_baseline="$(env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract standalone-self-target \
+    --expected-target-application-id com.kino.puber.instrumentation \
+    --expected-test-application-id com.kino.puber.baselineprofile \
+    --target-metadata "$target_meta" --test-metadata "$baseline_test_meta" \
+    --built-after "$build_started")" || fail "valid standalone pair rejected"
+[[ "$(jq -r .test.target_package <<<"$valid_baseline")" == "com.kino.puber.baselineprofile" ]] ||
+    fail "standalone target package missing"
+
+zero="$TMP/zero.json"
+jq '.elements = []' "$target_meta" > "$zero"
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$zero" --test-metadata "$app_test_meta" --built-after "$build_started"
+
+multi="$TMP/multi.json"
+jq '.elements += [{type: "SINGLE", filters: [], outputFile: "other.apk"}]' "$target_meta" > "$multi"
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$multi" --test-metadata "$app_test_meta" --built-after "$build_started"
+
+stale="$TMP/stale.json"
+cp "$target_meta" "$stale"
+touch -t 202001010000 "$stale"
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$stale" --test-metadata "$app_test_meta" --built-after "$build_started"
+
+split="$TMP/split.json"
+jq '.elements[0].type = "SPLIT"' "$target_meta" > "$split"
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$split" --test-metadata "$app_test_meta" --built-after "$build_started"
+
+escape="$TMP/escape.json"
+jq '.elements[0].outputFile = "../target.apk"' "$target_meta" > "$escape"
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$escape" --test-metadata "$app_test_meta" --built-after "$build_started"
+
+metadata_link="$TMP/metadata-link.json"
+ln -s "$target_meta" "$metadata_link"
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$metadata_link" --test-metadata "$app_test_meta" --built-after "$build_started"
+
+stale_apk="$TMP/target/stale-apk.json"
+cp "$target_meta" "$stale_apk"
+touch -t 202001010000 "$TMP/target/target.apk"
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$stale_apk" --test-metadata "$app_test_meta" --built-after "$build_started"
+touch "$TMP/target/target.apk"
+
+apk_link="$TMP/target/apk-link.json"
+jq '.elements[0].outputFile = "linked.apk"' "$target_meta" > "$apk_link"
+ln -s target.apk "$TMP/target/linked.apk"
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$apk_link" --test-metadata "$app_test_meta" --built-after "$build_started"
+
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$target_meta" --test-metadata "$wrong_target_package_meta" --built-after "$build_started"
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract app-android-test \
+    --target-metadata "$target_meta" --test-metadata "$wrong_runner_meta" --built-after "$build_started"
+
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract standalone-self-target \
+    --expected-target-application-id com.kino.puber.instrumentation \
+    --expected-test-application-id com.kino.puber.baselineprofile \
+    --target-metadata "$target_meta" --test-metadata "$app_test_meta" --built-after "$build_started"
+assert_rejected env APKANALYZER="$analyzer" "$RESOLVER" --pairing-contract standalone-self-target \
+    --expected-target-application-id com.example.wrong \
+    --expected-test-application-id com.kino.puber.baselineprofile \
+    --target-metadata "$target_meta" --test-metadata "$baseline_test_meta" --built-after "$build_started"
+
+echo "APK pair resolver tests passed"
