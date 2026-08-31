@@ -25,9 +25,27 @@ internal class ControlsStateMachine {
     private var lastPanelOpener: FocusTarget = FocusTarget.Buttons
     private var wasPlayRequestedBeforePanel = false
 
+    fun initialize(resumeDialogVisible: Boolean) {
+        state = State(
+            controlsVisible = !resumeDialogVisible,
+            focusTarget = FocusTarget.Buttons.takeUnless { resumeDialogVisible },
+            activePanel = ActivePanel.None,
+        )
+        lastPanelOpener = FocusTarget.Buttons
+        wasPlayRequestedBeforePanel = false
+    }
+
     fun showControls(focusTarget: FocusTarget): List<Effect> {
+        return revealControls(focusTarget, Effect.ScheduleHide)
+    }
+
+    fun showControlsPersistently(focusTarget: FocusTarget): List<Effect> {
+        return revealControls(focusTarget, Effect.CancelHide)
+    }
+
+    private fun revealControls(focusTarget: FocusTarget, effect: Effect): List<Effect> {
         state = state.copy(controlsVisible = true, focusTarget = focusTarget)
-        return listOf(Effect.ScheduleHide)
+        return listOf(effect)
     }
 
     fun hideControls(): List<Effect> {

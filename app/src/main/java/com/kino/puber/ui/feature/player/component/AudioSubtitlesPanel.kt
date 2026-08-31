@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -35,6 +36,7 @@ import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 @Composable
 internal fun AudioSubtitlesPanel(
     visible: Boolean,
+    isFocusOwner: Boolean,
     soundModes: List<SoundModeUIState>,
     selectedSoundModeIndex: Int,
     audioTracks: List<AudioTrackUIState>,
@@ -54,8 +56,18 @@ internal fun AudioSubtitlesPanel(
         enter = slideInVertically(initialOffsetY = { it }),
         exit = slideOutVertically(targetOffsetY = { it }),
     ) {
+        val initialFocusTarget = when {
+            soundModes.isNotEmpty() -> AudioSubtitlesFocusTarget.SoundMode
+            audioTracks.isNotEmpty() -> AudioSubtitlesFocusTarget.AudioTrack
+            subtitleTracks.isNotEmpty() -> AudioSubtitlesFocusTarget.Subtitle
+            else -> AudioSubtitlesFocusTarget.SubtitleSize
+        }
+        val panelFocusRequester = rememberRequestingFocusRequester(
+            focusKey = initialFocusTarget,
+            isFocusOwner = isFocusOwner,
+        )
+
         AudioSubtitlesPanelContainer {
-            val panelFocusRequester = rememberRequestingFocusRequester()
             AudioSubtitlesColumns(
                 soundModes = soundModes,
                 selectedSoundModeIndex = selectedSoundModeIndex,
@@ -64,13 +76,26 @@ internal fun AudioSubtitlesPanel(
                 subtitleTracks = subtitleTracks,
                 selectedSubtitleIndex = selectedSubtitleIndex,
                 panelFocusRequester = panelFocusRequester,
+                initialFocusTarget = initialFocusTarget,
                 onSoundModeSelected = onSoundModeSelected,
                 onAudioTrackSelected = onAudioTrackSelected,
                 onSubtitleSelected = onSubtitleSelected,
             )
-            SubtitleSizeButton(onClick = onSubtitleSizeClick)
+            SubtitleSizeButton(
+                onClick = onSubtitleSizeClick,
+                focusRequester = panelFocusRequester.takeIf {
+                    initialFocusTarget == AudioSubtitlesFocusTarget.SubtitleSize
+                },
+            )
         }
     }
+}
+
+private enum class AudioSubtitlesFocusTarget {
+    SoundMode,
+    AudioTrack,
+    Subtitle,
+    SubtitleSize,
 }
 
 @Composable
@@ -101,6 +126,7 @@ private fun AudioSubtitlesColumns(
     subtitleTracks: List<SubtitleTrackUIState>,
     selectedSubtitleIndex: Int,
     panelFocusRequester: FocusRequester,
+    initialFocusTarget: AudioSubtitlesFocusTarget,
     onSoundModeSelected: (Int) -> Unit,
     onAudioTrackSelected: (Int) -> Unit,
     onSubtitleSelected: (Int) -> Unit,
@@ -111,9 +137,24 @@ private fun AudioSubtitlesColumns(
             .padding(top = 24.dp, bottom = 16.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        SoundModeColumn(soundModes, selectedSoundModeIndex, onSoundModeSelected)
-        AudioTrackColumn(audioTracks, selectedAudioTrackIndex, panelFocusRequester, onAudioTrackSelected)
-        SubtitleColumn(subtitleTracks, selectedSubtitleIndex, onSubtitleSelected)
+        SoundModeColumn(
+            soundModes,
+            selectedSoundModeIndex,
+            panelFocusRequester.takeIf { initialFocusTarget == AudioSubtitlesFocusTarget.SoundMode },
+            onSoundModeSelected,
+        )
+        AudioTrackColumn(
+            audioTracks,
+            selectedAudioTrackIndex,
+            panelFocusRequester.takeIf { initialFocusTarget == AudioSubtitlesFocusTarget.AudioTrack },
+            onAudioTrackSelected,
+        )
+        SubtitleColumn(
+            subtitleTracks,
+            selectedSubtitleIndex,
+            panelFocusRequester.takeIf { initialFocusTarget == AudioSubtitlesFocusTarget.Subtitle },
+            onSubtitleSelected,
+        )
     }
 }
 
@@ -121,6 +162,7 @@ private fun AudioSubtitlesColumns(
 private fun RowScope.SoundModeColumn(
     soundModes: List<SoundModeUIState>,
     selectedSoundModeIndex: Int,
+    panelFocusRequester: FocusRequester?,
     onSoundModeSelected: (Int) -> Unit,
 ) {
     if (soundModes.isEmpty()) return
@@ -131,6 +173,7 @@ private fun RowScope.SoundModeColumn(
         selectedIndex = selectedSoundModeIndex,
         onItemSelected = onSoundModeSelected,
         modifier = Modifier.weight(1f),
+        firstItemFocusRequester = panelFocusRequester,
     )
 }
 
@@ -138,7 +181,7 @@ private fun RowScope.SoundModeColumn(
 private fun RowScope.AudioTrackColumn(
     audioTracks: List<AudioTrackUIState>,
     selectedAudioTrackIndex: Int,
-    panelFocusRequester: FocusRequester,
+    panelFocusRequester: FocusRequester?,
     onAudioTrackSelected: (Int) -> Unit,
 ) {
     if (audioTracks.isEmpty()) return
@@ -157,6 +200,7 @@ private fun RowScope.AudioTrackColumn(
 private fun RowScope.SubtitleColumn(
     subtitleTracks: List<SubtitleTrackUIState>,
     selectedSubtitleIndex: Int,
+    panelFocusRequester: FocusRequester?,
     onSubtitleSelected: (Int) -> Unit,
 ) {
     val labels = remember(subtitleTracks) { subtitleTracks.map { it.label } }
@@ -166,16 +210,21 @@ private fun RowScope.SubtitleColumn(
         selectedIndex = selectedSubtitleIndex,
         onItemSelected = onSubtitleSelected,
         modifier = Modifier.weight(1f),
+        firstItemFocusRequester = panelFocusRequester,
     )
 }
 
 @Composable
-private fun BoxScope.SubtitleSizeButton(onClick: () -> Unit) {
+private fun BoxScope.SubtitleSizeButton(
+    onClick: () -> Unit,
+    focusRequester: FocusRequester?,
+) {
     Button(
         onClick = onClick,
         modifier = Modifier
             .align(Alignment.TopEnd)
-            .padding(top = 16.dp, end = 16.dp),
+            .padding(top = 16.dp, end = 16.dp)
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
         colors = ButtonDefaults.colors(
             containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,

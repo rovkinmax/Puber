@@ -18,6 +18,28 @@ class ControlsStateMachineTest {
     }
 
     // ------------------------------------------------------------------
+    // initialize
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `initialize_withoutResumeDialog_showsInitialButtons`() {
+        machine.initialize(resumeDialogVisible = false)
+
+        assertTrue(machine.state.controlsVisible)
+        assertEquals(FocusTarget.Buttons, machine.state.focusTarget)
+        assertEquals(ActivePanel.None, machine.state.activePanel)
+    }
+
+    @Test
+    fun `initialize_withResumeDialog_keepsControlsHidden`() {
+        machine.initialize(resumeDialogVisible = true)
+
+        assertFalse(machine.state.controlsVisible)
+        assertEquals(null, machine.state.focusTarget)
+        assertEquals(ActivePanel.None, machine.state.activePanel)
+    }
+
+    // ------------------------------------------------------------------
     // showControls
     // ------------------------------------------------------------------
 
@@ -34,6 +56,15 @@ class ControlsStateMachineTest {
         machine.showControls(FocusTarget.SeekBar)
 
         assertEquals(FocusTarget.SeekBar, machine.state.focusTarget)
+    }
+
+    @Test
+    fun `showControlsPersistently_setsTargetAndCancelsOrdinaryHide`() {
+        val effects = machine.showControlsPersistently(FocusTarget.Buttons)
+
+        assertTrue(machine.state.controlsVisible)
+        assertEquals(FocusTarget.Buttons, machine.state.focusTarget)
+        assertEquals(listOf(ControlsStateMachine.Effect.CancelHide), effects)
     }
 
     // ------------------------------------------------------------------
@@ -115,6 +146,24 @@ class ControlsStateMachineTest {
         machine.closePanel()
 
         assertEquals(FocusTarget.EpisodesButton, machine.state.focusTarget)
+    }
+
+    @Test
+    fun `closePanel_restoresAudioSubtitlesOpener`() {
+        machine.openPanel(ActivePanel.AudioSubtitles, playbackIntent = PlaybackIntent.Paused)
+
+        machine.closePanel()
+
+        assertEquals(FocusTarget.AudioSubtitlesButton, machine.state.focusTarget)
+    }
+
+    @Test
+    fun `closePanel_restoresVideoSettingsOpener`() {
+        machine.openPanel(ActivePanel.VideoSettings, playbackIntent = PlaybackIntent.Paused)
+
+        machine.closePanel()
+
+        assertEquals(FocusTarget.VideoSettingsButton, machine.state.focusTarget)
     }
 
     // ------------------------------------------------------------------

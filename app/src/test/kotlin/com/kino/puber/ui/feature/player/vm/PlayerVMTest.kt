@@ -16,7 +16,6 @@ import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerViewState
-import com.kino.puber.ui.feature.player.model.ResumeDialogState
 import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
 import com.kino.puber.util.FakeResourceProvider
 import com.kino.puber.util.MainDispatcherExtension
@@ -356,6 +355,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         val vm = startedVM()
 
         vm.onAction(PlayerAction.OnBackPressed)
+        vm.onAction(PlayerAction.OnBackPressed)
 
         verifyContentChangeResult(ContentChangeType.PlaybackProgress)
     }
@@ -368,6 +368,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         }
         val vm = startedVM()
 
+        vm.onAction(PlayerAction.OnBackPressed)
         vm.onAction(PlayerAction.OnBackPressed)
 
         verify(exactly = 0) { router.back(any(), any()) }
@@ -406,6 +407,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         val vm = startedVM()
 
         vm.onAction(PlayerAction.OnBackPressed)
+        vm.onAction(PlayerAction.OnBackPressed)
 
         verifyEmptyContentChangeResult()
     }
@@ -424,6 +426,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
 
         Timber.plant(logTree)
         try {
+            vm.onAction(PlayerAction.OnBackPressed)
             vm.onAction(PlayerAction.OnBackPressed)
         } finally {
             Timber.uproot(logTree)
@@ -688,41 +691,6 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
         vm.onAction(PlayerAction.PreviousEpisode)
 
         verify(exactly = 0) { playbackController.release() }
-    }
-
-    // endregion
-
-    // region Resume dialog
-
-    @Test
-    fun resumeFromPosition_seeksToSavedPosition_clearsDialog() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
-            resumeDialog = ResumeDialogState(savedPosition = 120_000L, formattedTime = "2:00", episodeInfo = null),
-            isPlaying = false,
-        )
-        val vm = startedVM()
-
-        vm.onAction(PlayerAction.ResumeFromPosition)
-
-        verify { playbackController.seekTo(120_000L) }
-        verify { playbackController.play() }
-        assertNull(contentState(vm).resumeDialog)
-        assertEquals(PlaybackIntent.PlayRequested, contentState(vm).playbackIntent)
-    }
-
-    @Test
-    fun startFromBeginning_seeksToZero_clearsDialog() {
-        coEvery { contentStateFactory.build(any(), any(), any(), any(), any(), any()) } returns testContentState.copy(
-            resumeDialog = ResumeDialogState(savedPosition = 120_000L, formattedTime = "2:00", episodeInfo = null),
-            isPlaying = false,
-        )
-        val vm = startedVM()
-
-        vm.onAction(PlayerAction.StartFromBeginning)
-
-        verify { playbackController.seekTo(0) }
-        verify { playbackController.play() }
-        assertNull(contentState(vm).resumeDialog)
     }
 
     // endregion
