@@ -42,4 +42,5 @@ dependencies {
     implementation(libs.androidx.uiautomator)
     implementation(libs.androidx.test.runner)
     implementation(libs.mockwebserver3)
+    implementation(project(":player-test-fixtures"))
 }

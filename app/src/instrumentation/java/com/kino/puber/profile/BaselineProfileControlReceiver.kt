@@ -8,7 +8,7 @@ import android.content.Intent
 internal class BaselineProfileControlReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val journal = BaselineNetworkJournal(context)
+        val journal = BaselineNetworkBlocker.journal(context)
         when (intent.action) {
             ACTION_CLEAR -> {
                 journal.clear()

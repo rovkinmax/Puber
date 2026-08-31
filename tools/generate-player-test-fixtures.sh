@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+readonly MODULE_ROOT="$REPO_ROOT/player-test-fixtures"
+readonly DEFAULT_OUTPUT="$MODULE_ROOT/src/main/assets/player-fixtures"
+readonly FFMPEG_VERSION_REQUIRED="9.0.1"
+
+output="$DEFAULT_OUTPUT"
+force=0
+
+usage() {
+    echo "Usage: $0 [--output DIR] [--force]" >&2
+}
+
+while (($# > 0)); do
+    case "$1" in
+        --output)
+            (($# >= 2)) || { usage; exit 2; }
+            output="$2"
+            shift 2
+            ;;
+        --force)
+            force=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            usage
+            exit 2
+            ;;
+    esac
+done
+
+ffmpeg_bin="${FFMPEG_BIN:-$(command -v ffmpeg || true)}"
+if [[ -z "$ffmpeg_bin" || ! -x "$ffmpeg_bin" ]]; then
+    echo "ffmpeg is required; install version $FFMPEG_VERSION_REQUIRED" >&2
+    exit 1
+fi
+
+ffmpeg_version="$("$ffmpeg_bin" -version | sed -n '1s/^ffmpeg version \([^ ]*\).*/\1/p')"
+if [[ "$ffmpeg_version" != "$FFMPEG_VERSION_REQUIRED" ]]; then
+    echo "Unsupported ffmpeg version '$ffmpeg_version'; expected $FFMPEG_VERSION_REQUIRED" >&2
+    exit 1
+fi
+
+case "$output" in
+    "$MODULE_ROOT"/src/main/assets/player-fixtures|"$REPO_ROOT"/player-test-fixtures/src/main/assets/player-fixtures)
+        ;;
+    *)
+        echo "Refusing to write outside the fixture output directory: $output" >&2
+        exit 1
+        ;;
+esac
+
+if [[ -e "$output" ]]; then
+    if ((force == 0)); then
+        echo "$output already exists; pass --force for an explicit regeneration" >&2
+        exit 1
+    fi
+    rm -rf -- "$output"
+fi
+
+mkdir -p "$output/hls"
+temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/puber-player-fixtures.XXXXXX")"
+trap 'rm -rf -- "$temp_dir"' EXIT
+
+common_video_args=(
+    -hide_banner -loglevel error -y
+    -fflags +bitexact
+    -threads 1
+)
+
+"$ffmpeg_bin" "${common_video_args[@]}" \
+    -f lavfi -i "testsrc2=size=640x360:rate=30" \
+    -f lavfi -i "sine=frequency=440:sample_rate=48000" \
+    -t 4 -shortest \
+    -map_metadata -1 \
+    -c:v libx264 -preset veryfast -profile:v baseline -level 3.0 \
+    -pix_fmt yuv420p -r 30 -g 60 -keyint_min 60 -sc_threshold 0 \
+    -b:v 800k -c:a aac -b:a 96k -ar 48000 \
+    -movflags +faststart \
+    "$output/progressive.mp4"
+
+generate_video_playlist() {
+    local width="$1"
+    local height="$2"
+    local bitrate="$3"
+    local name="$4"
+    "$ffmpeg_bin" "${common_video_args[@]}" \
+        -i "$output/progressive.mp4" -map 0:v:0 -an \
+        -vf "scale=${width}:${height}:flags=bilinear" \
+        -map_metadata -1 \
+        -c:v libx264 -preset veryfast -profile:v baseline -level 3.0 \
+        -pix_fmt yuv420p -r 30 -g 60 -keyint_min 60 -sc_threshold 0 \
+        -b:v "$bitrate" -force_key_frames "expr:gte(t,n_forced*2)" \
+        -f hls -hls_time 2 -hls_playlist_type vod \
+        -hls_flags independent_segments \
+        -hls_segment_filename "$temp_dir/${name}_%03d.ts" \
+        "$temp_dir/${name}.m3u8"
+    cp "$temp_dir/${name}.m3u8" "$output/hls/${name}.m3u8"
+    cp "$temp_dir/${name}"_*.ts "$output/hls/"
+}
+
+generate_video_playlist 640 360 700k video_360
+generate_video_playlist 1280 720 1.4M video_720
+
+generate_audio_playlist() {
+    local frequency="$1"
+    local name="$2"
+    "$ffmpeg_bin" "${common_video_args[@]}" \
+        -f lavfi -i "sine=frequency=${frequency}:sample_rate=48000" \
+        -t 4 -vn -map_metadata -1 -c:a aac -b:a 96k -ar 48000 \
+        -f hls -hls_time 2 -hls_playlist_type vod \
+        -hls_flags independent_segments \
+        -hls_segment_filename "$temp_dir/${name}_%03d.ts" \
+        "$temp_dir/${name}.m3u8"
+    cp "$temp_dir/${name}.m3u8" "$output/hls/${name}.m3u8"
+    cp "$temp_dir/${name}"_*.ts "$output/hls/"
+}
+
+generate_audio_playlist 440 audio_english
+generate_audio_playlist 660 audio_spanish
+
+(
+    cd "$output/hls"
+    {
+        echo '#EXTM3U'
+        echo '#EXT-X-VERSION:3'
+        echo '#EXT-X-INDEPENDENT-SEGMENTS'
+        echo '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,URI="audio_english.m3u8"'
+        echo '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Español",LANGUAGE="es",DEFAULT=NO,AUTOSELECT=YES,URI="audio_spanish.m3u8"'
+        echo '#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,CODECS="avc1.42c01e,mp4a.40.2",AUDIO="audio"'
+        echo 'video_360.m3u8'
+        echo '#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=1280x720,CODECS="avc1.42c01e,mp4a.40.2",AUDIO="audio"'
+        echo 'video_720.m3u8'
+    } > master.m3u8
+)
+
+cat > "$output/subtitle.vtt" <<'EOF'
+WEBVTT
+
+00:00:01.000 --> 00:00:02.000
+Synthetic player fixture cue
+EOF
+
+hash_for() {
+    shasum -a 256 "$output/$1" | awk '{print $1}'
+}
+
+{
+    echo "# Generated by tools/generate-player-test-fixtures.sh"
+    echo
+    echo "Tool: ffmpeg $ffmpeg_version"
+    echo "Inputs: lavfi testsrc2 video pattern and lavfi sine tones at 440 Hz and 660 Hz."
+    echo "Container: progressive H.264/AAC MP4; HLS MPEG-TS VOD playlists with two video variants and two AAC renditions."
+    echo "Duration: 4 seconds; segment target: 2 seconds."
+    echo "The generated bytes are committed. Gradle and tests verify hashes and do not transcode."
+    echo "Regeneration is a maintainer action and requires the exact ffmpeg version above."
+} > "$MODULE_ROOT/fixtures-provenance.md"
+
+{
+    echo "# Generated by tools/generate-player-test-fixtures.sh"
+    echo "fixture.ProgressiveMp4.duration_ms=4000"
+    echo "fixture.ProgressiveMp4.sha256=$(hash_for progressive.mp4)"
+    echo "fixture.HlsMaster.sha256=$(hash_for hls/master.m3u8)"
+    echo "fixture.HlsVideo360Playlist.duration_ms=4000"
+    echo "fixture.HlsVideo360Playlist.sha256=$(hash_for hls/video_360.m3u8)"
+    echo "fixture.HlsVideo720Playlist.duration_ms=4000"
+    echo "fixture.HlsVideo720Playlist.sha256=$(hash_for hls/video_720.m3u8)"
+    echo "fixture.HlsAudioEnglishPlaylist.duration_ms=4000"
+    echo "fixture.HlsAudioEnglishPlaylist.language=en"
+    echo "fixture.HlsAudioEnglishPlaylist.label=English"
+    echo "fixture.HlsAudioEnglishPlaylist.sha256=$(hash_for hls/audio_english.m3u8)"
+    echo "fixture.HlsAudioSpanishPlaylist.duration_ms=4000"
+    echo "fixture.HlsAudioSpanishPlaylist.language=es"
+    echo "fixture.HlsAudioSpanishPlaylist.label=Español"
+    echo "fixture.HlsAudioSpanishPlaylist.sha256=$(hash_for hls/audio_spanish.m3u8)"
+    echo "fixture.SubtitleWebVtt.cue_start_ms=1000"
+    echo "fixture.SubtitleWebVtt.cue_end_ms=2000"
+    echo "fixture.SubtitleWebVtt.sha256=$(hash_for subtitle.vtt)"
+} > "$output/fixture-manifest.properties"
+
+{
+    echo "# Generated by tools/generate-player-test-fixtures.sh"
+    echo "# Paths are relative to player-test-fixtures/src/main/assets/player-fixtures"
+    find "$output" -type f ! -name SHA256SUMS -print |
+        sed "s#^$output/##" |
+        sort |
+        while read -r path; do
+            printf '%s  %s\n' "$(hash_for "$path")" "$path"
+        done
+} > "$output/SHA256SUMS"
+cp "$output/SHA256SUMS" "$MODULE_ROOT/SHA256SUMS"
+
+echo "Generated fixture pack at $output"

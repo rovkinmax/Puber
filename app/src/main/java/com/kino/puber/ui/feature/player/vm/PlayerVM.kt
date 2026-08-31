@@ -289,26 +289,15 @@ internal class PlayerVM(
             isMarkCurrentWatchedInFlight = watchedMutationsInFlight[token.key].orZero() > 0,
         )
 
-        publishPreparedContent(contentState, resumeDialog)
+        controlsHideJob?.cancel()
+        controlsStateMachine.initialize(resumeDialogVisible = resumeDialog != null)
+        updateViewState(PlayerViewState.Content(contentState.withControlsState(controlsStateMachine.state)))
         autoMarkHandledToken = token.takeIf { resolved.isCurrentMediaWatched }
         episodeSwitchInProgress = false
         initializePlayer(savedPosition = if (resumeDialog != null) null else 0L)
         startProgressSync()
         if (resumeDialog == null) scheduleControlsHide()
         loadSkipSegments(item, resolved.seasonNumber, resolved.episodeNumber, token)
-    }
-
-    private fun publishPreparedContent(
-        contentState: PlayerContentState,
-        resumeDialog: ResumeDialogState?,
-    ) {
-        controlsHideJob?.cancel()
-        controlsStateMachine.initialize(resumeDialogVisible = resumeDialog != null)
-        updateViewState(
-            PlayerViewState.Content(
-                contentState.withControlsState(controlsStateMachine.state),
-            ),
-        )
     }
 
     private fun isCurrentPrepare(generation: Long): Boolean {
@@ -494,12 +483,6 @@ internal class PlayerVM(
         processEffects(effects)
     }
 
-    private fun showControlsPersistently(focusTarget: FocusTarget) {
-        val effects = controlsStateMachine.showControlsPersistently(focusTarget)
-        applyControlsState()
-        processEffects(effects)
-    }
-
     private fun hideControls() {
         val effects = controlsStateMachine.hideControls()
         applyControlsState()
@@ -528,10 +511,7 @@ internal class PlayerVM(
     }
 
     private fun applyControlsState() {
-        val cs = controlsStateMachine.state
-        updateContent {
-            withControlsState(cs)
-        }
+        updateContent { withControlsState(controlsStateMachine.state) }
     }
 
     private fun processEffects(effects: List<ControlsStateMachine.Effect>) {
@@ -999,7 +979,11 @@ internal class PlayerVM(
             !content.isMovie &&
                 content.hasNextEpisode &&
                 content.nextEpisodeCountdown == null -> startNextEpisodeCountdown()
-            !content.isMovie -> showControlsPersistently(FocusTarget.Buttons)
+            !content.isMovie -> {
+                val effects = controlsStateMachine.showControlsPersistently(FocusTarget.Buttons)
+                applyControlsState()
+                processEffects(effects)
+            }
         }
     }
 
@@ -1046,16 +1030,6 @@ internal class PlayerVM(
             copy(resumeDialog = null, playbackIntent = PlaybackIntent.PlayRequested)
         }
         scheduleControlsHide()
-    }
-
-    private fun PlayerContentState.withControlsState(
-        state: ControlsStateMachine.State,
-    ): PlayerContentState {
-        return copy(
-            controlsVisible = state.controlsVisible,
-            controlsFocusTarget = state.focusTarget,
-            activePanel = state.activePanel,
-        )
     }
 
     private fun pauseForBackground() {

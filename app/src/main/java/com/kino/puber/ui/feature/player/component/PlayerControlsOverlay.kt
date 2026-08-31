@@ -168,6 +168,7 @@ private fun ControlsBottomBar(
             onSeekBackward = actions.onSeekBackward,
             onTogglePlayPause = actions.onTogglePlayPause,
             focusRequester = focusRequesters.seekBar,
+            downFocusRequester = focusRequesters.firstButton,
         )
         PlayerButtonRow(
             state = buttonState,

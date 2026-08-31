@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+pairing_contract=""
+expected_target_id=""
+expected_test_id=""
+target_metadata=""
+test_metadata=""
+built_after=""
+
+die() {
+    echo "resolve-android-test-apk-pair: $*" >&2
+    exit 1
+}
+
+if [[ -n "${APKANALYZER:-}" ]]; then
+    analyzer="$APKANALYZER"
+else
+    analyzer=""
+    for candidate in \
+        "${ANDROID_HOME:-}/cmdline-tools/latest/bin/apkanalyzer" \
+        "${ANDROID_HOME:-}/cmdline-tools/17.0/bin/apkanalyzer" \
+        "$(command -v apkanalyzer 2>/dev/null || true)"; do
+        if [[ -x "$candidate" ]]; then
+            analyzer="$candidate"
+            break
+        fi
+    done
+    [[ -n "$analyzer" ]] || die "apkanalyzer is not available"
+fi
+
+usage() {
+    echo "Usage: $0 --pairing-contract CONTRACT [--expected-target-application-id ID] [--expected-test-application-id ID] --target-metadata FILE --test-metadata FILE --built-after EPOCH_SECONDS" >&2
+}
+
+while (($# > 0)); do
+    case "$1" in
+        --pairing-contract) pairing_contract="${2:?missing value}"; shift 2 ;;
+        --expected-target-application-id) expected_target_id="${2:?missing value}"; shift 2 ;;
+        --expected-test-application-id) expected_test_id="${2:?missing value}"; shift 2 ;;
+        --target-metadata) target_metadata="${2:?missing value}"; shift 2 ;;
+        --test-metadata) test_metadata="${2:?missing value}"; shift 2 ;;
+        --built-after) built_after="${2:?missing value}"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) usage; exit 2 ;;
+    esac
+done
+
+[[ "$pairing_contract" == "app-android-test" || "$pairing_contract" == "standalone-self-target" ]] ||
+    die "unsupported pairing contract"
+[[ "$built_after" =~ ^[0-9]+$ ]] || die "--built-after must be epoch seconds"
+[[ -n "$target_metadata" && -n "$test_metadata" ]] || die "both metadata paths are required"
+if [[ "$pairing_contract" == "standalone-self-target" ]]; then
+    [[ -n "$expected_target_id" && -n "$expected_test_id" ]] ||
+        die "standalone-self-target requires expected application IDs"
+fi
+
+file_mtime() {
+    stat -f '%m' "$1" 2>/dev/null || stat -c '%Y' "$1"
+}
+
+regular_non_symlink() {
+    [[ -f "$1" && ! -L "$1" ]]
+}
+
+validate_metadata() {
+    local path="$1"
+    regular_non_symlink "$path" || die "metadata is not a regular non-symlink file: $path"
+    (( $(file_mtime "$path") >= built_after )) || die "metadata is stale: $path"
+    jq empty "$path" >/dev/null || die "metadata is not valid JSON: $path"
+}
+
+resolve_apk() {
+    local metadata="$1"
+    local dir output candidate
+    dir="$(cd -- "$(dirname -- "$metadata")" && pwd -P)"
+    output="$(jq -r '
+        if (.elements | type) != "array" then error("elements is not an array") else . end
+        | if (.elements | length) != 1 then error("expected exactly one output element") else . end
+        | .elements[0]
+        | if .type != "SINGLE" or ((.filters // []) | length) != 0
+          then error("expected one unfiltered SINGLE output") else .outputFile end
+    ' "$metadata")" || die "metadata contains no unique unfiltered SINGLE output: $metadata"
+    [[ -n "$output" && "$output" != "null" ]] || die "metadata outputFile is missing: $metadata"
+    [[ "$output" != /* && "$output" != *$'\n'* && "$output" != *$'\r'* ]] ||
+        die "outputFile must be a relative path: $output"
+    case "/$output/" in
+        */../*|*/..|../*) die "outputFile escapes metadata directory: $output" ;;
+    esac
+    candidate="$dir/$output"
+    regular_non_symlink "$candidate" || die "APK is not a regular non-symlink file: $candidate"
+    (( $(file_mtime "$candidate") >= built_after )) || die "APK is stale: $candidate"
+    printf '%s\n' "$candidate"
+}
+
+manifest_print() {
+    "$analyzer" manifest print "$1" 2>/dev/null || die "apkanalyzer could not inspect $1"
+}
+
+manifest_attr() {
+    local manifest="$1"
+    local element="$2"
+    local attribute="$3"
+    local flattened
+    flattened="$(printf '%s\n' "$manifest" | tr '\n' ' ')"
+    printf '%s\n' "$flattened" |
+        sed -nE "s#.*<$element([^>]*)/?>.*#\1#p" |
+        sed -nE "s#.*android:$attribute=\"([^\"]+)\".*#\1#p"
+}
+
+application_id() {
+    "$analyzer" manifest application-id "$1" 2>/dev/null || die "application-id inspection failed: $1"
+}
+
+validate_metadata "$target_metadata"
+validate_metadata "$test_metadata"
+target_apk="$(resolve_apk "$target_metadata")"
+test_apk="$(resolve_apk "$test_metadata")"
+target_manifest="$(manifest_print "$target_apk")"
+test_manifest="$(manifest_print "$test_apk")"
+[[ -n "$target_manifest" ]] || die "target manifest is empty: $target_apk"
+[[ -n "$test_manifest" ]] || die "test manifest is empty: $test_apk"
+target_id="$(application_id "$target_apk")"
+test_id="$(application_id "$test_apk")"
+runner="$(manifest_attr "$test_manifest" instrumentation name)"
+target_package="$(manifest_attr "$test_manifest" instrumentation targetPackage)"
+
+[[ "$runner" == "androidx.test.runner.AndroidJUnitRunner" ]] ||
+    die "unexpected instrumentation runner: $runner"
+[[ -n "$target_package" ]] || die "instrumentation targetPackage is missing"
+
+case "$pairing_contract" in
+    app-android-test)
+        [[ "$target_package" == "$target_id" ]] ||
+            die "app Android-test targetPackage '$target_package' does not match target '$target_id'"
+        ;;
+    standalone-self-target)
+        [[ "$target_id" == "$expected_target_id" ]] ||
+            die "target application ID '$target_id' does not match expected '$expected_target_id'"
+        [[ "$test_id" == "$expected_test_id" ]] ||
+            die "test application ID '$test_id' does not match expected '$expected_test_id'"
+        [[ "$target_package" == "$test_id" ]] ||
+            die "standalone targetPackage '$target_package' does not match test '$test_id'"
+        ;;
+esac
+
+jq -cn \
+    --arg contract "$pairing_contract" \
+    --arg target_path "$target_apk" \
+    --arg test_path "$test_apk" \
+    --arg target_application_id "$target_id" \
+    --arg test_application_id "$test_id" \
+    --arg target_package "$target_package" \
+    --arg runner "$runner" \
+    --arg target_sha256 "$(shasum -a 256 "$target_apk" | awk '{print $1}')" \
+    --arg test_sha256 "$(shasum -a 256 "$test_apk" | awk '{print $1}')" \
+    '{
+        pairing_contract: $contract,
+        target: {
+            apk_path: $target_path,
+            application_id: $target_application_id,
+            sha256: $target_sha256
+        },
+        test: {
+            apk_path: $test_path,
+            application_id: $test_application_id,
+            target_package: $target_package,
+            runner: $runner,
+            sha256: $test_sha256
+        }
+    }'
