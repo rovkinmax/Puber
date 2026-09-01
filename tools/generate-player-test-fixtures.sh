@@ -195,6 +195,5 @@ hash_for() {
             printf '%s  %s\n' "$(hash_for "$path")" "$path"
         done
 } > "$output/SHA256SUMS"
-cp "$output/SHA256SUMS" "$MODULE_ROOT/SHA256SUMS"
 
 echo "Generated fixture pack at $output"

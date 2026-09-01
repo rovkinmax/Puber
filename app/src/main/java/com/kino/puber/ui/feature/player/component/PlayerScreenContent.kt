@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.media3.exoplayer.ExoPlayer
@@ -77,6 +78,7 @@ internal fun PlayerScreenContent(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .testTag(PlayerScreenTestTags.Root)
             .background(MaterialTheme.colorScheme.scrim),
     ) {
         when (state) {
@@ -214,6 +216,7 @@ private fun PlayerFocusAnchor(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .testTag(PlayerScreenTestTags.Surface)
             .focusRequester(focusRequester)
             .focusable(enabled = isFocusOwner)
             .then(
@@ -229,6 +232,13 @@ private fun PlayerFocusAnchor(
                 },
             ),
     )
+}
+
+internal object PlayerScreenTestTags {
+    const val Root = "player_screen"
+    const val Surface = "player_surface"
+    const val PlayPause = "player_play_pause"
+    const val SeekBar = "player_seek_bar"
 }
 
 private fun handlePlayerKeyEvent(

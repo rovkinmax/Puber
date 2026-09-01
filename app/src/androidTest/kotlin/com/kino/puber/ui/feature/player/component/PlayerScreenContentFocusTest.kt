@@ -40,6 +40,7 @@ import com.kino.puber.ui.feature.player.model.ResumeDialogState
 import com.kino.puber.ui.feature.player.model.SoundModeUIState
 import com.kino.puber.ui.feature.player.model.SpeedUIState
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
+import com.kino.puber.ui.feature.player.PlayerInstrumentationTestCase
 import com.kino.puber.ui.feature.player.vm.ControlsStateMachine
 import com.kino.puber.ui.feature.player.vm.PlaybackIntent
 import org.junit.Assert.assertEquals
@@ -56,7 +57,7 @@ private const val QUALITY_ITEM = "1080p"
 private const val EPISODE_ITEM = "1. Первое включение"
 private const val MARK_WATCHED_BUTTON = "Просмотрено"
 
-internal class PlayerScreenContentFocusTest {
+internal class PlayerScreenContentFocusTest : PlayerInstrumentationTestCase() {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
@@ -433,7 +434,9 @@ internal class PlayerScreenContentFocusTest {
         repeat(steps) {
             sendKey(KeyEvent.KEYCODE_DPAD_RIGHT)
         }
-        composeRule.onNodeWithText(text).assertIsFocused()
+        onPlayerScreen(composeRule) {
+            focusedText(text).assertIsFocused()
+        }
     }
 
     private fun assertFocusSurvivesRecomposition(
@@ -457,6 +460,10 @@ internal class PlayerScreenContentFocusTest {
     }
 
     private fun assertFocusedPlayerSurface() {
+        onPlayerScreen(composeRule) {
+            playerSurface.assertIsDisplayed()
+            playerSurface.assertIsFocused()
+        }
         val focusedNode = focusedNode()
         val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
         assertTrue(
@@ -470,6 +477,10 @@ internal class PlayerScreenContentFocusTest {
     }
 
     private fun assertFocusedSeekBar() {
+        onPlayerScreen(composeRule) {
+            seekBar.assertIsDisplayed()
+            seekBar.assertIsFocused()
+        }
         val focusedNode = focusedNode()
         val rootWidth = composeRule.onRoot().fetchSemanticsNode().boundsInRoot.width
         assertTrue(
@@ -483,6 +494,10 @@ internal class PlayerScreenContentFocusTest {
     }
 
     private fun assertFocusedControl() {
+        onPlayerScreen(composeRule) {
+            playPauseButton.assertIsDisplayed()
+            playPauseButton.assertIsFocused()
+        }
         waitUntilFocusedTarget { node ->
             val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
             node.boundsInRoot.width < rootBounds.width * 0.5f &&
@@ -550,12 +565,16 @@ internal class PlayerScreenContentFocusTest {
                     .getOrNull(SemanticsProperties.Focused) == true
             }.getOrDefault(false)
         }
-        composeRule.onNodeWithText(text).assertIsFocused()
+        onPlayerScreen(composeRule) {
+            focusedText(text).assertIsFocused()
+        }
     }
 
     private fun assertControlsVisible(harness: PlayerHarness) {
         assertTrue(harness.content.controlsVisible)
-        composeRule.onNodeWithText(AUDIO_BUTTON).assertIsDisplayed()
+        onPlayerScreen(composeRule) {
+            text(AUDIO_BUTTON).assertIsDisplayed()
+        }
     }
 
     private fun waitForControlsToBeDisposed() {

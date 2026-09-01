@@ -12,13 +12,20 @@ stream.
 | Fixture integrity | `:player-test-fixtures:test` and its Android test | The same committed bytes, metadata, playlist references, rendition labels, and WebVTT cue are available to JVM and Android tests. |
 | Host policy/state | `:app:testDevDebugUnitTest` and `:app:testProdDebugUnitTest`, filtered to `com.kino.puber.ui.feature.player.vm.*` | HLS error policy, subtitle MIME and identity, audio/subtitle preference matching, AC3 fallback state, VM transitions, and generation guards. |
 | Real player instrumentation | `PlaybackControllerDeviceTest`, `PlaybackControllerNetworkTracksTest`, and `PlaybackControllerResourcesTest` | The production `PlaybackController` and Media3 player load loopback MP4/HLS, render on a real `PlayerView`, select tracks/cues, recover from programmed faults, and release cleanly. |
-| Production-screen instrumentation | `PlayerScreenE2ETest` | The production screen/Koin scope handles real media, D-pad/media/back events, lifecycle progress saves, resume, and series episode identity. |
+| Production-screen instrumentation | `PlayerScreenContentFocusTest`, `PlayerScreenE2ETest`, and `PlayerVideoSurfaceTest` | The production screen/Koin scope handles real media, concrete TV focus, D-pad/media/back events, lifecycle progress saves, resume, series episode identity, and surface ownership. |
 
 The instrumentation tests use a per-test `SimpleCache`, unique scenario
 identities, event/latch/player fences instead of `Thread.sleep`, and bounded
 failure diagnostics. Teardown waits for zero active server requests, releases
 the player and surface, removes only test-owned cache state, and fails on
 unknown or external-origin requests.
+
+All six player instrumentation classes share
+`PlayerInstrumentationTestCase`, so each JUnit scenario is reported as a named
+Kaspresso step. Production `PlayerScreen` journeys use `PlayerComposeScreen`
+and the minimal stable player-only test tags. Controller, Media3, network,
+cache, lifecycle, codec, request-journal, and resource assertions remain
+direct and event-based inside those steps.
 
 ## Fixture pack and provenance
 
@@ -34,9 +41,10 @@ The single source of truth is
 Expected metadata is in
 `player-test-fixtures/src/main/assets/player-fixtures/fixture-manifest.properties`.
 The complete byte manifest is
-`player-test-fixtures/SHA256SUMS` (and the packaged copy under the fixture
-asset directory). Generation details and synthetic-input provenance are in
-`player-test-fixtures/fixtures-provenance.md`.
+`player-test-fixtures/src/main/assets/player-fixtures/SHA256SUMS`. This
+packaged manifest is also the JVM and Android runtime verification source;
+there is no second generated copy. Generation details and synthetic-input
+provenance are in `player-test-fixtures/fixtures-provenance.md`.
 
 Regeneration is a maintainer-only action. It requires `ffmpeg 9.0.1`, uses
 only `lavfi` test-pattern and sine-wave inputs, and is deliberately not part
@@ -72,102 +80,64 @@ violation. Unknown routes and unexpected egress fail teardown. Authorization
 values, credentials, redirect query data, authenticated payloads, broad UI
 dumps, and raw logs are not test evidence.
 
-## Host commands
+## Verification entry points
 
-Run the deterministic fixture and resolver checks first:
+The player-owned host entry points are:
 
-```sh
-./tools/agentw :player-test-fixtures:test
-./tools/test-resolve-android-test-apk-pair
-```
+- fixture tests: `:player-test-fixtures:test`;
+- APK-pair resolver regression:
+  `tools/test-resolve-android-test-apk-pair`;
+- player VM suites: `:app:testDevDebugUnitTest` and
+  `:app:testProdDebugUnitTest`, filtered to
+  `com.kino.puber.ui.feature.player.vm.*`;
+- production and Android-test compilation:
+  `:app:compileDevDebugKotlin` and
+  `:app:compileInstrumentationDebugAndroidTestKotlin`.
 
-Run the player host suites for both app flavors:
+Repository checkout and worktree command selection is owned by `AGENTS.md`;
+this guide intentionally lists Gradle targets rather than duplicating wrapper
+procedures.
 
-```sh
-./tools/agentw :app:testDevDebugUnitTest \
-  --tests 'com.kino.puber.ui.feature.player.vm.*'
-./tools/agentw :app:testProdDebugUnitTest \
-  --tests 'com.kino.puber.ui.feature.player.vm.*'
-```
+## APK pair validation
 
-Run compilation checks:
+`tools/resolve-android-test-apk-pair` and its executable regression suite,
+`tools/test-resolve-android-test-apk-pair`, are project-owned. Keep them with
+the variants and manifests whose pairing rules they enforce.
 
-```sh
-./tools/agentw :app:compileDevDebugKotlin
-./tools/agentw :app:compileInstrumentationDebugAndroidTestKotlin
-```
+Kent's runtime procedure validates and installs supplied APKs but does not
+choose a target/test pair or prove that both APKs belong to the current build.
+Before the runtime procedure begins, the resolver therefore:
 
-## TV emulator execution
+- requires both variant metadata files and both resolved APKs to be at least
+  as new as the caller's build-start timestamp;
+- accepts exactly one regular, non-symlink, unfiltered `SINGLE` APK from each
+  metadata file;
+- reads the APK manifests and requires
+  `androidx.test.runner.AndroidJUnitRunner`;
+- requires the instrumentation `targetPackage` to match the selected pairing
+  contract;
+- emits the validated paths, application IDs, target package, runner, and
+  SHA-256 values as one bounded JSON object.
 
-Use a leased TV emulator only. Discover a running TV emulator, acquire its
-exact serial lock, export `ANDROID_SERIAL`, and keep release in a trap:
+The self-test must remain beside the resolver because it fail-closes stale,
+ambiguous, split, path-escaping, symlinked, wrong-runner, wrong-package, and
+cross-contract pairs without requiring an emulator.
 
-```sh
-EMULATORS=($(
-  .kent/adapters/mobile/emulator-resource-lock.sh adb-emulators tv
-))
-LOCK_OUTPUT="$(
-  .kent/adapters/mobile/emulator-resource-lock.sh \
-    acquire-any "${EMULATORS[@]}" -- 900 7200
-)"
-LOCK_RESOURCE="$(printf '%s\n' "$LOCK_OUTPUT" | sed -n 's/^resource=//p')"
-LOCK_TOKEN="$(printf '%s\n' "$LOCK_OUTPUT" | sed -n 's/^token=//p')"
-export ANDROID_SERIAL="$LOCK_RESOURCE"
-trap '.kent/adapters/mobile/emulator-resource-lock.sh release \
-  "$LOCK_RESOURCE" "$LOCK_TOKEN"' EXIT
-test -n "$ANDROID_SERIAL"
-```
+## Device acceptance contract
 
-If no suitable running emulator is available, stop rather than starting one
-implicitly. Physical devices require separate explicit authorization.
+The complete package
+`com.kino.puber.ui.feature.player` runs against a fresh
+`app-android-test` resolver-validated target/test APK pair. Final acceptance
+requires two clean passes without flaky retry. Each pass preserves the
+hermetic network, concrete focus, track selection, lifecycle/restoration,
+cache/resource cleanup, codec, request-journal, and production-data-safety
+oracles described above. Resolver output remains the authority for APK paths,
+package IDs, instrumentation target package, runner, and SHA-256 values.
 
-Build a fresh app instrumentation target and Android-test APK with
-`--rerun-tasks`; do not use `connected*`, `install*`, or another Gradle task
-that implicitly selects a device:
-
-```sh
-BUILD_STARTED_AT="$(date +%s)"
-./tools/agentw :app:assembleInstrumentationDebug \
-  :app:assembleInstrumentationDebugAndroidTest --rerun-tasks
-PAIR_JSON="$(
-  ./tools/resolve-android-test-apk-pair \
-    --pairing-contract app-android-test \
-    --target-metadata \
-      app/build/outputs/apk/instrumentation/debug/output-metadata.json \
-    --test-metadata \
-      app/build/outputs/apk/androidTest/instrumentation/debug/output-metadata.json \
-    --built-after "$BUILD_STARTED_AT"
-)"
-APP_APK="$(jq -r '.target.apk_path' <<<"$PAIR_JSON")"
-APP_TEST_APK="$(jq -r '.test.apk_path' <<<"$PAIR_JSON")"
-APP_PACKAGE="$(jq -r '.target.application_id' <<<"$PAIR_JSON")"
-APP_TEST_PACKAGE="$(jq -r '.test.application_id' <<<"$PAIR_JSON")"
-.kent/adapters/mobile/android-apk-install-preserve install-preserve \
-  --serial "$ANDROID_SERIAL" --package "$APP_PACKAGE" --apk "$APP_APK"
-.kent/adapters/mobile/android-apk-install-preserve install-preserve \
-  --serial "$ANDROID_SERIAL" --package "$APP_TEST_PACKAGE" --apk "$APP_TEST_APK"
-```
-
-Run the complete player instrumentation suite with an explicit serial and
-runner. During development, use one class filter at a time:
-
-```sh
-adb -s "$ANDROID_SERIAL" shell am instrument -w -r \
-  -e package com.kino.puber.ui.feature.player \
-  "$APP_TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner"
-```
-
-The final acceptance run repeats this command twice from clean
-test-owned state. It does not clear app data, uninstall packages, or use
-flaky retry as a condition of success. The resolver output is the authority
-for APK paths, package IDs, instrumentation target package, runner, and
-SHA-256 values.
-
-The migrated PUB-77 baseline regression uses the separate
-`standalone-self-target` resolver contract and is documented with its
-explicit build/install/instrumentation commands in the task plan and
-`02-server-contract.md`; it must not be paired with the app
-`app-android-test` contract.
+Kent owns emulator leasing, exact-serial targeting, preservation-safe
+installation, runtime cleanup, and evidence capture. Follow
+`.kent/context/smoke.md` and `.kent/commands/smoke-test.md`; those procedures
+are intentionally not copied into this product guide.
 
 ## Emulator capabilities and diagnostics
 
@@ -195,36 +165,9 @@ The fixture module is test-only. `:app` references it through
 `implementation`, `prodImplementation`, or runtime edge may resolve
 `:player-test-fixtures`.
 
-Run the dependency and packaging checks:
-
-```sh
-./tools/agentw :app:dependencies \
-  --configuration prodReleaseRuntimeClasspath
-./tools/agentw :app:assembleProdDebug
-./tools/agentw :app:assembleProdRelease
-./tools/agentw :app:bundleProdRelease
-```
-
-Inspect only bounded listings and fail if production artifacts contain the
-fixture prefix, fixture hashes/provenance, test-control components, or server
-packages:
-
-```sh
-PROD_APK=app/build/outputs/apk/prod/release/app-prod-release.apk
-PROD_AAB="$(printf '%s\n' app/build/outputs/bundle/prodRelease/*.aab)"
-if unzip -l "$PROD_APK" | grep -Eq \
-  'player-fixtures|fixtures-provenance|playertestfixtures|TestControl'; then
-  echo "test-only player content found in production APK" >&2
-  exit 1
-fi
-if unzip -l "$PROD_AAB" | grep -Eq \
-  'player-fixtures|fixtures-provenance|playertestfixtures|TestControl'; then
-  echo "test-only player content found in production AAB" >&2
-  exit 1
-fi
-```
-
-The production runtime dependency report must likewise contain no
-`project :player-test-fixtures`. If release signing credentials are absent in
-a local worktree, report that package-signing limitation explicitly; never
-copy credentials into the worktree or weaken the production exclusion check.
+Verification covers `prodReleaseRuntimeClasspath`, the prod debug/release APKs,
+and the prod release AAB. Bounded artifact listings must contain no fixture
+prefix, fixture hashes/provenance, test-control component, server package,
+Kaspresso, or Kakao dependency. If release signing credentials are absent in a
+local worktree, report that packaging limitation; never copy credentials into
+the worktree or weaken the production exclusion check.

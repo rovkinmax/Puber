@@ -27,6 +27,7 @@ import com.kino.puber.playertestfixtures.server.HermeticRoute
 import com.kino.puber.playertestfixtures.server.HermeticTestServer
 import com.kino.puber.playertestfixtures.server.ResponsePlan
 import com.kino.puber.profile.PlayerTestControl
+import com.kino.puber.ui.feature.player.PlayerInstrumentationTestCase
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.BufferPreset
 import java.io.File
@@ -50,7 +51,7 @@ import org.junit.runner.RunWith
 
 @OptIn(UnstableApi::class)
 @RunWith(AndroidJUnit4::class)
-internal class PlaybackControllerResourcesTest {
+internal class PlaybackControllerResourcesTest : PlayerInstrumentationTestCase() {
 
     private val context
         get() = InstrumentationRegistry.getInstrumentation().targetContext
