@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.SemanticsNode
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -16,6 +15,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -48,6 +48,7 @@ import com.kino.puber.playertestfixtures.server.QueryMatchMode
 import com.kino.puber.playertestfixtures.server.ResponsePlan
 import com.kino.puber.profile.PlayerTestControl
 import com.kino.puber.ui.ScreensImpl
+import com.kino.puber.ui.feature.player.PlayerInstrumentationTestCase
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerStartMode
 import java.util.UUID
@@ -77,7 +78,7 @@ import org.koin.dsl.module
  */
 @OptIn(UnstableApi::class)
 @RunWith(AndroidJUnit4::class)
-internal class PlayerScreenE2ETest {
+internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
@@ -645,11 +646,25 @@ internal class PlayerScreenE2ETest {
     }
 
     private fun assertFocusedPlayPause() {
-        assertSingleFocusedNode(FOCUSED_UNLABELED_CLICKABLE, "play/pause button")
+        onPlayerScreen(composeRule) {
+            playPauseButton.assertIsDisplayed()
+            playPauseButton.assertIsFocused()
+        }
+        assertSingleFocusedNode(
+            isFocused() and hasTestTag(PlayerScreenTestTags.PlayPause),
+            "play/pause button",
+        )
     }
 
     private fun assertFocusedSeekBar() {
-        val interaction = assertSingleFocusedNode(FOCUSED_NON_CLICKABLE, "seek bar")
+        onPlayerScreen(composeRule) {
+            seekBar.assertIsDisplayed()
+            seekBar.assertIsFocused()
+        }
+        val interaction = assertSingleFocusedNode(
+            isFocused() and hasTestTag(PlayerScreenTestTags.SeekBar),
+            "seek bar",
+        )
         val rootBounds = composeRule.onRoot().getUnclippedBoundsInRoot()
         val focusedBounds = interaction.getUnclippedBoundsInRoot()
         val focusedHeight = (focusedBounds.bottom - focusedBounds.top).value
@@ -665,6 +680,10 @@ internal class PlayerScreenE2ETest {
 
     private fun assertFocusedPlayerSurface() {
         awaitAbsent(context.getString(R.string.player_button_audio_subtitles))
+        onPlayerScreen(composeRule) {
+            playerSurface.assertIsDisplayed()
+            playerSurface.assertIsFocused()
+        }
         val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
         try {
             composeRule.waitUntil(FOCUS_TIMEOUT_MS) {
@@ -698,6 +717,10 @@ internal class PlayerScreenE2ETest {
         text: String,
         substring: Boolean = false,
     ) {
+        onPlayerScreen(composeRule) {
+            focusedText(text, substring).assertIsDisplayed()
+            focusedText(text, substring).assertIsFocused()
+        }
         assertSingleFocusedNode(focusedTextMatcher(text, substring), "control '$text'")
     }
 
@@ -1142,18 +1165,6 @@ internal class PlayerScreenE2ETest {
         const val EPISODE_ONE_ID_OFFSET = 11
         const val EPISODE_TWO_ID_OFFSET = 12
 
-        val FOCUSED_UNLABELED_CLICKABLE =
-            SemanticsMatcher("focused clickable control without text") { node ->
-                node.config.getOrNull(SemanticsProperties.Focused) == true &&
-                    node.config.contains(SemanticsActions.OnClick) &&
-                    !node.hasTextInSubtree()
-            }
-
-        val FOCUSED_NON_CLICKABLE =
-            SemanticsMatcher("focused non-clickable control") { node ->
-                node.config.getOrNull(SemanticsProperties.Focused) == true &&
-                    !node.config.contains(SemanticsActions.OnClick)
-            }
     }
 }
 
@@ -1165,11 +1176,6 @@ private data object PlayerE2EHostScreen : PuberScreen {
     override fun Content() {
         Text(HOST_TEXT)
     }
-}
-
-private fun SemanticsNode.hasTextInSubtree(): Boolean {
-    if (!config.getOrNull(SemanticsProperties.Text).isNullOrEmpty()) return true
-    return children.any(SemanticsNode::hasTextInSubtree)
 }
 
 private fun View.findPlayerView(): PlayerView? {

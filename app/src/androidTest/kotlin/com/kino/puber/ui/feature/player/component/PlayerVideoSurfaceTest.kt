@@ -9,6 +9,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import com.kino.puber.domain.model.SubtitleSize
+import com.kino.puber.ui.feature.player.PlayerInstrumentationTestCase
 import com.kino.puber.ui.feature.player.model.ActivePanel
 import com.kino.puber.ui.feature.player.model.PlayerContentState
 import com.kino.puber.ui.feature.player.vm.PlaybackIntent
@@ -22,7 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-internal class PlayerVideoSurfaceTest {
+internal class PlayerVideoSurfaceTest : PlayerInstrumentationTestCase() {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()

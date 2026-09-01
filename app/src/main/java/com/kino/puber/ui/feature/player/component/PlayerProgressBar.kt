@@ -35,6 +35,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -178,6 +179,7 @@ private fun SeekTrack(
     Box(
         modifier = modifier
             .height(TRACK_TOUCH_HEIGHT)
+            .testTag(PlayerScreenTestTags.SeekBar)
             .then(
                 downFocusRequester?.let { target ->
                     Modifier.focusProperties { down = target }

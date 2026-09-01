@@ -313,8 +313,12 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.mockwebserver3)
+    androidTestImplementation(libs.kaspresso)
+    androidTestImplementation(libs.kaspresso.compose)
+    androidTestImplementation(libs.kakao.compose)
     add("instrumentationImplementation", project(":player-test-fixtures"))
     add("instrumentationImplementation", libs.mockwebserver3)
+    add("instrumentationImplementation", libs.androidx.drawerlayout)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 

@@ -29,6 +29,7 @@ import com.kino.puber.playertestfixtures.server.QueryMatchMode
 import com.kino.puber.playertestfixtures.server.ResponseOutcome
 import com.kino.puber.playertestfixtures.server.ResponsePlan
 import com.kino.puber.profile.PlayerTestControl
+import com.kino.puber.ui.feature.player.PlayerInstrumentationTestCase
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.BufferPreset
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
@@ -49,7 +50,7 @@ import org.junit.runner.RunWith
 
 @OptIn(UnstableApi::class)
 @RunWith(AndroidJUnit4::class)
-internal class PlaybackControllerNetworkTracksTest {
+internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCase() {
 
     private val context
         get() = InstrumentationRegistry.getInstrumentation().targetContext
