@@ -3,7 +3,6 @@ package com.kino.puber.ui.feature.player.component
 import android.app.Activity
 import android.view.View
 import android.view.ViewGroup
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
@@ -16,7 +15,6 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -25,7 +23,6 @@ import androidx.compose.ui.test.onRoot
 import androidx.lifecycle.Lifecycle
 import androidx.media3.common.C
 import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -48,7 +45,7 @@ import com.kino.puber.playertestfixtures.server.QueryMatchMode
 import com.kino.puber.playertestfixtures.server.ResponsePlan
 import com.kino.puber.profile.PlayerTestControl
 import com.kino.puber.ui.ScreensImpl
-import com.kino.puber.ui.feature.player.PlayerInstrumentationTestCase
+import com.kino.puber.ui.feature.player.PlayerComposeInstrumentationTestCase
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerStartMode
 import java.util.UUID
@@ -68,6 +65,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import io.github.kakaocup.compose.node.element.ComposeScreen
 import org.koin.core.context.GlobalContext
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
@@ -76,28 +74,488 @@ import org.koin.dsl.module
  * Production-screen coverage. Every case launches the real [PlayerScreen]
  * through the same FlowComponent and screen Koin scope used by the app.
  */
-@OptIn(UnstableApi::class)
 @RunWith(AndroidJUnit4::class)
-internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
+internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    private lateinit var fixture: PlayerE2EFixture
+
+    @Before
+    fun setUp() {
+        fixture = PlayerE2EFixture(composeRule)
+        fixture.start()
+    }
+
+    @After
+    fun tearDown() {
+        fixture.close()
+    }
+
+    @Test
+    fun movieScreen_realRemoteControlsPanelsAndRecreation_restoreFocusTracksAndMediaState() = run {
+        with(fixture) {
+            val itemId = 7901
+            val media = MovieMediaRoots(itemId)
+            step("Launch the production movie screen on typed hermetic HLS routes") {
+                server.reset(movieRoutes(itemId, watchingTime = 0, media = media))
+                launchPlayer(
+                    itemId = itemId,
+                    startMode = PlayerStartMode.StartFromBeginning,
+                )
+                assertFocusedPlayPause()
+                awaitPlayerReady()
+                awaitPlayerCondition("initial movie position advances") {
+                    playerPosition() >= POSITION_FENCE_MS
+                }
+            }
+
+            step("The domain TV remote toggles playback through the player focus anchor") {
+                robot.pressBack()
+                assertFocusedPlayerSurface()
+                robot.press(PlayerRemoteKey.PlayPause)
+                awaitPlayerCondition("media key pauses playback") { !playerIsPlaying() }
+                assertFocusedPlayPause()
+                robot.pressBack()
+                assertFocusedPlayerSurface()
+                robot.press(PlayerRemoteKey.PlayPause)
+                awaitPlayerCondition("media key resumes playback") { playerIsPlaying() }
+                assertFocusedPlayPause()
+                robot.pressBack()
+                assertFocusedPlayerSurface()
+                robot.press(PlayerRemoteKey.PlayPause)
+                awaitPlayerCondition("second media key pauses playback") { !playerIsPlaying() }
+                assertFocusedPlayPause()
+            }
+
+            step("Seek-bar and button traversal retains one concrete focused node") {
+                robot.press(PlayerRemoteKey.Up)
+                assertFocusedSeekBar()
+                robot.press(PlayerRemoteKey.Down)
+                assertFocusedPlayPause()
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedTag(PlayerScreenTestTags.MarkWatched, "mark-watched button")
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
+            }
+
+            step("Select Spanish audio and external subtitles through typed panel items") {
+                robot.press(PlayerRemoteKey.Select)
+                assertFocusedPanelItem("sound", 0)
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedPanelItem("audio", 0)
+                robot.press(PlayerRemoteKey.Down)
+                assertFocusedPanelItem("audio", 1)
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("Spanish audio is selected in UI state and Media3") {
+                    selectedAudioLanguage() == SPANISH_LANGUAGE &&
+                        preferredAudioLanguage() == SPANISH_LANGUAGE
+                }
+
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedPanelItem("subtitle", 1)
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("external subtitle is persisted and selected in Media3") {
+                    preferredSubtitleLanguage() == SUBTITLE_LANGUAGE &&
+                        selectedTextTrack() &&
+                        preferredTextLanguages().contains(SUBTITLE_LANGUAGE)
+                }
+                robot.pressBack()
+                assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
+            }
+
+            step("Playback requests the selected subtitle before pausing again") {
+                robot.press(PlayerRemoteKey.Left)
+                assertFocusedTag(PlayerScreenTestTags.MarkWatched, "mark-watched button")
+                robot.press(PlayerRemoteKey.Left)
+                assertFocusedPlayPause()
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("selected external subtitle loads during playback") {
+                    playerIsPlaying()
+                }
+                awaitJournalPath("${media.high}/subtitle.vtt")
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("playback pauses after external subtitle request") {
+                    !playerIsPlaying()
+                }
+            }
+
+            step("Switch to the lower quality and prove the production Media3 request") {
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedTag(PlayerScreenTestTags.MarkWatched, "mark-watched button")
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedTag(PlayerScreenTestTags.VideoSettings, "video-settings button")
+                robot.press(PlayerRemoteKey.Select)
+                assertFocusedPanelItem("quality", 0)
+                robot.press(PlayerRemoteKey.Down)
+                assertFocusedPanelItem("quality", 1)
+                robot.press(PlayerRemoteKey.Down)
+                assertFocusedPanelItem("quality", 2)
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("manual quality changes the production Media3 item") {
+                    currentMediaPath() == "${media.low}/master.m3u8"
+                }
+                awaitJournalPath("${media.low}/master.m3u8")
+                robot.pressBack()
+                assertFocusedTag(PlayerScreenTestTags.VideoSettings, "video-settings button")
+                robot.pressBack()
+                assertFocusedPlayerSurface()
+                robot.press(PlayerRemoteKey.Down)
+                assertFocusedPlayPause()
+            }
+
+            step("Activity recreation restores production playback and selected tracks") {
+                val previousActivity = AtomicReference<ComponentActivity>()
+                composeRule.activityRule.scenario.onActivity(previousActivity::set)
+                composeRule.activityRule.scenario.recreate()
+                setPlayerContent()
+                composeRule.activityRule.scenario.onActivity { recreatedActivity ->
+                    assertTrue(
+                        "ActivityScenario.recreate must replace the host activity",
+                        recreatedActivity !== previousActivity.get(),
+                    )
+                }
+                assertFocusedPlayPause()
+                awaitPlayerReady()
+                awaitPlayerCondition("recreated UI state restores audio and subtitle choices") {
+                    preferredAudioLanguage() == SPANISH_LANGUAGE &&
+                        preferredSubtitleLanguage() == SUBTITLE_LANGUAGE
+                }
+                awaitPlayerCondition("recreated Media3 restores audio and subtitle choices") {
+                    selectedAudioLanguage() == SPANISH_LANGUAGE &&
+                        selectedTextTrack() &&
+                        preferredTextLanguages().contains(SUBTITLE_LANGUAGE)
+                }
+            }
+
+            step("Recreated video and audio panels close on the current router and restore focus") {
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedTag(PlayerScreenTestTags.MarkWatched, "mark-watched button")
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedTag(PlayerScreenTestTags.VideoSettings, "video-settings button")
+                robot.press(PlayerRemoteKey.Select)
+                assertFocusedPanelItem("quality", 0)
+                robot.pressBack()
+                assertFalse(
+                    "Video-settings panel Back must not pop PlayerScreen after recreation",
+                    isTextDisplayed(HOST_TEXT),
+                )
+                assertFocusedTag(PlayerScreenTestTags.VideoSettings, "video-settings button")
+
+                robot.press(PlayerRemoteKey.Left)
+                assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
+                robot.press(PlayerRemoteKey.Select)
+                assertFocusedPanelItem("sound", 0)
+                assertEquals(SPANISH_LANGUAGE, preferredAudioLanguage())
+                assertEquals(SUBTITLE_LANGUAGE, preferredSubtitleLanguage())
+                robot.pressBack()
+                assertFalse(
+                    "Audio/subtitle panel Back must not pop PlayerScreen after recreation",
+                    isTextDisplayed(HOST_TEXT),
+                )
+                assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
+            }
+
+            step("Recreated directional seeks preserve surface focus and fail-closed requests") {
+                robot.pressBack()
+                assertFocusedPlayerSurface()
+                robot.press(PlayerRemoteKey.PlayPause)
+                awaitPlayerCondition("recreated playback starts or replays before seek checks") {
+                    playerIsPlaying() && playerPosition() >= POSITION_FENCE_MS
+                }
+                assertFocusedPlayPause()
+                robot.pressBack()
+                assertFocusedPlayerSurface()
+                robot.press(PlayerRemoteKey.PlayPause)
+                awaitPlayerCondition("recreated playback pauses from the player surface") {
+                    !playerIsPlaying() && playerPosition() >= POSITION_FENCE_MS
+                }
+                assertFocusedPlayPause()
+                robot.pressBack()
+                assertFocusedPlayerSurface()
+                val beforeBackwardSeek = playerPosition()
+                robot.press(PlayerRemoteKey.Left)
+                awaitPlayerCondition("D-pad left seeks backward") {
+                    playerPosition() < beforeBackwardSeek
+                }
+                awaitText(
+                    context.getString(
+                        R.string.player_seek_backward,
+                        SEEK_STEP_SECONDS,
+                    ),
+                )
+                assertFocusedPlayerSurface()
+                val beforeForwardSeek = playerPosition()
+                robot.press(PlayerRemoteKey.Right)
+                awaitPlayerCondition("D-pad right seeks forward") {
+                    playerPosition() > beforeForwardSeek
+                }
+                awaitText(
+                    context.getString(
+                        R.string.player_seek_forward,
+                        SEEK_STEP_SECONDS,
+                    ),
+                )
+                assertFocusedPlayerSurface()
+                assertEquals(0, server.requestJournal.unknownRequests.size)
+            }
+
+            step("The unchanged second Back exits the recreated PlayerScreen") {
+                robot.pressBack()
+                awaitPlayerCondition("recreated PlayerScreen exits on the unchanged second Back") {
+                    isTextDisplayed(HOST_TEXT)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun movieScreen_continueCrossesSavedFence_andSeparatesPauseBackgroundAndExitSaves() = run {
+        with(fixture) {
+            val itemId = 7902
+            val media = MovieMediaRoots(itemId)
+            step("Launch the saved movie and continue past its persisted position") {
+                server.reset(
+                    movieRoutes(
+                        itemId,
+                        watchingTime = SAVED_POSITION_SECONDS,
+                        media = media,
+                    ),
+                )
+                launchPlayer(itemId)
+                assertFocusedTag(PlayerScreenTestTags.ResumeContinue, "Continue button")
+                assertTrue(playerPosition() < SAVED_POSITION_FENCE_MS)
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("Continue crosses the saved-position fence") {
+                    playerPosition() >= SAVED_POSITION_FENCE_MS
+                }
+                assertFocusedPlayerSurface()
+            }
+
+            lateinit var pauseSave: RecordedRequest
+            step("Pause creates a typed progress request after observable player state") {
+                robot.press(PlayerRemoteKey.PlayPause)
+                awaitPlayerCondition("pause is observable before its save") {
+                    !playerIsPlaying()
+                }
+                assertFocusedPlayPause()
+                pauseSave = awaitProgressRequest(
+                    "pause progress save",
+                    itemId,
+                    video = 1,
+                    season = null,
+                )
+                assertProgressTimeAtLeast(pauseSave, MIN_SAVED_TIME_SECONDS)
+            }
+
+            lateinit var backgroundSave: RecordedRequest
+            step("Backgrounding creates a distinct progress request and keeps playback paused") {
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("play resumes before background") { playerIsPlaying() }
+                composeRule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+                backgroundSave = awaitProgressRequest(
+                    "background progress save",
+                    itemId,
+                    video = 1,
+                    season = null,
+                )
+                assertProgressTimeAtLeast(backgroundSave, MIN_SAVED_TIME_SECONDS)
+                composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+                setPlayerContentIfMissing()
+                awaitPlayerCondition("background keeps the player paused") {
+                    !playerIsPlaying()
+                }
+                assertFocusedPlayerSurface()
+            }
+
+            step("Exit drains its own progress request after the canonical second Back") {
+                robot.press(PlayerRemoteKey.PlayPause)
+                awaitPlayerCondition("play resumes before exit") { playerIsPlaying() }
+                assertFocusedPlayPause()
+                robot.pressBack()
+                assertFocusedPlayerSurface()
+                robot.pressBack()
+                val exitSave = awaitProgressRequest(
+                    "exit progress save",
+                    itemId,
+                    video = 1,
+                    season = null,
+                )
+                assertProgressTimeAtLeast(exitSave, MIN_SAVED_TIME_SECONDS)
+                awaitPlayerCondition("Back exits only after the final progress write drains") {
+                    isTextDisplayed(HOST_TEXT)
+                }
+                assertTrue(pauseSave !== backgroundSave)
+                assertTrue(backgroundSave !== exitSave)
+            }
+        }
+    }
+
+    @Test
+    fun movieScreen_failedMedia_focusesRetry_recoversAndBackDrainsProgressBeforeExit() = run {
+        with(fixture) {
+            val itemId = 7903
+            val media = MovieMediaRoots(itemId)
+            step("Launch the typed failing HLS route and focus the stable Retry control") {
+                server.reset(retryMovieRoutes(itemId, media))
+                launchPlayer(
+                    itemId = itemId,
+                    startMode = PlayerStartMode.StartFromBeginning,
+                )
+                assertFocusedPlayPause()
+                assertFocusedTagEventually(PlayerScreenTestTags.Retry, "Retry button")
+                assertEquals(
+                    RETRY_FAILURE_REQUESTS,
+                    routeRequestCount(media.high, "master"),
+                )
+            }
+
+            step("Retry reaches real playback after the programmed response sequence") {
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerReady()
+                awaitPlayerCondition("Retry reaches real playback") {
+                    playerIsPlaying() &&
+                        currentMediaPath() == "${media.high}/master.m3u8"
+                }
+                assertTrue(
+                    routeRequestCount(media.high, "master") > RETRY_FAILURE_REQUESTS,
+                )
+                assertFocusedPlayPause()
+            }
+
+            step("Recovered playback drains progress before the canonical Back exit") {
+                robot.pressBack()
+                assertFocusedPlayerSurface()
+                robot.pressBack()
+                awaitProgressRequest(
+                    "Retry journey exit save",
+                    itemId,
+                    video = 1,
+                    season = null,
+                )
+                awaitPlayerCondition("Back exits recovered playback") {
+                    isTextDisplayed(HOST_TEXT)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun seriesScreen_nextEpisodeDpadJourney_usesDistinctRoutesAndEpisodeProgressIdentity() = run {
+        with(fixture) {
+            val itemId = 7904
+            val media = SeriesMediaRoots(itemId)
+            step("Launch episode one and focus the stable next-episode action") {
+                server.reset(seriesRoutes(itemId, media))
+                launchPlayer(
+                    itemId = itemId,
+                    seasonNumber = 1,
+                    episodeNumber = 1,
+                    startMode = PlayerStartMode.StartFromBeginning,
+                )
+                assertFocusedPlayPause()
+                awaitPlayerReady()
+                awaitJournalPath("${media.episodeOne}/master.m3u8")
+                assertFocusedTagEventually(
+                    PlayerScreenTestTags.NextEpisode,
+                    "next-episode button",
+                )
+            }
+
+            lateinit var firstEpisodeSave: RecordedRequest
+            step("Selecting next episode saves episode one under its typed video identity") {
+                robot.press(PlayerRemoteKey.Select)
+                firstEpisodeSave = awaitProgressRequest(
+                    "first episode transition save",
+                    itemId,
+                    video = 1,
+                    season = 1,
+                )
+                assertNull(firstEpisodeSave.url.queryParameter("episode"))
+            }
+
+            step("Episode two owns the production player and a distinct media route") {
+                awaitJournalPath("${media.episodeTwo}/master.m3u8")
+                awaitPlayerCondition("second episode owns the active production player") {
+                    currentMediaPath() == "${media.episodeTwo}/master.m3u8"
+                }
+                awaitText(
+                    context.getString(
+                        R.string.player_season_episode_title,
+                        1,
+                        2,
+                        "Second episode",
+                    ),
+                )
+                awaitPlayerReady()
+            }
+
+            step("Pausing episode two saves progress under video two and fails closed") {
+                if (isTagDisplayed(PlayerScreenTestTags.AudioSubtitles)) {
+                    robot.pressBack()
+                }
+                assertFocusedPlayerSurface()
+                robot.press(PlayerRemoteKey.PlayPause)
+                awaitPlayerCondition("second episode pause is observable") {
+                    !playerIsPlaying()
+                }
+                val secondEpisodeSave = awaitProgressRequest(
+                    "second episode pause save",
+                    itemId,
+                    video = 2,
+                    season = 1,
+                )
+                assertNull(secondEpisodeSave.url.queryParameter("episode"))
+                assertTrue(
+                    "Expected distinct episode media routes: " +
+                        server.requestJournal.entries,
+                    server.requestJournal.entries.any {
+                        it.path == "${media.episodeOne}/master.m3u8"
+                    } && server.requestJournal.entries.any {
+                        it.path == "${media.episodeTwo}/master.m3u8"
+                    },
+                )
+                assertEquals("1", firstEpisodeSave.url.queryParameter("video"))
+                assertEquals("2", secondEpisodeSave.url.queryParameter("video"))
+                assertEquals(0, server.requestJournal.unknownRequests.size)
+            }
+        }
+    }
+}
+
+private class PlayerE2EFixture(
+    val composeRule: androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+        androidx.test.ext.junit.rules.ActivityScenarioRule<ComponentActivity>,
+        ComponentActivity,
+        >,
+) {
+
     private val instrumentation
         get() = InstrumentationRegistry.getInstrumentation()
 
-    private val context
+    val context
         get() = instrumentation.targetContext
 
-    private lateinit var server: PlayerTestControl
+    lateinit var server: PlayerTestControl
+        private set
     private lateinit var scenarioToken: String
     private lateinit var flowScopeName: String
     private lateinit var currentScreen: PlayerScreen
     private var currentItemId: Int = 0
     private val ownedItemIds = mutableSetOf<Int>()
 
-    @Before
-    fun setUp() {
+    val robot = PlayerTvRobot(composeRule) {
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.onBackPressedDispatcher.onBackPressed()
+        }
+    }
+
+    fun start() {
         LoopbackNetworkJournal(context).clear()
         RecordingAppLauncher.reset()
         scenarioToken = UUID.randomUUID().toString()
@@ -105,8 +563,7 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         server.start()
     }
 
-    @After
-    fun tearDown() {
+    fun close() {
         var teardownFailure: Throwable? = null
         runCatching {
             if (composeRule.activityRule.scenario.state != Lifecycle.State.DESTROYED) {
@@ -147,355 +604,7 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         teardownFailure?.let { throw it }
     }
 
-    @Test
-    fun movieScreen_realRemoteControlsPanelsAndRecreation_restoreFocusTracksAndMediaState() {
-        val itemId = 7901
-        val media = MovieMediaRoots(itemId)
-        server.reset(movieRoutes(itemId, watchingTime = 0, media = media))
-        launchPlayer(
-            itemId = itemId,
-            startMode = PlayerStartMode.StartFromBeginning,
-        )
-
-        assertFocusedPlayPause()
-        awaitPlayerReady()
-        awaitPlayerCondition("initial movie position advances") {
-            playerPosition() >= POSITION_FENCE_MS
-        }
-
-        pressBack()
-        assertFocusedPlayerSurface()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-        awaitPlayerCondition("media key pauses playback") {
-            !playerIsPlaying()
-        }
-        assertFocusedPlayPause()
-        pressBack()
-        assertFocusedPlayerSurface()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-        awaitPlayerCondition("media key resumes playback") {
-            playerIsPlaying()
-        }
-        assertFocusedPlayPause()
-        pressBack()
-        assertFocusedPlayerSurface()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-        awaitPlayerCondition("second media key pauses playback") {
-            !playerIsPlaying()
-        }
-        assertFocusedPlayPause()
-
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_UP)
-        assertFocusedSeekBar()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
-        assertFocusedPlayPause()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFocusedText(context.getString(R.string.player_button_mark_watched))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFocusedText(context.getString(R.string.player_button_audio_subtitles))
-
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        assertFocusedText(context.getString(R.string.player_sound_stereo))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFocusedText(ENGLISH_AUDIO_LABEL)
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
-        assertFocusedText(SPANISH_AUDIO_LABEL)
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        awaitPlayerCondition("Spanish audio is selected in UI state and Media3") {
-            selectedAudioLanguage() == SPANISH_LANGUAGE &&
-                preferredAudioLanguage() == SPANISH_LANGUAGE
-        }
-
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFocusedText(SUBTITLE_LANGUAGE)
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        awaitPlayerCondition("external subtitle is persisted and selected in Media3") {
-            preferredSubtitleLanguage() == SUBTITLE_LANGUAGE &&
-                selectedTextTrack() &&
-                preferredTextLanguages().contains(SUBTITLE_LANGUAGE)
-        }
-        pressBack()
-        assertFocusedText(context.getString(R.string.player_button_audio_subtitles))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
-        assertFocusedText(context.getString(R.string.player_button_mark_watched))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
-        assertFocusedPlayPause()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        awaitPlayerCondition("selected external subtitle loads during playback") {
-            playerIsPlaying()
-        }
-        awaitJournalPath("${media.high}/subtitle.vtt")
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        awaitPlayerCondition("playback pauses after external subtitle request") {
-            !playerIsPlaying()
-        }
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFocusedText(context.getString(R.string.player_button_mark_watched))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFocusedText(context.getString(R.string.player_button_audio_subtitles))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFocusedText(context.getString(R.string.player_button_video))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        assertFocusedText(context.getString(R.string.player_aspect_auto))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
-        assertFocusedText(HIGH_QUALITY_LABEL)
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
-        assertFocusedText(LOW_QUALITY_LABEL)
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        awaitPlayerCondition("manual quality changes the production Media3 item") {
-            currentMediaPath() == "${media.low}/master.m3u8"
-        }
-        awaitJournalPath("${media.low}/master.m3u8")
-
-        pressBack()
-        assertFocusedText(context.getString(R.string.player_button_video))
-        pressBack()
-        assertFocusedPlayerSurface()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_DOWN)
-        assertFocusedPlayPause()
-
-        val previousActivity = AtomicReference<ComponentActivity>()
-        composeRule.activityRule.scenario.onActivity(previousActivity::set)
-        composeRule.activityRule.scenario.recreate()
-        setPlayerContent()
-        composeRule.activityRule.scenario.onActivity { recreatedActivity ->
-            assertTrue(
-                "ActivityScenario.recreate must replace the host activity",
-                recreatedActivity !== previousActivity.get(),
-            )
-        }
-        assertFocusedPlayPause()
-        awaitPlayerReady()
-        awaitPlayerCondition("recreated UI state restores audio and subtitle choices") {
-            preferredAudioLanguage() == SPANISH_LANGUAGE &&
-                preferredSubtitleLanguage() == SUBTITLE_LANGUAGE
-        }
-        awaitPlayerCondition("recreated Media3 restores audio and subtitle choices") {
-            selectedAudioLanguage() == SPANISH_LANGUAGE &&
-                selectedTextTrack() &&
-                preferredTextLanguages().contains(SUBTITLE_LANGUAGE)
-        }
-
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFocusedText(context.getString(R.string.player_button_mark_watched))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFocusedText(context.getString(R.string.player_button_audio_subtitles))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFocusedText(context.getString(R.string.player_button_video))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        assertFocusedText(context.getString(R.string.player_aspect_auto))
-        pressBack()
-        assertFalse(
-            "Video-settings panel Back must not pop PlayerScreen after recreation",
-            isTextDisplayed(HOST_TEXT),
-        )
-        assertFocusedText(context.getString(R.string.player_button_video))
-
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
-        assertFocusedText(context.getString(R.string.player_button_audio_subtitles))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        assertFocusedText(context.getString(R.string.player_sound_stereo))
-        assertEquals(SPANISH_LANGUAGE, preferredAudioLanguage())
-        assertEquals(SUBTITLE_LANGUAGE, preferredSubtitleLanguage())
-        pressBack()
-        assertFalse(
-            "Audio/subtitle panel Back must not pop PlayerScreen after recreation",
-            isTextDisplayed(HOST_TEXT),
-        )
-        assertFocusedText(context.getString(R.string.player_button_audio_subtitles))
-
-        pressBack()
-        assertFocusedPlayerSurface()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-        awaitPlayerCondition("recreated playback starts or replays before seek checks") {
-            playerIsPlaying() && playerPosition() >= POSITION_FENCE_MS
-        }
-        assertFocusedPlayPause()
-        pressBack()
-        assertFocusedPlayerSurface()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-        awaitPlayerCondition("recreated playback pauses from the player surface") {
-            !playerIsPlaying() && playerPosition() >= POSITION_FENCE_MS
-        }
-        assertFocusedPlayPause()
-        pressBack()
-        assertFocusedPlayerSurface()
-        val beforeBackwardSeek = playerPosition()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_LEFT)
-        awaitPlayerCondition("D-pad left seeks backward") {
-            playerPosition() < beforeBackwardSeek
-        }
-        awaitText(context.getString(R.string.player_seek_backward, SEEK_STEP_SECONDS))
-        assertFocusedPlayerSurface()
-        val beforeForwardSeek = playerPosition()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_RIGHT)
-        awaitPlayerCondition("D-pad right seeks forward") {
-            playerPosition() > beforeForwardSeek
-        }
-        awaitText(context.getString(R.string.player_seek_forward, SEEK_STEP_SECONDS))
-        assertFocusedPlayerSurface()
-        assertEquals(0, server.requestJournal.unknownRequests.size)
-
-        pressBack()
-        awaitPlayerCondition("recreated PlayerScreen exits on the unchanged second Back") {
-            isTextDisplayed(HOST_TEXT)
-        }
-    }
-
-    @Test
-    fun movieScreen_continueCrossesSavedFence_andSeparatesPauseBackgroundAndExitSaves() {
-        val itemId = 7902
-        val media = MovieMediaRoots(itemId)
-        server.reset(movieRoutes(itemId, watchingTime = SAVED_POSITION_SECONDS, media = media))
-        launchPlayer(itemId)
-
-        assertFocusedText(context.getString(R.string.player_resume_continue))
-        assertTrue(playerPosition() < SAVED_POSITION_FENCE_MS)
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        awaitPlayerCondition("Continue crosses the saved-position fence") {
-            playerPosition() >= SAVED_POSITION_FENCE_MS
-        }
-        assertFocusedPlayerSurface()
-
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-        awaitPlayerCondition("pause is observable before its save") {
-            !playerIsPlaying()
-        }
-        assertFocusedPlayPause()
-        val pauseSave = awaitProgressRequest("pause progress save", itemId, video = 1, season = null)
-        assertProgressTimeAtLeast(pauseSave, MIN_SAVED_TIME_SECONDS)
-
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        awaitPlayerCondition("play resumes before background") {
-            playerIsPlaying()
-        }
-        composeRule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
-        val backgroundSave = awaitProgressRequest(
-            "background progress save",
-            itemId,
-            video = 1,
-            season = null,
-        )
-        assertProgressTimeAtLeast(backgroundSave, MIN_SAVED_TIME_SECONDS)
-
-        composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-        setPlayerContentIfMissing()
-        awaitPlayerCondition("background keeps the player paused") {
-            !playerIsPlaying()
-        }
-        assertFocusedPlayerSurface()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-        awaitPlayerCondition("play resumes before exit") {
-            playerIsPlaying()
-        }
-        assertFocusedPlayPause()
-
-        pressBack()
-        assertFocusedPlayerSurface()
-        pressBack()
-        val exitSave = awaitProgressRequest("exit progress save", itemId, video = 1, season = null)
-        assertProgressTimeAtLeast(exitSave, MIN_SAVED_TIME_SECONDS)
-        awaitPlayerCondition("Back exits only after the final progress write drains") {
-            isTextDisplayed(HOST_TEXT)
-        }
-
-        assertTrue(pauseSave !== backgroundSave)
-        assertTrue(backgroundSave !== exitSave)
-    }
-
-    @Test
-    fun movieScreen_failedMedia_focusesRetry_recoversAndBackDrainsProgressBeforeExit() {
-        val itemId = 7903
-        val media = MovieMediaRoots(itemId)
-        server.reset(retryMovieRoutes(itemId, media))
-        launchPlayer(
-            itemId = itemId,
-            startMode = PlayerStartMode.StartFromBeginning,
-        )
-
-        assertFocusedPlayPause()
-        assertFocusedTextEventually(context.getString(R.string.player_error_retry))
-        assertEquals(RETRY_FAILURE_REQUESTS, routeRequestCount(media.high, "master"))
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        awaitPlayerReady()
-        awaitPlayerCondition("Retry reaches real playback") {
-            playerIsPlaying() && currentMediaPath() == "${media.high}/master.m3u8"
-        }
-        assertTrue(routeRequestCount(media.high, "master") > RETRY_FAILURE_REQUESTS)
-
-        assertFocusedPlayPause()
-        pressBack()
-        assertFocusedPlayerSurface()
-        pressBack()
-        awaitProgressRequest("Retry journey exit save", itemId, video = 1, season = null)
-        awaitPlayerCondition("Back exits recovered playback") {
-            isTextDisplayed(HOST_TEXT)
-        }
-    }
-
-    @Test
-    fun seriesScreen_nextEpisodeDpadJourney_usesDistinctRoutesAndEpisodeProgressIdentity() {
-        val itemId = 7904
-        val media = SeriesMediaRoots(itemId)
-        server.reset(seriesRoutes(itemId, media))
-        launchPlayer(
-            itemId = itemId,
-            seasonNumber = 1,
-            episodeNumber = 1,
-            startMode = PlayerStartMode.StartFromBeginning,
-        )
-
-        assertFocusedPlayPause()
-        awaitPlayerReady()
-        awaitJournalPath("${media.episodeOne}/master.m3u8")
-        assertFocusedTextEventually(
-            text = context.getString(R.string.player_next_episode_countdown, 15)
-                .substringBefore("15"),
-            substring = true,
-        )
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-
-        val firstEpisodeSave = awaitProgressRequest(
-            "first episode transition save",
-            itemId,
-            video = 1,
-            season = 1,
-        )
-        assertNull(firstEpisodeSave.url.queryParameter("episode"))
-        awaitJournalPath("${media.episodeTwo}/master.m3u8")
-        awaitPlayerCondition("second episode owns the active production player") {
-            currentMediaPath() == "${media.episodeTwo}/master.m3u8"
-        }
-        awaitText(context.getString(R.string.player_season_episode_title, 1, 2, "Second episode"))
-        awaitPlayerReady()
-
-        if (isTextDisplayed(context.getString(R.string.player_button_audio_subtitles))) {
-            pressBack()
-        }
-        assertFocusedPlayerSurface()
-        sendPlayerKey(AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-        awaitPlayerCondition("second episode pause is observable") {
-            !playerIsPlaying()
-        }
-        val secondEpisodeSave = awaitProgressRequest(
-            "second episode pause save",
-            itemId,
-            video = 2,
-            season = 1,
-        )
-        assertNull(secondEpisodeSave.url.queryParameter("episode"))
-
-        assertTrue(
-            "Expected distinct episode media routes: ${server.requestJournal.entries}",
-            server.requestJournal.entries.any { it.path == "${media.episodeOne}/master.m3u8" } &&
-                server.requestJournal.entries.any { it.path == "${media.episodeTwo}/master.m3u8" },
-        )
-        assertEquals("1", firstEpisodeSave.url.queryParameter("video"))
-        assertEquals("2", secondEpisodeSave.url.queryParameter("video"))
-        assertEquals(0, server.requestJournal.unknownRequests.size)
-    }
-
-    private fun launchPlayer(
+    fun launchPlayer(
         itemId: Int,
         seasonNumber: Int? = null,
         episodeNumber: Int? = null,
@@ -521,7 +630,7 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         }
     }
 
-    private fun setPlayerContent() {
+    fun setPlayerContent() {
         composeRule.activityRule.scenario.onActivity { activity ->
             activity.setContent {
                 PuberTheme {
@@ -550,7 +659,7 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         }
     }
 
-    private fun setPlayerContentIfMissing() {
+    fun setPlayerContentIfMissing() {
         if (runCatching { uiPlayerRead { playbackState } }.getOrNull() == null) {
             setPlayerContent()
         }
@@ -567,20 +676,20 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         return "currentScreen$flowScopeName$screenKey:$screenKey"
     }
 
-    private fun preferredAudioLanguage(): String? =
+    fun preferredAudioLanguage(): String? =
         PlayerPreferencesRepository(context).getPreferredAudioLang(currentItemId)
 
-    private fun preferredSubtitleLanguage(): String? =
+    fun preferredSubtitleLanguage(): String? =
         PlayerPreferencesRepository(context).getPreferredSubtitleLang(currentItemId)
 
-    private fun playerPosition(): Long = uiPlayerRead { currentPosition } ?: 0L
+    fun playerPosition(): Long = uiPlayerRead { currentPosition } ?: 0L
 
-    private fun playerIsPlaying(): Boolean = uiPlayerRead { isPlaying } == true
+    fun playerIsPlaying(): Boolean = uiPlayerRead { isPlaying } == true
 
-    private fun currentMediaPath(): String? =
+    fun currentMediaPath(): String? =
         uiPlayerRead { currentMediaItem?.localConfiguration?.uri?.encodedPath }
 
-    private fun selectedAudioLanguage(): String? = uiPlayerRead {
+    fun selectedAudioLanguage(): String? = uiPlayerRead {
         currentTracks
             .groups
             .filter { it.type == C.TRACK_TYPE_AUDIO }
@@ -589,23 +698,23 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
             ?.language
     }
 
-    private fun selectedTextTrack(): Boolean = uiPlayerRead {
+    fun selectedTextTrack(): Boolean = uiPlayerRead {
         currentTracks
             .groups
             .filter { it.type == C.TRACK_TYPE_TEXT }
             .any { it.isSelected }
     } == true
 
-    private fun preferredTextLanguages(): List<String> =
+    fun preferredTextLanguages(): List<String> =
         uiPlayerRead { trackSelectionParameters.preferredTextLanguages.toList() }.orEmpty()
 
-    private fun awaitPlayerReady() {
+    fun awaitPlayerReady() {
         awaitPlayerCondition("Media3 READY without PlayerScreen error") {
             uiPlayerRead { playbackState } == Player.STATE_READY
         }
     }
 
-    private fun awaitPlayerCondition(
+    fun awaitPlayerCondition(
         label: String,
         condition: () -> Boolean,
     ) {
@@ -645,8 +754,8 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         return requireNotNull(result.get()).getOrThrow()
     }
 
-    private fun assertFocusedPlayPause() {
-        onPlayerScreen(composeRule) {
+    fun assertFocusedPlayPause() {
+        ComposeScreen.onComposeScreen<PlayerComposeScreen>(composeRule) {
             playPauseButton.assertIsDisplayed()
             playPauseButton.assertIsFocused()
         }
@@ -656,8 +765,8 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         )
     }
 
-    private fun assertFocusedSeekBar() {
-        onPlayerScreen(composeRule) {
+    fun assertFocusedSeekBar() {
+        ComposeScreen.onComposeScreen<PlayerComposeScreen>(composeRule) {
             seekBar.assertIsDisplayed()
             seekBar.assertIsFocused()
         }
@@ -678,9 +787,9 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         )
     }
 
-    private fun assertFocusedPlayerSurface() {
-        awaitAbsent(context.getString(R.string.player_button_audio_subtitles))
-        onPlayerScreen(composeRule) {
+    fun assertFocusedPlayerSurface() {
+        awaitAbsentTag(PlayerScreenTestTags.AudioSubtitles)
+        ComposeScreen.onComposeScreen<PlayerComposeScreen>(composeRule) {
             playerSurface.assertIsDisplayed()
             playerSurface.assertIsFocused()
         }
@@ -713,28 +822,27 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         }
     }
 
-    private fun assertFocusedText(
-        text: String,
-        substring: Boolean = false,
-    ) {
-        onPlayerScreen(composeRule) {
-            focusedText(text, substring).assertIsDisplayed()
-            focusedText(text, substring).assertIsFocused()
+    fun assertFocusedTag(tag: String, description: String) {
+        assertSingleFocusedNode(focusedTagMatcher(tag), description)
+        ComposeScreen.onComposeScreen<PlayerComposeScreen>(composeRule) {
+            focusedTag(tag).assertIsDisplayed()
+            focusedTag(tag).assertIsFocused()
         }
-        assertSingleFocusedNode(focusedTextMatcher(text, substring), "control '$text'")
     }
 
-    private fun assertFocusedTextEventually(
-        text: String,
-        substring: Boolean = false,
-    ) {
-        val matcher = focusedTextMatcher(text, substring)
+    fun assertFocusedPanelItem(group: String, index: Int) {
+        val tag = PlayerScreenTestTags.panelItem(group, index)
+        assertFocusedTag(tag, "$group panel item $index")
+    }
+
+    fun assertFocusedTagEventually(tag: String, description: String) {
+        val matcher = focusedTagMatcher(tag)
         composeRule.waitUntil(PLAYER_TIMEOUT_MS) {
             composeRule.onAllNodes(matcher, useUnmergedTree = true)
                 .fetchSemanticsNodes()
                 .size == 1
         }
-        assertSingleFocusedNode(matcher, "control '$text'")
+        assertSingleFocusedNode(matcher, description)
     }
 
     private fun assertSingleFocusedNode(
@@ -775,9 +883,12 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         interaction.assertIsDisplayed().assertIsFocused()
     }
 
-    private fun focusedTextMatcher(text: String, substring: Boolean): SemanticsMatcher {
-        val textMatcher = hasText(text, substring = substring)
-        return isFocused() and (textMatcher or hasAnyDescendant(textMatcher))
+    private fun focusedTagMatcher(tag: String): SemanticsMatcher {
+        val tagMatcher = hasTestTag(tag)
+        return isFocused() and (
+            tagMatcher or
+                hasAnyDescendant(tagMatcher)
+            )
     }
 
     private fun focusedSummary(nodes: List<SemanticsNode>): String =
@@ -790,19 +901,7 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         composeRule.onAllNodes(isFocused(), useUnmergedTree = true)
             .fetchSemanticsNodes()
 
-    private fun sendPlayerKey(keyCode: Int) {
-        instrumentation.sendKeyDownUpSync(keyCode)
-        composeRule.waitForIdle()
-    }
-
-    private fun pressBack() {
-        composeRule.activityRule.scenario.onActivity { activity ->
-            activity.onBackPressedDispatcher.onBackPressed()
-        }
-        composeRule.waitForIdle()
-    }
-
-    private fun awaitText(text: String) {
+    fun awaitText(text: String) {
         composeRule.waitUntil(PLAYER_TIMEOUT_MS) {
             composeRule.onAllNodesWithText(text, substring = true)
                 .fetchSemanticsNodes()
@@ -811,20 +910,25 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         composeRule.onNodeWithText(text, substring = true).assertIsDisplayed()
     }
 
-    private fun awaitAbsent(text: String) {
+    private fun awaitAbsentTag(tag: String) {
         composeRule.waitUntil(FOCUS_TIMEOUT_MS) {
-            composeRule.onAllNodesWithText(text, useUnmergedTree = true)
+            composeRule.onAllNodes(hasTestTag(tag), useUnmergedTree = true)
                 .fetchSemanticsNodes()
                 .isEmpty()
         }
     }
 
-    private fun isTextDisplayed(text: String): Boolean =
+    fun isTagDisplayed(tag: String): Boolean =
+        composeRule.onAllNodes(hasTestTag(tag), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+
+    fun isTextDisplayed(text: String): Boolean =
         composeRule.onAllNodesWithText(text, useUnmergedTree = true)
             .fetchSemanticsNodes()
             .isNotEmpty()
 
-    private fun awaitJournalPath(path: String) {
+    fun awaitJournalPath(path: String) {
         try {
             composeRule.waitUntil(PLAYER_TIMEOUT_MS) {
                 server.requestJournal.entries.any { it.path == path }
@@ -837,7 +941,7 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         }
     }
 
-    private fun awaitProgressRequest(
+    fun awaitProgressRequest(
         description: String,
         itemId: Int,
         video: Int,
@@ -850,7 +954,7 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
             request.url.queryParameter("time")?.toIntOrNull() != null
     }
 
-    private fun assertProgressTimeAtLeast(request: RecordedRequest, expectedSeconds: Int) {
+    fun assertProgressTimeAtLeast(request: RecordedRequest, expectedSeconds: Int) {
         val savedTime = request.url.queryParameter("time")?.toIntOrNull()
         assertNotNull("Missing typed progress time in ${request.url}", savedTime)
         assertTrue(
@@ -872,10 +976,10 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         error("unreachable")
     }
 
-    private fun routeRequestCount(root: String, leaf: String): Int =
+    fun routeRequestCount(root: String, leaf: String): Int =
         server.requestJournal.matchedRoutes[mediaRouteId(root, leaf)] ?: 0
 
-    private fun movieRoutes(
+    fun movieRoutes(
         itemId: Int,
         watchingTime: Int,
         media: MovieMediaRoots,
@@ -885,7 +989,7 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
             details = movieDetails(itemId, watchingTime, media),
         ) + mediaRoutes(media.high) + mediaRoutes(media.low)
 
-    private fun retryMovieRoutes(
+    fun retryMovieRoutes(
         itemId: Int,
         media: MovieMediaRoots,
     ): List<HermeticRoute> {
@@ -907,7 +1011,7 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         ) + mediaRoutes(media.high, masterResponse = retrySequence) + mediaRoutes(media.low)
     }
 
-    private fun seriesRoutes(
+    fun seriesRoutes(
         itemId: Int,
         media: SeriesMediaRoots,
     ): List<HermeticRoute> =
@@ -1135,39 +1239,36 @@ internal class PlayerScreenE2ETest : PlayerInstrumentationTestCase() {
         return requireNotNull(result.get()).getOrThrow()
     }
 
-    private data class MovieMediaRoots(val itemId: Int) {
-        val high = "/media/movie-$itemId/high"
-        val low = "/media/movie-$itemId/low"
-    }
-
-    private data class SeriesMediaRoots(val itemId: Int) {
-        val episodeOne = "/media/series-$itemId/episode-1"
-        val episodeTwo = "/media/series-$itemId/episode-2"
-    }
-
-    private companion object {
-        const val HLS_CONTENT_TYPE = "application/vnd.apple.mpegurl"
-        const val PLAYER_TIMEOUT_MS = 30_000L
-        const val FOCUS_TIMEOUT_MS = 5_000L
-        const val POSITION_FENCE_MS = 500L
-        const val SAVED_POSITION_SECONDS = 2
-        const val SAVED_POSITION_FENCE_MS = 1_750L
-        const val MIN_SAVED_TIME_SECONDS = 1
-        const val SEEK_STEP_SECONDS = 10
-        const val RETRY_FAILURE_REQUESTS = 6
-        const val FULLSCREEN_FOCUS_FRACTION = 0.8f
-        const val ENGLISH_AUDIO_LABEL = "English"
-        const val SPANISH_AUDIO_LABEL = "Español"
-        const val SPANISH_LANGUAGE = "es"
-        const val SUBTITLE_LANGUAGE = "en"
-        const val HIGH_QUALITY_LABEL = "720p"
-        const val LOW_QUALITY_LABEL = "360p"
-        const val EPISODE_ONE_ID_OFFSET = 11
-        const val EPISODE_TWO_ID_OFFSET = 12
-
-    }
 }
 
+private data class MovieMediaRoots(val itemId: Int) {
+    val high = "/media/movie-$itemId/high"
+    val low = "/media/movie-$itemId/low"
+}
+
+private data class SeriesMediaRoots(val itemId: Int) {
+    val episodeOne = "/media/series-$itemId/episode-1"
+    val episodeTwo = "/media/series-$itemId/episode-2"
+}
+
+private const val HLS_CONTENT_TYPE = "application/vnd.apple.mpegurl"
+private const val PLAYER_TIMEOUT_MS = 30_000L
+private const val FOCUS_TIMEOUT_MS = 5_000L
+private const val POSITION_FENCE_MS = 500L
+private const val SAVED_POSITION_SECONDS = 2
+private const val SAVED_POSITION_FENCE_MS = 1_750L
+private const val MIN_SAVED_TIME_SECONDS = 1
+private const val SEEK_STEP_SECONDS = 10
+private const val RETRY_FAILURE_REQUESTS = 6
+private const val FULLSCREEN_FOCUS_FRACTION = 0.8f
+private const val ENGLISH_AUDIO_LABEL = "English"
+private const val SPANISH_AUDIO_LABEL = "Español"
+private const val SPANISH_LANGUAGE = "es"
+private const val SUBTITLE_LANGUAGE = "en"
+private const val HIGH_QUALITY_LABEL = "720p"
+private const val LOW_QUALITY_LABEL = "360p"
+private const val EPISODE_ONE_ID_OFFSET = 11
+private const val EPISODE_TWO_ID_OFFSET = 12
 private const val HOST_TEXT = "Player E2E host"
 
 @Parcelize

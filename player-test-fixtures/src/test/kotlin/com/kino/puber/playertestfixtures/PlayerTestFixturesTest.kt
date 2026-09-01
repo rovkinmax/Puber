@@ -2,6 +2,7 @@ package com.kino.puber.playertestfixtures
 
 import java.security.MessageDigest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -50,6 +51,20 @@ class PlayerTestFixturesTest {
                 .joinToString("") { "%02x".format(it) }
             assertEquals(path, expected, actual)
         }
+    }
+
+    @Test
+    fun checksumManifest_rejectsMalformedDuplicateAndUnsafeEntries() {
+        val hash = "0".repeat(64)
+
+        assertChecksumManifestRejected("not-a-checksum  progressive.mp4")
+        assertChecksumManifestRejected("$hash progressive.mp4")
+        assertChecksumManifestRejected("$hash  ../progressive.mp4")
+        assertChecksumManifestRejected("$hash  hls\\master.m3u8")
+        assertChecksumManifestRejected(
+            "$hash  progressive.mp4",
+            "$hash  progressive.mp4",
+        )
     }
 
     @Test
@@ -111,6 +126,15 @@ class PlayerTestFixturesTest {
                     .digest(PlayerTestFixtures.readBytes(metadata.id))
                     .joinToString("") { "%02x".format(it) },
             )
+        }
+    }
+
+    private fun assertChecksumManifestRejected(vararg lines: String) {
+        try {
+            PlayerTestFixtures.parseCommittedChecksums(lines.asSequence())
+            fail("Expected checksum manifest to be rejected: ${lines.joinToString()}")
+        } catch (_: IllegalArgumentException) {
+            // Expected: checksum manifests are parsed fail-closed.
         }
     }
 }

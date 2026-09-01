@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
@@ -123,7 +124,9 @@ private fun ResumeActions(
     Row(horizontalArrangement = Arrangement.spacedBy(ACTION_SPACING)) {
         Button(
             onClick = onResume,
-            modifier = Modifier.focusRequester(resumeButtonFocusRequester),
+            modifier = Modifier
+                .testTag(PlayerScreenTestTags.ResumeContinue)
+                .focusRequester(resumeButtonFocusRequester),
         ) {
             Text(text = stringResource(R.string.player_resume_continue))
         }

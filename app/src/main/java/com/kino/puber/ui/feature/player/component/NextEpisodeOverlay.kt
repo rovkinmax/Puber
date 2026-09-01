@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
@@ -122,7 +123,9 @@ private fun NextEpisodeButton(
 
     Surface(
         onClick = onClick,
-        modifier = Modifier.focusRequester(focusRequester),
+        modifier = Modifier
+            .testTag(PlayerScreenTestTags.NextEpisode)
+            .focusRequester(focusRequester),
         shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape = shape),
         colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),

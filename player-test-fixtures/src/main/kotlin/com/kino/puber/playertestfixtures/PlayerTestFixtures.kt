@@ -19,6 +19,7 @@ object PlayerTestFixtures {
     private const val ROOT = "player-fixtures"
     private const val MANIFEST = "$ROOT/fixture-manifest.properties"
     private const val SHA256SUMS = "$ROOT/SHA256SUMS"
+    private val checksumLine = Regex("([0-9a-f]{64}) {2}([^\\s]+)")
 
     val catalog: FixtureCatalog by lazy { FixtureCatalog(loadProperties()) }
 
@@ -43,20 +44,45 @@ object PlayerTestFixtures {
 
     fun verifySha256(fixture: FixtureId, context: Context? = null): Boolean {
         val expected = (context?.let(::catalog) ?: catalog).metadata(fixture).sha256
+        return verifySha256(fixture.path, expected, context)
+    }
+
+    fun verifySha256(
+        path: String,
+        expected: String,
+        context: Context? = null,
+    ): Boolean {
+        require(expected.matches(Regex("[0-9a-f]{64}"))) {
+            "Expected SHA-256 must be 64 lowercase hexadecimal characters"
+        }
         val actual = MessageDigest.getInstance("SHA-256")
-            .digest(readBytes(fixture, context))
+            .digest(openPath(path, context).use(InputStream::readBytes))
             .toHex()
         return actual == expected
     }
 
     fun committedChecksums(context: Context? = null): Map<String, String> =
-        openPath(SHA256SUMS.removePrefix("$ROOT/"), context).bufferedReader().useLines { lines ->
-            lines
-                .filter { it.isNotBlank() && !it.startsWith("#") }
-                .associate { line ->
-                    val (hash, path) = line.split(Regex("\\s+"), limit = 2)
-                    path to hash
+        openPath(SHA256SUMS.removePrefix("$ROOT/"), context).bufferedReader().useLines {
+            parseCommittedChecksums(it)
+        }
+
+    internal fun parseCommittedChecksums(lines: Sequence<String>): Map<String, String> =
+        buildMap {
+            lines.forEachIndexed { index, line ->
+                if (line.isBlank() || line.startsWith("#")) {
+                    return@forEachIndexed
                 }
+                val match = requireNotNull(checksumLine.matchEntire(line)) {
+                    "Malformed SHA256SUMS entry at line ${index + 1}"
+                }
+                val (hash, path) = match.destructured
+                require(path.isRelativePath()) {
+                    "Unsafe SHA256SUMS path at line ${index + 1}: $path"
+                }
+                require(put(path, hash) == null) {
+                    "Duplicate SHA256SUMS path at line ${index + 1}: $path"
+                }
+            }
         }
 
     private fun loadProperties(context: Context? = null): Properties =
@@ -70,8 +96,9 @@ object PlayerTestFixtures {
         joinToString("") { byte -> "%02x".format(byte) }
 
     private fun String.isRelativePath(): Boolean =
-        isNotBlank() && !startsWith('/') && !contains('\n') && !contains('\r') &&
-            split('/').none { it == ".." || it.isBlank() }
+        isNotBlank() && !startsWith('/') && !contains('\\') &&
+            !contains('\n') && !contains('\r') &&
+            split('/').none { it == "." || it == ".." || it.isBlank() }
 }
 
 enum class FixtureId(

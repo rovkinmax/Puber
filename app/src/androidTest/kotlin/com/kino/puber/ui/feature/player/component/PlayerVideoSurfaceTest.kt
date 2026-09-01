@@ -29,131 +29,13 @@ internal class PlayerVideoSurfaceTest : PlayerInstrumentationTestCase() {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun playbackSnapshots_reachAttachedWindow_andClearWithPlayerOnRelease() {
+    fun playbackSnapshots_reachAttachedWindow_andClearWithPlayerOnRelease() = run {
         val contentState = mutableStateOf(content())
         val surfaceVisible = mutableStateOf(true)
         val playerViewReference = AtomicReference<PlayerView>()
         var player: ExoPlayer? = null
 
-        composeRule.setContent {
-            if (surfaceVisible.value) {
-                MaterialTheme {
-                    PlayerVideoSurface(
-                        content = contentState.value,
-                        exoPlayer = { player },
-                        playerViewFactory = { context ->
-                            player = player ?: ExoPlayer.Builder(context).build()
-                            PlayerView(context).also(playerViewReference::set)
-                        },
-                    )
-                }
-            }
-        }
-
-        composeRule.waitUntil { playerViewReference.get()?.isAttachedToWindow == true }
-        composeRule.runOnIdle {
-            val playerView = playerViewReference.get()
-            assertFalse(playerView.keepScreenOn)
-            assertSame(player, playerView.player)
-            assertWindowKeepScreenOn(expected = false)
-        }
-
-        publish(contentState, playbackState = Player.STATE_READY, playWhenReady = true)
-        assertAttachedKeepScreenOn(playerViewReference, expected = true)
-
-        publish(contentState, playbackState = Player.STATE_BUFFERING, playWhenReady = true)
-        assertAttachedKeepScreenOn(playerViewReference, expected = true)
-
-        publish(contentState, playbackState = Player.STATE_READY, playWhenReady = false)
-        assertAttachedKeepScreenOn(playerViewReference, expected = false)
-
-        publish(
-            contentState = contentState,
-            playbackState = Player.STATE_READY,
-            playWhenReady = true,
-            suppressionReason = Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS,
-        )
-        assertAttachedKeepScreenOn(playerViewReference, expected = false)
-
-        composeRule.runOnIdle {
-            surfaceVisible.value = false
-        }
-        composeRule.waitUntil {
-            playerViewReference.get().player == null &&
-                !playerViewReference.get().keepScreenOn
-        }
-        composeRule.runOnIdle {
-            val playerView = playerViewReference.get()
-            assertFalse(playerView.keepScreenOn)
-            assertNull(playerView.player)
-            assertWindowKeepScreenOn(expected = false)
-            player?.release()
-            player = null
-        }
-    }
-
-    @Test
-    fun activeBuffering_reacquiresWindowOwnershipAtPlayerViewAttachBoundary() {
-        val contentState = mutableStateOf(
-            content().withPlaybackSnapshot(
-                PlaybackStatePolicy.derive(
-                    isPlaying = false,
-                    playWhenReady = true,
-                    playbackState = Player.STATE_BUFFERING,
-                    suppressionReason = Player.PLAYBACK_SUPPRESSION_REASON_NONE,
-                ),
-            ),
-        )
-        val playerViewReference = AtomicReference<PlayerView>()
-        var player: ExoPlayer? = null
-
-        composeRule.setContent {
-            MaterialTheme {
-                PlayerVideoSurface(
-                    content = contentState.value,
-                    exoPlayer = { player },
-                    playerViewFactory = { context ->
-                        player = ExoPlayer.Builder(context).build()
-                        object : PlayerView(context) {
-                            override fun onAttachedToWindow() {
-                                super.onAttachedToWindow()
-                                composeRule.activity.window.clearFlags(
-                                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-                                )
-                            }
-                        }.also(playerViewReference::set)
-                    },
-                )
-            }
-        }
-
-        composeRule.waitUntil { playerViewReference.get()?.isAttachedToWindow == true }
-        composeRule.waitUntil {
-            composeRule.activity.window.attributes.flags and
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
-        }
-        composeRule.runOnIdle {
-            assertTrue(playerViewReference.get().keepScreenOn)
-            assertWindowKeepScreenOn(expected = true)
-            playerViewReference.get().player = null
-            player?.release()
-            player = null
-        }
-    }
-
-    @Test
-    fun preExistingWindowKeepScreenOn_survivesPlaybackTransitionsAndRelease() {
-        val contentState = mutableStateOf(content())
-        val surfaceVisible = mutableStateOf(true)
-        val playerViewReference = AtomicReference<PlayerView>()
-        var player: ExoPlayer? = null
-
-        composeRule.runOnIdle {
-            composeRule.activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            assertWindowKeepScreenOn(expected = true)
-        }
-
-        try {
+        step("Attach the production video surface to an idle player") {
             composeRule.setContent {
                 if (surfaceVisible.value) {
                     MaterialTheme {
@@ -170,28 +52,40 @@ internal class PlayerVideoSurfaceTest : PlayerInstrumentationTestCase() {
             }
 
             composeRule.waitUntil { playerViewReference.get()?.isAttachedToWindow == true }
-            assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = false)
+            composeRule.runOnIdle {
+                val playerView = playerViewReference.get()
+                assertFalse(playerView.keepScreenOn)
+                assertSame(player, playerView.player)
+                assertWindowKeepScreenOn(expected = false)
+            }
+        }
 
+        step("Acquire keep-screen-on ownership while READY and playing") {
             publish(contentState, playbackState = Player.STATE_READY, playWhenReady = true)
-            assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = true)
+            assertAttachedKeepScreenOn(playerViewReference, expected = true)
+        }
 
+        step("Retain keep-screen-on ownership while actively buffering") {
             publish(contentState, playbackState = Player.STATE_BUFFERING, playWhenReady = true)
-            assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = true)
+            assertAttachedKeepScreenOn(playerViewReference, expected = true)
+        }
 
+        step("Release keep-screen-on ownership when playback pauses") {
             publish(contentState, playbackState = Player.STATE_READY, playWhenReady = false)
-            assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = false)
+            assertAttachedKeepScreenOn(playerViewReference, expected = false)
+        }
 
+        step("Keep ownership released while playback is suppressed") {
             publish(
                 contentState = contentState,
                 playbackState = Player.STATE_READY,
                 playWhenReady = true,
                 suppressionReason = Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS,
             )
-            assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = false)
+            assertAttachedKeepScreenOn(playerViewReference, expected = false)
+        }
 
-            publish(contentState, playbackState = Player.STATE_ENDED, playWhenReady = true)
-            assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = false)
-
+        step("Detach the released surface and clear player and window ownership") {
             composeRule.runOnIdle {
                 surfaceVisible.value = false
             }
@@ -200,9 +94,145 @@ internal class PlayerVideoSurfaceTest : PlayerInstrumentationTestCase() {
                     !playerViewReference.get().keepScreenOn
             }
             composeRule.runOnIdle {
-                assertFalse(playerViewReference.get().keepScreenOn)
-                assertNull(playerViewReference.get().player)
+                val playerView = playerViewReference.get()
+                assertFalse(playerView.keepScreenOn)
+                assertNull(playerView.player)
+                assertWindowKeepScreenOn(expected = false)
+                player?.release()
+                player = null
+            }
+        }
+    }
+
+    @Test
+    fun activeBuffering_reacquiresWindowOwnershipAtPlayerViewAttachBoundary() = run {
+        val contentState = mutableStateOf(
+            content().withPlaybackSnapshot(
+                PlaybackStatePolicy.derive(
+                    isPlaying = false,
+                    playWhenReady = true,
+                    playbackState = Player.STATE_BUFFERING,
+                    suppressionReason = Player.PLAYBACK_SUPPRESSION_REASON_NONE,
+                ),
+            ),
+        )
+        val playerViewReference = AtomicReference<PlayerView>()
+        var player: ExoPlayer? = null
+
+        step("Attach an actively buffering surface after the view clears the window flag") {
+            composeRule.setContent {
+                MaterialTheme {
+                    PlayerVideoSurface(
+                        content = contentState.value,
+                        exoPlayer = { player },
+                        playerViewFactory = { context ->
+                            player = ExoPlayer.Builder(context).build()
+                            object : PlayerView(context) {
+                                override fun onAttachedToWindow() {
+                                    super.onAttachedToWindow()
+                                    composeRule.activity.window.clearFlags(
+                                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                                    )
+                                }
+                            }.also(playerViewReference::set)
+                        },
+                    )
+                }
+            }
+        }
+
+        step("Reacquire view and window ownership at the attach boundary") {
+            composeRule.waitUntil { playerViewReference.get()?.isAttachedToWindow == true }
+            composeRule.waitUntil {
+                composeRule.activity.window.attributes.flags and
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
+            }
+            composeRule.runOnIdle {
+                assertTrue(playerViewReference.get().keepScreenOn)
                 assertWindowKeepScreenOn(expected = true)
+            }
+        }
+
+        step("Detach the player before releasing the real ExoPlayer") {
+            composeRule.runOnIdle {
+                playerViewReference.get().player = null
+                player?.release()
+                player = null
+            }
+        }
+    }
+
+    @Test
+    fun preExistingWindowKeepScreenOn_survivesPlaybackTransitionsAndRelease() = run {
+        val contentState = mutableStateOf(content())
+        val surfaceVisible = mutableStateOf(true)
+        val playerViewReference = AtomicReference<PlayerView>()
+        var player: ExoPlayer? = null
+
+        step("Establish pre-existing window keep-screen-on ownership") {
+            composeRule.runOnIdle {
+                composeRule.activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                assertWindowKeepScreenOn(expected = true)
+            }
+        }
+
+        try {
+            step("Attach the surface without claiming the pre-existing window flag") {
+                composeRule.setContent {
+                    if (surfaceVisible.value) {
+                        MaterialTheme {
+                            PlayerVideoSurface(
+                                content = contentState.value,
+                                exoPlayer = { player },
+                                playerViewFactory = { context ->
+                                    player = player ?: ExoPlayer.Builder(context).build()
+                                    PlayerView(context).also(playerViewReference::set)
+                                },
+                            )
+                        }
+                    }
+                }
+                composeRule.waitUntil { playerViewReference.get()?.isAttachedToWindow == true }
+                assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = false)
+            }
+
+            step("Toggle view ownership through READY and BUFFERING") {
+                publish(contentState, playbackState = Player.STATE_READY, playWhenReady = true)
+                assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = true)
+
+                publish(contentState, playbackState = Player.STATE_BUFFERING, playWhenReady = true)
+                assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = true)
+            }
+
+            step("Release only view ownership for pause, suppression, and ENDED") {
+                publish(contentState, playbackState = Player.STATE_READY, playWhenReady = false)
+                assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = false)
+
+                publish(
+                    contentState = contentState,
+                    playbackState = Player.STATE_READY,
+                    playWhenReady = true,
+                    suppressionReason = Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS,
+                )
+                assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = false)
+
+                publish(contentState, playbackState = Player.STATE_ENDED, playWhenReady = true)
+                assertPreExistingWindowFlagPreserved(playerViewReference, viewExpected = false)
+            }
+
+            step("Detach the surface while preserving external window ownership") {
+                composeRule.runOnIdle {
+                    surfaceVisible.value = false
+                }
+                composeRule.waitUntil {
+                    playerViewReference.get().player == null &&
+                        !playerViewReference.get().keepScreenOn
+                }
+                composeRule.runOnIdle {
+                    assertFalse(playerViewReference.get().keepScreenOn)
+                    assertNull(playerViewReference.get().player)
+                    assertWindowKeepScreenOn(expected = true)
+                }
             }
         } finally {
             try {
