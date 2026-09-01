@@ -12,16 +12,14 @@ class PlayerTestFixturesAndroidTest {
     @Test
     fun packagedAndroidAsset_isTheSameCommittedFixture() {
         val context = InstrumentationRegistry.getInstrumentation().context
+        val checksums = PlayerTestFixtures.committedChecksums(context)
 
-        FixtureId.entries.forEach { fixture ->
+        assertTrue("fixture checksum manifest is missing", checksums.isNotEmpty())
+        checksums.forEach { (path, expected) ->
             assertTrue(
-                "$fixture is missing or changed in Android assets",
-                PlayerTestFixtures.verifySha256(fixture, context),
+                "$path is missing or changed in packaged Android assets",
+                PlayerTestFixtures.verifySha256(path, expected, context),
             )
         }
-        assertTrue(
-            "fixture checksum manifest is missing",
-            PlayerTestFixtures.committedChecksums(context).isNotEmpty(),
-        )
     }
 }

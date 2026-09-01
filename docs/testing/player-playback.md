@@ -11,8 +11,8 @@ stream.
 | --- | --- | --- |
 | Fixture integrity | `:player-test-fixtures:test` and its Android test | The same committed bytes, metadata, playlist references, rendition labels, and WebVTT cue are available to JVM and Android tests. |
 | Host policy/state | `:app:testDevDebugUnitTest` and `:app:testProdDebugUnitTest`, filtered to `com.kino.puber.ui.feature.player.vm.*` | HLS error policy, subtitle MIME and identity, audio/subtitle preference matching, AC3 fallback state, VM transitions, and generation guards. |
-| Real player instrumentation | `PlaybackControllerDeviceTest`, `PlaybackControllerNetworkTracksTest`, and `PlaybackControllerResourcesTest` | The production `PlaybackController` and Media3 player load loopback MP4/HLS, render on a real `PlayerView`, select tracks/cues, recover from programmed faults, and release cleanly. |
-| Production-screen instrumentation | `PlayerScreenContentFocusTest`, `PlayerScreenE2ETest`, and `PlayerVideoSurfaceTest` | The production screen/Koin scope handles real media, concrete TV focus, D-pad/media/back events, lifecycle progress saves, resume, series episode identity, and surface ownership. |
+| Technical player instrumentation | `PlaybackControllerDeviceTest`, `PlaybackControllerNetworkTracksTest`, `PlaybackControllerResourcesTest`, and `PlayerVideoSurfaceTest` | The production `PlaybackController`, Media3 player, `PlayerView`, and `PlayerVideoSurface` load loopback MP4/HLS, select tracks/cues, recover from programmed faults, release cleanly, and enforce technical surface/window ownership. |
+| Compose UI instrumentation | `PlayerScreenContentFocusTest` and `PlayerScreenE2ETest` | The production player UI handles concrete TV focus and D-pad/media/back events; the end-to-end class additionally launches the real `PlayerScreen`/Koin scope to prove media, lifecycle progress saves, resume, and series episode identity. |
 
 The instrumentation tests use a per-test `SimpleCache`, unique scenario
 identities, event/latch/player fences instead of `Thread.sleep`, and bounded
@@ -20,12 +20,18 @@ failure diagnostics. Teardown waits for zero active server requests, releases
 the player and surface, removes only test-owned cache state, and fails on
 unknown or external-origin requests.
 
-All six player instrumentation classes share
-`PlayerInstrumentationTestCase`, so each JUnit scenario is reported as a named
-Kaspresso step. Production `PlayerScreen` journeys use `PlayerComposeScreen`
-and the minimal stable player-only test tags. Controller, Media3, network,
-cache, lifecycle, codec, request-journal, and resource assertions remain
-direct and event-based inside those steps.
+The four technical classes use `PlayerInstrumentationTestCase` with
+`Kaspresso.Builder.simple()`. `PlayerScreenContentFocusTest` and
+`PlayerScreenE2ETest` use `PlayerComposeInstrumentationTestCase` with
+`Kaspresso.Builder.withComposeSupport()`. `PlayerVideoSurfaceTest` is technical
+`PlayerVideoSurface`/window-ownership coverage, not a production
+`PlayerScreen`/Koin journey.
+
+Every test method directly owns its Kaspresso `run` block and its meaningful
+named `step(...)` narrative. The Compose UI tests use the player screen/robot
+abstractions and minimal stable player-only test tags. Controller, Media3,
+network, cache, lifecycle, codec, request-journal, resource, and surface
+assertions remain direct and event-based inside their owning steps.
 
 ## Fixture pack and provenance
 

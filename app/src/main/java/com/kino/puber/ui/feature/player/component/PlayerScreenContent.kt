@@ -239,6 +239,15 @@ internal object PlayerScreenTestTags {
     const val Surface = "player_surface"
     const val PlayPause = "player_play_pause"
     const val SeekBar = "player_seek_bar"
+    const val MarkWatched = "player_mark_watched"
+    const val Episodes = "player_episodes"
+    const val AudioSubtitles = "player_audio_subtitles"
+    const val VideoSettings = "player_video_settings"
+    const val ResumeContinue = "player_resume_continue"
+    const val Retry = "player_retry"
+    const val NextEpisode = "player_next_episode"
+
+    fun panelItem(group: String, index: Int): String = "player_panel_${group}_$index"
 }
 
 private fun handlePlayerKeyEvent(
@@ -315,7 +324,9 @@ private fun ErrorOverlay(
             ErrorButton(
                 text = stringResource(R.string.player_error_retry),
                 onClick = onRetry,
-                modifier = Modifier.focusRequester(retryFocusRequester),
+                modifier = Modifier
+                    .testTag(PlayerScreenTestTags.Retry)
+                    .focusRequester(retryFocusRequester),
                 primary = true,
             )
             ErrorButton(

@@ -132,122 +132,173 @@ internal class PlaybackControllerDeviceTest : PlayerInstrumentationTestCase() {
     }
 
     @Test
-    fun progressiveMp4_reachesReadyRendersFrameAdvancesAndEnds() {
-        val probe = prepare(FixtureId.ProgressiveMp4, startPositionMs = 0L)
+    fun progressiveMp4_reachesReadyRendersFrameAdvancesAndEnds() = run {
+        lateinit var probe: PlayerProbe
 
-        await(probe.ready, "progressive READY")
-        await(probe.firstFrame, "progressive first rendered frame")
-        awaitCondition("progressive position advance") {
-            controller.currentPosition > 0L
+        step("Prepare the progressive fixture with the production player") {
+            probe = prepare(FixtureId.ProgressiveMp4, startPositionMs = 0L)
         }
-        await(probe.ended, "progressive ENDED")
 
-        assertNoPlaybackError(probe)
-        assertTrue(
-            "Expected a progressive MP4 request; journal=${server.requestJournal.entries}",
-            server.requestJournal.entries.any {
-                it.path == "/media/progressive.mp4" &&
-                    it.outcome is ResponseOutcome.Completed
-            },
-        )
-        assertEquals(0, server.requestJournal.unknownRequests.size)
+        step("Reach READY and render the first progressive frame") {
+            await(probe.ready, "progressive READY")
+            await(probe.firstFrame, "progressive first rendered frame")
+        }
+
+        step("Advance progressive playback and reach ENDED") {
+            awaitCondition("progressive position advance") {
+                controller.currentPosition > 0L
+            }
+            await(probe.ended, "progressive ENDED")
+        }
+
+        step("Verify progressive playback and its hermetic request journal") {
+            assertNoPlaybackError(probe)
+            assertTrue(
+                "Expected a progressive MP4 request; journal=${server.requestJournal.entries}",
+                server.requestJournal.entries.any {
+                    it.path == "/media/progressive.mp4" &&
+                        it.outcome is ResponseOutcome.Completed
+                },
+            )
+            assertEquals(0, server.requestJournal.unknownRequests.size)
+        }
     }
 
     @Test
-    fun hlsVod_reachesReadyRendersFrameAdvancesAndEnds() {
-        val probe = prepare(FixtureId.HlsMaster, startPositionMs = 0L)
+    fun hlsVod_reachesReadyRendersFrameAdvancesAndEnds() = run {
+        lateinit var probe: PlayerProbe
 
-        await(probe.ready, "HLS READY")
-        await(probe.firstFrame, "HLS first rendered frame")
-        awaitCondition("HLS position advance") {
-            controller.currentPosition > 0L
+        step("Prepare the HLS fixture with the production player") {
+            probe = prepare(FixtureId.HlsMaster, startPositionMs = 0L)
         }
-        await(probe.ended, "HLS ENDED")
 
-        assertNoPlaybackError(probe)
-        val requests = server.requestJournal.entries
-        assertTrue(
-            "Expected HLS master and media playlist requests, journal=$requests",
-            requests.any { it.path == "/media/hls/master.m3u8" } &&
-                requests.any { it.path == "/media/hls/video_360.m3u8" },
-        )
-        assertTrue(
-            "Expected HLS segment request, journal=$requests",
-            requests.any { it.path.startsWith("/media/hls/video_") && it.path.endsWith(".ts") },
-        )
-        assertEquals(0, server.requestJournal.unknownRequests.size)
+        step("Reach READY and render the first HLS frame") {
+            await(probe.ready, "HLS READY")
+            await(probe.firstFrame, "HLS first rendered frame")
+        }
+
+        step("Advance HLS playback and reach ENDED") {
+            awaitCondition("HLS position advance") {
+                controller.currentPosition > 0L
+            }
+            await(probe.ended, "HLS ENDED")
+        }
+
+        step("Verify HLS playback and its manifest and segment requests") {
+            assertNoPlaybackError(probe)
+            val requests = server.requestJournal.entries
+            assertTrue(
+                "Expected HLS master and media playlist requests, journal=$requests",
+                requests.any { it.path == "/media/hls/master.m3u8" } &&
+                    requests.any { it.path == "/media/hls/video_360.m3u8" },
+            )
+            assertTrue(
+                "Expected HLS segment request, journal=$requests",
+                requests.any { it.path.startsWith("/media/hls/video_") && it.path.endsWith(".ts") },
+            )
+            assertEquals(0, server.requestJournal.unknownRequests.size)
+        }
     }
 
     @Test
-    fun progressivePlayback_controlsAndStartPositionUseRealPlayerEvents() {
-        val probe = prepare(FixtureId.ProgressiveMp4, startPositionMs = 1_000L)
+    fun progressivePlayback_controlsAndStartPositionUseRealPlayerEvents() = run {
+        lateinit var probe: PlayerProbe
 
-        await(probe.ready, "progressive READY")
-        await(probe.firstFrame, "progressive first rendered frame")
-        awaitCondition("non-zero start position") {
-            controller.currentPosition >= 900L
-        }
-
-        runOnPlayer { controller.pause() }
-        awaitCondition("pause") { !controller.isPlaying }
-
-        runOnPlayer {
-            controller.setSpeed(2f)
-            controller.seekTo(2_000L)
-        }
-        awaitCondition("forward seek") {
-            controller.currentPosition in 1_800L..2_400L
-        }
-
-        runOnPlayer { controller.play() }
-        awaitCondition("play after seek") { controller.isPlaying }
-
-        runOnPlayer { controller.seekTo(250L) }
-        awaitCondition("backward seek") {
-            controller.currentPosition in 0L..700L
-        }
-
-        runOnPlayer { controller.seekTo(3_700L) }
-        await(probe.ended, "near-end seek ENDED")
-        assertNoPlaybackError(probe)
-
-        runOnPlayer { controller.play() }
-        awaitCondition("replay after ended") {
-            controller.currentPosition < 1_000L && controller.isPlaying
-        }
-        assertEquals(2f, playerRead { checkNotNull(player).getPlaybackParameters().speed }, 0f)
-    }
-
-    @Test
-    fun awaitCondition_failsClosedWhenConditionRemainsFalse() {
-        val error = assertThrows(AssertionError::class.java) {
-            awaitCondition(
-                label = "deliberately false condition",
-                timeoutMs = FAIL_CLOSED_TIMEOUT_MS,
-            ) {
-                false
+        step("Start progressive playback from the requested position") {
+            probe = prepare(FixtureId.ProgressiveMp4, startPositionMs = 1_000L)
+            await(probe.ready, "progressive READY")
+            await(probe.firstFrame, "progressive first rendered frame")
+            awaitCondition("non-zero start position") {
+                controller.currentPosition >= 900L
             }
         }
 
-        assertTrue(error.message.orEmpty().contains("deliberately false condition"))
+        step("Pause playback through the production controller") {
+            runOnPlayer { controller.pause() }
+            awaitCondition("pause") { !controller.isPlaying }
+        }
+
+        step("Change speed and seek forward") {
+            runOnPlayer {
+                controller.setSpeed(2f)
+                controller.seekTo(2_000L)
+            }
+            awaitCondition("forward seek") {
+                controller.currentPosition in 1_800L..2_400L
+            }
+        }
+
+        step("Resume playback after the forward seek") {
+            runOnPlayer { controller.play() }
+            awaitCondition("play after seek") { controller.isPlaying }
+        }
+
+        step("Seek backward while playback remains active") {
+            runOnPlayer { controller.seekTo(250L) }
+            awaitCondition("backward seek") {
+                controller.currentPosition in 0L..700L
+            }
+        }
+
+        step("Seek near the end and reach ENDED without playback errors") {
+            runOnPlayer { controller.seekTo(3_700L) }
+            await(probe.ended, "near-end seek ENDED")
+            assertNoPlaybackError(probe)
+        }
+
+        step("Replay from ENDED and preserve the selected speed") {
+            runOnPlayer { controller.play() }
+            awaitCondition("replay after ended") {
+                controller.currentPosition < 1_000L && controller.isPlaying
+            }
+            assertEquals(2f, playerRead { checkNotNull(player).getPlaybackParameters().speed }, 0f)
+        }
     }
 
     @Test
-    fun unexpectedLoopbackRequest_failsClosedWithBoundedDiagnostics() {
-        server.reset(emptyList())
-        okhttp3.OkHttpClient().newCall(
-            okhttp3.Request.Builder()
-                .url(loopbackUrl("/unexpected-player-request"))
-                .build(),
-        ).execute().close()
-        server.awaitQuiescence(timeout = 10, unit = TimeUnit.SECONDS)
+    fun awaitCondition_failsClosedWhenConditionRemainsFalse() = run {
+        lateinit var error: AssertionError
 
-        val error = assertThrows(AssertionError::class.java) {
-            server.assertNoUnknownRequests(MAX_DIAGNOSTIC_REQUESTS)
+        step("Wait on a condition that deliberately remains false") {
+            error = assertThrows(AssertionError::class.java) {
+                awaitCondition(
+                    label = "deliberately false condition",
+                    timeoutMs = FAIL_CLOSED_TIMEOUT_MS,
+                ) {
+                    false
+                }
+            }
         }
 
-        assertTrue(error.message.orEmpty().contains("/unexpected-player-request"))
-        server.reset(emptyList())
+        step("Report the failed condition with its diagnostic label") {
+            assertTrue(error.message.orEmpty().contains("deliberately false condition"))
+        }
+    }
+
+    @Test
+    fun unexpectedLoopbackRequest_failsClosedWithBoundedDiagnostics() = run {
+        lateinit var error: AssertionError
+
+        try {
+            step("Send a loopback request that has no admitted route") {
+                server.reset(emptyList())
+                okhttp3.OkHttpClient().newCall(
+                    okhttp3.Request.Builder()
+                        .url(loopbackUrl("/unexpected-player-request"))
+                        .build(),
+                ).execute().close()
+                server.awaitQuiescence(timeout = 10, unit = TimeUnit.SECONDS)
+            }
+
+            step("Reject the unknown request with bounded diagnostics") {
+                error = assertThrows(AssertionError::class.java) {
+                    server.assertNoUnknownRequests(MAX_DIAGNOSTIC_REQUESTS)
+                }
+                assertTrue(error.message.orEmpty().contains("/unexpected-player-request"))
+            }
+        } finally {
+            server.reset(emptyList())
+        }
     }
 
     private fun prepare(

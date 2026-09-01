@@ -122,242 +122,309 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
     }
 
     @Test
-    fun hlsTracks_selectsAudioAndSubtitle_observesCueAndDisablesText() {
-        server.reset(commonHlsRoutes())
-        val subtitleUrl = loopbackUrl("/media/subtitle.vtt?signature=test-signature")
-        val probe = prepare(
-            path = "/media/hls/master.m3u8",
-            subtitles = listOf(
-                SubtitleLink(
-                    lang = "en",
-                    url = subtitleUrl,
+    fun hlsTracks_selectsAudioAndSubtitle_observesCueAndDisablesText() = run {
+        lateinit var probe: PlayerProbe
+        lateinit var subtitleUrl: String
+
+        step("Prepare HLS with two AAC renditions and side-loaded WebVTT") {
+            server.reset(commonHlsRoutes())
+            subtitleUrl = loopbackUrl("/media/subtitle.vtt?signature=test-signature")
+            probe = prepare(
+                path = "/media/hls/master.m3u8",
+                subtitles = listOf(
+                    SubtitleLink(
+                        lang = "en",
+                        url = subtitleUrl,
+                    ),
                 ),
-            ),
-        )
-
-        awaitReady(probe)
-        runOnPlayer { controller.pause() }
-        awaitCondition("both AAC renditions are exposed") {
-            audioTracks().map(AudioTrackUIState::language).toSet() == setOf("en", "es")
-        }
-        assertEquals(setOf("en", "es"), audioTracks().map(AudioTrackUIState::language).toSet())
-
-        runOnPlayer { controller.selectAudioTrack(1) }
-        awaitCondition("Spanish AAC rendition selected") {
-            selectedAudioLanguage() == "es"
+            )
         }
 
-        val subtitle = SubtitleTrackUIState(
-            index = 1,
-            label = "English",
-            language = "en",
-            url = subtitleUrl,
-        )
-        runOnPlayer { controller.selectSubtitle(subtitle) }
-        awaitCondition("side-loaded WebVTT track enabled on HLS") {
-            !textTracksDisabled() && selectedTextTrack()
+        step("Reach READY and expose both AAC renditions") {
+            awaitReady(probe)
+            runOnPlayer { controller.pause() }
+            awaitCondition("both AAC renditions are exposed") {
+                audioTracks().map(AudioTrackUIState::language).toSet() == setOf("en", "es")
+            }
+            assertEquals(setOf("en", "es"), audioTracks().map(AudioTrackUIState::language).toSet())
         }
-        assertEquals("es", selectedAudioLanguage())
-        runOnPlayer {
-            controller.seekTo(900L)
-            controller.play()
-        }
-        awaitCondition("fixture cue is rendered") {
-            probe.cueTexts.any { it.contains("Synthetic player fixture cue") } ||
-                currentCueTexts().any { it.contains("Synthetic player fixture cue") }
-        }
-        assertTrue(server.requestJournal.entries.any { it.path == "/media/subtitle.vtt" })
 
-        runOnPlayer { controller.selectSubtitle(null) }
-        awaitCondition("WebVTT track disabled") { textTracksDisabled() }
-        assertEquals("es", selectedAudioLanguage())
-        assertEquals(0, server.requestJournal.unknownRequests.size)
+        step("Select the Spanish audio rendition") {
+            runOnPlayer { controller.selectAudioTrack(1) }
+            awaitCondition("Spanish AAC rendition selected") {
+                selectedAudioLanguage() == "es"
+            }
+        }
+
+        step("Select the external WebVTT track without losing audio selection") {
+            val subtitle = SubtitleTrackUIState(
+                index = 1,
+                label = "English",
+                language = "en",
+                url = subtitleUrl,
+            )
+            runOnPlayer { controller.selectSubtitle(subtitle) }
+            awaitCondition("side-loaded WebVTT track enabled on HLS") {
+                !textTracksDisabled() && selectedTextTrack()
+            }
+            assertEquals("es", selectedAudioLanguage())
+        }
+
+        step("Render the known fixture cue and journal its subtitle request") {
+            runOnPlayer {
+                controller.seekTo(900L)
+                controller.play()
+            }
+            awaitCondition("fixture cue is rendered") {
+                probe.cueTexts.any { it.contains("Synthetic player fixture cue") } ||
+                    currentCueTexts().any { it.contains("Synthetic player fixture cue") }
+            }
+            assertTrue(server.requestJournal.entries.any { it.path == "/media/subtitle.vtt" })
+        }
+
+        step("Disable text while preserving audio and hermetic routing") {
+            runOnPlayer { controller.selectSubtitle(null) }
+            awaitCondition("WebVTT track disabled") { textTracksDisabled() }
+            assertEquals("es", selectedAudioLanguage())
+            assertEquals(0, server.requestJournal.unknownRequests.size)
+        }
     }
 
     @Test
-    fun hlsPreparation_exposesCodecTracksBeforeTheFirstMediaChunkCompletes() {
+    fun hlsPreparation_exposesCodecTracksBeforeTheFirstMediaChunkCompletes() = run {
         val gate = CountDownLatch(1)
-        server.reset(
-            commonHlsRoutes(
-                extraRoutes = listOf(
-                    server.route(
-                        id = "chunkless-video-gate",
-                        path = "/media/hls/video_720_000.ts",
-                        response = HermeticTestServer.delayed(
-                            gate = gate,
-                            body = fixtureBytes("hls/video_720_000.ts"),
-                            contentType = "video/mp2t",
+        lateinit var probe: PlayerProbe
+
+        step("Block the first HLS video and audio chunks") {
+            server.reset(
+                commonHlsRoutes(
+                    extraRoutes = listOf(
+                        server.route(
+                            id = "chunkless-video-gate",
+                            path = "/media/hls/video_720_000.ts",
+                            response = HermeticTestServer.delayed(
+                                gate = gate,
+                                body = fixtureBytes("hls/video_720_000.ts"),
+                                contentType = "video/mp2t",
+                            ),
                         ),
-                    ),
-                    server.route(
-                        id = "chunkless-audio-gate",
-                        path = "/media/hls/audio_english_000.ts",
-                        response = HermeticTestServer.delayed(
-                            gate = gate,
-                            body = fixtureBytes("hls/audio_english_000.ts"),
-                            contentType = "video/mp2t",
+                        server.route(
+                            id = "chunkless-audio-gate",
+                            path = "/media/hls/audio_english_000.ts",
+                            response = HermeticTestServer.delayed(
+                                gate = gate,
+                                body = fixtureBytes("hls/audio_english_000.ts"),
+                                contentType = "video/mp2t",
+                            ),
                         ),
                     ),
                 ),
-            ),
-        )
-        val probe = prepare("/media/hls/master.m3u8")
+            )
+            probe = prepare("/media/hls/master.m3u8")
+        }
 
         try {
-            awaitCondition("first HLS media chunks are blocked") {
-                server.activeRequestCount > 0
-            }
-            awaitCondition("chunkless HLS preparation exposes CODECS tracks") {
-                server.activeRequestCount > 0 && playerRead {
-                    val trackTypes = player?.currentTracks?.groups
-                        ?.map { it.type }
-                        .orEmpty()
-                    C.TRACK_TYPE_VIDEO in trackTypes && C.TRACK_TYPE_AUDIO in trackTypes
+            step("Expose CODECS-derived audio and video tracks before chunks complete") {
+                awaitCondition("first HLS media chunks are blocked") {
+                    server.activeRequestCount > 0
+                }
+                awaitCondition("chunkless HLS preparation exposes CODECS tracks") {
+                    server.activeRequestCount > 0 && playerRead {
+                        val trackTypes = player?.currentTracks?.groups
+                            ?.map { it.type }
+                            .orEmpty()
+                        C.TRACK_TYPE_VIDEO in trackTypes && C.TRACK_TYPE_AUDIO in trackTypes
+                    }
                 }
             }
         } finally {
             gate.countDown()
         }
 
-        awaitReady(probe)
-        assertTrue(probe.error.get() == null)
-        assertEquals(0, server.requestJournal.unknownRequests.size)
+        step("Release the chunks and complete preparation without errors") {
+            awaitReady(probe)
+            assertTrue(probe.error.get() == null)
+            assertEquals(0, server.requestJournal.unknownRequests.size)
+        }
     }
 
     @Test
-    fun hlsSwitch_preservesPositionIntentTracks_andLastStreamWins() {
-        server.reset(commonHlsRoutes())
-        val lowUrl = loopbackUrl("/media/hls/quality-low.m3u8")
-        val highUrl = loopbackUrl("/media/hls/quality-high.m3u8")
-        val subtitleUrl = loopbackUrl("/media/subtitle.vtt?scenario=quality-switch")
-        val subtitle = SubtitleLink(
-            lang = "en",
-            url = subtitleUrl,
-        )
-        val subtitleTrack = SubtitleTrackUIState(1, "English", "en", subtitleUrl)
-        val probe = prepare("/media/hls/quality-low.m3u8", listOf(subtitle))
+    fun hlsSwitch_preservesPositionIntentTracks_andLastStreamWins() = run {
+        lateinit var lowUrl: String
+        lateinit var highUrl: String
+        lateinit var subtitle: SubtitleLink
+        lateinit var subtitleTrack: SubtitleTrackUIState
+        lateinit var probe: PlayerProbe
+        var pausedPosition = 0L
 
-        awaitReady(probe)
-        awaitCondition("audio tracks before switch") { audioTracks().size == 2 }
-        runOnPlayer {
-            controller.selectAudioTrack(1)
-            controller.selectSubtitle(subtitleTrack)
-            controller.seekTo(1_500L)
+        step("Prepare the low-quality HLS source with external WebVTT") {
+            server.reset(commonHlsRoutes())
+            lowUrl = loopbackUrl("/media/hls/quality-low.m3u8")
+            highUrl = loopbackUrl("/media/hls/quality-high.m3u8")
+            val subtitleUrl = loopbackUrl("/media/subtitle.vtt?scenario=quality-switch")
+            subtitle = SubtitleLink(lang = "en", url = subtitleUrl)
+            subtitleTrack = SubtitleTrackUIState(1, "English", "en", subtitleUrl)
+            probe = prepare("/media/hls/quality-low.m3u8", listOf(subtitle))
         }
-        awaitCondition("position before switch") {
-            currentPosition() in 1_000L..2_100L
-        }
-        awaitCondition("Spanish selection before switch") { selectedAudioLanguage() == "es" }
-        awaitCondition("WebVTT selection before switch") {
-            !textTracksDisabled() && selectedTextTrack()
-        }
-        awaitCondition("WebVTT request before switch") {
-            server.requestJournal.entries.any { it.path == "/media/subtitle.vtt" }
-        }
-        runOnPlayer { controller.pause() }
-        awaitCondition("paused switch source") { !isPlaying() }
-        val pausedPosition = currentPosition()
 
-        runOnPlayer { controller.switchStream(highUrl, listOf(subtitle)) }
-        awaitCondition("high quality source prepared") {
-            currentMediaPath() == "/media/hls/quality-high.m3u8" &&
-                playbackState() == Player.STATE_READY
+        step("Select Spanish audio and WebVTT before switching quality") {
+            awaitReady(probe)
+            awaitCondition("audio tracks before switch") { audioTracks().size == 2 }
+            runOnPlayer {
+                controller.selectAudioTrack(1)
+                controller.selectSubtitle(subtitleTrack)
+                controller.seekTo(1_500L)
+            }
+            awaitCondition("position before switch") {
+                currentPosition() in 1_000L..2_100L
+            }
+            awaitCondition("Spanish selection before switch") { selectedAudioLanguage() == "es" }
+            awaitCondition("WebVTT selection before switch") {
+                !textTracksDisabled() && selectedTextTrack()
+            }
+            awaitCondition("WebVTT request before switch") {
+                server.requestJournal.entries.any { it.path == "/media/subtitle.vtt" }
+            }
         }
-        assertFalse(textTracksDisabled())
-        assertTrue(selectedTextTrack())
-        assertFalse(isPlaying())
-        assertEquals(PlaybackIntent.Paused, playbackIntent())
-        assertTrue(currentPosition() in (pausedPosition - 800L)..(pausedPosition + 800L))
-        awaitCondition("audio selection restored after switch") { selectedAudioLanguage() == "es" }
-        runOnPlayer { controller.play() }
-        awaitCondition("play intent restored") {
-            isPlaying() && playbackIntent() == PlaybackIntent.PlayRequested
+
+        step("Pause and switch to high quality with position, intent, and tracks preserved") {
+            runOnPlayer { controller.pause() }
+            awaitCondition("paused switch source") { !isPlaying() }
+            pausedPosition = currentPosition()
+            runOnPlayer { controller.switchStream(highUrl, listOf(subtitle)) }
+            awaitCondition("high quality source prepared") {
+                currentMediaPath() == "/media/hls/quality-high.m3u8" &&
+                    playbackState() == Player.STATE_READY
+            }
+            assertFalse(textTracksDisabled())
+            assertTrue(selectedTextTrack())
+            assertFalse(isPlaying())
+            assertEquals(PlaybackIntent.Paused, playbackIntent())
+            assertTrue(currentPosition() in (pausedPosition - 800L)..(pausedPosition + 800L))
+            awaitCondition("audio selection restored after switch") {
+                selectedAudioLanguage() == "es"
+            }
         }
-        runOnPlayer {
-            controller.switchStream(lowUrl, listOf(subtitle))
-            controller.switchStream(highUrl, listOf(subtitle))
-            controller.switchStream(lowUrl, listOf(subtitle))
+
+        step("Resume playback and let the last rapid quality switch win") {
+            runOnPlayer { controller.play() }
+            awaitCondition("play intent restored") {
+                isPlaying() && playbackIntent() == PlaybackIntent.PlayRequested
+            }
+            runOnPlayer {
+                controller.switchStream(lowUrl, listOf(subtitle))
+                controller.switchStream(highUrl, listOf(subtitle))
+                controller.switchStream(lowUrl, listOf(subtitle))
+            }
+            awaitCondition("last rapid switch wins") {
+                currentMediaPath() == "/media/hls/quality-low.m3u8" &&
+                    playbackIntent() == PlaybackIntent.PlayRequested
+            }
         }
-        awaitCondition("last rapid switch wins") {
-            currentMediaPath() == "/media/hls/quality-low.m3u8" &&
-                playbackIntent() == PlaybackIntent.PlayRequested
+
+        step("Verify both quality requests and the final error-free state") {
+            assertTrue(currentPosition() >= pausedPosition - 1_000L)
+            val masterPaths = server.requestJournal.entries
+                .filter { it.path.startsWith("/media/hls/quality-") }
+                .map { it.path }
+            assertTrue(masterPaths.contains("/media/hls/quality-low.m3u8"))
+            assertTrue(masterPaths.contains("/media/hls/quality-high.m3u8"))
+            assertEquals(0, server.requestJournal.unknownRequests.size)
+            assertTrue(probe.error.get() == null)
         }
-        assertTrue(currentPosition() >= pausedPosition - 1_000L)
-        val masterPaths = server.requestJournal.entries
-            .filter { it.path.startsWith("/media/hls/quality-") }
-            .map { it.path }
-        assertTrue(masterPaths.contains("/media/hls/quality-low.m3u8"))
-        assertTrue(masterPaths.contains("/media/hls/quality-high.m3u8"))
-        assertEquals(0, server.requestJournal.unknownRequests.size)
-        assertTrue(probe.error.get() == null)
     }
 
     @Test
-    fun progressiveSwitch_restoresSelectedSubtitleAndPausedIntent() {
-        server.reset(commonHlsRoutes())
-        val subtitleUrl = loopbackUrl("/media/subtitle.vtt")
-        val subtitle = SubtitleTrackUIState(1, "English", "en", subtitleUrl)
-        val first = prepare(
-            path = "/media/progressive-a.mp4",
-            subtitles = listOf(SubtitleLink(lang = "en", url = subtitleUrl)),
-        )
+    fun progressiveSwitch_restoresSelectedSubtitleAndPausedIntent() = run {
+        lateinit var subtitleUrl: String
+        lateinit var subtitle: SubtitleTrackUIState
+        lateinit var first: PlayerProbe
+        var positionBeforeSwitch = 0L
 
-        awaitReady(first)
-        runOnPlayer { controller.pause() }
-        runOnPlayer { controller.selectSubtitle(subtitle) }
-        awaitCondition("subtitle selected before progressive switch") {
-            !textTracksDisabled() && selectedTextTrack()
-        }
-        val positionBeforeSwitch = currentPosition()
-
-        val secondUrl = loopbackUrl("/media/progressive-b.mp4")
-        runOnPlayer {
-            controller.switchStream(
-                streamUrl = secondUrl,
+        step("Prepare the first progressive source with external WebVTT") {
+            server.reset(commonHlsRoutes())
+            subtitleUrl = loopbackUrl("/media/subtitle.vtt")
+            subtitle = SubtitleTrackUIState(1, "English", "en", subtitleUrl)
+            first = prepare(
+                path = "/media/progressive-a.mp4",
                 subtitles = listOf(SubtitleLink(lang = "en", url = subtitleUrl)),
             )
         }
-        awaitCondition("progressive switch completes") {
-            currentMediaPath() == "/media/progressive-b.mp4" &&
-                playbackState() == Player.STATE_READY
+
+        step("Pause and select WebVTT before the progressive switch") {
+            awaitReady(first)
+            runOnPlayer { controller.pause() }
+            runOnPlayer { controller.selectSubtitle(subtitle) }
+            awaitCondition("subtitle selected before progressive switch") {
+                !textTracksDisabled() && selectedTextTrack()
+            }
+            positionBeforeSwitch = currentPosition()
         }
-        assertEquals(PlaybackIntent.Paused, playbackIntent())
-        assertFalse(isPlaying())
-        assertTrue(currentPosition() in (positionBeforeSwitch - 800L)..(positionBeforeSwitch + 800L))
-        awaitCondition("subtitle selection restored after progressive switch") {
-            !textTracksDisabled() && selectedTextTrack()
+
+        step("Switch sources while preserving paused intent and position") {
+            val secondUrl = loopbackUrl("/media/progressive-b.mp4")
+            runOnPlayer {
+                controller.switchStream(
+                    streamUrl = secondUrl,
+                    subtitles = listOf(SubtitleLink(lang = "en", url = subtitleUrl)),
+                )
+            }
+            awaitCondition("progressive switch completes") {
+                currentMediaPath() == "/media/progressive-b.mp4" &&
+                    playbackState() == Player.STATE_READY
+            }
+            assertEquals(PlaybackIntent.Paused, playbackIntent())
+            assertFalse(isPlaying())
+            assertTrue(
+                currentPosition() in
+                    (positionBeforeSwitch - 800L)..(positionBeforeSwitch + 800L),
+            )
         }
-        runOnPlayer { controller.selectSubtitle(null) }
-        awaitCondition("subtitle disabled after progressive switch") { textTracksDisabled() }
+
+        step("Restore then disable the selected subtitle on the new source") {
+            awaitCondition("subtitle selection restored after progressive switch") {
+                !textTracksDisabled() && selectedTextTrack()
+            }
+            runOnPlayer { controller.selectSubtitle(null) }
+            awaitCondition("subtitle disabled after progressive switch") { textTracksDisabled() }
+        }
     }
 
     @Test
-    fun hls404AndMalformedPlaylist_failWithoutUnboundedRetry() {
-        runPlaylistFailure(
-            path = "/media/fault-404.m3u8",
-            response = HermeticTestServer.text(
-                body = "not found",
-                status = 404,
-                contentType = HLS_CONTENT_TYPE,
-            ),
-        )
-        runPlaylistFailure(
-            path = "/media/fault-malformed.m3u8",
-            response = HermeticTestServer.text(
-                body = "this is not an HLS playlist",
-                contentType = HLS_CONTENT_TYPE,
-            ),
-        )
+    fun hls404AndMalformedPlaylist_failWithoutUnboundedRetry() = run {
+        step("Fail a missing HLS playlist with a bounded request count") {
+            runPlaylistFailure(
+                path = "/media/fault-404.m3u8",
+                response = HermeticTestServer.text(
+                    body = "not found",
+                    status = 404,
+                    contentType = HLS_CONTENT_TYPE,
+                ),
+            )
+        }
+        step("Fail a malformed HLS playlist with a bounded request count") {
+            runPlaylistFailure(
+                path = "/media/fault-malformed.m3u8",
+                response = HermeticTestServer.text(
+                    body = "this is not an HLS playlist",
+                    contentType = HLS_CONTENT_TYPE,
+                ),
+            )
+        }
     }
 
     @Test
-    fun hlsVariant400_fallsBackToTheHealthyVariant() {
-        assertVariantHttpFailureFallsBack(status = 400)
+    fun hlsVariant400_fallsBackToTheHealthyVariant() = run {
+        step("Fall back from one HTTP 400 variant failure to the healthy variant") {
+            assertVariantHttpFailureFallsBack(status = 400)
+        }
     }
 
     @Test
-    fun hlsVariant502_fallsBackToTheHealthyVariant() {
-        assertVariantHttpFailureFallsBack(status = 502)
+    fun hlsVariant502_fallsBackToTheHealthyVariant() = run {
+        step("Fall back from one HTTP 502 variant failure to the healthy variant") {
+            assertVariantHttpFailureFallsBack(status = 502)
+        }
     }
 
     private fun assertVariantHttpFailureFallsBack(status: Int) {
@@ -398,131 +465,153 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
     }
 
     @Test
-    fun hlsDelayedAndInterruptedSegment_enterBufferingThenRecover() {
+    fun hlsDelayedAndInterruptedSegment_enterBufferingThenRecover() = run {
         val gate = CountDownLatch(1)
-        server.reset(
-            commonHlsRoutes(
-                qualityLowMasterBody = singleVariantMaster("video_360.m3u8"),
-                video360Playlist = HermeticTestServer.text(
-                    body = playlist(FixtureId.HlsVideo360Playlist),
-                    contentType = HLS_CONTENT_TYPE,
-                ),
-                extraRoutes = listOf(
-                    server.route(
-                        id = "delayed-segment",
-                        path = "/media/hls/video_360_000.ts",
-                        response = HermeticTestServer.delayed(
-                            gate = gate,
-                            body = fixtureBytes("hls/video_360_000.ts"),
-                            contentType = "video/mp2t",
-                        ),
-                    ),
-                ),
-            ),
-        )
-        val delayedProbe = prepare("/media/hls/quality-low.m3u8")
-        awaitCondition("delayed segment enters BUFFERING") {
-            delayedProbe.stateEvents.contains(Player.STATE_BUFFERING) ||
-                playbackState() == Player.STATE_BUFFERING
-        }
-        gate.countDown()
-        awaitReady(delayedProbe)
-        assertTrue(delayedProbe.error.get() == null)
+        lateinit var delayedProbe: PlayerProbe
+        lateinit var recoveryProbe: PlayerProbe
 
-        releasePlayerAndReset()
-        val segment = fixtureBytes("hls/video_360_000.ts")
-        server.reset(
-            commonHlsRoutes(
-                qualityLowMasterBody = singleVariantMaster("video_360_recovery.m3u8"),
-                extraRoutes = listOf(
-                    server.route(
-                        id = "recovery-master",
-                        path = "/media/hls/recovery.m3u8",
-                        response = HermeticTestServer.text(
-                            body = singleVariantMaster("video_360_recovery.m3u8"),
-                            contentType = HLS_CONTENT_TYPE,
-                        ),
+        step("Delay the first HLS segment and observe BUFFERING") {
+            server.reset(
+                commonHlsRoutes(
+                    qualityLowMasterBody = singleVariantMaster("video_360.m3u8"),
+                    video360Playlist = HermeticTestServer.text(
+                        body = playlist(FixtureId.HlsVideo360Playlist),
+                        contentType = HLS_CONTENT_TYPE,
                     ),
-                    server.route(
-                        id = "recovering-playlist",
-                        path = "/media/hls/video_360_recovery.m3u8",
-                        response = HermeticTestServer.text(
-                            body = playlist(FixtureId.HlsVideo360Playlist)
-                                .replace("video_360_", "video_360_recovery_"),
-                            contentType = HLS_CONTENT_TYPE,
-                        ),
-                    ),
-                    server.route(
-                        id = "recovering-segment",
-                        path = "/media/hls/video_360_recovery_000.ts",
-                        response = HermeticTestServer.sequence(
-                            HermeticTestServer.truncated(
-                                body = segment,
-                                bytesToWrite = segment.size / 4,
+                    extraRoutes = listOf(
+                        server.route(
+                            id = "delayed-segment",
+                            path = "/media/hls/video_360_000.ts",
+                            response = HermeticTestServer.delayed(
+                                gate = gate,
+                                body = fixtureBytes("hls/video_360_000.ts"),
                                 contentType = "video/mp2t",
                             ),
-                            HermeticTestServer.bytes(segment, contentType = "video/mp2t"),
-                        ),
-                    ),
-                    server.route(
-                        id = "recovering-segment-1",
-                        path = "/media/hls/video_360_recovery_001.ts",
-                        response = HermeticTestServer.bytes(
-                            fixtureBytes("hls/video_360_001.ts"),
-                            contentType = "video/mp2t",
                         ),
                     ),
                 ),
-            ),
-        )
-        val recoveryProbe = prepare("/media/hls/recovery.m3u8")
-        awaitReady(recoveryProbe)
-        val recoveryEntries = server.requestJournal.entries.filter {
-            it.routeId == "recovering-segment"
+            )
+            delayedProbe = prepare("/media/hls/quality-low.m3u8")
+            awaitCondition("delayed segment enters BUFFERING") {
+                delayedProbe.stateEvents.contains(Player.STATE_BUFFERING) ||
+                    playbackState() == Player.STATE_BUFFERING
+            }
         }
-        assertTrue(
-            "Expected interrupted segment recovery; entries=$recoveryEntries",
-            recoveryEntries.size >= 2,
-        )
-        assertEquals(200, (recoveryEntries[0].outcome as ResponseOutcome.Completed).status)
-        assertEquals(200, (recoveryEntries[1].outcome as ResponseOutcome.Completed).status)
-        assertTrue(
-            "Expected a ranged recovery request; entries=$recoveryEntries",
-            recoveryEntries[1].range != null,
-        )
-        assertTrue(recoveryProbe.error.get() == null)
-        assertEquals(0, server.requestJournal.unknownRequests.size)
+
+        step("Release the delayed segment and recover to READY") {
+            gate.countDown()
+            awaitReady(delayedProbe)
+            assertTrue(delayedProbe.error.get() == null)
+        }
+
+        step("Replace the source with a truncated-then-ranged recovery route") {
+            releasePlayerAndReset()
+            val segment = fixtureBytes("hls/video_360_000.ts")
+            server.reset(
+                commonHlsRoutes(
+                    qualityLowMasterBody = singleVariantMaster("video_360_recovery.m3u8"),
+                    extraRoutes = listOf(
+                        server.route(
+                            id = "recovery-master",
+                            path = "/media/hls/recovery.m3u8",
+                            response = HermeticTestServer.text(
+                                body = singleVariantMaster("video_360_recovery.m3u8"),
+                                contentType = HLS_CONTENT_TYPE,
+                            ),
+                        ),
+                        server.route(
+                            id = "recovering-playlist",
+                            path = "/media/hls/video_360_recovery.m3u8",
+                            response = HermeticTestServer.text(
+                                body = playlist(FixtureId.HlsVideo360Playlist)
+                                    .replace("video_360_", "video_360_recovery_"),
+                                contentType = HLS_CONTENT_TYPE,
+                            ),
+                        ),
+                        server.route(
+                            id = "recovering-segment",
+                            path = "/media/hls/video_360_recovery_000.ts",
+                            response = HermeticTestServer.sequence(
+                                HermeticTestServer.truncated(
+                                    body = segment,
+                                    bytesToWrite = segment.size / 4,
+                                    contentType = "video/mp2t",
+                                ),
+                                HermeticTestServer.bytes(segment, contentType = "video/mp2t"),
+                            ),
+                        ),
+                        server.route(
+                            id = "recovering-segment-1",
+                            path = "/media/hls/video_360_recovery_001.ts",
+                            response = HermeticTestServer.bytes(
+                                fixtureBytes("hls/video_360_001.ts"),
+                                contentType = "video/mp2t",
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            recoveryProbe = prepare("/media/hls/recovery.m3u8")
+        }
+
+        step("Recover the interrupted segment with a ranged second request") {
+            awaitReady(recoveryProbe)
+            val recoveryEntries = server.requestJournal.entries.filter {
+                it.routeId == "recovering-segment"
+            }
+            assertTrue(
+                "Expected interrupted segment recovery; entries=$recoveryEntries",
+                recoveryEntries.size >= 2,
+            )
+            assertEquals(200, (recoveryEntries[0].outcome as ResponseOutcome.Completed).status)
+            assertEquals(200, (recoveryEntries[1].outcome as ResponseOutcome.Completed).status)
+            assertTrue(
+                "Expected a ranged recovery request; entries=$recoveryEntries",
+                recoveryEntries[1].range != null,
+            )
+            assertTrue(recoveryProbe.error.get() == null)
+            assertEquals(0, server.requestJournal.unknownRequests.size)
+        }
     }
 
     @Test
-    fun playerMediaNetworkIsolation_rejectsExternalRedirectAndSanitizesViolation() {
-        server.reset(
-            listOf(
-                server.route(
-                    id = "external-redirect",
-                    path = "/media/redirect.m3u8",
-                    response = HermeticTestServer.redirect(
-                        "https://redirect-user:redirect-password@example.com/blocked" +
-                            "?token=must-not-be-recorded",
+    fun playerMediaNetworkIsolation_rejectsExternalRedirectAndSanitizesViolation() = run {
+        lateinit var probe: PlayerProbe
+
+        step("Prepare an HLS redirect to a blocked external origin") {
+            server.reset(
+                listOf(
+                    server.route(
+                        id = "external-redirect",
+                        path = "/media/redirect.m3u8",
+                        response = HermeticTestServer.redirect(
+                            "https://redirect-user:redirect-password@example.com/blocked" +
+                                "?token=must-not-be-recorded",
+                        ),
                     ),
                 ),
-            ),
-        )
-        val probe = prepare("/media/redirect.m3u8")
-
-        awaitCondition("external redirect fails locally") { probe.error.get() != null }
-        awaitCondition("one external violation is journaled") {
-            LoopbackNetworkJournal(context).snapshot().size == 1
+            )
+            probe = prepare("/media/redirect.m3u8")
         }
+
+        step("Fail the external redirect locally and journal one violation") {
+            awaitCondition("external redirect fails locally") { probe.error.get() != null }
+            awaitCondition("one external violation is journaled") {
+                LoopbackNetworkJournal(context).snapshot().size == 1
+            }
+        }
+
         try {
-            val violations = LoopbackNetworkJournal(context).snapshot()
-            assertEquals(1, violations.size)
-            assertTrue(violations.single().startsWith("https://example.com:443"))
-            assertFalse(violations.single().contains("redirect-user"))
-            assertFalse(violations.single().contains("redirect-password"))
-            assertFalse(violations.single().contains("token"))
-            assertFalse(violations.single().contains("?"))
-            assertEquals(0, server.requestJournal.unknownRequests.size)
+            step("Sanitize credentials, query data, and user info from the violation") {
+                val violations = LoopbackNetworkJournal(context).snapshot()
+                assertEquals(1, violations.size)
+                assertTrue(violations.single().startsWith("https://example.com:443"))
+                assertFalse(violations.single().contains("redirect-user"))
+                assertFalse(violations.single().contains("redirect-password"))
+                assertFalse(violations.single().contains("token"))
+                assertFalse(violations.single().contains("?"))
+                assertEquals(0, server.requestJournal.unknownRequests.size)
+            }
         } finally {
             LoopbackNetworkJournal(context).clear()
         }

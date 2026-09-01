@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.player.component
 
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import io.github.kakaocup.compose.node.element.ComposeScreen
@@ -30,6 +31,45 @@ internal class PlayerComposeScreen(
     val seekBar: KNode = child {
         useUnmergedTree = true
         hasTestTag(PlayerScreenTestTags.SeekBar)
+    }
+
+    val markWatchedButton: KNode = tagged(PlayerScreenTestTags.MarkWatched)
+    val episodesButton: KNode = tagged(PlayerScreenTestTags.Episodes)
+    val audioSubtitlesButton: KNode = tagged(PlayerScreenTestTags.AudioSubtitles)
+    val videoSettingsButton: KNode = tagged(PlayerScreenTestTags.VideoSettings)
+    val resumeButton: KNode = tagged(PlayerScreenTestTags.ResumeContinue)
+    val retryButton: KNode = tagged(PlayerScreenTestTags.Retry)
+    val nextEpisodeButton: KNode = tagged(PlayerScreenTestTags.NextEpisode)
+
+    val focusedMarkWatchedButton: KNode = focusedTag(PlayerScreenTestTags.MarkWatched)
+    val focusedEpisodesButton: KNode = focusedTag(PlayerScreenTestTags.Episodes)
+    val focusedAudioSubtitlesButton: KNode = focusedTag(PlayerScreenTestTags.AudioSubtitles)
+    val focusedVideoSettingsButton: KNode = focusedTag(PlayerScreenTestTags.VideoSettings)
+    val focusedResumeButton: KNode = focusedTag(PlayerScreenTestTags.ResumeContinue)
+    val focusedRetryButton: KNode = focusedTag(PlayerScreenTestTags.Retry)
+    val focusedNextEpisodeButton: KNode = focusedTag(PlayerScreenTestTags.NextEpisode)
+
+    fun panelItem(group: String, index: Int): KNode =
+        tagged(PlayerScreenTestTags.panelItem(group, index))
+
+    fun focusedPanelItem(group: String, index: Int): KNode =
+        focusedTag(PlayerScreenTestTags.panelItem(group, index))
+
+    fun tagged(tag: String): KNode = child {
+        useUnmergedTree = true
+        hasTestTag(tag)
+    }
+
+    fun focusedTag(tag: String): KNode {
+        val tagMatcher = hasTestTag(tag)
+        val matcher = isFocused() and (
+            tagMatcher or
+                hasAnyDescendant(tagMatcher)
+            )
+        return child {
+            useUnmergedTree = true
+            addSemanticsMatcher(matcher)
+        }
     }
 
     fun text(text: String, substring: Boolean = false): KNode = child {

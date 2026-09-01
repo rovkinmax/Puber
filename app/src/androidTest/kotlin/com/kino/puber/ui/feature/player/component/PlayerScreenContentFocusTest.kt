@@ -1,26 +1,15 @@
 package com.kino.puber.ui.feature.player.component
 
-import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotFocused
-import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.isFocused
-import androidx.compose.ui.test.isFocusable
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onParent
-import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.performKeyInput
 import androidx.lifecycle.Lifecycle
-import androidx.test.platform.app.InstrumentationRegistry
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
@@ -40,7 +29,7 @@ import com.kino.puber.ui.feature.player.model.ResumeDialogState
 import com.kino.puber.ui.feature.player.model.SoundModeUIState
 import com.kino.puber.ui.feature.player.model.SpeedUIState
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
-import com.kino.puber.ui.feature.player.PlayerInstrumentationTestCase
+import com.kino.puber.ui.feature.player.PlayerComposeInstrumentationTestCase
 import com.kino.puber.ui.feature.player.vm.ControlsStateMachine
 import com.kino.puber.ui.feature.player.vm.PlaybackIntent
 import org.junit.Assert.assertEquals
@@ -49,361 +38,444 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-private const val AUDIO_BUTTON = "Аудио и субтитры"
-private const val VIDEO_BUTTON = "Видео"
-private const val EPISODES_BUTTON = "Серии"
-private const val SOUND_ITEM = "Стерео 2.0"
-private const val QUALITY_ITEM = "1080p"
-private const val EPISODE_ITEM = "1. Первое включение"
-private const val MARK_WATCHED_BUTTON = "Просмотрено"
-
-internal class PlayerScreenContentFocusTest : PlayerInstrumentationTestCase() {
+internal class PlayerScreenContentFocusTest : PlayerComposeInstrumentationTestCase() {
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    private val robot by lazy { PlayerTvRobot(composeRule) }
+
     @Test
-    fun initialControlsBackMovesFocusToPlayer_andDpadDownReopensFirstButton() {
+    fun initialControlsBackMovesFocusToPlayer_andDpadDownReopensFirstButton() = run {
         val harness = render()
 
-        assertExactlyOneFocusedNode()
-        assertFocusedControl()
-        assertPlayerAnchorFocusable(expected = false)
-        assertFocusSurvivesRecomposition(harness, ::assertFocusedControl)
+        step("Initial controls own the single focus target across recomposition") {
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedControl()
+            robot.focus.assertPlayerAnchorFocusable(expected = false)
+            harness.bumpPosition()
+            composeRule.waitForIdle()
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedControl()
+        }
 
-        sendKey(KeyEvent.KEYCODE_BACK)
-        waitForControlsToBeDisposed()
+        step("Back hides controls and transfers focus to the player surface") {
+            robot.pressBack()
+            robot.waitForControlsToBeDisposed()
+            assertEquals(0, harness.exitRequestCount)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedPlayerSurface()
+            robot.focus.assertPlayerAnchorFocusable(expected = true)
+            robot.focus.assertHiddenControlsAreNotFocused()
+        }
 
-        assertEquals(0, harness.exitRequestCount)
-        assertExactlyOneFocusedNode()
-        assertFocusedPlayerSurface()
-        assertPlayerAnchorFocusable(expected = true)
-        assertHiddenControlsAreNotFocused()
-
-        sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
-
-        assertExactlyOneFocusedNode()
-        assertFocusedControl()
-        assertControlsVisible(harness)
+        step("D-pad Down reopens controls on the first button") {
+            robot.press(PlayerRemoteKey.Down)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedControl()
+            robot.assertControlsVisible(harness.content.controlsVisible)
+        }
     }
 
     @Test
-    fun playerToControlsHandoff_keepsPlayerFocused_untilDelayedControlFocusSucceeds() {
+    fun playerToControlsHandoff_keepsPlayerFocused_untilDelayedControlFocusSucceeds() = run {
         val harness = render()
         hideControls(harness)
         composeRule.mainClock.autoAdvance = false
 
         try {
-            sendKeyWithoutSettling(KeyEvent.KEYCODE_DPAD_DOWN)
-            composeRule.mainClock.advanceTimeByFrame()
-            composeRule.waitForIdle()
+            step("D-pad Down reveals controls while the player retains focus") {
+                robot.pressWithoutSettling(PlayerRemoteKey.Down)
+                robot.advanceOneFrame()
+                assertTrue(harness.content.controlsVisible)
+                robot.focus.assertExactlyOneFocusedNode()
+                robot.focus.assertFocusedPlayerSurface()
+                robot.focus.assertPlayerAnchorFocusable(expected = true)
+            }
 
-            assertTrue(harness.content.controlsVisible)
-            assertExactlyOneFocusedNode()
-            assertFocusedPlayerSurface()
-            assertPlayerAnchorFocusable(expected = true)
+            step("The delayed handoff focuses the first control") {
+                robot.advanceOneFrame()
+                robot.focus.assertExactlyOneFocusedNode()
+                robot.focus.assertFocusedControl()
+                robot.focus.assertHiddenPlayerIsNotFocused()
+            }
 
-            composeRule.mainClock.advanceTimeByFrame()
-            composeRule.waitForIdle()
-
-            assertExactlyOneFocusedNode()
-            assertFocusedControl()
-            assertHiddenPlayerIsNotFocused()
-
-            composeRule.mainClock.advanceTimeByFrame()
-            composeRule.waitForIdle()
-
-            assertExactlyOneFocusedNode()
-            assertFocusedControl()
-            assertPlayerAnchorFocusable(expected = false)
+            step("The player anchor becomes non-focusable after handoff") {
+                robot.advanceOneFrame()
+                robot.focus.assertExactlyOneFocusedNode()
+                robot.focus.assertFocusedControl()
+                robot.focus.assertPlayerAnchorFocusable(expected = false)
+            }
         } finally {
             composeRule.mainClock.autoAdvance = true
         }
     }
 
     @Test
-    fun resumeDialogOwnsFocus_thenSelectionTransfersToPlayerAnchor() {
+    fun resumeDialogOwnsFocus_thenSelectionTransfersToPlayerAnchor() = run {
         val harness = render(content(resumeDialog = resumeDialog()))
 
-        composeRule.onNodeWithText("Продолжить").assertIsFocused()
-        assertExactlyOneFocusedNode()
-        assertPlayerAnchorFocusable(expected = false)
-        assertFocusSurvivesRecomposition(harness) {
-            composeRule.onNodeWithText("Продолжить").assertIsFocused()
+        step("The resume dialog owns focus across recomposition") {
+            robot.screen {
+                focusedResumeButton.assertIsFocused()
+            }
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertPlayerAnchorFocusable(expected = false)
+            harness.bumpPosition()
+            composeRule.waitForIdle()
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.screen {
+                focusedResumeButton.assertIsFocused()
+            }
         }
 
-        composeRule.onNodeWithText("Продолжить").performKeyInput {
-            keyDown(androidx.compose.ui.input.key.Key.Enter)
-            keyUp(androidx.compose.ui.input.key.Key.Enter)
+        step("Selecting Continue transfers focus to the player anchor") {
+            robot.press(PlayerRemoteKey.Select)
+            assertTrue(harness.content.resumeDialog == null)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedPlayerSurface()
+            robot.focus.assertPlayerAnchorFocusable(expected = true)
         }
-        composeRule.waitForIdle()
-
-        assertTrue(harness.content.resumeDialog == null)
-        assertExactlyOneFocusedNode()
-        assertFocusedPlayerSurface()
-        assertPlayerAnchorFocusable(expected = true)
     }
 
     @Test
-    fun hiddenPlayer_dpadUpReopensSeekBar_andDpadDownReopensButtons() {
+    fun hiddenPlayer_dpadUpReopensSeekBar_andDpadDownReopensButtons() = run {
         val harness = render()
         hideControls(harness)
 
-        sendKey(KeyEvent.KEYCODE_DPAD_UP)
-        assertExactlyOneFocusedNode()
-        assertFocusedSeekBar()
-        assertEquals(listOf(FocusTarget.SeekBar), harness.revealedTargets)
-
-        hideControls(harness)
-        sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
-        assertExactlyOneFocusedNode()
-        assertFocusedControl()
-        assertEquals(
-            listOf(FocusTarget.SeekBar, FocusTarget.Buttons),
-            harness.revealedTargets,
-        )
-    }
-
-    @Test
-    fun hiddenPlayer_directionalSeekPerformsOneAction_andFocusesSeekBar() {
-        val harness = render()
-        hideControls(harness)
-
-        sendKey(KeyEvent.KEYCODE_DPAD_LEFT)
-        assertExactlyOneFocusedNode()
-        assertFocusedSeekBar()
-        assertEquals(1, harness.seekBackwardCount)
-        assertEquals(0, harness.seekForwardCount)
-        assertEquals(listOf(FocusTarget.SeekBar), harness.revealedTargets)
-
-        hideControls(harness)
-        sendKey(KeyEvent.KEYCODE_DPAD_RIGHT)
-        assertExactlyOneFocusedNode()
-        assertFocusedSeekBar()
-        assertEquals(1, harness.seekBackwardCount)
-        assertEquals(1, harness.seekForwardCount)
-        assertEquals(
-            listOf(FocusTarget.SeekBar, FocusTarget.SeekBar),
-            harness.revealedTargets,
-        )
-    }
-
-    @Test
-    fun hiddenPlayer_dpadCenterPerformsOnePlaybackAction_andFocusesFirstButton() {
-        val harness = render()
-        hideControls(harness)
-
-        sendKey(KeyEvent.KEYCODE_DPAD_CENTER)
-
-        assertExactlyOneFocusedNode()
-        assertFocusedControl()
-        assertEquals(1, harness.togglePlayPauseCount)
-        assertEquals(listOf(FocusTarget.Buttons), harness.revealedTargets)
-    }
-
-    @Test
-    fun hiddenPlayer_enterPerformsOnePlaybackAction_andFocusesFirstButton() {
-        val harness = render()
-        hideControls(harness)
-
-        sendKey(KeyEvent.KEYCODE_ENTER)
-
-        assertExactlyOneFocusedNode()
-        assertFocusedControl()
-        assertEquals(1, harness.togglePlayPauseCount)
-        assertEquals(listOf(FocusTarget.Buttons), harness.revealedTargets)
-    }
-
-    @Test
-    fun hiddenPlayer_mediaSeekAndPlaybackKeysPerformOneAction_andKeepTargetContract() {
-        val harness = render()
-
-        hideControls(harness)
-        sendKey(KeyEvent.KEYCODE_MEDIA_REWIND)
-        assertFocusedSeekBar()
-        assertEquals(1, harness.seekBackwardCount)
-        assertEquals(1, harness.revealedTargets.size)
-        assertEquals(FocusTarget.SeekBar, harness.revealedTargets.single())
-
-        hideControls(harness)
-        sendKey(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)
-        assertFocusedSeekBar()
-        assertEquals(1, harness.seekForwardCount)
-
-        hideControls(harness)
-        sendKey(KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD)
-        assertFocusedSeekBar()
-        assertEquals(2, harness.seekBackwardCount)
-
-        hideControls(harness)
-        sendKey(KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD)
-        assertFocusedSeekBar()
-        assertEquals(2, harness.seekForwardCount)
-
-        hideControls(harness)
-        sendKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-        assertFocusedControl()
-        assertEquals(1, harness.togglePlayPauseCount)
-        assertEquals(FocusTarget.Buttons, harness.revealedTargets.last())
-
-        hideControls(harness)
-        sendKey(KeyEvent.KEYCODE_MEDIA_PLAY)
-        assertFocusedControl()
-        assertEquals(2, harness.togglePlayPauseCount)
-
-        hideControls(harness)
-        sendKey(KeyEvent.KEYCODE_MEDIA_PAUSE)
-        assertFocusedControl()
-        assertEquals(3, harness.togglePlayPauseCount)
-    }
-
-    @Test
-    fun controlsTraversal_opensAudioPanel_andBackRestoresAudioButton() {
-        val harness = render()
-
-        focusButton(AUDIO_BUTTON, steps = 1)
-        sendKey(KeyEvent.KEYCODE_ENTER)
-
-        composeRule.onNodeWithText(SOUND_ITEM).assertIsFocused()
-        assertExactlyOneFocusedNode()
-        assertPlayerAnchorFocusable(expected = false)
-        composeRule.onNodeWithText(AUDIO_BUTTON).assertDoesNotExist()
-        assertFocusSurvivesRecomposition(harness) {
-            composeRule.onNodeWithText(SOUND_ITEM).assertIsFocused()
+        step("D-pad Up reopens controls on the seek bar") {
+            robot.press(PlayerRemoteKey.Up)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedSeekBar()
+            assertEquals(listOf(FocusTarget.SeekBar), harness.revealedTargets)
         }
 
-        sendKey(KeyEvent.KEYCODE_BACK)
-
-        assertExactlyOneFocusedNode()
-        waitUntilFocusedText(AUDIO_BUTTON)
-        assertEquals(ActivePanel.None, harness.content.activePanel)
+        step("D-pad Down reopens controls on the first button") {
+            hideControls(harness)
+            robot.press(PlayerRemoteKey.Down)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedControl()
+            assertEquals(
+                listOf(FocusTarget.SeekBar, FocusTarget.Buttons),
+                harness.revealedTargets,
+            )
+        }
     }
 
     @Test
-    fun controlsTraversal_opensVideoPanel_andBackRestoresVideoButton() {
+    fun hiddenPlayer_directionalSeekPerformsOneAction_andFocusesSeekBar() = run {
+        val harness = render()
+        hideControls(harness)
+
+        step("D-pad Left performs one backward seek and focuses the seek bar") {
+            robot.press(PlayerRemoteKey.Left)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedSeekBar()
+            assertEquals(1, harness.seekBackwardCount)
+            assertEquals(0, harness.seekForwardCount)
+            assertEquals(listOf(FocusTarget.SeekBar), harness.revealedTargets)
+        }
+
+        step("D-pad Right performs one forward seek and preserves the seek target") {
+            hideControls(harness)
+            robot.press(PlayerRemoteKey.Right)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedSeekBar()
+            assertEquals(1, harness.seekBackwardCount)
+            assertEquals(1, harness.seekForwardCount)
+            assertEquals(
+                listOf(FocusTarget.SeekBar, FocusTarget.SeekBar),
+                harness.revealedTargets,
+            )
+        }
+    }
+
+    @Test
+    fun hiddenPlayer_dpadCenterPerformsOnePlaybackAction_andFocusesFirstButton() = run {
+        val harness = render()
+        hideControls(harness)
+
+        step("D-pad Center toggles playback once and focuses the first button") {
+            robot.press(PlayerRemoteKey.Select)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedControl()
+            assertEquals(1, harness.togglePlayPauseCount)
+            assertEquals(listOf(FocusTarget.Buttons), harness.revealedTargets)
+        }
+    }
+
+    @Test
+    fun hiddenPlayer_enterPerformsOnePlaybackAction_andFocusesFirstButton() = run {
+        val harness = render()
+        hideControls(harness)
+
+        step("Enter toggles playback once and focuses the first button") {
+            robot.press(PlayerRemoteKey.Enter)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedControl()
+            assertEquals(1, harness.togglePlayPauseCount)
+            assertEquals(listOf(FocusTarget.Buttons), harness.revealedTargets)
+        }
+    }
+
+    @Test
+    fun hiddenPlayer_mediaSeekAndPlaybackKeysPerformOneAction_andKeepTargetContract() = run {
         val harness = render()
 
-        focusButton(VIDEO_BUTTON, steps = 2)
-        sendKey(KeyEvent.KEYCODE_ENTER)
+        step("Media rewind and fast-forward keys seek once and focus the seek bar") {
+            hideControls(harness)
+            robot.press(PlayerRemoteKey.Rewind)
+            robot.focus.assertFocusedSeekBar()
+            assertEquals(1, harness.seekBackwardCount)
+            assertEquals(1, harness.revealedTargets.size)
+            assertEquals(FocusTarget.SeekBar, harness.revealedTargets.single())
 
-        composeRule.onNodeWithText(QUALITY_ITEM).assertIsFocused()
-        assertExactlyOneFocusedNode()
-        assertPlayerAnchorFocusable(expected = false)
+            hideControls(harness)
+            robot.press(PlayerRemoteKey.FastForward)
+            robot.focus.assertFocusedSeekBar()
+            assertEquals(1, harness.seekForwardCount)
+        }
 
-        sendKey(KeyEvent.KEYCODE_BACK)
+        step("Media skip keys preserve one seek action per key") {
+            hideControls(harness)
+            robot.press(PlayerRemoteKey.SkipBackward)
+            robot.focus.assertFocusedSeekBar()
+            assertEquals(2, harness.seekBackwardCount)
 
-        assertExactlyOneFocusedNode()
-        waitUntilFocusedText(VIDEO_BUTTON)
-        assertEquals(ActivePanel.None, harness.content.activePanel)
+            hideControls(harness)
+            robot.press(PlayerRemoteKey.SkipForward)
+            robot.focus.assertFocusedSeekBar()
+            assertEquals(2, harness.seekForwardCount)
+        }
+
+        step("Media playback keys toggle once and focus the first button") {
+            hideControls(harness)
+            robot.press(PlayerRemoteKey.PlayPause)
+            robot.focus.assertFocusedControl()
+            assertEquals(1, harness.togglePlayPauseCount)
+            assertEquals(FocusTarget.Buttons, harness.revealedTargets.last())
+
+            hideControls(harness)
+            robot.press(PlayerRemoteKey.Play)
+            robot.focus.assertFocusedControl()
+            assertEquals(2, harness.togglePlayPauseCount)
+
+            hideControls(harness)
+            robot.press(PlayerRemoteKey.Pause)
+            robot.focus.assertFocusedControl()
+            assertEquals(3, harness.togglePlayPauseCount)
+        }
     }
 
     @Test
-    fun seriesEpisodesPanel_focusesCurrentEpisode_andBackRestoresEpisodesButton() {
+    fun controlsTraversal_opensAudioPanel_andBackRestoresAudioButton() = run {
+        val harness = render()
+
+        step("D-pad traversal focuses and opens Audio and subtitles") {
+            robot.screen {
+                robot.focusButton(focusedAudioSubtitlesButton, dpadRightSteps = 1)
+            }
+            robot.press(PlayerRemoteKey.Enter)
+        }
+
+        step("The sound item owns focus across recomposition") {
+            robot.screen {
+                focusedPanelItem("sound", 0).assertIsFocused()
+                audioSubtitlesButton.assertDoesNotExist()
+            }
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertPlayerAnchorFocusable(expected = false)
+            harness.bumpPosition()
+            composeRule.waitForIdle()
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.screen {
+                focusedPanelItem("sound", 0).assertIsFocused()
+            }
+        }
+
+        step("Back closes the panel and restores Audio and subtitles focus") {
+            robot.pressBack()
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.screen {
+                robot.waitUntilFocused(focusedAudioSubtitlesButton)
+            }
+            assertEquals(ActivePanel.None, harness.content.activePanel)
+        }
+    }
+
+    @Test
+    fun controlsTraversal_opensVideoPanel_andBackRestoresVideoButton() = run {
+        val harness = render()
+
+        step("D-pad traversal focuses and opens Video settings") {
+            robot.screen {
+                robot.focusButton(focusedVideoSettingsButton, dpadRightSteps = 2)
+            }
+            robot.press(PlayerRemoteKey.Enter)
+        }
+
+        step("The selected quality owns the single panel focus target") {
+            robot.screen {
+                focusedPanelItem("quality", 0).assertIsFocused()
+            }
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertPlayerAnchorFocusable(expected = false)
+        }
+
+        step("Back closes the panel and restores Video settings focus") {
+            robot.pressBack()
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.screen {
+                robot.waitUntilFocused(focusedVideoSettingsButton)
+            }
+            assertEquals(ActivePanel.None, harness.content.activePanel)
+        }
+    }
+
+    @Test
+    fun seriesEpisodesPanel_focusesCurrentEpisode_andBackRestoresEpisodesButton() = run {
         val harness = render(content(isMovie = false))
 
-        focusButton(EPISODES_BUTTON, steps = 1)
-        sendKey(KeyEvent.KEYCODE_ENTER)
+        step("D-pad traversal focuses and opens Episodes") {
+            robot.screen {
+                robot.focusButton(focusedEpisodesButton, dpadRightSteps = 1)
+            }
+            robot.press(PlayerRemoteKey.Enter)
+        }
 
-        composeRule.onNodeWithText(EPISODE_ITEM).assertIsFocused()
-        assertExactlyOneFocusedNode()
-        assertPlayerAnchorFocusable(expected = false)
+        step("The current episode model owns the single panel focus target") {
+            robot.screen {
+                focusedText(currentEpisodeTitle(harness.content)).assertIsFocused()
+            }
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertPlayerAnchorFocusable(expected = false)
+        }
 
-        sendKey(KeyEvent.KEYCODE_BACK)
-
-        assertExactlyOneFocusedNode()
-        waitUntilFocusedText(EPISODES_BUTTON)
-        assertEquals(ActivePanel.None, harness.content.activePanel)
+        step("Back closes the panel and restores Episodes focus") {
+            robot.pressBack()
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.screen {
+                robot.waitUntilFocused(focusedEpisodesButton)
+            }
+            assertEquals(ActivePanel.None, harness.content.activePanel)
+        }
     }
 
     @Test
-    fun controlsTraversal_movesFromSeekBarToButtonRow_withOneFocusedNode() {
+    fun controlsTraversal_movesFromSeekBarToButtonRow_withOneFocusedNode() = run {
         val harness = render()
         hideControls(harness)
 
-        sendKey(KeyEvent.KEYCODE_DPAD_UP)
-        assertFocusedSeekBar()
+        step("D-pad Up reopens controls with seek-bar focus") {
+            robot.press(PlayerRemoteKey.Up)
+            robot.focus.assertFocusedSeekBar()
+        }
 
-        sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
-        assertExactlyOneFocusedNode()
-        assertFocusedControl()
-        assertTrue(harness.content.controlsVisible)
+        step("D-pad Down moves from the seek bar to the first button") {
+            robot.press(PlayerRemoteKey.Down)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedControl()
+            assertTrue(harness.content.controlsVisible)
+        }
     }
 
     @Test
-    fun playbackEndedReveal_focusesFirstButton_andPlayerAnchorLosesFocus() {
+    fun playbackEndedReveal_focusesFirstButton_andPlayerAnchorLosesFocus() = run {
         val harness = render(content(isMovie = false))
         hideControls(harness)
 
-        harness.revealControls(FocusTarget.Buttons)
-
-        assertExactlyOneFocusedNode()
-        assertFocusedControl()
-        assertHiddenPlayerIsNotFocused()
-        assertEquals(FocusTarget.Buttons, harness.content.controlsFocusTarget)
+        step("Playback-ended reveal focuses the first button") {
+            harness.revealControls(FocusTarget.Buttons)
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedControl()
+            robot.focus.assertHiddenPlayerIsNotFocused()
+            assertEquals(FocusTarget.Buttons, harness.content.controlsFocusTarget)
+        }
     }
 
     @Test
-    fun hiddenDisabledExitingAndDetachedControls_neverOwnFocus() {
+    fun hiddenDisabledExitingAndDetachedControls_neverOwnFocus() = run {
         val harness = render(
             content(
                 canMarkCurrentWatched = true,
                 isMarkCurrentWatchedInFlight = true,
             ),
         )
-        val disabledControl = composeRule
-            .onNodeWithText(MARK_WATCHED_BUTTON, useUnmergedTree = true)
-            .onParent()
-            .onParent()
-
-        disabledControl.assertIsNotEnabled()
-        disabledControl.assertIsNotFocused()
-        assertExactlyOneFocusedNode()
-        assertFocusedControl()
+        val disabledControl = composeRule.onNode(
+            hasTestTag(PlayerScreenTestTags.MarkWatched),
+            useUnmergedTree = true,
+        )
 
         composeRule.mainClock.autoAdvance = false
-        composeRule.runOnIdle {
-            harness.onAction(PlayerAction.HideControls)
+        try {
+            step("A disabled control never owns initial focus") {
+                disabledControl.assertIsNotEnabled()
+                disabledControl.assertIsNotFocused()
+                robot.focus.assertExactlyOneFocusedNode()
+                robot.focus.assertFocusedControl()
+            }
+
+            step("Exiting controls transfer focus to the player before disposal") {
+                composeRule.runOnIdle {
+                    harness.onAction(PlayerAction.HideControls)
+                }
+                robot.advanceClockBy(FOCUS_TRANSFER_SETTLE_MS)
+                assertFalse(harness.content.controlsVisible)
+                robot.screen {
+                    audioSubtitlesButton.assertExists()
+                    focusedAudioSubtitlesButton.assertDoesNotExist()
+                }
+                disabledControl.assertExists().assertIsNotEnabled().assertIsNotFocused()
+                robot.focus.assertExactlyOneFocusedNode()
+                robot.focus.assertFocusedPlayerSurface()
+            }
+
+            step("Detached controls disappear without stealing player focus") {
+                robot.advanceClockBy(CONTROLS_EXIT_SETTLE_MS)
+                robot.screen {
+                    audioSubtitlesButton.assertDoesNotExist()
+                    markWatchedButton.assertDoesNotExist()
+                }
+                robot.focus.assertExactlyOneFocusedNode()
+                robot.focus.assertFocusedPlayerSurface()
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
         }
-        composeRule.mainClock.advanceTimeBy(FOCUS_TRANSFER_SETTLE_MS)
-        composeRule.waitForIdle()
-
-        assertFalse(harness.content.controlsVisible)
-        composeRule.onNodeWithText(AUDIO_BUTTON).assertExists().assertIsNotFocused()
-        disabledControl.assertExists().assertIsNotEnabled().assertIsNotFocused()
-        assertExactlyOneFocusedNode()
-        assertFocusedPlayerSurface()
-
-        composeRule.mainClock.advanceTimeBy(CONTROLS_EXIT_SETTLE_MS)
-        composeRule.waitForIdle()
-
-        composeRule.onNodeWithText(AUDIO_BUTTON).assertDoesNotExist()
-        composeRule.onNodeWithText(MARK_WATCHED_BUTTON).assertDoesNotExist()
-        assertExactlyOneFocusedNode()
-        assertFocusedPlayerSurface()
-        composeRule.mainClock.autoAdvance = true
     }
 
     @Test
-    fun hiddenSecondBack_exitsOnce_andRecompositionKeepsPlayerFocus() {
+    fun hiddenSecondBack_exitsOnce_andRecompositionKeepsPlayerFocus() = run {
         val harness = render()
         hideControls(harness)
 
-        assertFocusedPlayerSurface()
-        assertFocusSurvivesRecomposition(harness, ::assertFocusedPlayerSurface)
+        step("The hidden player keeps focus across recomposition") {
+            robot.focus.assertFocusedPlayerSurface()
+            harness.bumpPosition()
+            composeRule.waitForIdle()
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedPlayerSurface()
+        }
 
-        sendKey(KeyEvent.KEYCODE_BACK)
-        assertEquals(1, harness.exitRequestCount)
-        assertExactlyOneFocusedNode()
+        step("The second Back exits exactly once") {
+            robot.pressBack()
+            assertEquals(1, harness.exitRequestCount)
+            robot.focus.assertExactlyOneFocusedNode()
+        }
 
-        composeRule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
-        composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-        composeRule.waitForIdle()
-        assertExactlyOneFocusedNode()
-        assertFocusedPlayerSurface()
+        step("Lifecycle resume restores the single player focus owner") {
+            composeRule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+            composeRule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            composeRule.waitForIdle()
+            robot.focus.assertExactlyOneFocusedNode()
+            robot.focus.assertFocusedPlayerSurface()
+        }
 
-        sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
-        assertFocusedControl()
-        assertEquals(FocusTarget.Buttons, harness.revealedTargets.last())
+        step("D-pad Down after resume reopens the first button") {
+            robot.press(PlayerRemoteKey.Down)
+            robot.focus.assertFocusedControl()
+            assertEquals(FocusTarget.Buttons, harness.revealedTargets.last())
+        }
     }
 
     private fun render(
@@ -427,174 +499,7 @@ internal class PlayerScreenContentFocusTest : PlayerInstrumentationTestCase() {
     private fun hideControls(harness: PlayerHarness) {
         harness.onAction(PlayerAction.HideControls)
         composeRule.waitForIdle()
-        assertFocusedPlayerSurface()
-    }
-
-    private fun focusButton(text: String, steps: Int) {
-        repeat(steps) {
-            sendKey(KeyEvent.KEYCODE_DPAD_RIGHT)
-        }
-        onPlayerScreen(composeRule) {
-            focusedText(text).assertIsFocused()
-        }
-    }
-
-    private fun assertFocusSurvivesRecomposition(
-        harness: PlayerHarness,
-        assertFocusedOwner: () -> Unit,
-    ) {
-        harness.bumpPosition()
-        composeRule.waitForIdle()
-        assertExactlyOneFocusedNode()
-        assertFocusedOwner()
-    }
-
-    private fun assertExactlyOneFocusedNode() {
-        assertEquals(
-            "PlayerScreen must have exactly one focused semantics node",
-            1,
-            composeRule.onAllNodes(isFocused(), useUnmergedTree = true)
-                .fetchSemanticsNodes()
-                .size,
-        )
-    }
-
-    private fun assertFocusedPlayerSurface() {
-        onPlayerScreen(composeRule) {
-            playerSurface.assertIsDisplayed()
-            playerSurface.assertIsFocused()
-        }
-        val focusedNode = focusedNode()
-        val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
-        assertTrue(
-            "Focused player anchor must cover the root width",
-            focusedNode.boundsInRoot.width >= rootBounds.width * 0.9f,
-        )
-        assertTrue(
-            "Focused player anchor must cover the root height",
-            focusedNode.boundsInRoot.height >= rootBounds.height * 0.9f,
-        )
-    }
-
-    private fun assertFocusedSeekBar() {
-        onPlayerScreen(composeRule) {
-            seekBar.assertIsDisplayed()
-            seekBar.assertIsFocused()
-        }
-        val focusedNode = focusedNode()
-        val rootWidth = composeRule.onRoot().fetchSemanticsNode().boundsInRoot.width
-        assertTrue(
-            "Seek bar must be the focused wide control: node=${focusedNode.boundsInRoot}, root=$rootWidth",
-            focusedNode.boundsInRoot.width >= rootWidth * 0.5f,
-        )
-        assertTrue(
-            "Seek bar must not be the full-screen player anchor: node=${focusedNode.boundsInRoot}, root=$rootWidth",
-            focusedNode.boundsInRoot.width < rootWidth * 0.9f,
-        )
-    }
-
-    private fun assertFocusedControl() {
-        onPlayerScreen(composeRule) {
-            playPauseButton.assertIsDisplayed()
-            playPauseButton.assertIsFocused()
-        }
-        waitUntilFocusedTarget { node ->
-            val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
-            node.boundsInRoot.width < rootBounds.width * 0.5f &&
-                node.boundsInRoot.height < rootBounds.height * 0.9f
-        }
-        val focusedNode = focusedNode()
-        val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
-        assertTrue(
-            "Control focus must not remain on the full-screen player anchor",
-            focusedNode.boundsInRoot.width < rootBounds.width * 0.5f &&
-                focusedNode.boundsInRoot.height < rootBounds.height * 0.9f,
-        )
-    }
-
-    private fun assertHiddenControlsAreNotFocused() {
-        composeRule.onNodeWithText(AUDIO_BUTTON).assertDoesNotExist()
-        composeRule.onNodeWithText(VIDEO_BUTTON).assertDoesNotExist()
-    }
-
-    private fun assertHiddenPlayerIsNotFocused() {
-        val focusedNode = focusedNode()
-        val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
-        assertFalse(
-            "Player anchor must lose focus after controls reopen",
-            focusedNode.boundsInRoot.width >= rootBounds.width * 0.9f,
-        )
-    }
-
-    private fun assertPlayerAnchorFocusable(expected: Boolean) {
-        val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
-        val fullScreenFocusableCount = composeRule
-            .onAllNodes(isFocusable(), useUnmergedTree = true)
-            .fetchSemanticsNodes()
-            .count { node ->
-                node.boundsInRoot.width >= rootBounds.width * 0.9f &&
-                    node.boundsInRoot.height >= rootBounds.height * 0.9f
-            }
-        assertEquals(
-            "Only the typed Player owner may expose the full-screen focus anchor",
-            if (expected) 1 else 0,
-            fullScreenFocusableCount,
-        )
-    }
-
-    private fun focusedNode() = composeRule
-        .onAllNodes(isFocused(), useUnmergedTree = true)
-        .fetchSemanticsNodes()
-        .single()
-
-    private fun waitUntilFocusedTarget(predicate: (androidx.compose.ui.semantics.SemanticsNode) -> Boolean) {
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodes(isFocused(), useUnmergedTree = true)
-                .fetchSemanticsNodes()
-                .singleOrNull()
-                ?.let(predicate) == true
-        }
-    }
-
-    private fun waitUntilFocusedText(text: String) {
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching {
-                composeRule.onNodeWithText(text)
-                    .fetchSemanticsNode()
-                    .config
-                    .getOrNull(SemanticsProperties.Focused) == true
-            }.getOrDefault(false)
-        }
-        onPlayerScreen(composeRule) {
-            focusedText(text).assertIsFocused()
-        }
-    }
-
-    private fun assertControlsVisible(harness: PlayerHarness) {
-        assertTrue(harness.content.controlsVisible)
-        onPlayerScreen(composeRule) {
-            text(AUDIO_BUTTON).assertIsDisplayed()
-        }
-    }
-
-    private fun waitForControlsToBeDisposed() {
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodes(
-                hasText(AUDIO_BUTTON),
-                useUnmergedTree = true,
-            ).fetchSemanticsNodes().isEmpty()
-        }
-    }
-
-    private fun sendKey(keyCode: Int) {
-        sendKeyWithoutSettling(keyCode)
-        composeRule.waitForIdle()
-    }
-
-    private fun sendKeyWithoutSettling(keyCode: Int) {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.sendKeySync(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-        instrumentation.sendKeySync(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        robot.focus.assertFocusedPlayerSurface()
     }
 
     private fun content(
@@ -622,10 +527,12 @@ internal class PlayerScreenContentFocusTest : PlayerInstrumentationTestCase() {
         selectedAudioTrackIndex = 0,
         subtitleTracks = listOf(SubtitleTrackUIState(0, "Выкл.", "", "")),
         selectedSubtitleIndex = 0,
-        soundModes = listOf(SoundModeUIState(0, SOUND_ITEM)),
+        soundModes = listOf(SoundModeUIState(0, FIXTURE_SOUND_MODE)),
         selectedSoundModeIndex = 0,
         subtitleSize = SubtitleSize.MEDIUM,
-        qualities = listOf(QualityUIState(0, QUALITY_ITEM, 1080, 1920, 1080)),
+        qualities = listOf(
+            QualityUIState(0, FIXTURE_QUALITY, 1080, 1920, 1080),
+        ),
         selectedQualityIndex = 0,
         speeds = listOf(SpeedUIState(0, "Норм.", 1f)),
         selectedSpeedIndex = 0,
@@ -652,7 +559,7 @@ internal class PlayerScreenContentFocusTest : PlayerInstrumentationTestCase() {
                 items = listOf(
                     VideoItemUIState(
                         id = CURRENT_EPISODE_ID,
-                        title = EPISODE_ITEM,
+                        title = FIXTURE_EPISODE_TITLE,
                         imageUrl = "",
                         bigImageUrl = "",
                         showTitle = true,
@@ -670,6 +577,15 @@ internal class PlayerScreenContentFocusTest : PlayerInstrumentationTestCase() {
         formattedTime = "0:30",
         episodeInfo = null,
     )
+
+    private fun currentEpisodeTitle(content: PlayerContentState): String =
+        content.episodes
+            ?.list
+            ?.filterIsInstance<VideoGridItemUIState.Items>()
+            ?.flatMap(VideoGridItemUIState.Items::items)
+            ?.single { it.id == content.currentEpisodeId }
+            ?.title
+            ?: error("Missing current episode model ${content.currentEpisodeId}")
 
     private class PlayerHarness(
         initialContent: PlayerContentState,
@@ -772,6 +688,9 @@ internal class PlayerScreenContentFocusTest : PlayerInstrumentationTestCase() {
 
     private companion object {
         const val CURRENT_EPISODE_ID = 101
+        const val FIXTURE_SOUND_MODE = "Fixture sound mode"
+        const val FIXTURE_QUALITY = "Fixture quality"
+        const val FIXTURE_EPISODE_TITLE = "Fixture episode"
         const val FOCUS_TRANSFER_SETTLE_MS = 64L
         const val CONTROLS_EXIT_SETTLE_MS = 1_000L
     }

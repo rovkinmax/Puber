@@ -93,6 +93,7 @@ private fun PrimaryControls(
                     PhosphorIcons.Duotone.Eye
                 },
                 onClick = actions.onMarkCurrentWatchedClick,
+                modifier = Modifier.testTag(PlayerScreenTestTags.MarkWatched),
                 selected = state.isCurrentMediaWatched,
                 enabled = !state.isMarkCurrentWatchedInFlight,
                 stateDescription = stringResource(
@@ -109,20 +110,26 @@ private fun PrimaryControls(
                 text = stringResource(R.string.player_button_episodes),
                 icon = Icons.AutoMirrored.Filled.PlaylistPlay,
                 onClick = actions.onEpisodesClick,
-                modifier = Modifier.focusRequester(focusRequesters.episodesButton),
+                modifier = Modifier
+                    .testTag(PlayerScreenTestTags.Episodes)
+                    .focusRequester(focusRequesters.episodesButton),
             )
         }
         PlayerButton(
             text = stringResource(R.string.player_button_audio_subtitles),
             icon = Icons.Default.Subtitles,
             onClick = actions.onAudioSubtitlesClick,
-            modifier = Modifier.focusRequester(focusRequesters.audioSubtitlesButton),
+            modifier = Modifier
+                .testTag(PlayerScreenTestTags.AudioSubtitles)
+                .focusRequester(focusRequesters.audioSubtitlesButton),
         )
         PlayerButton(
             text = stringResource(R.string.player_button_video),
             icon = Icons.Default.Videocam,
             onClick = actions.onVideoSettingsClick,
-            modifier = Modifier.focusRequester(focusRequesters.videoSettingsButton),
+            modifier = Modifier
+                .testTag(PlayerScreenTestTags.VideoSettings)
+                .focusRequester(focusRequesters.videoSettingsButton),
         )
     }
 }

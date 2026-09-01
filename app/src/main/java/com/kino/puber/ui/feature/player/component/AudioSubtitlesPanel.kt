@@ -174,6 +174,7 @@ private fun RowScope.SoundModeColumn(
         onItemSelected = onSoundModeSelected,
         modifier = Modifier.weight(1f),
         firstItemFocusRequester = panelFocusRequester,
+        itemTestTag = { index -> PlayerScreenTestTags.panelItem("sound", index) },
     )
 }
 
@@ -193,6 +194,7 @@ private fun RowScope.AudioTrackColumn(
         onItemSelected = onAudioTrackSelected,
         modifier = Modifier.weight(1f),
         firstItemFocusRequester = panelFocusRequester,
+        itemTestTag = { index -> PlayerScreenTestTags.panelItem("audio", index) },
     )
 }
 
@@ -211,6 +213,7 @@ private fun RowScope.SubtitleColumn(
         onItemSelected = onSubtitleSelected,
         modifier = Modifier.weight(1f),
         firstItemFocusRequester = panelFocusRequester,
+        itemTestTag = { index -> PlayerScreenTestTags.panelItem("subtitle", index) },
     )
 }
 

@@ -183,6 +183,7 @@ private fun ColumnScope.VideoSettingsColumns(
             firstItemFocusRequester = panelFocusRequester.takeIf {
                 initialFocusTarget == VideoSettingsFocusTarget.Speed
             },
+            itemTestTag = { index -> PlayerScreenTestTags.panelItem("speed", index) },
         )
         SettingsPanelColumn(
             header = stringResource(R.string.player_panel_aspect_ratio),
@@ -193,6 +194,7 @@ private fun ColumnScope.VideoSettingsColumns(
             firstItemFocusRequester = panelFocusRequester.takeIf {
                 initialFocusTarget == VideoSettingsFocusTarget.AspectRatio
             },
+            itemTestTag = { index -> PlayerScreenTestTags.panelItem("aspect", index) },
         )
         SettingsPanelColumn(
             header = stringResource(R.string.player_panel_buffer),
@@ -203,6 +205,7 @@ private fun ColumnScope.VideoSettingsColumns(
             firstItemFocusRequester = panelFocusRequester.takeIf {
                 initialFocusTarget == VideoSettingsFocusTarget.Buffer
             },
+            itemTestTag = { index -> PlayerScreenTestTags.panelItem("buffer", index) },
         )
     }
 }
@@ -221,6 +224,7 @@ private fun RowScope.QualityColumn(
         onItemSelected = onQualitySelected,
         modifier = Modifier.weight(1f),
         firstItemFocusRequester = panelFocusRequester,
+        itemTestTag = { index -> PlayerScreenTestTags.panelItem("quality", index) },
     )
 }
 

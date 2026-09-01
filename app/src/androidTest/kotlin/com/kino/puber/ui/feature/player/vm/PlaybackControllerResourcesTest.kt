@@ -118,202 +118,275 @@ internal class PlaybackControllerResourcesTest : PlayerInstrumentationTestCase()
     }
 
     @Test
-    fun progressiveReplay_readsCommittedCacheAfterUpstreamRouteIsRemoved() {
-        server.reset(progressiveRoutes())
-        val url = loopbackUrl("/media/progressive.mp4")
-        val first = prepare(url)
+    fun progressiveReplay_readsCommittedCacheAfterUpstreamRouteIsRemoved() = run {
+        lateinit var url: String
+        lateinit var first: PlayerProbe
+        lateinit var replay: PlayerProbe
 
-        awaitReady(first)
-        await(first.ended, "initial playback ended", first)
-        val cachedBytes = cache.getCachedBytes(url, 0L, C.LENGTH_UNSET.toLong())
-        assertTrue("Expected committed media bytes, got $cachedBytes", cachedBytes > 0L)
-        releaseController(first)
+        step("Play the progressive fixture through to committed cache") {
+            server.reset(progressiveRoutes())
+            url = loopbackUrl("/media/progressive.mp4")
+            first = prepare(url)
+            awaitReady(first)
+            await(first.ended, "initial playback ended", first)
+            val cachedBytes = cache.getCachedBytes(url, 0L, C.LENGTH_UNSET.toLong())
+            assertTrue("Expected committed media bytes, got $cachedBytes", cachedBytes > 0L)
+            releaseController(first)
+        }
 
-        server.reset(emptyList())
-        val replay = prepare(url)
-        awaitReady(replay)
-        runOnActivity {
-            controller.pause()
-            controller.seekTo(CACHED_REPLAY_SEEK_POSITION_MS)
+        step("Replay from cache after removing the upstream route") {
+            server.reset(emptyList())
+            replay = prepare(url)
+            awaitReady(replay)
+            runOnActivity {
+                controller.pause()
+                controller.seekTo(CACHED_REPLAY_SEEK_POSITION_MS)
+            }
+            awaitCondition("cached replay seek crosses the position fence", replay) {
+                playbackState() == Player.STATE_READY &&
+                    !isPlaying() &&
+                    currentPosition() in CACHED_REPLAY_SEEK_POSITION_MS..
+                    CACHED_REPLAY_SEEK_FENCE_END_MS
+            }
         }
-        awaitCondition("cached replay seek crosses the position fence", replay) {
-            playbackState() == Player.STATE_READY &&
-                !isPlaying() &&
-                currentPosition() in CACHED_REPLAY_SEEK_POSITION_MS..
-                CACHED_REPLAY_SEEK_FENCE_END_MS
+
+        step("Verify the cached seek is error-free and makes no upstream request") {
+            assertTrue(
+                "Cached replay seek should not request a removed upstream route: " +
+                    server.requestJournal.entries,
+                server.requestJournal.entries.isEmpty(),
+            )
+            assertNull("Cached replay seek reported a playback error", replay.error.get())
+            releaseController(replay)
+            assertResourcesQuiescent("cached replay seek", replay)
         }
-        assertTrue(
-            "Cached replay seek should not request a removed upstream route: " +
-                server.requestJournal.entries,
-            server.requestJournal.entries.isEmpty(),
-        )
-        assertNull("Cached replay seek reported a playback error", replay.error.get())
-        releaseController(replay)
-        assertResourcesQuiescent("cached replay seek", replay)
     }
 
     @Test
-    fun emptyCache_loadsNormally_andCorruptOwnedEntryRecoversWithoutPoisoningNextScenario() {
+    fun emptyCache_loadsNormally_andCorruptOwnedEntryRecoversWithoutPoisoningNextScenario() = run {
         val url = loopbackUrl("/media/progressive.mp4")
-        server.reset(progressiveRoutes())
-        val miss = prepare(url)
+        lateinit var corrupt: PlayerProbe
+        lateinit var clean: PlayerProbe
 
-        awaitReady(miss)
-        assertTrue(
-            "Empty cache should use loopback upstream",
-            server.requestJournal.entries.any { it.path == "/media/progressive.mp4" },
-        )
-        releaseController(miss)
+        step("Load an empty cache from the loopback upstream") {
+            server.reset(progressiveRoutes())
+            val miss = prepare(url)
+            awaitReady(miss)
+            assertTrue(
+                "Empty cache should use loopback upstream",
+                server.requestJournal.entries.any { it.path == "/media/progressive.mp4" },
+            )
+            releaseController(miss)
+        }
 
-        cache.removeResource(url)
-        writeCorruptCacheEntry(url)
-        server.reset(progressiveRoutes())
-        val corrupt = prepare(url)
-        awaitReadyOrError(corrupt)
-        assertTrue(
-            "Corrupt cache must produce a controlled recovery or error: ${diagnostics(corrupt)}",
-            corrupt.ready.count == 0L || corrupt.error.get() != null,
-        )
-        releaseController(corrupt)
+        step("Handle a corrupt owned cache entry with a controlled outcome") {
+            cache.removeResource(url)
+            writeCorruptCacheEntry(url)
+            server.reset(progressiveRoutes())
+            corrupt = prepare(url)
+            awaitReadyOrError(corrupt)
+            assertTrue(
+                "Corrupt cache must produce a controlled recovery or error: ${diagnostics(corrupt)}",
+                corrupt.ready.count == 0L || corrupt.error.get() != null,
+            )
+            releaseController(corrupt)
+        }
 
-        cache.removeResource(url)
-        assertTrue(cache.getCachedSpans(url).isEmpty())
-        server.reset(progressiveRoutes())
-        val clean = prepare(url)
-        awaitReady(clean)
-        assertNull(clean.error.get())
-        assertTrue(
-            "Clean scenario should load after corrupt entry cleanup",
-            server.requestJournal.entries.any { it.path == "/media/progressive.mp4" },
-        )
-        releaseController(clean)
-        assertResourcesQuiescent("clean post-corruption scenario", clean)
+        step("Clean the corrupt entry and prove the next playback is not poisoned") {
+            cache.removeResource(url)
+            assertTrue(cache.getCachedSpans(url).isEmpty())
+            server.reset(progressiveRoutes())
+            clean = prepare(url)
+            awaitReady(clean)
+            assertNull(clean.error.get())
+            assertTrue(
+                "Clean scenario should load after corrupt entry cleanup",
+                server.requestJournal.entries.any { it.path == "/media/progressive.mp4" },
+            )
+            releaseController(clean)
+            assertResourcesQuiescent("clean post-corruption scenario", clean)
+        }
     }
 
     @Test
-    fun lifecycle_detachReattach_backgroundForegroundAndRecreation_keepPlayerUsable() {
-        server.reset(progressiveRoutes())
-        val url = loopbackUrl("/media/progressive.mp4")
-        val probe = prepare(url)
+    fun lifecycle_detachReattach_backgroundForegroundAndRecreation_keepPlayerUsable() = run {
+        lateinit var probe: PlayerProbe
 
-        awaitReady(probe)
-        runOnActivity { playerView.player = null }
-        assertNull(playerRead { playerView.player })
-        runOnActivity { playerView.player = controller.player }
-        assertNotNull(playerRead { playerView.player })
-        awaitCondition("reattached player remains ready", probe) {
-            playbackState() == Player.STATE_READY
+        step("Prepare progressive playback for lifecycle transitions") {
+            server.reset(progressiveRoutes())
+            probe = prepare(loopbackUrl("/media/progressive.mp4"))
+            awaitReady(probe)
         }
 
-        scenario.moveToState(Lifecycle.State.CREATED)
-        scenario.moveToState(Lifecycle.State.RESUMED)
-        attachPlayerView()
-        assertNotNull(playerRead { playerView.player })
-        awaitCondition("foreground player remains ready", probe) {
-            playbackState() == Player.STATE_READY
+        step("Detach and reattach the PlayerView without losing READY") {
+            runOnActivity { playerView.player = null }
+            assertNull(playerRead { playerView.player })
+            runOnActivity { playerView.player = controller.player }
+            assertNotNull(playerRead { playerView.player })
+            awaitCondition("reattached player remains ready", probe) {
+                playbackState() == Player.STATE_READY
+            }
         }
 
-        scenario.recreate()
-        attachPlayerView()
-        assertNotNull(playerRead { playerView.player })
-        awaitCondition("recreated activity receives the player", probe) {
-            playbackState() == Player.STATE_READY
+        step("Background and foreground the host while retaining the player") {
+            scenario.moveToState(Lifecycle.State.CREATED)
+            scenario.moveToState(Lifecycle.State.RESUMED)
+            attachPlayerView()
+            assertNotNull(playerRead { playerView.player })
+            awaitCondition("foreground player remains ready", probe) {
+                playbackState() == Player.STATE_READY
+            }
         }
-        assertTrue("Player diagnostics were unexpectedly empty", diagnostics(probe).isNotBlank())
 
-        releaseController(probe)
-        assertResourcesQuiescent("activity recreation", probe)
+        step("Recreate the activity and restore the PlayerView attachment") {
+            scenario.recreate()
+            attachPlayerView()
+            assertNotNull(playerRead { playerView.player })
+            awaitCondition("recreated activity receives the player", probe) {
+                playbackState() == Player.STATE_READY
+            }
+            assertTrue("Player diagnostics were unexpectedly empty", diagnostics(probe).isNotBlank())
+        }
+
+        step("Release recreated playback with no retained resources") {
+            releaseController(probe)
+            assertResourcesQuiescent("activity recreation", probe)
+        }
     }
 
     @Test
-    fun progressiveDecode_reportsMandatoryCapabilitiesDecodersCountersAndAnalytics() {
-        val capabilities = CodecCapabilityReport.capture()
-        assertTrue(
-            "H.264 decoder is mandatory; ${capabilities.boundedSummary()}",
-            capabilities.h264Decoders.isNotEmpty(),
-        )
-        assertTrue(
-            "AAC decoder is mandatory; ${capabilities.boundedSummary()}",
-            capabilities.aacDecoders.isNotEmpty(),
-        )
+    fun progressiveDecode_reportsMandatoryCapabilitiesDecodersCountersAndAnalytics() = run {
+        lateinit var probe: PlayerProbe
 
-        server.reset(progressiveRoutes())
-        val probe = prepare(loopbackUrl("/media/progressive.mp4"))
-        awaitReady(probe)
-        await(probe.firstFrame, "first frame", probe)
-        awaitCondition("H.264/AAC decoder diagnostics", probe) {
+        step("Require H.264 and AAC decoder capabilities on the emulator") {
+            val capabilities = CodecCapabilityReport.capture()
+            assertTrue(
+                "H.264 decoder is mandatory; ${capabilities.boundedSummary()}",
+                capabilities.h264Decoders.isNotEmpty(),
+            )
+            assertTrue(
+                "AAC decoder is mandatory; ${capabilities.boundedSummary()}",
+                capabilities.aacDecoders.isNotEmpty(),
+            )
+        }
+
+        step("Decode the progressive fixture and collect real decoder activity") {
+            server.reset(progressiveRoutes())
+            probe = prepare(loopbackUrl("/media/progressive.mp4"))
+            awaitReady(probe)
+            await(probe.firstFrame, "first frame", probe)
+            awaitCondition("H.264/AAC decoder diagnostics", probe) {
+                val snapshot = decoderSnapshot()
+                snapshot.videoMimeType == MimeTypes.VIDEO_H264 &&
+                    snapshot.audioMimeType == MimeTypes.AUDIO_AAC &&
+                    snapshot.videoDecoderInitCount > 0 &&
+                    snapshot.audioDecoderInitCount > 0 &&
+                    snapshot.videoQueuedInputBuffers > 0 &&
+                    snapshot.audioQueuedInputBuffers > 0 &&
+                    snapshot.renderedVideoBuffers > 0 &&
+                    probe.analytics.videoDecoderName.get() != null &&
+                    probe.analytics.audioDecoderName.get() != null
+            }
+        }
+
+        step("Verify formats, decoder counters, and bounded analytics") {
             val snapshot = decoderSnapshot()
-            snapshot.videoMimeType == MimeTypes.VIDEO_H264 &&
-                snapshot.audioMimeType == MimeTypes.AUDIO_AAC &&
-                snapshot.videoDecoderInitCount > 0 &&
-                snapshot.audioDecoderInitCount > 0 &&
-                snapshot.videoQueuedInputBuffers > 0 &&
-                snapshot.audioQueuedInputBuffers > 0 &&
-                snapshot.renderedVideoBuffers > 0 &&
-                probe.analytics.videoDecoderName.get() != null &&
-                probe.analytics.audioDecoderName.get() != null
+            assertEquals(MimeTypes.VIDEO_H264, snapshot.videoMimeType)
+            assertEquals(MimeTypes.AUDIO_AAC, snapshot.audioMimeType)
+            assertTrue(
+                "Video decoder counters were empty: $snapshot",
+                snapshot.videoQueuedInputBuffers > 0,
+            )
+            assertTrue(
+                "Audio decoder counters were empty: $snapshot",
+                snapshot.audioQueuedInputBuffers > 0,
+            )
+            assertTrue("No video frame was rendered: $snapshot", snapshot.renderedVideoBuffers > 0)
+            assertTrue(
+                "Unexpected analytics load errors: ${probe.analytics.boundedEvents()}",
+                probe.analytics.loadErrors.isEmpty(),
+            )
+            assertTrue(
+                "Unexpected analytics player errors: ${probe.analytics.boundedEvents()}",
+                probe.analytics.playerErrors.isEmpty(),
+            )
         }
 
-        val snapshot = decoderSnapshot()
-        assertEquals(MimeTypes.VIDEO_H264, snapshot.videoMimeType)
-        assertEquals(MimeTypes.AUDIO_AAC, snapshot.audioMimeType)
-        assertTrue("Video decoder counters were empty: $snapshot", snapshot.videoQueuedInputBuffers > 0)
-        assertTrue("Audio decoder counters were empty: $snapshot", snapshot.audioQueuedInputBuffers > 0)
-        assertTrue("No video frame was rendered: $snapshot", snapshot.renderedVideoBuffers > 0)
-        assertTrue("Unexpected analytics load errors: ${probe.analytics.boundedEvents()}", probe.analytics.loadErrors.isEmpty())
-        assertTrue("Unexpected analytics player errors: ${probe.analytics.boundedEvents()}", probe.analytics.playerErrors.isEmpty())
-
-        releaseController(probe)
-        assertResourcesQuiescent("mandatory codec diagnostics", probe)
+        step("Release decoded playback with no resource ownership retained") {
+            releaseController(probe)
+            assertResourcesQuiescent("mandatory codec diagnostics", probe)
+        }
     }
 
     @Test
-    fun releaseDuringBlockedLoad_closesRequestsAndDetachesReleasedView() {
+    fun releaseDuringBlockedLoad_closesRequestsAndDetachesReleasedView() = run {
         val gate = CountDownLatch(1)
         responseGate = gate
         val url = loopbackUrl("/media/blocked.mp4")
-        server.reset(
-            listOf(
-                server.route(
-                    id = "blocked",
-                    path = "/media/blocked.mp4",
-                    response = HermeticTestServer.delayed(
-                        gate = gate,
-                        body = PlayerTestFixtures.readBytes(FixtureId.ProgressiveMp4, context),
-                        contentType = "video/mp4",
+        lateinit var probe: PlayerProbe
+
+        step("Start a progressive request blocked by the fixture gate") {
+            server.reset(
+                listOf(
+                    server.route(
+                        id = "blocked",
+                        path = "/media/blocked.mp4",
+                        response = HermeticTestServer.delayed(
+                            gate = gate,
+                            body = PlayerTestFixtures.readBytes(FixtureId.ProgressiveMp4, context),
+                            contentType = "video/mp4",
+                        ),
                     ),
                 ),
-            ),
-        )
-        val probe = prepare(url)
-        awaitCondition("blocked request starts", probe) {
-            server.activeRequestCount > 0
+            )
+            probe = prepare(url)
+            awaitCondition("blocked request starts", probe) {
+                server.activeRequestCount > 0
+            }
         }
 
-        releaseController(probe, awaitRequests = false)
-        gate.countDown()
-        assertResourcesQuiescent("release during blocked load", probe)
-        assertTrue("Stale callback reported an error: ${probe.error.get()}", probe.error.get() == null)
+        step("Release during the blocked load and detach the PlayerView") {
+            releaseController(probe, awaitRequests = false)
+            gate.countDown()
+        }
+
+        step("Drain the request without stale callbacks or retained resources") {
+            assertResourcesQuiescent("release during blocked load", probe)
+            assertTrue(
+                "Stale callback reported an error: ${probe.error.get()}",
+                probe.error.get() == null,
+            )
+        }
     }
 
     @Test
-    fun boundedPreparePlaySeekReleaseLoop_leavesNoActiveRequestsOrOpenSpans() {
+    fun boundedPreparePlaySeekReleaseLoop_leavesNoActiveRequestsOrOpenSpans() = run {
         val url = loopbackUrl("/media/progressive.mp4")
         repeat(STRESS_ITERATIONS) { iteration ->
-            server.reset(progressiveRoutes())
-            val probe = prepare(url)
-            awaitReady(probe)
-            runOnActivity {
-                controller.pause()
-                controller.seekTo(350L)
-                controller.play()
+            lateinit var probe: PlayerProbe
+
+            step("Prepare stress iteration ${iteration + 1}") {
+                server.reset(progressiveRoutes())
+                probe = prepare(url)
+                awaitReady(probe)
             }
-            awaitCondition("stress iteration $iteration advances", probe) {
-                currentPosition() >= 300L
+
+            step("Play and seek stress iteration ${iteration + 1}") {
+                runOnActivity {
+                    controller.pause()
+                    controller.seekTo(350L)
+                    controller.play()
+                }
+                awaitCondition("stress iteration $iteration advances", probe) {
+                    currentPosition() >= 300L
+                }
+                assertNull(probe.error.get())
             }
-            assertNull(probe.error.get())
-            releaseController(probe)
-            assertResourcesQuiescent("stress iteration $iteration", probe)
+
+            step("Release stress iteration ${iteration + 1} without leaked resources") {
+                releaseController(probe)
+                assertResourcesQuiescent("stress iteration $iteration", probe)
+            }
         }
     }
 
