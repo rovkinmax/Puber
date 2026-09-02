@@ -20,6 +20,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kino.puber.data.repository.PlayerPreferencesRepository
+import com.kino.puber.domain.interactor.player.StreamSource
 import com.kino.puber.playertestfixtures.FixtureId
 import com.kino.puber.playertestfixtures.PlayerTestFixtures
 import com.kino.puber.playertestfixtures.network.LoopbackNetworkJournal
@@ -30,6 +31,7 @@ import com.kino.puber.profile.PlayerTestControl
 import com.kino.puber.ui.feature.player.PlayerInstrumentationTestCase
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.BufferPreset
+import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 import java.io.File
 import java.io.IOException
 import java.util.UUID
@@ -408,7 +410,7 @@ internal class PlaybackControllerResourcesTest : PlayerInstrumentationTestCase()
         val probe = PlayerProbe()
         scenario.onActivity {
             controller.prepare(
-                streamUrl = url,
+                stream = StreamSource(url = url, isHls = false),
                 subtitles = null,
                 startPosition = 0L,
                 bufferPreset = BufferPreset.SMALL,
@@ -674,7 +676,11 @@ internal class PlaybackControllerResourcesTest : PlayerInstrumentationTestCase()
             record("ended")
         }
 
-        override fun onTracksUpdated(audioTracks: List<AudioTrackUIState>, selectedIndex: Int) {
+        override fun onTracksUpdated(
+            audioTracks: List<AudioTrackUIState>,
+            selectedIndex: Int,
+            subtitleTracks: List<SubtitleTrackUIState>,
+        ) {
             record("tracks:${audioTracks.size}:$selectedIndex")
         }
 

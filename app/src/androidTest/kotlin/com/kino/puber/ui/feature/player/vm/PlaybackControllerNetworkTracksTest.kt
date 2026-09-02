@@ -20,6 +20,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.data.repository.PlayerPreferencesRepository
+import com.kino.puber.domain.interactor.player.StreamSource
 import com.kino.puber.playertestfixtures.FixtureId
 import com.kino.puber.playertestfixtures.PlayerTestFixtures
 import com.kino.puber.playertestfixtures.network.LoopbackNetworkJournal
@@ -122,11 +123,11 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
     }
 
     @Test
-    fun hlsTracks_selectsAudioAndSubtitle_observesCueAndDisablesText() = run {
+    fun hlsTracks_sideLoadsApiSubtitleMarkedEmbedded_selectsCueAndDisablesText() = run {
         lateinit var probe: PlayerProbe
         lateinit var subtitleUrl: String
 
-        step("Prepare HLS with two AAC renditions and side-loaded WebVTT") {
+        step("Prepare HLS with two AAC renditions and API WebVTT marked embedded") {
             server.reset(commonHlsRoutes())
             subtitleUrl = loopbackUrl("/media/subtitle.vtt?signature=test-signature")
             probe = prepare(
@@ -135,6 +136,7 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
                     SubtitleLink(
                         lang = "en",
                         url = subtitleUrl,
+                        embed = true,
                     ),
                 ),
             )
@@ -158,7 +160,6 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
 
         step("Select the external WebVTT track without losing audio selection") {
             val subtitle = SubtitleTrackUIState(
-                index = 1,
                 label = "English",
                 language = "en",
                 url = subtitleUrl,
@@ -263,7 +264,7 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
             highUrl = loopbackUrl("/media/hls/quality-high.m3u8")
             val subtitleUrl = loopbackUrl("/media/subtitle.vtt?scenario=quality-switch")
             subtitle = SubtitleLink(lang = "en", url = subtitleUrl)
-            subtitleTrack = SubtitleTrackUIState(1, "English", "en", subtitleUrl)
+            subtitleTrack = SubtitleTrackUIState(label = "English", language = "en", url = subtitleUrl)
             probe = prepare("/media/hls/quality-low.m3u8", listOf(subtitle))
         }
 
@@ -291,7 +292,9 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
             runOnPlayer { controller.pause() }
             awaitCondition("paused switch source") { !isPlaying() }
             pausedPosition = currentPosition()
-            runOnPlayer { controller.switchStream(highUrl, listOf(subtitle)) }
+            runOnPlayer {
+                controller.switchStream(StreamSource(url = highUrl, isHls = true), listOf(subtitle))
+            }
             awaitCondition("high quality source prepared") {
                 currentMediaPath() == "/media/hls/quality-high.m3u8" &&
                     playbackState() == Player.STATE_READY
@@ -312,9 +315,9 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
                 isPlaying() && playbackIntent() == PlaybackIntent.PlayRequested
             }
             runOnPlayer {
-                controller.switchStream(lowUrl, listOf(subtitle))
-                controller.switchStream(highUrl, listOf(subtitle))
-                controller.switchStream(lowUrl, listOf(subtitle))
+                controller.switchStream(StreamSource(url = lowUrl, isHls = true), listOf(subtitle))
+                controller.switchStream(StreamSource(url = highUrl, isHls = true), listOf(subtitle))
+                controller.switchStream(StreamSource(url = lowUrl, isHls = true), listOf(subtitle))
             }
             awaitCondition("last rapid switch wins") {
                 currentMediaPath() == "/media/hls/quality-low.m3u8" &&
@@ -344,7 +347,7 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
         step("Prepare the first progressive source with external WebVTT") {
             server.reset(commonHlsRoutes())
             subtitleUrl = loopbackUrl("/media/subtitle.vtt")
-            subtitle = SubtitleTrackUIState(1, "English", "en", subtitleUrl)
+            subtitle = SubtitleTrackUIState(label = "English", language = "en", url = subtitleUrl)
             first = prepare(
                 path = "/media/progressive-a.mp4",
                 subtitles = listOf(SubtitleLink(lang = "en", url = subtitleUrl)),
@@ -365,7 +368,7 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
             val secondUrl = loopbackUrl("/media/progressive-b.mp4")
             runOnPlayer {
                 controller.switchStream(
-                    streamUrl = secondUrl,
+                    stream = StreamSource(url = secondUrl, isHls = false),
                     subtitles = listOf(SubtitleLink(lang = "en", url = subtitleUrl)),
                 )
             }
@@ -643,7 +646,10 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
         val streamUrl = loopbackUrl(path)
         scenario.onActivity {
             controller.prepare(
-                streamUrl = streamUrl,
+                stream = StreamSource(
+                    url = streamUrl,
+                    isHls = path.endsWith(".m3u8", ignoreCase = true),
+                ),
                 subtitles = subtitles,
                 startPosition = 0L,
                 bufferPreset = BufferPreset.SMALL,
