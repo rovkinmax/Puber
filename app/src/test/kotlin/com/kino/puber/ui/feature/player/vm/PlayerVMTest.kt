@@ -46,6 +46,7 @@ import timber.log.Timber
  * `startPositionUpdates()` loop forever → OOM.
  * Without `runTest`, the infinite loop stays suspended at its first `delay()` — harmless.
  */
+@Suppress("LargeClass")
 internal class PlayerVMTest : PlayerVMTestFixture() {
 
     companion object {
