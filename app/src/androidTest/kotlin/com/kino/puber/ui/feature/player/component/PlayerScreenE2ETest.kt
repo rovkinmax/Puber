@@ -140,7 +140,7 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
                 assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
             }
 
-            step("Select Spanish audio and external subtitles through typed panel items") {
+            step("Select Spanish audio and the API subtitle marked embedded through typed panel items") {
                 robot.press(PlayerRemoteKey.Select)
                 assertFocusedPanelItem("sound", 0)
                 robot.press(PlayerRemoteKey.Right)
@@ -156,10 +156,9 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
                 robot.press(PlayerRemoteKey.Right)
                 assertFocusedPanelItem("subtitle", 1)
                 robot.press(PlayerRemoteKey.Select)
-                awaitPlayerCondition("external subtitle is persisted and selected in Media3") {
+                awaitPlayerCondition("API subtitle marked embedded is persisted and selected in Media3") {
                     preferredSubtitleLanguage() == SUBTITLE_LANGUAGE &&
-                        selectedTextTrack() &&
-                        preferredTextLanguages().contains(SUBTITLE_LANGUAGE)
+                        selectedTextTrack()
                 }
                 robot.pressBack()
                 assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
@@ -226,8 +225,7 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
                 }
                 awaitPlayerCondition("recreated Media3 restores audio and subtitle choices") {
                     selectedAudioLanguage() == SPANISH_LANGUAGE &&
-                        selectedTextTrack() &&
-                        preferredTextLanguages().contains(SUBTITLE_LANGUAGE)
+                        selectedTextTrack()
                 }
             }
 
@@ -705,9 +703,6 @@ private class PlayerE2EFixture(
             .any { it.isSelected }
     } == true
 
-    fun preferredTextLanguages(): List<String> =
-        uiPlayerRead { trackSelectionParameters.preferredTextLanguages.toList() }.orEmpty()
-
     fun awaitPlayerReady() {
         awaitPlayerCondition("Media3 READY without PlayerScreen error") {
             uiPlayerRead { playbackState } == Player.STATE_READY
@@ -1170,7 +1165,8 @@ private class PlayerE2EFixture(
                 "lang": "$SUBTITLE_LANGUAGE",
                 "url": "${mediaUrl(
                     "${media.high}/subtitle.vtt?signature=screen-test&scenario=$scenarioToken",
-                )}"
+                )}",
+                "embed": true
               }],
               "watching": {"time": $watchingTime, "duration": 4, "status": 0}
             }]

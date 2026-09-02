@@ -36,9 +36,9 @@ internal class AudioTrackPreferenceResolverTest {
     @Test
     fun findSubtitleTrackIndex_matchesSignedUrlByStablePathBeforeLanguage() {
         val tracks = listOf(
-            SubtitleTrackUIState(0, "Off", "", ""),
-            SubtitleTrackUIState(1, "Russian", "rus", "https://cdn/subtitles/rus.vtt?token=new"),
-            SubtitleTrackUIState(2, "Russian SDH", "rus", "https://cdn/subtitles/rus-sdh.vtt?token=new"),
+            subtitleTrack(index = 0, language = "", url = ""),
+            subtitleTrack(index = 1, language = "rus", url = "https://cdn/subtitles/rus.vtt?token=new"),
+            subtitleTrack(index = 2, language = "rus", url = "https://cdn/subtitles/rus-sdh.vtt?token=new"),
         )
 
         assertEquals(
@@ -54,9 +54,9 @@ internal class AudioTrackPreferenceResolverTest {
     @Test
     fun findSubtitleTrackIndex_rejectsAmbiguousLanguageWithoutUrl() {
         val tracks = listOf(
-            SubtitleTrackUIState(0, "Off", "", ""),
-            SubtitleTrackUIState(1, "Russian", "rus", "https://cdn/subtitles/rus.vtt"),
-            SubtitleTrackUIState(2, "Russian SDH", "rus", "https://cdn/subtitles/rus-sdh.vtt"),
+            subtitleTrack(index = 0, language = "", url = ""),
+            subtitleTrack(index = 1, language = "rus", url = "https://cdn/subtitles/rus.vtt"),
+            subtitleTrack(index = 2, language = "rus", url = "https://cdn/subtitles/rus-sdh.vtt"),
         )
 
         assertEquals(-1, resolver.findSubtitleTrackIndex(tracks, "rus", null))
