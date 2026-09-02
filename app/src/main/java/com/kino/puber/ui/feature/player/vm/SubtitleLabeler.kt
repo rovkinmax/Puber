@@ -17,7 +17,6 @@ internal class SubtitleLabeler(
     private val forcedQualifier: String,
     private val variantLabel: (label: String, ordinal: Int) -> String,
     private val unknownLabel: (position: Int) -> String,
-    private val diagnosticLog: ((String) -> Unit)? = null,
 ) {
     private val displayLocale: Locale = Locale.forLanguageTag(displayLanguageTag)
 
@@ -25,13 +24,7 @@ internal class SubtitleLabeler(
         val labeled = tracks.mapIndexed { position, track ->
             track.copy(label = withForcedQualifier(baseLabel(track, position), track))
         }
-        return disambiguate(labeled).also { tracks ->
-            tracks.forEachIndexed { position, track ->
-                diagnosticLog?.invoke(
-                    "final position=${position + 1} ${track.subtitleDiagnosticSummary()}",
-                )
-            }
-        }
+        return disambiguate(labeled)
     }
 
     private fun baseLabel(track: SubtitleTrackUIState, position: Int): String {
@@ -48,36 +41,11 @@ internal class SubtitleLabeler(
             .trim()
             .takeIf { it.isNotEmpty() }
             ?.uppercase(Locale.ROOT)
-        val source: String
-        val result = when {
-            languageLabel != null -> {
-                source = if (isAiGenerated) "ai-generated" else "language"
-                languageLabel
-            }
-            descriptiveLabel != null -> {
-                source = "descriptive"
-                descriptiveLabel
-            }
-            sourceLabel != null -> {
-                source = "source-label"
-                sourceLabel
-            }
-            rawLanguageLabel != null -> {
-                source = "raw-language"
-                rawLanguageLabel
-            }
-            else -> {
-                source = "fallback"
-                unknownLabel(position + 1)
-            }
-        }
-        diagnosticLog?.invoke(
-            "label position=${position + 1} source=$source " +
-                "inputLanguage=${track.language.subtitleDiagnosticValue()} " +
-                "inputDescriptive=${track.descriptiveLabel.subtitleDiagnosticValue()} " +
-                "result=${result.subtitleDiagnosticValue()}",
-        )
-        return result
+        return languageLabel
+            ?: descriptiveLabel
+            ?: sourceLabel
+            ?: rawLanguageLabel
+            ?: unknownLabel(position + 1)
     }
 
     private fun withForcedQualifier(label: String, track: SubtitleTrackUIState): String =

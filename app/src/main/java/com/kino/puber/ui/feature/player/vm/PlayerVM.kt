@@ -169,7 +169,6 @@ internal class PlayerVM(
             unknownLabel = { position ->
                 resources.getString(R.string.player_subtitle_unknown, position)
             },
-            diagnosticLog = SubtitleDiagnostics::record,
         ),
     )
     private val debugOverlayEnabled = interactor.isDebugOverlayEnabled()
@@ -221,10 +220,7 @@ internal class PlayerVM(
                 selectedIndex
             }
             subtitleTracksDiscovered = subtitleTracksDiscovered || effectivePlayerTracks.isNotEmpty()
-            SubtitleDiagnostics.recordTracks("api-input", apiSubtitleTracks)
-            SubtitleDiagnostics.recordTracks("player-input", effectivePlayerTracks)
             val mergedSubtitleTracks = subtitleTrackMerger.merge(apiSubtitleTracks, effectivePlayerTracks)
-            SubtitleDiagnostics.recordTracks("merged-output", mergedSubtitleTracks)
             val mergedSelectedIndex = previousSubtitle?.let { selectedTrack ->
                 audioTrackPreferenceResolver.findSubtitleTrackIndex(
                     tracks = mergedSubtitleTracks,
@@ -307,7 +303,6 @@ internal class PlayerVM(
         if (!isCurrentPrepare(generation)) return
         val resolved = interactor.resolveMedia(item, seasonNumber, episodeNumber, videoNumber)
         if (!isCurrentPrepare(generation)) return
-        SubtitleDiagnostics.recordApiPayload(resolved.subtitles)
         if (videoNumber != null && !resolved.isSeries && resolved.videoNumber != videoNumber) {
             dispatchError(
                 ErrorEntity(
