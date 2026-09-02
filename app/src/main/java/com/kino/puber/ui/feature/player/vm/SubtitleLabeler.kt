@@ -13,9 +13,11 @@ import java.util.Locale
  */
 internal class SubtitleLabeler(
     displayLanguageTag: String,
+    private val aiGeneratedLabel: String,
     private val forcedQualifier: String,
     private val variantLabel: (label: String, ordinal: Int) -> String,
     private val unknownLabel: (position: Int) -> String,
+    private val diagnosticLog: ((String) -> Unit)? = null,
 ) {
     private val displayLocale: Locale = Locale.forLanguageTag(displayLanguageTag)
 
@@ -23,13 +25,60 @@ internal class SubtitleLabeler(
         val labeled = tracks.mapIndexed { position, track ->
             track.copy(label = withForcedQualifier(baseLabel(track, position), track))
         }
-        return disambiguate(labeled)
+        return disambiguate(labeled).also { tracks ->
+            tracks.forEachIndexed { position, track ->
+                diagnosticLog?.invoke(
+                    "final position=${position + 1} ${track.subtitleDiagnosticSummary()}",
+                )
+            }
+        }
     }
 
-    private fun baseLabel(track: SubtitleTrackUIState, position: Int): String =
-        subtitleLanguageDisplayName(track.language, displayLocale)
-            ?: track.readableDescriptiveLabel()
-            ?: unknownLabel(position + 1)
+    private fun baseLabel(track: SubtitleTrackUIState, position: Int): String {
+        val isAiGenerated = canonicalSubtitleLanguage(track.language) ==
+            AI_GENERATED_SUBTITLE_LANGUAGE
+        val languageLabel = if (isAiGenerated) {
+            aiGeneratedLabel
+        } else {
+            subtitleLanguageDisplayName(track.language, displayLocale)
+        }
+        val descriptiveLabel = track.readableDescriptiveLabel()
+        val sourceLabel = track.sourceDescriptiveLabel()
+        val rawLanguageLabel = track.language
+            .trim()
+            .takeIf { it.isNotEmpty() }
+            ?.uppercase(Locale.ROOT)
+        val source: String
+        val result = when {
+            languageLabel != null -> {
+                source = if (isAiGenerated) "ai-generated" else "language"
+                languageLabel
+            }
+            descriptiveLabel != null -> {
+                source = "descriptive"
+                descriptiveLabel
+            }
+            sourceLabel != null -> {
+                source = "source-label"
+                sourceLabel
+            }
+            rawLanguageLabel != null -> {
+                source = "raw-language"
+                rawLanguageLabel
+            }
+            else -> {
+                source = "fallback"
+                unknownLabel(position + 1)
+            }
+        }
+        diagnosticLog?.invoke(
+            "label position=${position + 1} source=$source " +
+                "inputLanguage=${track.language.subtitleDiagnosticValue()} " +
+                "inputDescriptive=${track.descriptiveLabel.subtitleDiagnosticValue()} " +
+                "result=${result.subtitleDiagnosticValue()}",
+        )
+        return result
+    }
 
     private fun withForcedQualifier(label: String, track: SubtitleTrackUIState): String =
         if (track.isForced == true) "$label$QUALIFIER_SEPARATOR$forcedQualifier" else label
@@ -72,12 +121,18 @@ internal class SubtitleLabeler(
  * a file name or a language code with a channel number is not.
  */
 internal fun SubtitleTrackUIState.readableDescriptiveLabel(): String? {
+    val candidate = sourceDescriptiveLabel() ?: return null
+    val isLanguageCode = candidate.count(Char::isLetter) <= SHORTEST_DESCRIPTIVE_LABEL
+    return candidate.takeUnless { isLanguageCode }
+}
+
+/** A source label is safe to show as a last resort when it is not a file identity. */
+private fun SubtitleTrackUIState.sourceDescriptiveLabel(): String? {
     val candidate = descriptiveLabel?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val isFileName = SUBTITLE_FILE_EXTENSION.containsMatchIn(candidate) ||
         candidate == sourceFile ||
         candidate == url.stableSubtitleKey()
-    val isLanguageCode = candidate.count(Char::isLetter) <= SHORTEST_DESCRIPTIVE_LABEL
-    return candidate.takeUnless { isFileName || isLanguageCode }
+    return candidate.takeUnless { isFileName }
 }
 
 private const val SHORTEST_DESCRIPTIVE_LABEL = 3

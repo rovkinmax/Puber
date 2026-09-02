@@ -2,6 +2,8 @@ package com.kino.puber.ui.feature.player.vm
 
 import java.util.Locale
 
+internal const val AI_GENERATED_SUBTITLE_LANGUAGE = "ai"
+
 internal fun sameSubtitleLanguage(first: String, second: String): Boolean {
     if (first.isBlank() || second.isBlank()) return false
     return canonicalSubtitleLanguage(first) == canonicalSubtitleLanguage(second)
