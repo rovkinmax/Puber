@@ -116,27 +116,6 @@ internal class SubtitleLabelerTest {
         )
     }
 
-    @Test
-    fun apply_reportsFallbackInputsAndResult_toDiagnostics() {
-        val diagnostics = mutableListOf<String>()
-        val diagnosticLabeler = SubtitleLabeler(
-            displayLanguageTag = "ru",
-            aiGeneratedLabel = "Созданные ИИ",
-            forcedQualifier = "частичные",
-            variantLabel = { label, ordinal -> "$label · вариант $ordinal" },
-            unknownLabel = { position -> "Субтитры $position" },
-            diagnosticLog = diagnostics::add,
-        )
-
-        diagnosticLabeler.apply(listOf(track("rus"), track("")))
-
-        assertEquals(
-            "label position=2 source=fallback inputLanguage=<empty> " +
-                "inputDescriptive=<null> result=Субтитры 2",
-            diagnostics[1],
-        )
-    }
-
     private fun track(
         language: String,
         descriptive: String? = null,

@@ -29,7 +29,6 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.extractor.DefaultExtractorsFactory
 import com.kino.puber.BuildConfig
 import com.kino.puber.R
-import com.kino.puber.core.logger.log
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.data.repository.PlayerPreferencesRepository
 import com.kino.puber.domain.interactor.player.StreamSource
@@ -561,64 +560,11 @@ internal class PlaybackController(
             ?.multivariantPlaylist
             ?.subtitles
             .orEmpty()
-        val subtitleTracks = buildSubtitleTracks(textGroups, hlsSubtitles)
-        logSubtitleTrackDiscovery(textGroups, hlsSubtitles, subtitleTracks)
         callback?.onTracksUpdated(
             audioTracks,
             selectedIndex,
-            subtitleTracks,
+            buildSubtitleTracks(textGroups, hlsSubtitles),
         )
-    }
-
-    private fun logSubtitleTrackDiscovery(
-        textGroups: List<Tracks.Group>,
-        hlsSubtitles: List<HlsMultivariantPlaylist.Rendition>,
-        subtitleTracks: List<SubtitleTrackUIState>,
-    ) {
-        if (!BuildConfig.DEBUG) return
-        log(
-            "media3 discovery groups=${textGroups.size} " +
-                "tracks=${textGroups.sumOf { it.length }} hlsRenditions=${hlsSubtitles.size}",
-            tag = SUBTITLE_DIAGNOSTICS_TAG,
-        )
-        textGroups.forEachIndexed { groupIndex, group ->
-            for (trackIndex in 0 until group.length) {
-                val format = group.getTrackFormat(trackIndex)
-                log(
-                    "media3 group=$groupIndex track=$trackIndex " +
-                        "groupId=${group.mediaTrackGroup.id.subtitleDiagnosticValue()} " +
-                        "selected=${group.isTrackSelected(trackIndex)} " +
-                        "supported=${group.isTrackSupported(trackIndex)} " +
-                        "id=${format.id.subtitleDiagnosticValue()} " +
-                        "label=${format.label.subtitleDiagnosticValue()} " +
-                        "language=${format.language.subtitleDiagnosticValue()} " +
-                        "mime=${format.sampleMimeType.subtitleDiagnosticValue()} " +
-                        "codecs=${format.codecs.subtitleDiagnosticValue()} " +
-                        "selectionFlags=${format.selectionFlags} roleFlags=${format.roleFlags}",
-                    tag = SUBTITLE_DIAGNOSTICS_TAG,
-                )
-            }
-        }
-        hlsSubtitles.forEachIndexed { index, rendition ->
-            val format = rendition.format
-            log(
-                "hls rendition=$index id=${format.id.subtitleDiagnosticValue()} " +
-                    "label=${format.label.subtitleDiagnosticValue()} " +
-                    "language=${format.language.subtitleDiagnosticValue()} " +
-                    "urlKey=${rendition.url.toString().stableSubtitleKey().subtitleDiagnosticValue()} " +
-                    "containerMime=${format.containerMimeType.subtitleDiagnosticValue()} " +
-                    "sampleMime=${format.sampleMimeType.subtitleDiagnosticValue()} " +
-                    "codecs=${format.codecs.subtitleDiagnosticValue()} " +
-                    "selectionFlags=${format.selectionFlags} roleFlags=${format.roleFlags}",
-                tag = SUBTITLE_DIAGNOSTICS_TAG,
-            )
-        }
-        subtitleTracks.forEachIndexed { index, track ->
-            log(
-                "player position=${index + 1} ${track.subtitleDiagnosticSummary()}",
-                tag = SUBTITLE_DIAGNOSTICS_TAG,
-            )
-        }
     }
 
     private fun buildSubtitleTracks(
