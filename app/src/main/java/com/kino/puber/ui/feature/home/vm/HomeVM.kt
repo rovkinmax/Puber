@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.home.vm
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.logger.log
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.content.ContentChangeSet
 import kotlinx.coroutines.async
@@ -18,6 +19,7 @@ import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.domain.interactor.api.ApiDomainAutoResolveResult
 import com.kino.puber.domain.interactor.api.ApiDomainDetectionResult
 import com.kino.puber.domain.interactor.api.ApiDomainInteractor
@@ -30,6 +32,9 @@ import com.kino.puber.ui.feature.home.model.HomeAction
 import com.kino.puber.ui.feature.home.model.HomeSectionType
 import com.kino.puber.ui.feature.home.model.HomeUIMapper
 import com.kino.puber.ui.feature.home.model.HomeViewState
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
+import com.kino.puber.ui.feature.bookmarkpicker.openBookmarkPicker
+import com.kino.puber.ui.feature.bookmarkpicker.withBookmarkResult
 
 internal class HomeVM(
     router: AppRouter,
@@ -38,6 +43,7 @@ internal class HomeVM(
     private val videoItemMapper: VideoItemUIMapper,
     private val apiDomainInteractor: ApiDomainInteractor,
     private val savedItemInteractor: SavedItemInteractor,
+    private val bookmarkPreferencesRepository: BookmarkPreferencesRepository,
     private val resources: ResourceProvider,
     override val errorHandler: ErrorHandler,
 ) : PuberVM<HomeViewState>(router) {
@@ -75,6 +81,12 @@ internal class HomeVM(
             is CommonAction.ItemSavedChanged<*> -> {
                 val item = action.item as VideoItemUIState
                 setItemSaved(item, action.isSaved)
+            }
+            is CommonAction.ItemBookmarksRequested<*> -> {
+                router.openBookmarkPicker(
+                    item = action.item as VideoItemUIState,
+                    listener = ::onBookmarkPickerResult,
+                )
             }
             is CommonAction.RetryClicked -> loadHome()
             is CommonAction.OnResume -> silentRefresh()
@@ -168,8 +180,11 @@ internal class HomeVM(
         val freshSeriesDeferred = async { interactor.getFreshItems("serial").logFailure("fresh series") }
         val popularMoviesDeferred = async { interactor.getPopularByType("movie").logFailure("popular movies") }
         val popularSeriesDeferred = async { interactor.getPopularByType("serial").logFailure("popular series") }
-        val watchLaterDeferred = async { interactor.getWatchLaterItems().logFailure("watch later") }
-        val bookmarksDeferred = async { loadBookmarkSection() }
+        val watchLaterDeferred = if (bookmarkPreferencesRepository.mode.value == BookmarkMode.Simple) {
+            async { interactor.getWatchLaterItems().logFailure("watch later") }
+        } else {
+            null
+        }
         val collectionsDeferred = async { interactor.getCollections().logFailure("collections") }
 
         val hotMovies = hotMoviesDeferred.await().orEmpty()
@@ -183,8 +198,7 @@ internal class HomeVM(
             mapper.mapItemSection(freshItems, HomeSectionType.Fresh),
             popularMoviesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularMovies) },
             popularSeriesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularSeries) },
-            watchLaterDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.WatchLater) },
-            bookmarksDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.Bookmarks) },
+            watchLaterDeferred?.await()?.let { mapper.mapItemSection(it, HomeSectionType.WatchLater) },
             collectionsDeferred.await()?.let { mapper.mapCollectionSection(it) },
             mapper.mapItemSection(hotItems, HomeSectionType.Hot),
         ).sortedBy { it.type.ordinal }
@@ -196,10 +210,6 @@ internal class HomeVM(
                 apiDomainDialog = currentDialogState(),
             )
         )
-    }
-
-    private suspend fun loadBookmarkSection(): List<Item>? {
-        return interactor.getGenericBookmarkItems().logFailure("bookmark items")
     }
 
     private fun <T> Result<T>.logFailure(section: String): T? {
@@ -299,6 +309,17 @@ internal class HomeVM(
                             },
                         )
                     }
+                },
+            )
+        }
+    }
+
+    private fun onBookmarkPickerResult(result: BookmarkPickerResult?) {
+        result ?: return
+        updateViewState<HomeViewState.Content> {
+            copy(
+                sections = sections.map { section ->
+                    section.copy(items = section.items.map { it.withBookmarkResult(result) })
                 },
             )
         }

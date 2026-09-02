@@ -13,6 +13,9 @@ import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.collections.CollectionInteractor
 import com.kino.puber.ui.feature.collections.detail.model.CollectionDetailViewState
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
+import com.kino.puber.ui.feature.bookmarkpicker.openBookmarkPicker
+import com.kino.puber.ui.feature.bookmarkpicker.withBookmarkResult
 
 internal class CollectionDetailVM(
     router: AppRouter,
@@ -51,6 +54,12 @@ internal class CollectionDetailVM(
             is CommonAction.ItemSavedChanged<*> -> {
                 val item = action.item as VideoItemUIState
                 setItemSaved(item, action.isSaved)
+            }
+            is CommonAction.ItemBookmarksRequested<*> -> {
+                router.openBookmarkPicker(
+                    item = action.item as VideoItemUIState,
+                    listener = ::onBookmarkPickerResult,
+                )
             }
             is CommonAction.RetryClicked -> loadItems()
             else -> super.onAction(action)
@@ -114,6 +123,13 @@ internal class CollectionDetailVM(
                     if (item.id == itemId) item.copy(isSaved = saved) else item
                 },
             )
+        }
+    }
+
+    private fun onBookmarkPickerResult(result: BookmarkPickerResult?) {
+        result ?: return
+        updateViewState<CollectionDetailViewState.Content> {
+            copy(items = items.map { it.withBookmarkResult(result) })
         }
     }
 }

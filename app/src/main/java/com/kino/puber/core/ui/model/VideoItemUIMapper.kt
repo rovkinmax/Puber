@@ -1,6 +1,7 @@
 package com.kino.puber.core.ui.model
 
 import com.kino.puber.R
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.uikit.component.HeroItemState
 import com.kino.puber.core.ui.uikit.component.RatingUIState
@@ -8,11 +9,13 @@ import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.isSeriesLike
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
 
 class VideoItemUIMapper(
     private val resources: ResourceProvider,
     private val playerPreferencesRepository: PlayerPreferencesRepository? = null,
+    private val bookmarkPreferencesRepository: BookmarkPreferencesRepository? = null,
 ) {
 
     fun mapShortItemList(items: List<Item>): List<VideoItemUIState> {
@@ -41,6 +44,8 @@ class VideoItemUIMapper(
             } else {
                 item.bookmarks.orEmpty().isNotEmpty()
             },
+            isBookmarked = item.bookmarks.orEmpty().isNotEmpty(),
+            bookmarkMode = bookmarkPreferencesRepository?.mode?.value ?: BookmarkMode.Simple,
         )
     }
 

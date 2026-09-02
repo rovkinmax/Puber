@@ -8,6 +8,7 @@ import com.adamglin.phosphoricons.duotone.Play
 import com.adamglin.phosphoricons.duotone.Playlist
 import com.adamglin.phosphoricons.duotone.VideoCamera
 import com.kino.puber.R
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
@@ -20,6 +21,7 @@ import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.Video
 import com.kino.puber.data.api.models.isSeriesLike
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.domain.model.EpisodeSchedule
 import com.kino.puber.domain.model.ScheduledEpisode
 import java.text.Normalizer
@@ -31,6 +33,7 @@ import kotlinx.datetime.LocalDate
 internal class DetailsScreenUIMapper(
     private val resources: ResourceProvider,
     private val itemMapper: VideoItemUIMapper,
+    private val bookmarkPreferencesRepository: BookmarkPreferencesRepository? = null,
 ) {
 
     fun map(item: Item, isInWatchlist: Boolean = item.inWatchlist ?: false): DetailsScreenState.Content {
@@ -84,11 +87,19 @@ internal class DetailsScreenUIMapper(
         val episodes = if (item.type.isSeriesLike()) mapEpisodes(item, schedule) else null
         val requestedEpisode = episodes?.findEpisode(initialEpisode)
         val seriesStatus = mapSeriesStatus(item)
+        val bookmarkMode = bookmarkPreferencesRepository?.mode?.value ?: BookmarkMode.Simple
+        val isSeriesLike = item.type.isSeriesLike()
         return DetailsScreenState.Content(
             details = itemMapper.mapDetailedItem(item),
             info = buildInfo(item),
-            buttons = buildButtons(item),
+            buttons = buildButtons(item, bookmarkMode),
             isInWatchlist = isInWatchlist,
+            isBookmarked = if (isSeriesLike) {
+                item.bookmarks.orEmpty().isNotEmpty()
+            } else {
+                isInWatchlist
+            },
+            bookmarkMode = bookmarkMode,
             isWatched = itemMapper.isItemWatched(item),
             episodes = episodes,
             currentEpisode = requestedEpisode
@@ -274,13 +285,16 @@ internal class DetailsScreenUIMapper(
         )
     }
 
-    private fun buildButtons(item: Item): List<DetailsButtonUIState> {
+    private fun buildButtons(
+        item: Item,
+        bookmarkMode: BookmarkMode,
+    ): List<DetailsButtonUIState> {
         val isSeriesLike = item.type.isSeriesLike()
         return if (isSeriesLike) {
             buildSeriesButtons(item)
         } else {
             buildMovieButtons(item)
-        } + buildStatusButtons(isSeriesLike)
+        } + buildStatusButtons(isSeriesLike, bookmarkMode)
     }
 
     private fun buildSeriesButtons(item: Item): List<DetailsButtonUIState> = buildList {
@@ -341,17 +355,26 @@ internal class DetailsScreenUIMapper(
         }
     }
 
-    private fun buildStatusButtons(isSeriesLike: Boolean): List<DetailsButtonUIState> = buildList {
-        add(
-            DetailsButtonUIState.WatchlistToggle(
-                contentDescription = if (isSeriesLike) {
-                    R.string.video_details_button_add_to_watchlist
-                } else {
-                    R.string.video_details_button_add_to_bookmarks
-                },
-                action = DetailsAction.WatchlistToggleClicked,
+    private fun buildStatusButtons(
+        isSeriesLike: Boolean,
+        bookmarkMode: BookmarkMode,
+    ): List<DetailsButtonUIState> = buildList {
+        if (isSeriesLike) {
+            add(
+                DetailsButtonUIState.WatchlistToggle(
+                    contentDescription = R.string.video_details_button_add_to_watchlist,
+                    action = DetailsAction.WatchlistToggleClicked,
+                )
             )
-        )
+        }
+        if (!isSeriesLike || bookmarkMode == BookmarkMode.Extended) {
+            add(
+                DetailsButtonUIState.BookmarkToggle(
+                    contentDescription = R.string.video_details_button_add_to_bookmarks,
+                    action = DetailsAction.BookmarkToggleClicked,
+                )
+            )
+        }
         if (!isSeriesLike) {
             add(
                 DetailsButtonUIState.WatchedToggle(

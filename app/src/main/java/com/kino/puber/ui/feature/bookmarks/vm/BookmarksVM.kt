@@ -11,8 +11,10 @@ import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.data.api.models.Item
 import com.kino.puber.domain.interactor.bookmarks.BookmarkInteractor
 import com.kino.puber.ui.feature.bookmarks.model.BookmarksViewState
+import com.kino.puber.ui.feature.bookmarkpicker.openBookmarkPicker
 
 internal class BookmarksVM(
     router: AppRouter,
@@ -53,6 +55,12 @@ internal class BookmarksVM(
                 val item = action.item as VideoItemUIState
                 setItemSaved(item, action.isSaved)
             }
+            is CommonAction.ItemBookmarksRequested<*> -> {
+                router.openBookmarkPicker(
+                    item = action.item as VideoItemUIState,
+                    listener = { result -> if (result != null) loadBookmarks() },
+                )
+            }
             else -> super.onAction(action)
         }
     }
@@ -92,16 +100,18 @@ internal class BookmarksVM(
     private fun loadBookmarks() {
         launch {
             val folders = interactor.getBookmarks()
-            val firstFolder = folders.firstOrNull()
-            val items = if (firstFolder != null) {
-                interactor.getBookmarkItems(firstFolder.id, page = 1).items
+            val previousFolderId = (stateValue as? BookmarksViewState.Content)?.selectedFolderId
+            val selectedFolder = folders.firstOrNull { it.id == previousFolderId }
+                ?: folders.firstOrNull()
+            val items = if (selectedFolder != null) {
+                loadAllFolderItems(selectedFolder.id)
             } else {
                 emptyList()
             }
             updateViewState(
                 BookmarksViewState.Content(
                     folders = folders,
-                    selectedFolderId = firstFolder?.id,
+                    selectedFolderId = selectedFolder?.id,
                     items = mapper.mapShortItemList(items).markSaved(),
                     isLoadingItems = false,
                 )
@@ -111,14 +121,32 @@ internal class BookmarksVM(
 
     private fun loadFolderItems(folderId: Int) {
         launch {
-            val response = interactor.getBookmarkItems(folderId, page = 1)
+            val items = loadAllFolderItems(folderId)
             updateViewState<BookmarksViewState.Content> {
                 copy(
-                    items = mapper.mapShortItemList(response.items).markSaved(),
+                    items = mapper.mapShortItemList(items).markSaved(),
                     isLoadingItems = false,
                 )
             }
         }
+    }
+
+    private suspend fun loadAllFolderItems(folderId: Int): List<Item> {
+        val firstPage = interactor.getBookmarkItems(folderId, page = 1)
+        if (firstPage.pagination.current >= firstPage.pagination.total) {
+            return firstPage.items
+        }
+        val items = firstPage.items.toMutableList()
+        var page = firstPage.pagination.current + 1
+        while (page <= firstPage.pagination.total) {
+            val response = interactor.getBookmarkItems(folderId, page)
+            check(response.pagination.current == page) {
+                "Bookmark pagination current ${response.pagination.current} did not match requested page $page"
+            }
+            items += response.items
+            page++
+        }
+        return items.distinctBy { it.id }
     }
 
     private fun setItemSaved(item: VideoItemUIState, saved: Boolean) {

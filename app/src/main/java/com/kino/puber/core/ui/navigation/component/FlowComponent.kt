@@ -36,6 +36,7 @@ import com.kino.puber.core.logger.log
 import com.kino.puber.core.ui.navigation.AppLauncher
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.Command
+import com.kino.puber.core.ui.navigation.OverlayPuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreenActivity
 import com.kino.puber.core.ui.navigation.RootPuberScreen
@@ -442,17 +443,30 @@ private suspend fun LazyListState.awaitRestoredFocusScrollSettled() {
 @Composable
 private fun CurrentScreen(key: String) {
     val navigator = LocalNavigator.currentOrThrow
-    val currentScreen = navigator.lastItem
-    val screenKey = screenCompositionKey(key, currentScreen.key)
+    val screens = navigator.items.map { it as PuberScreen }
 
-    CompositionLocalProvider(
-        LocalScreenKey provides screenKey,
-        LocalPuberScopePrefix provides screenKey,
-    ) {
-        navigator.saveableState(screenKey) {
-            currentScreen.Content()
+    Box {
+        resolveVisibleScreenLayers(screens).forEach { screen ->
+            val screenKey = screenCompositionKey(key, screen.key)
+            CompositionLocalProvider(
+                LocalScreenKey provides screenKey,
+                LocalPuberScopePrefix provides screenKey,
+            ) {
+                navigator.saveableState(screenKey) {
+                    screen.Content()
+                }
+            }
         }
     }
+}
+
+internal fun resolveVisibleScreenLayers(screens: List<PuberScreen>): List<PuberScreen> {
+    if (screens.isEmpty()) return emptyList()
+    var firstVisibleIndex = screens.lastIndex
+    while (firstVisibleIndex > 0 && screens[firstVisibleIndex] is OverlayPuberScreen) {
+        firstVisibleIndex--
+    }
+    return screens.subList(firstVisibleIndex, screens.size)
 }
 
 private fun screenCompositionKey(prefix: String, screenKey: ScreenKey): String = prefix + screenKey

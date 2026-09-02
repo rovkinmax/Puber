@@ -1,20 +1,19 @@
 package com.kino.puber.domain.interactor.details
 
 import com.kino.puber.data.api.KinoPubApiClient
-import com.kino.puber.data.api.models.BookmarkFolder
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.WatchingToggleResponse
 import com.kino.puber.data.api.models.isSeriesLike
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.TmdbCastRepository
-import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
-import kotlinx.coroutines.CancellationException
+import com.kino.puber.domain.interactor.bookmarks.BookmarkFolderInteractor
 
 internal class DetailsInteractor(
     private val api: KinoPubApiClient,
     private val itemDetailsRepository: ItemDetailsRepository,
-    private val watchLaterBookmarkInteractor: WatchLaterBookmarkInteractor,
+    private val bookmarkFolderInteractor: BookmarkFolderInteractor,
     private val tmdbCastRepository: TmdbCastRepository,
 ) {
 
@@ -36,38 +35,22 @@ internal class DetailsInteractor(
 
     suspend fun isInWatchLaterFolder(item: Item): Boolean {
         if (item.type.isSeriesLike()) return item.inWatchlist ?: false
-        if (item.bookmarks.orEmpty().isNotEmpty()) {
-            return true
+        return bookmarkFolderInteractor.isInQuickFolder(item.id)
+    }
+
+    suspend fun isBookmarked(item: Item, mode: BookmarkMode): Boolean {
+        return when {
+            mode == BookmarkMode.Simple && item.type.isSeriesLike() -> false
+            mode == BookmarkMode.Simple -> bookmarkFolderInteractor.isInQuickFolder(item.id)
+            else -> bookmarkFolderInteractor.getItemFolders(item.id).isNotEmpty()
         }
-        return getMovieBookmarkFolders(item.id).isNotEmpty()
     }
 
     suspend fun setMovieBookmarked(id: Int, bookmarked: Boolean): MovieBookmarkUpdate {
-        if (bookmarked) {
-            val folder = watchLaterBookmarkInteractor.add(id).getOrThrow().let { bookmark ->
-                BookmarkFolder(id = bookmark.id, title = bookmark.title, count = bookmark.count ?: 0)
-            }
-            itemDetailsRepository.invalidate(id)
-            return MovieBookmarkUpdate(
-                isBookmarked = true,
-                folderTitle = folder.title,
-            )
-        }
-
-        val folders = getMovieBookmarkFolders(id)
-        val folder = folders.firstOrNull()
-        if (folder != null) {
-            api.removeBookmarkItem(itemId = id, folderId = folder.id).getOrThrow()
-            itemDetailsRepository.invalidate(id)
-        }
-        val remainingFolders = if (folder != null) {
-            readRemainingBookmarkFolders(id, folders.drop(1))
-        } else {
-            emptyList()
-        }
+        val update = bookmarkFolderInteractor.setQuickSaved(id, bookmarked)
         return MovieBookmarkUpdate(
-            isBookmarked = remainingFolders.isNotEmpty(),
-            folderTitle = folder?.title,
+            isBookmarked = update.isSaved,
+            folderTitle = update.folder?.title,
         )
     }
 
@@ -101,29 +84,12 @@ internal class DetailsInteractor(
         return WatchedUpdate(isWatched = response.confirmedWatchedOr(watched))
     }
 
-    private suspend fun readRemainingBookmarkFolders(
-        id: Int,
-        knownRemaining: List<BookmarkFolder>,
-    ): List<BookmarkFolder> {
-        return try {
-            getMovieBookmarkFolders(id)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Throwable) {
-            knownRemaining
-        }
-    }
-
     private fun WatchingToggleResponse.confirmedWatchedOr(requested: Boolean): Boolean {
         return when {
             watched != null -> watched == WATCHED_STATUS
             watching?.status != null -> watching.status == WATCHED_STATUS
             else -> requested
         }
-    }
-
-    private suspend fun getMovieBookmarkFolders(id: Int): List<BookmarkFolder> {
-        return api.getItemBookmarkFolders(id).getOrThrow()
     }
 
     private companion object {

@@ -1,7 +1,6 @@
 package com.kino.puber.domain.interactor.home
 
 import com.kino.puber.data.api.KinoPubApiClient
-import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.KCollection
 import com.kino.puber.data.api.models.PaginatedResponse
@@ -29,22 +28,6 @@ class HomeInteractor(
 
     suspend fun getPopularByType(type: String): Result<List<Item>> {
         return getDiscoveryItems(shortcut = "popular", type = type)
-    }
-
-    suspend fun getBookmarkFolders(): Result<List<Bookmark>> {
-        return api.getBookmarks()
-    }
-
-    suspend fun getBookmarkItems(folderId: Int): Result<List<Item>> {
-        return api.getBookmarkItems(folderId).map { it.items }
-    }
-
-    suspend fun getGenericBookmarkItems(): Result<List<Item>> {
-        return api.getBookmarks().mapCatching { folders ->
-            val folder = folders.firstOrNull { it.title != WatchLaterBookmarkInteractor.FOLDER_TITLE }
-                ?: return@mapCatching emptyList()
-            api.getBookmarkItems(folder.id).getOrThrow().items
-        }
     }
 
     suspend fun getWatchLaterItems(): Result<List<Item>> {

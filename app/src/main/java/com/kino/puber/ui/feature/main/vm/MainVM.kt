@@ -1,5 +1,6 @@
 package com.kino.puber.ui.feature.main.vm
 
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
@@ -7,6 +8,7 @@ import com.kino.puber.core.ui.navigation.TabRouter
 import com.kino.puber.core.ui.navigation.component.TabAppRouterHolder
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.data.preferences.ContentPreferences
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.ui.feature.main.model.MainAction
@@ -14,6 +16,7 @@ import com.kino.puber.ui.feature.main.model.MainTab
 import com.kino.puber.ui.feature.main.model.MainUIMapper
 import com.kino.puber.ui.feature.main.model.MainViewState
 import com.kino.puber.ui.feature.main.model.TabType
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 
 internal class MainVM(
@@ -21,19 +24,27 @@ internal class MainVM(
     private val mainUIMapper: MainUIMapper,
     internal val tabRouter: TabRouter,
     private val navigationPreferencesRepository: NavigationPreferencesRepository,
+    private val bookmarkPreferencesRepository: BookmarkPreferencesRepository,
 ) : PuberVM<MainViewState>(router) {
     override val initialViewState = MainViewState()
     internal val tabAppRouterHolder = TabAppRouterHolder(router.screens)
     private val tabRefreshVersions = mutableMapOf<TabType, Int>()
     private var observedContentPreferences: ContentPreferences? = null
+    private var observedBookmarkMode: BookmarkMode? = null
 
     override fun onStart() {
-        val state = mainUIMapper.buildViewState()
+        val bookmarkMode = bookmarkPreferencesRepository.mode.value
+        val state = mainUIMapper.buildViewState(bookmarkMode = bookmarkMode)
         observedContentPreferences = navigationPreferencesRepository.contentPreferences.value
+        observedBookmarkMode = bookmarkMode
         updateViewState(state)
         tabRouter.openTab(buildTabContent(state.selectedTab, state.navigationMode))
         launch {
-            navigationPreferencesRepository.contentPreferences.collect(::onContentPreferencesChanged)
+            combine(
+                navigationPreferencesRepository.contentPreferences,
+                bookmarkPreferencesRepository.mode,
+                ::MainPreferences,
+            ).collect(::onPreferencesChanged)
         }
     }
 
@@ -72,23 +83,39 @@ internal class MainVM(
         refreshVersion = tabRefreshVersions[type] ?: 0,
     )
 
-    private fun onContentPreferencesChanged(preferences: ContentPreferences) {
+    private fun onPreferencesChanged(preferences: MainPreferences) {
         val previousPreferences = observedContentPreferences
-        if (preferences == previousPreferences) return
-        observedContentPreferences = preferences
+        val previousBookmarkMode = observedBookmarkMode
+        if (
+            preferences.content == previousPreferences &&
+            preferences.bookmarkMode == previousBookmarkMode
+        ) {
+            return
+        }
+        observedContentPreferences = preferences.content
+        observedBookmarkMode = preferences.bookmarkMode
 
         val previousState = stateValue
-        val updatedState = mainUIMapper.buildViewState(previousState.selectedTab)
-        val showAnimeChanged = previousPreferences?.showAnime != preferences.showAnime
+        val updatedState = mainUIMapper.buildViewState(
+            previousSelectedTab = previousState.selectedTab,
+            bookmarkMode = preferences.bookmarkMode,
+        )
+        val showAnimeChanged = previousPreferences?.showAnime != preferences.content.showAnime
+        val bookmarkModeChanged = previousBookmarkMode != preferences.bookmarkMode
         if (showAnimeChanged) {
             ANIME_FILTERED_TABS.forEach { tab ->
                 tabRefreshVersions[tab] = (tabRefreshVersions[tab] ?: 0) + 1
             }
         }
+        if (bookmarkModeChanged) {
+            tabRefreshVersions[TabType.Home] = (tabRefreshVersions[TabType.Home] ?: 0) + 1
+        }
         updateViewState(updatedState)
 
         val selectedTabChanged = updatedState.selectedTab != previousState.selectedTab
-        val selectedTabNeedsRefresh = showAnimeChanged && updatedState.selectedTab in ANIME_FILTERED_TABS
+        val selectedTabNeedsRefresh =
+            showAnimeChanged && updatedState.selectedTab in ANIME_FILTERED_TABS ||
+                bookmarkModeChanged && updatedState.selectedTab == TabType.Home
         if (selectedTabChanged || selectedTabNeedsRefresh) {
             tabRouter.openTab(buildTabContent(updatedState.selectedTab, updatedState.navigationMode))
         }
@@ -117,4 +144,9 @@ internal class MainVM(
             TabType.Cartoons,
         )
     }
+
+    private data class MainPreferences(
+        val content: ContentPreferences,
+        val bookmarkMode: BookmarkMode,
+    )
 }

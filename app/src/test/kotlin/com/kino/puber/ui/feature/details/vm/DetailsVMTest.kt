@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.details.vm
 import com.kino.puber.core.content.ContentChangeSet
 import com.kino.puber.core.content.ContentChangeType
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
@@ -257,7 +258,7 @@ class DetailsVMTest {
         )
         val vm = startedVM()
 
-        vm.onAction(DetailsAction.WatchlistToggleClicked)
+        vm.onAction(DetailsAction.BookmarkToggleClicked)
         vm.onBackPressed()
 
         verifyContentChangeBack(itemId = 42, ContentChangeType.Bookmark)
@@ -430,9 +431,9 @@ class DetailsVMTest {
         coEvery { interactor.refreshItemDetails(42) } throws IllegalStateException("refresh failed")
         val vm = startedVM()
 
-        vm.onAction(DetailsAction.WatchlistToggleClicked)
+        vm.onAction(DetailsAction.BookmarkToggleClicked)
 
-        assertTrue((vm.testStateValue as DetailsScreenState.Content).isInWatchlist)
+        assertTrue((vm.testStateValue as DetailsScreenState.Content).isBookmarked)
         vm.onBackPressed()
         verifyContentChangeBack(itemId = 42, ContentChangeType.Bookmark)
     }
@@ -441,7 +442,8 @@ class DetailsVMTest {
     fun movieBookmarkRemoveWriteSuccess_refreshFailure_keepsRequestedStateAndReturnsChange() {
         val movie = movieItem()
         coEvery { interactor.getItemDetails(42) } returns movie
-        every { mapper.map(movie, any()) } returns content(isInWatchlist = true)
+        every { mapper.map(movie, any()) } returns content(isBookmarked = true)
+        coEvery { interactor.isBookmarked(movie, BookmarkMode.Simple) } returns true
         coEvery { interactor.setMovieBookmarked(42, bookmarked = false) } returns MovieBookmarkUpdate(
             isBookmarked = false,
             folderTitle = "Watch later",
@@ -449,9 +451,9 @@ class DetailsVMTest {
         coEvery { interactor.refreshItemDetails(42) } throws IllegalStateException("refresh failed")
         val vm = startedVM()
 
-        vm.onAction(DetailsAction.WatchlistToggleClicked)
+        vm.onAction(DetailsAction.BookmarkToggleClicked)
 
-        assertFalse((vm.testStateValue as DetailsScreenState.Content).isInWatchlist)
+        assertFalse((vm.testStateValue as DetailsScreenState.Content).isBookmarked)
         vm.onBackPressed()
         verifyContentChangeBack(itemId = 42, ContentChangeType.Bookmark)
     }
@@ -468,19 +470,20 @@ class DetailsVMTest {
         coEvery { interactor.refreshItemDetails(42) } returns movie
         coEvery { interactor.isInWatchLaterFolder(movie) } throws IllegalStateException("read failed")
 
-        vm.onAction(DetailsAction.WatchlistToggleClicked)
+        vm.onAction(DetailsAction.BookmarkToggleClicked)
 
-        assertTrue((vm.testStateValue as DetailsScreenState.Content).isInWatchlist)
+        assertTrue((vm.testStateValue as DetailsScreenState.Content).isBookmarked)
         vm.onBackPressed()
         verifyContentChangeBack(itemId = 42, ContentChangeType.Bookmark)
     }
 
     @Test
-    fun movieBookmarkRemove_successfulRefreshAppliesRemainingFolderState() {
+    fun movieBookmarkRemove_successfulRefreshKeepsQuickFolderResult() {
         val movie = movieItem()
         val refreshed = movie.copy(title = "Refreshed")
         coEvery { interactor.getItemDetails(42) } returns movie
-        every { mapper.map(movie, any()) } returns content(isInWatchlist = true)
+        every { mapper.map(movie, any()) } returns content(isBookmarked = true)
+        coEvery { interactor.isBookmarked(movie, BookmarkMode.Simple) } returns true
         coEvery { interactor.setMovieBookmarked(42, bookmarked = false) } returns MovieBookmarkUpdate(
             isBookmarked = false,
             folderTitle = "Watch later",
@@ -490,9 +493,9 @@ class DetailsVMTest {
         every { mapper.map(refreshed, true) } returns content(isInWatchlist = true)
         val vm = startedVM()
 
-        vm.onAction(DetailsAction.WatchlistToggleClicked)
+        vm.onAction(DetailsAction.BookmarkToggleClicked)
 
-        assertTrue((vm.testStateValue as DetailsScreenState.Content).isInWatchlist)
+        assertFalse((vm.testStateValue as DetailsScreenState.Content).isBookmarked)
         verify { mapper.map(refreshed, true) }
     }
 
@@ -632,6 +635,7 @@ class DetailsVMTest {
     private fun content(
         similarItems: List<VideoItemUIState> = emptyList(),
         isInWatchlist: Boolean = false,
+        isBookmarked: Boolean = false,
         isWatched: Boolean = false,
     ): DetailsScreenState.Content {
         return DetailsScreenState.Content(
@@ -645,6 +649,7 @@ class DetailsVMTest {
             ),
             buttons = emptyList(),
             isInWatchlist = isInWatchlist,
+            isBookmarked = isBookmarked,
             isWatched = isWatched,
             similarItems = similarItems,
         )

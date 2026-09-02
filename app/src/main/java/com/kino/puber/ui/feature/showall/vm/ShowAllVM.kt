@@ -16,6 +16,9 @@ import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.showall.model.ShowAllViewState
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
+import com.kino.puber.ui.feature.bookmarkpicker.openBookmarkPicker
+import com.kino.puber.ui.feature.bookmarkpicker.withBookmarkResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -77,6 +80,12 @@ internal class ShowAllVM(
             is CommonAction.ItemSavedChanged<*> -> {
                 val item = action.item as VideoItemUIState
                 setItemSaved(item, action.isSaved)
+            }
+            is CommonAction.ItemBookmarksRequested<*> -> {
+                router.openBookmarkPicker(
+                    item = action.item as VideoItemUIState,
+                    listener = ::onBookmarkPickerResult,
+                )
             }
         }
     }
@@ -176,6 +185,17 @@ internal class ShowAllVM(
                 },
             )
         }
+    }
+
+    private fun onBookmarkPickerResult(result: BookmarkPickerResult?) {
+        result ?: return
+        updateViewState<ShowAllViewState.Content> {
+            copy(items = items.map { it.withBookmarkResult(result) })
+        }
+        contentChanges = contentChanges.merge(
+            ContentChangeSet.single(result.itemId, ContentChangeType.Bookmark)
+        )
+        interactor.invalidateFirstPageCache()
     }
 
     override fun onBackPressed() {

@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.details.model
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.kino.puber.core.ui.uikit.component.RatingUIState
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.ui.uikit.component.details.VideoDetailsUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
@@ -17,6 +18,8 @@ internal sealed class DetailsScreenState {
         val info: DetailsInfoUIState,
         val buttons: List<DetailsButtonUIState>,
         val isInWatchlist: Boolean,
+        val isBookmarked: Boolean = false,
+        val bookmarkMode: BookmarkMode = BookmarkMode.Simple,
         val isWatched: Boolean,
         val seasonsPanelVisible: Boolean = false,
         val episodes: VideoGridUIState? = null,
@@ -44,6 +47,11 @@ internal sealed class DetailsButtonUIState {
     ) : DetailsButtonUIState()
 
     data class WatchlistToggle(
+        val contentDescription: Int,
+        val action: DetailsAction,
+    ) : DetailsButtonUIState()
+
+    data class BookmarkToggle(
         val contentDescription: Int,
         val action: DetailsAction,
     ) : DetailsButtonUIState()
@@ -83,6 +91,7 @@ internal sealed class DetailsAction : UIAction {
     data object SelectSeasonClicked : DetailsAction()
     data object ScheduleClicked : DetailsAction()
     data object WatchlistToggleClicked : DetailsAction()
+    data object BookmarkToggleClicked : DetailsAction()
     data object WatchedToggleClicked : DetailsAction()
     data class EpisodeSelected(val item: VideoItemUIState) : DetailsAction()
     data class EpisodeWatchedChanged(val item: VideoItemUIState, val watched: Boolean) : DetailsAction()

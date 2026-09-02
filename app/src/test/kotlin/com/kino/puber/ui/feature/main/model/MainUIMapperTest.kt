@@ -4,6 +4,7 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Duotone
 import com.adamglin.phosphoricons.duotone.House
 import com.kino.puber.core.model.NavigationMode
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberTab
 import com.kino.puber.core.ui.navigation.Screens
@@ -77,7 +78,7 @@ internal class MainUIMapperTest {
         val navPrefs = mockk<NavigationPreferencesRepository>()
         every { navPrefs.getNavigationMode() } returns NavigationMode.SideDrawer
         every {
-            navPrefs.getVisibleTabs(NavigationMode.SideDrawer)
+            navPrefs.getVisibleTabs(NavigationMode.SideDrawer, BookmarkMode.Simple)
         } returns listOf(TabType.Favourites, TabType.History, TabType.Movies)
         val screens = mockk<Screens>()
         every { screens.history(any()) } answers { HistoryScreen(firstArg()) }
@@ -130,7 +131,7 @@ internal class MainUIMapperTest {
         val navPrefs = mockk<NavigationPreferencesRepository>()
         every { navPrefs.getNavigationMode() } returns NavigationMode.TopTabs
         every {
-            navPrefs.getVisibleTabs(NavigationMode.TopTabs)
+            navPrefs.getVisibleTabs(NavigationMode.TopTabs, BookmarkMode.Simple)
         } returns listOf(TabType.Home, TabType.Movies, TabType.Anime)
         val stateMapper = createMapper(navPrefs)
 
@@ -148,7 +149,7 @@ internal class MainUIMapperTest {
         val navPrefs = mockk<NavigationPreferencesRepository>()
         every { navPrefs.getNavigationMode() } returns NavigationMode.SideDrawer
         every {
-            navPrefs.getVisibleTabs(NavigationMode.SideDrawer)
+            navPrefs.getVisibleTabs(NavigationMode.SideDrawer, BookmarkMode.Simple)
         } returns listOf(TabType.Favourites, TabType.Movies, TabType.Settings)
         val stateMapper = createMapper(navPrefs)
 

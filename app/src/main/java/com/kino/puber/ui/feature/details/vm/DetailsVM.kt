@@ -6,6 +6,7 @@ import com.kino.puber.core.content.ContentChangeSet
 import com.kino.puber.core.content.ContentChangeType
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
@@ -15,6 +16,7 @@ import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.isSeriesLike
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import com.kino.puber.domain.interactor.details.DetailsInteractor
@@ -24,6 +26,9 @@ import com.kino.puber.ui.feature.details.model.DetailsCastMemberUIState
 import com.kino.puber.ui.feature.details.model.DetailsScreenParams
 import com.kino.puber.ui.feature.details.model.DetailsScreenState
 import com.kino.puber.ui.feature.details.model.DetailsScreenUIMapper
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
+import com.kino.puber.ui.feature.bookmarkpicker.openBookmarkPicker
+import com.kino.puber.ui.feature.bookmarkpicker.withBookmarkResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -39,6 +44,8 @@ internal class DetailsVM(
     private val interactor: DetailsInteractor,
     private val episodeScheduleInteractor: EpisodeScheduleInteractor,
     private val savedItemInteractor: SavedItemInteractor,
+    private val bookmarkPreferencesRepository: BookmarkPreferencesRepository =
+        BookmarkPreferencesRepository(),
     private val resources: ResourceProvider,
     override val errorHandler: ErrorHandler,
 ) : PuberVM<DetailsScreenState>(router) {
@@ -83,12 +90,15 @@ internal class DetailsVM(
                 ?.info
                 ?.castCards
                 .orEmpty()
+            val bookmarkMode = bookmarkPreferencesRepository.mode.value
             val mapped = scheduleController.map(
                 item = item,
                 isInWatchlist = interactor.isInWatchLaterFolder(item),
             )
             updateViewState(
                 preserveCastPhotos(mapped, previousCastCards).copy(
+                    isBookmarked = interactor.isBookmarked(item, bookmarkMode),
+                    bookmarkMode = bookmarkMode,
                     seasonsPanelVisible = mapped.initialEpisodeFocusId != null,
                 ),
             )
@@ -129,6 +139,7 @@ internal class DetailsVM(
             is DetailsAction.SelectSeasonClicked -> showSeasonsPanel()
             is DetailsAction.ScheduleClicked -> openEpisodeSchedule()
             is DetailsAction.WatchlistToggleClicked -> onWatchlistToggle()
+            is DetailsAction.BookmarkToggleClicked -> onBookmarkToggle()
             is DetailsAction.WatchedToggleClicked -> onWatchedToggle()
             is DetailsAction.EpisodeSelected -> onEpisodeSelected(action.item)
             is DetailsAction.EpisodeWatchedChanged -> onEpisodeWatchedChanged(action.item, action.watched)
@@ -147,6 +158,12 @@ internal class DetailsVM(
             is CommonAction.ItemSavedChanged<*> -> {
                 val item = action.item as VideoItemUIState
                 setSimilarItemSaved(item, action.isSaved)
+            }
+            is CommonAction.ItemBookmarksRequested<*> -> {
+                router.openBookmarkPicker(
+                    item = action.item as VideoItemUIState,
+                    listener = ::onSimilarBookmarkPickerResult,
+                )
             }
             is CommonAction.RetryClicked -> loadData()
             else -> super.onAction(action)
@@ -182,7 +199,7 @@ internal class DetailsVM(
         val episode = episodeItem.episodeNumber ?: return
         launchMutation {
             val update = interactor.setEpisodeWatched(params.itemId, season, episode, watched)
-            markContentChanged(params.itemId, ContentChangeType.Watched)
+            contentChanges = contentChanges.withChange(params.itemId, ContentChangeType.Watched)
             applyEpisodeWatched(season, episode, update.isWatched)
             refreshAfterMutation()
             showMessage(
@@ -201,7 +218,7 @@ internal class DetailsVM(
         val season = episodeItem.seasonNumber ?: return
         launchMutation {
             val update = interactor.setSeasonWatched(params.itemId, season, watched)
-            markContentChanged(params.itemId, ContentChangeType.Watched)
+            contentChanges = contentChanges.withChange(params.itemId, ContentChangeType.Watched)
             applySeasonWatched(season, update.isWatched)
             refreshAfterMutation()
             showMessage(
@@ -219,6 +236,7 @@ internal class DetailsVM(
     private fun updateCurrentItem(
         item: Item,
         isInWatchlist: Boolean,
+        isBookmarked: Boolean? = null,
         isWatched: Boolean? = null,
         refreshCastEnrichment: Boolean = true,
     ) {
@@ -229,6 +247,8 @@ internal class DetailsVM(
         updateViewState(
             preserveCastPhotos(mapped, state?.info?.castCards.orEmpty()).copy(
                 isInWatchlist = isInWatchlist,
+                isBookmarked = isBookmarked ?: state?.isBookmarked ?: mapped.isBookmarked,
+                bookmarkMode = bookmarkPreferencesRepository.mode.value,
                 isWatched = isWatched ?: mapped.isWatched,
                 seasonsPanelVisible = state?.seasonsPanelVisible ?: false,
                 similarItems = state?.similarItems.orEmpty(),
@@ -331,6 +351,7 @@ internal class DetailsVM(
     }
 
     private fun onWatchlistToggle() {
+        if (currentItem?.type?.isSeriesLike() != true) return
         val previous = (stateValue as? DetailsScreenState.Content)?.isInWatchlist ?: return
         val desired = !previous
         updateViewState<DetailsScreenState.Content> {
@@ -338,11 +359,7 @@ internal class DetailsVM(
         }
         launchMutation {
             try {
-                if (itemIsSeriesLike()) {
-                    updateSeriesWatchlist(desired)
-                } else {
-                    updateMovieBookmark(previous)
-                }
+                updateSeriesWatchlist(desired)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -354,13 +371,42 @@ internal class DetailsVM(
         }
     }
 
+    private fun onBookmarkToggle() {
+        val item = currentItem
+        when {
+            item == null -> Unit
+            bookmarkPreferencesRepository.mode.value == BookmarkMode.Extended ->
+                router.openBookmarkPicker(
+                    itemId = item.id,
+                    itemTitle = item.title,
+                    listener = ::onCurrentBookmarkPickerResult,
+                )
+            !item.type.isSeriesLike() -> toggleSimpleMovieBookmark()
+        }
+    }
+
+    private fun toggleSimpleMovieBookmark() {
+        val previous = (stateValue as? DetailsScreenState.Content)?.isBookmarked ?: return
+        updateViewState<DetailsScreenState.Content> { copy(isBookmarked = !previous) }
+        launchMutation {
+            try {
+                updateMovieBookmark(previous)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                updateViewState<DetailsScreenState.Content> { copy(isBookmarked = previous) }
+                throw error
+            }
+        }
+    }
+
     private suspend fun updateSeriesWatchlist(desired: Boolean) {
         val isInWatchlist = savedItemInteractor.setSaved(
             itemId = params.itemId,
             isSeriesLike = true,
             saved = desired,
         ).getOrThrow()
-        markContentChanged(params.itemId, ContentChangeType.Watchlist)
+        contentChanges = contentChanges.withChange(params.itemId, ContentChangeType.Watchlist)
         updateViewState<DetailsScreenState.Content> {
             copy(isInWatchlist = isInWatchlist)
         }
@@ -379,11 +425,11 @@ internal class DetailsVM(
 
     private suspend fun updateMovieBookmark(previous: Boolean) {
         val update = interactor.setMovieBookmarked(params.itemId, bookmarked = !previous)
-        markContentChanged(params.itemId, ContentChangeType.Bookmark)
+        contentChanges = contentChanges.withChange(params.itemId, ContentChangeType.Bookmark)
         updateViewState<DetailsScreenState.Content> {
-            copy(isInWatchlist = update.isBookmarked)
+            copy(isBookmarked = update.isBookmarked)
         }
-        refreshAfterMutation(isInWatchlist = update.isBookmarked)
+        refreshAfterMutation(isBookmarked = update.isBookmarked)
         showMessage(
             resources.getString(
                 if (update.isBookmarked) {
@@ -397,7 +443,7 @@ internal class DetailsVM(
     }
 
     private fun onWatchedToggle() {
-        if (itemIsSeriesLike()) return
+        if (currentItem?.type?.isSeriesLike() == true) return
         val previous = (stateValue as? DetailsScreenState.Content)?.isWatched ?: return
         updateViewState<DetailsScreenState.Content> {
             copy(isWatched = !isWatched)
@@ -405,7 +451,7 @@ internal class DetailsVM(
         launchMutation {
             try {
                 val update = interactor.setMovieWatched(params.itemId, watched = !previous)
-                markContentChanged(params.itemId, ContentChangeType.Watched)
+                contentChanges = contentChanges.withChange(params.itemId, ContentChangeType.Watched)
                 updateViewState<DetailsScreenState.Content> {
                     copy(isWatched = update.isWatched)
                 }
@@ -437,7 +483,7 @@ internal class DetailsVM(
                     isSeriesLike = item.isSeriesLike,
                     saved = saved,
                 ).getOrThrow()
-                markContentChanged(
+                contentChanges = contentChanges.withChange(
                     itemId = item.id,
                     type = if (item.isSeriesLike) {
                         ContentChangeType.Watchlist
@@ -465,8 +511,16 @@ internal class DetailsVM(
         }
     }
 
-    private fun itemIsSeriesLike(): Boolean {
-        return currentItem?.type?.isSeriesLike() ?: false
+    private fun onCurrentBookmarkPickerResult(result: BookmarkPickerResult?) {
+        if (result == null || result.itemId != params.itemId) return
+        updateViewState<DetailsScreenState.Content> { copy(isBookmarked = result.isBookmarked) }
+        contentChanges = contentChanges.withChange(result.itemId, ContentChangeType.Bookmark)
+    }
+
+    private fun onSimilarBookmarkPickerResult(result: BookmarkPickerResult?) {
+        result ?: return
+        updateViewState<DetailsScreenState.Content> { withBookmarkPickerResult(result) }
+        contentChanges = contentChanges.withChange(result.itemId, ContentChangeType.Bookmark)
     }
 
     private fun openPlayer(itemId: Int, seasonNumber: Int? = null, episodeNumber: Int? = null) {
@@ -507,10 +561,6 @@ internal class DetailsVM(
         }
     }
 
-    private fun markContentChanged(itemId: Int, type: ContentChangeType) {
-        contentChanges = contentChanges.merge(ContentChange(itemId, type))
-    }
-
     private fun launchMutation(block: suspend CoroutineScope.() -> Unit): Job {
         lateinit var job: Job
         job = launch(start = CoroutineStart.LAZY) {
@@ -548,6 +598,7 @@ internal class DetailsVM(
 
     private suspend fun refreshAfterMutation(
         isInWatchlist: Boolean? = null,
+        isBookmarked: Boolean? = null,
         isWatched: Boolean? = null,
     ) {
         val item = try {
@@ -571,6 +622,7 @@ internal class DetailsVM(
         updateCurrentItem(
             item = item,
             isInWatchlist = resolvedWatchlist,
+            isBookmarked = isBookmarked,
             isWatched = isWatched,
         )
     }
@@ -625,10 +677,19 @@ internal class DetailsVM(
         )
     }
 
-    private fun Boolean.toStatus(): Int = if (this) WATCHED_STATUS else UNWATCHED_STATUS
+}
 
-    private companion object {
-        const val WATCHED_STATUS = 1
-        const val UNWATCHED_STATUS = 0
-    }
+private const val WATCHED_STATUS = 1
+private const val UNWATCHED_STATUS = 0
+
+private fun Boolean.toStatus(): Int = if (this) WATCHED_STATUS else UNWATCHED_STATUS
+
+private fun DetailsScreenState.Content.withBookmarkPickerResult(
+    result: BookmarkPickerResult,
+): DetailsScreenState.Content {
+    return copy(similarItems = similarItems.map { item -> item.withBookmarkResult(result) })
+}
+
+private fun ContentChangeSet.withChange(itemId: Int, type: ContentChangeType): ContentChangeSet {
+    return merge(ContentChange(itemId, type))
 }
