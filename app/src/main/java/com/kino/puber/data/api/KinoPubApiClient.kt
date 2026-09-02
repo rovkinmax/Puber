@@ -16,9 +16,10 @@ import com.kino.puber.data.api.config.UserAgentBuilder
 import com.kino.puber.data.api.models.ApiResponse
 import com.kino.puber.data.api.models.ApiResponseList
 import com.kino.puber.data.api.models.Bookmark
+import com.kino.puber.data.api.models.BookmarkActionResponse
 import com.kino.puber.data.api.models.BookmarkFolder
 import com.kino.puber.data.api.models.BookmarkFoldersResponse
-import com.kino.puber.data.api.models.BookmarkToggleResult
+import com.kino.puber.data.api.models.CreateBookmarkResponse
 import com.kino.puber.data.api.models.Comment
 import com.kino.puber.data.api.models.Country
 import com.kino.puber.data.api.models.DeviceInfo
@@ -70,10 +71,12 @@ import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.request.forms.FormDataContent
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.Parameters
 import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
@@ -428,7 +431,7 @@ class KinoPubApiClient(
      */
     suspend fun getBookmarks(): Result<List<Bookmark>> =
         apiCall<ApiResponseList<Bookmark>> {
-            httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks")
+            httpClient.get("${mainApiBaseUrl}bookmarks")
         }.map { it.items.orEmpty() }
 
     /**
@@ -437,7 +440,7 @@ class KinoPubApiClient(
     suspend fun getBookmarkItems(
         id: Int, page: Int? = null
     ): Result<PaginatedResponse<Item>> = apiCall {
-        httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/$id") {
+        httpClient.get("${mainApiBaseUrl}bookmarks/$id") {
             page?.let { parameter("page", it) }
         }
     }
@@ -445,50 +448,42 @@ class KinoPubApiClient(
     /**
      * Create bookmark
      */
-    suspend fun createBookmark(title: String): Result<Bookmark> = apiCall {
-        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/create") {
-            setBody(mapOf("title" to title))
-            contentType(ContentType.Application.Json)
-        }
-    }
+    suspend fun createBookmark(title: String): Result<Bookmark> =
+        apiCall<CreateBookmarkResponse> {
+            httpClient.post("${mainApiBaseUrl}bookmarks/create") {
+                setBody(bookmarkFormBody("title" to title))
+            }
+        }.map(CreateBookmarkResponse::folder)
 
     /**
      * Add item to bookmark
      */
-    suspend fun addBookmarkItem(itemId: Int, folderId: Int): Result<Unit> = apiCall {
-        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/add") {
-            setBody(
-                mapOf(
-                    "item" to itemId, "folder" to folderId
-                )
-            )
-            contentType(ContentType.Application.Json)
-        }
-    }
+    suspend fun addBookmarkItem(itemId: Int, folderId: Int): Result<Unit> =
+        apiCall<BookmarkActionResponse> {
+            httpClient.post("${mainApiBaseUrl}bookmarks/add") {
+                setBody(bookmarkFormBody("item" to itemId, "folder" to folderId))
+            }
+        }.map { }
 
     /**
      * Remove item from bookmark
      */
-    suspend fun removeBookmarkItem(itemId: Int, folderId: Int): Result<Unit> = apiCall {
-        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/remove-item") {
-            setBody(
-                mapOf(
-                    "item" to itemId, "folder" to folderId
-                )
-            )
-            contentType(ContentType.Application.Json)
-        }
-    }
+    suspend fun removeBookmarkItem(itemId: Int, folderId: Int): Result<Unit> =
+        apiCall<BookmarkActionResponse> {
+            httpClient.post("${mainApiBaseUrl}bookmarks/remove-item") {
+                setBody(bookmarkFormBody("item" to itemId, "folder" to folderId))
+            }
+        }.map { }
 
     /**
      * Delete bookmark
      */
-    suspend fun deleteBookmark(folderId: Int): Result<Unit> = apiCall {
-        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/remove-folder") {
-            setBody(mapOf("folder" to folderId))
-            contentType(ContentType.Application.Json)
-        }
-    }
+    suspend fun deleteBookmark(folderId: Int): Result<Unit> =
+        apiCall<BookmarkActionResponse> {
+            httpClient.post("${mainApiBaseUrl}bookmarks/remove-folder") {
+                setBody(bookmarkFormBody("folder" to folderId))
+            }
+        }.map { }
 
     // Collections API
 
@@ -754,7 +749,7 @@ class KinoPubApiClient(
      */
     suspend fun getItemBookmarkFolders(itemId: Int): Result<List<BookmarkFolder>> =
         apiCall<BookmarkFoldersResponse> {
-            httpClient.get("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/get-item-folders") {
+            httpClient.get("${mainApiBaseUrl}bookmarks/get-item-folders") {
                 parameter("item", itemId)
             }
         }.map { response -> response.folders }
@@ -762,15 +757,19 @@ class KinoPubApiClient(
     /**
      * Toggle bookmark (add/remove from folder)
      */
-    suspend fun toggleBookmark(itemId: Int, folderId: Int): Result<BookmarkToggleResult> = apiCall {
-        httpClient.post("${KinoPubConfig.MAIN_API_BASE_URL}bookmarks/toggle") {
-            setBody(
-                mapOf(
-                    "item" to itemId, "folder" to folderId
-                )
-            )
-            contentType(ContentType.Application.Json)
-        }
+    suspend fun toggleBookmark(itemId: Int, folderId: Int): Result<Unit> =
+        apiCall<BookmarkActionResponse> {
+            httpClient.post("${mainApiBaseUrl}bookmarks/toggle-item") {
+                setBody(bookmarkFormBody("item" to itemId, "folder" to folderId))
+            }
+        }.map { }
+
+    private fun bookmarkFormBody(vararg fields: Pair<String, Any>): FormDataContent {
+        return FormDataContent(
+            Parameters.build {
+                fields.forEach { (name, value) -> append(name, value.toString()) }
+            }
+        )
     }
 
     // Extended content API

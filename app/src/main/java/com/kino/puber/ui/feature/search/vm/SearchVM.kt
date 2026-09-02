@@ -18,6 +18,9 @@ import com.kino.puber.ui.feature.search.model.SearchScreenParams
 import com.kino.puber.ui.feature.search.model.SearchScreenParams.SearchMode
 import com.kino.puber.ui.feature.search.model.SearchPresentation
 import com.kino.puber.ui.feature.search.model.SearchViewState
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
+import com.kino.puber.ui.feature.bookmarkpicker.openBookmarkPicker
+import com.kino.puber.ui.feature.bookmarkpicker.withBookmarkResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 
@@ -52,6 +55,12 @@ internal class SearchVM(
             is CommonAction.ItemSavedChanged<*> -> {
                 val item = action.item as VideoItemUIState
                 setItemSaved(item, action.isSaved)
+            }
+            is CommonAction.ItemBookmarksRequested<*> -> {
+                router.openBookmarkPicker(
+                    item = action.item as VideoItemUIState,
+                    listener = ::onBookmarkPickerResult,
+                )
             }
             is CommonAction.RetryClicked -> executeCurrentSearch()
             else -> super.onAction(action)
@@ -155,6 +164,13 @@ internal class SearchVM(
                     if (item.id == itemId) item.copy(isSaved = saved) else item
                 },
             )
+        }
+    }
+
+    private fun onBookmarkPickerResult(result: BookmarkPickerResult?) {
+        result ?: return
+        updateViewState<SearchViewState.Content> {
+            copy(items = items.map { it.withBookmarkResult(result) })
         }
     }
 

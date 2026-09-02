@@ -1,6 +1,7 @@
 package com.kino.puber.ui.feature.contentlist.vm
 
 import com.kino.puber.core.content.ContentChangeSet
+import com.kino.puber.core.content.ContentChangeType
 import com.kino.puber.core.logger.log
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.PuberVM
@@ -18,6 +19,8 @@ import com.kino.puber.ui.feature.contentlist.model.ContentListAction
 import com.kino.puber.ui.feature.contentlist.model.ContentListViewState
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.showall.ShowAllScreen
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
+import com.kino.puber.ui.feature.bookmarkpicker.openBookmarkPicker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -60,6 +63,12 @@ internal class ContentListVM(
             is CommonAction.ItemFocused<*> -> onItemFocused(action.item as VideoItemUIState)
             is CommonAction.ItemSelected<*> -> onItemSelected(action.item as VideoItemUIState)
             is CommonAction.ItemPlayed<*> -> onItemPlayed(action.item as VideoItemUIState)
+            is CommonAction.ItemBookmarksRequested<*> -> {
+                router.openBookmarkPicker(
+                    item = action.item as VideoItemUIState,
+                    listener = ::onBookmarkPickerResult,
+                )
+            }
             is ContentListAction.ShowAll -> openShowAll(action.config)
             is ContentListAction.GenreSelected -> onGenreSelected(action.genreId)
             is ContentListAction.HeroSelected -> openDetails(action.itemId)
@@ -125,6 +134,16 @@ internal class ContentListVM(
     private fun onReturnedContentChanges(changes: ContentChangeSet?) {
         if (changes == null || changes.isEmpty) return
         refreshContent(changes)
+    }
+
+    private fun onBookmarkPickerResult(result: BookmarkPickerResult?) {
+        result ?: return
+        refreshContent(
+            ContentChangeSet.single(
+                itemId = result.itemId,
+                type = ContentChangeType.Bookmark,
+            )
+        )
     }
 
     private fun refreshContent(changes: ContentChangeSet) {

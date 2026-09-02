@@ -44,6 +44,7 @@ import com.kino.puber.core.ui.uikit.component.RatingUIState
 import com.kino.puber.core.ui.uikit.component.SkeletonAsyncImage
 import com.kino.puber.core.ui.uikit.component.onTvContextMenuKey
 import com.kino.puber.core.ui.uikit.theme.PuberTheme
+import com.kino.puber.core.model.BookmarkMode
 
 @Immutable
 sealed interface VideoItemPresentation {
@@ -67,6 +68,8 @@ data class VideoItemUIState(
     val showWatchedIndicator: Boolean = true,
     val isSeriesLike: Boolean = false,
     val isSaved: Boolean = false,
+    val isBookmarked: Boolean = false,
+    val bookmarkMode: BookmarkMode = BookmarkMode.Simple,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
     val isSeasonWatched: Boolean? = null,

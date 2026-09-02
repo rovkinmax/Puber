@@ -405,8 +405,15 @@ data class BookmarkFoldersResponse(
 )
 
 @Serializable
-data class BookmarkToggleResult(
-    val status: String, val action: String, // "added" or "removed"
+data class CreateBookmarkResponse(
+    val status: Int,
+    val folder: Bookmark,
+)
+
+@Serializable
+data class BookmarkActionResponse(
+    val status: Int,
+    val exists: Boolean? = null,
 )
 
 @Serializable

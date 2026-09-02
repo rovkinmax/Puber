@@ -16,6 +16,7 @@ import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.data.api.models.Pagination
 import com.kino.puber.domain.interactor.bookmarks.BookmarkInteractor
+import com.kino.puber.ui.feature.bookmarks.model.BookmarksViewState
 import com.kino.puber.util.MainDispatcherExtension
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -24,6 +25,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 
@@ -94,11 +96,42 @@ class BookmarksVMTest {
         coVerify(exactly = 2) { interactor.getBookmarkItems(7, page = 1) }
     }
 
+    @Test
+    fun initialLoad_readsEveryFolderPageAndDeduplicatesItems() {
+        coEvery { interactor.getBookmarkItems(7, page = 1) } returns page(
+            current = 1,
+            total = 2,
+            items = listOf(Item(id = 42, title = "Movie", type = ItemType.MOVIE)),
+        )
+        coEvery { interactor.getBookmarkItems(7, page = 2) } returns page(
+            current = 2,
+            total = 2,
+            items = listOf(
+                Item(id = 42, title = "Movie", type = ItemType.MOVIE),
+                Item(id = 43, title = "Second", type = ItemType.MOVIE),
+            ),
+        )
+        every { mapper.mapShortItemList(any()) } answers {
+            firstArg<List<Item>>().map { videoItem(it.id) }
+        }
+        val vm = createVM()
+
+        vm.testOnStart()
+
+        val state = vm.testStateValue as BookmarksViewState.Content
+        assertEquals(listOf(42, 43), state.items.map { it.id })
+        coVerify(exactly = 1) { interactor.getBookmarkItems(7, page = 2) }
+    }
+
     private fun createVM() = BookmarksVM(router, interactor, mapper, errorHandler)
 
-    private fun page() = PaginatedResponse(
-        items = listOf(Item(id = 42, title = "Movie", type = ItemType.MOVIE)),
-        pagination = Pagination(current = 1, perpage = 50, total = 1),
+    private fun page(
+        current: Int = 1,
+        total: Int = 1,
+        items: List<Item> = listOf(Item(id = 42, title = "Movie", type = ItemType.MOVIE)),
+    ) = PaginatedResponse(
+        items = items,
+        pagination = Pagination(current = current, perpage = 50, total = total),
     )
 
     private fun videoItem(id: Int) = VideoItemUIState(id, "Item $id", "", "")

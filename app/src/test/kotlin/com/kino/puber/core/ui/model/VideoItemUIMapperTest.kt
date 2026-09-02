@@ -1,6 +1,7 @@
 package com.kino.puber.core.ui.model
 
 import com.kino.puber.R
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.Country
 import com.kino.puber.data.api.models.Duration
@@ -9,6 +10,7 @@ import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.Posters
 import com.kino.puber.data.api.models.Season
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.util.FakeResourceProvider
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -113,7 +115,15 @@ class VideoItemUIMapperTest {
     @Test
     fun mapShortItem_doesNotTreatSeriesBookmarkFoldersAsWatchlist() {
         val item = testItem(type = ItemType.SERIAL, bookmarks = listOf(Bookmark(id = 1, title = "Folder")))
-        assertEquals(false, mapper.mapShortItem(item).isSaved)
+        val extendedMapper = VideoItemUIMapper(
+            resources = FakeResourceProvider(),
+            bookmarkPreferencesRepository = BookmarkPreferencesRepository(BookmarkMode.Extended),
+        )
+        val mapped = extendedMapper.mapShortItem(item)
+
+        assertEquals(false, mapped.isSaved)
+        assertEquals(true, mapped.isBookmarked)
+        assertEquals(BookmarkMode.Extended, mapped.bookmarkMode)
     }
 
     // endregion

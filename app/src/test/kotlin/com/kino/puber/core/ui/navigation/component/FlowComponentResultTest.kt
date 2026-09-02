@@ -2,6 +2,7 @@ package com.kino.puber.core.ui.navigation.component
 
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.Command
+import com.kino.puber.core.ui.navigation.OverlayPuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.RESULT_CONTENT_CHANGED
 import com.kino.puber.core.ui.navigation.RootPuberScreen
@@ -124,5 +125,25 @@ class FlowComponentResultTest {
         verify(exactly = 1) {
             router.setOnceResultListener(RESULT_CONTENT_CHANGED, listener)
         }
+    }
+
+    @Test
+    fun overlayScreen_keepsPreviousScreenAsVisibleBackgroundLayer() {
+        val background = mockk<RootPuberScreen>()
+        val overlay = mockk<OverlayPuberScreen>()
+
+        val layers = resolveVisibleScreenLayers(listOf(background, overlay))
+
+        assertEquals(listOf(background, overlay), layers)
+    }
+
+    @Test
+    fun regularScreen_hidesEarlierScreens() {
+        val previous = mockk<RootPuberScreen>()
+        val current = mockk<RootPuberScreen>()
+
+        val layers = resolveVisibleScreenLayers(listOf(previous, current))
+
+        assertEquals(listOf(current), layers)
     }
 }

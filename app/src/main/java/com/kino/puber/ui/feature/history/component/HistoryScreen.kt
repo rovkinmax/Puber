@@ -44,7 +44,7 @@ internal class HistoryScreen(
     private fun buildModule(scopeId: ScopeID, parentScope: Scope) = module {
         scope(named(scopeId)) {
             scopedOf(::HistoryInteractor)
-            scoped { VideoItemUIMapper(get(), get()) }
+            scoped { VideoItemUIMapper(get(), get(), get()) }
             scopedOf(::HistoryUIMapper)
             scoped { Paginator.Store<History>(comparator = HistoryRowComparator) }
             viewModelOf(::HistoryVM)
