@@ -8,6 +8,7 @@ internal class SubtitleLabelerTest {
 
     private val labeler = SubtitleLabeler(
         displayLanguageTag = "ru",
+        aiGeneratedLabel = "Созданные ИИ",
         forcedQualifier = "частичные",
         variantLabel = { label, ordinal -> "$label · вариант $ordinal" },
         unknownLabel = { position -> "Субтитры $position" },
@@ -28,6 +29,14 @@ internal class SubtitleLabelerTest {
             .map { it.label }
 
         assertEquals(listOf("Русский", "Русский · частичные"), labels)
+    }
+
+    @Test
+    fun apply_namesAiGeneratedTrack_whenApiUsesAiLanguageCode() {
+        val labels = labeler.apply(listOf(track("ai", descriptive = "AI #02")))
+            .map { it.label }
+
+        assertEquals(listOf("Созданные ИИ"), labels)
     }
 
     @Test
@@ -91,12 +100,41 @@ internal class SubtitleLabelerTest {
     }
 
     @Test
-    fun apply_fallsBackToPositionalName_whenNothingIdentifiesTheLanguage() {
+    fun apply_preservesUnknownLanguageInformation_beforePositionalFallback() {
         val labels = labeler.apply(
-            listOf(track(""), track("", descriptive = "Комментарии режиссёра"), track("qqq")),
+            listOf(
+                track(""),
+                track("", descriptive = "Комментарии режиссёра"),
+                track("qqq"),
+                track("xyz", descriptive = "ALT #04"),
+            ),
         ).map { it.label }
 
-        assertEquals(listOf("Субтитры 1", "Комментарии режиссёра", "Субтитры 3"), labels)
+        assertEquals(
+            listOf("Субтитры 1", "Комментарии режиссёра", "QQQ", "ALT #04"),
+            labels,
+        )
+    }
+
+    @Test
+    fun apply_reportsFallbackInputsAndResult_toDiagnostics() {
+        val diagnostics = mutableListOf<String>()
+        val diagnosticLabeler = SubtitleLabeler(
+            displayLanguageTag = "ru",
+            aiGeneratedLabel = "Созданные ИИ",
+            forcedQualifier = "частичные",
+            variantLabel = { label, ordinal -> "$label · вариант $ordinal" },
+            unknownLabel = { position -> "Субтитры $position" },
+            diagnosticLog = diagnostics::add,
+        )
+
+        diagnosticLabeler.apply(listOf(track("rus"), track("")))
+
+        assertEquals(
+            "label position=2 source=fallback inputLanguage=<empty> " +
+                "inputDescriptive=<null> result=Субтитры 2",
+            diagnostics[1],
+        )
     }
 
     private fun track(

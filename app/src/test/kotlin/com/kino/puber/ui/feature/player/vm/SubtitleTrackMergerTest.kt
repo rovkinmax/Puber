@@ -12,6 +12,7 @@ internal class SubtitleTrackMergerTest {
 
     private fun testLabeler() = SubtitleLabeler(
         displayLanguageTag = "ru",
+        aiGeneratedLabel = "Созданные ИИ",
         forcedQualifier = "частичные",
         variantLabel = { label, ordinal -> "$label · вариант $ordinal" },
         unknownLabel = { position -> "Субтитры $position" },
@@ -240,6 +241,43 @@ internal class SubtitleTrackMergerTest {
             listOf("Off", "Русский · вариант 1", "Русский · вариант 2", "Английский"),
             result.map { it.label },
         )
+    }
+
+    @Test
+    fun merge_labelsAiGeneratedManifestTrack_fromKinoPubMetadata() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack(
+                label = "ai",
+                language = "ai",
+                url = "https://api.test/subtitles/f/e3/2900236.srt",
+                forced = false,
+                sourceFile = "/f/e3/2900236.srt",
+            ),
+        )
+        val playerTracks = listOf(
+            playerTrack(
+                label = "",
+                language = "ai",
+                id = "0:",
+                groupIndex = 0,
+                uri = "https://cdn.test/subtitles/f/e3/2900236.srt/index.m3u8",
+                descriptiveLabel = "AI #02",
+            ),
+            playerTrack(
+                label = "",
+                language = "ai",
+                id = "1:f/e3/2900236.srt",
+                groupIndex = 1,
+                descriptiveLabel = "f/e3/2900236.srt",
+            ),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(listOf("Off", "Созданные ИИ"), result.map { it.label })
+        assertEquals("AI #02", result[1].descriptiveLabel)
+        assertEquals("ai", result[1].language)
     }
 
     /**
