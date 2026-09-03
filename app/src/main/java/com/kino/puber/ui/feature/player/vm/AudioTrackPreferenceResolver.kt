@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.player.vm
 
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
+import com.kino.puber.ui.feature.player.model.isOff
 
 internal class AudioTrackPreferenceResolver {
 
@@ -25,31 +26,47 @@ internal class AudioTrackPreferenceResolver {
         tracks: List<SubtitleTrackUIState>,
         preferredLang: String?,
         preferredUrl: String?,
+        preferredPlayerTrackId: String? = null,
+        preferredPlayerGroupIndex: Int? = null,
+        preferredPlayerTrackIndex: Int? = null,
     ): Int {
         val matchers = listOf(
-            { exactSubtitleUrlMatch(tracks, preferredUrl) },
-            { stableSubtitleUrlMatch(tracks, preferredUrl) },
-            { unambiguousSubtitleLanguageMatch(tracks, preferredLang) },
+            { subtitleIdentityMatch(tracks, preferredUrl) },
+            { subtitleIdentityMatch(tracks, preferredPlayerTrackId) },
+            {
+                playerCoordinatesMatch(
+                    tracks,
+                    preferredPlayerGroupIndex,
+                    preferredPlayerTrackIndex,
+                )
+            },
+            { subtitleLanguageMatch(tracks, preferredLang) },
         )
         return matchers.firstNotNullOfOrNull { matcher ->
             matcher().takeIf { it >= 0 }
         } ?: NO_MATCH
     }
 
-    private fun exactSubtitleUrlMatch(
+    private fun subtitleIdentityMatch(
         tracks: List<SubtitleTrackUIState>,
-        preferredUrl: String?,
+        preferredIdentity: String?,
     ): Int {
-        if (preferredUrl == null) return NO_MATCH
-        return tracks.indexOfFirst { it.url == preferredUrl }
+        if (preferredIdentity.isNullOrEmpty()) return NO_MATCH
+        return tracks.withIndex().filter { (_, track) ->
+            track.identities.any { identity -> sameSubtitleIdentity(identity, preferredIdentity) }
+        }.singleOrNull()?.index ?: NO_MATCH
     }
 
-    private fun stableSubtitleUrlMatch(
+    private fun playerCoordinatesMatch(
         tracks: List<SubtitleTrackUIState>,
-        preferredUrl: String?,
+        preferredGroupIndex: Int?,
+        preferredTrackIndex: Int?,
     ): Int {
-        val preferredKey = preferredUrl?.stableSubtitleKey() ?: return NO_MATCH
-        return tracks.indexOfFirst { it.url.stableSubtitleKey() == preferredKey }
+        if (preferredGroupIndex == null || preferredTrackIndex == null) return NO_MATCH
+        return tracks.withIndex().filter { (_, track) ->
+            track.playerGroupIndex == preferredGroupIndex &&
+                track.playerTrackIndex == preferredTrackIndex
+        }.singleOrNull()?.index ?: NO_MATCH
     }
 
     private fun exactLabelMatch(
@@ -89,13 +106,17 @@ internal class AudioTrackPreferenceResolver {
         return tracks.indexOfFirst { it.language == preferredLang }
     }
 
-    private fun unambiguousSubtitleLanguageMatch(
+    private fun subtitleLanguageMatch(
         tracks: List<SubtitleTrackUIState>,
         preferredLang: String?,
     ): Int {
         if (preferredLang == null) return NO_MATCH
-        val matches = tracks.withIndex().filter { it.value.language == preferredLang }
-        return matches.singleOrNull()?.index ?: NO_MATCH
+        if (preferredLang.isEmpty()) return tracks.indexOfFirst { it.isOff }
+        val matches = tracks.withIndex().filter {
+            sameSubtitleLanguage(it.value.language, preferredLang)
+        }
+        val manifestMatches = matches.filter { it.value.playerTrackId != null }
+        return manifestMatches.singleOrNull()?.index ?: matches.singleOrNull()?.index ?: NO_MATCH
     }
 
     /** Extracts voice type from HLS labels like "03. Многоголосый. Red Head Sound (RUS)". */
@@ -114,3 +135,7 @@ internal class AudioTrackPreferenceResolver {
         val NUMBER_PREFIX_REGEX = Regex("""^\d+\.\s*""")
     }
 }
+
+private val SubtitleTrackUIState.identities: List<String>
+    get() = listOfNotNull(url, sourceFile, playerTrackUri, playerTrackId)
+        .filter { it.isNotEmpty() }

@@ -1,6 +1,7 @@
 package com.kino.puber.ui.feature.player.vm
 
 import com.kino.puber.data.api.models.SubtitleLink
+import com.kino.puber.domain.interactor.player.StreamSource
 import com.kino.puber.ui.feature.player.model.BufferPreset
 import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.ui.feature.player.model.PlayerViewState
@@ -63,7 +64,10 @@ internal class PlayerVMCallbackGenerationTest : PlayerVMTestFixture() {
                 ),
             )
         every { interactor.selectStreamUrl(any(), any()) } answers {
-            "https://test/${secondArg<Int>()}.m3u8"
+            StreamSource(
+                url = "https://test/${secondArg<Int>()}.m3u8",
+                isHls = true,
+            )
         }
         val vm = startedVM()
         val sessionA = controlledPlayback.currentSession
@@ -129,7 +133,7 @@ internal class PlayerVMCallbackGenerationTest : PlayerVMTestFixture() {
         }
 
         override fun prepare(
-            streamUrl: String,
+            stream: StreamSource,
             subtitles: List<SubtitleLink>?,
             startPosition: Long?,
             bufferPreset: BufferPreset,
@@ -138,7 +142,7 @@ internal class PlayerVMCallbackGenerationTest : PlayerVMTestFixture() {
             currentSession = callbackGate.beginSession()
         }
 
-        override fun switchStream(streamUrl: String, subtitles: List<SubtitleLink>?) {
+        override fun switchStream(stream: StreamSource, subtitles: List<SubtitleLink>?) {
             currentSession = callbackGate.beginSession()
         }
 

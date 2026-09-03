@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.player.vm
 import android.app.Application
 import androidx.media3.common.MimeTypes
 import com.kino.puber.data.api.models.SubtitleLink
+import com.kino.puber.domain.interactor.player.StreamSource
 import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
 import org.junit.Test
@@ -18,7 +19,10 @@ internal class PlaybackMediaItemFactoryTest {
     @Test
     fun build_preservesStreamAndBuildsStableSubtitleConfigurations() {
         val item = factory.build(
-            streamUrl = "http://127.0.0.1:8080/video.m3u8",
+            stream = StreamSource(
+                url = "http://127.0.0.1:8080/video.m3u8",
+                isHls = true,
+            ),
             subtitles = listOf(
                 SubtitleLink(
                     lang = "rus",
@@ -32,6 +36,7 @@ internal class PlaybackMediaItemFactoryTest {
         )
 
         assertEquals("http://127.0.0.1:8080/video.m3u8", item.localConfiguration?.uri.toString())
+        assertEquals(MimeTypes.APPLICATION_M3U8, item.localConfiguration?.mimeType)
         val subtitles = item.localConfiguration?.subtitleConfigurations.orEmpty()
         assertEquals(listOf("rus", "eng"), subtitles.map { it.language })
         assertEquals(listOf("rus.vtt", "eng.webvtt"), subtitles.map { it.id.orEmpty() })
@@ -44,6 +49,37 @@ internal class PlaybackMediaItemFactoryTest {
             ),
             subtitles.map { it.uri.toString() },
         )
+    }
+
+    @Test
+    fun build_hlsKeepsApiSubtitleMarkedEmbeddedAsManifestFallback() {
+        val item = factory.build(
+            stream = StreamSource(url = "https://test/video", isHls = true),
+            subtitles = listOf(
+                SubtitleLink(lang = "rus", url = "https://test/subtitles/rus.vtt", embed = true),
+                SubtitleLink(lang = "eng", url = "https://test/subtitles/eng.vtt", embed = false),
+            ),
+        )
+
+        val subtitles = item.localConfiguration?.subtitleConfigurations.orEmpty()
+        assertEquals(listOf("rus", "eng"), subtitles.map { it.language })
+        assertEquals(listOf("rus.vtt", "eng.vtt"), subtitles.map { it.id })
+    }
+
+    @Test
+    fun build_progressiveSkipsApiSubtitleAlreadyEmbeddedInSourceContainer() {
+        val item = factory.build(
+            stream = StreamSource(url = "https://hls.test/video.mp4", isHls = false),
+            subtitles = listOf(
+                SubtitleLink(lang = "rus", url = "https://test/subtitles/rus.vtt", embed = true),
+                SubtitleLink(lang = "eng", url = "https://test/subtitles/eng.vtt", embed = false),
+            ),
+        )
+
+        assertEquals(null, item.localConfiguration?.mimeType)
+        val subtitles = item.localConfiguration?.subtitleConfigurations.orEmpty()
+        assertEquals(listOf("eng"), subtitles.map { it.language })
+        assertEquals(listOf("eng.vtt"), subtitles.map { it.id })
     }
 
     @Test

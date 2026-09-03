@@ -11,11 +11,29 @@ internal data class AudioTrackUIState(
 
 @Immutable
 internal data class SubtitleTrackUIState(
-    val index: Int,
     val label: String,
     val language: String,
     val url: String,
+    val isForced: Boolean? = null,
+    val sourceFile: String? = null,
+    /** Raw manifest/container label, kept to disambiguate same-language variants. */
+    val descriptiveLabel: String? = null,
+    val playerTrackId: String? = null,
+    /** Media3 `TrackGroup.id`, unique per group once side-loaded subtitles are merged. */
+    val playerTrackGroupId: String? = null,
+    val playerTrackUri: String? = null,
+    val playerGroupIndex: Int? = null,
+    val playerTrackIndex: Int? = null,
 )
+
+internal val SubtitleTrackUIState.isOff: Boolean
+    get() = language.isEmpty() &&
+        url.isEmpty() &&
+        playerTrackId == null &&
+        playerTrackGroupId == null &&
+        playerTrackUri == null &&
+        playerGroupIndex == null &&
+        playerTrackIndex == null
 
 @Immutable
 internal data class SoundModeUIState(

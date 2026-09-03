@@ -10,7 +10,9 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.exoplayer.ExoPlayer
 import com.kino.puber.data.repository.PlayerPreferencesRepository
+import com.kino.puber.domain.interactor.player.StreamSource
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
+import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -72,11 +74,11 @@ internal class PlaybackControllerCallbackGenerationTest {
         controller.setPrivateField("exoPlayer", player)
         controller.setPrivateField("dataSourceFactory", mockk<DataSource.Factory>(relaxed = true))
 
-        controller.switchStream(STREAM_A, subtitles = null)
+        controller.switchStream(progressiveStream(STREAM_A), subtitles = null)
         val listenerA = addedListeners.single()
-        controller.switchStream(STREAM_B, subtitles = null)
+        controller.switchStream(progressiveStream(STREAM_B), subtitles = null)
         val listenerB = addedListeners.last()
-        controller.switchStream(STREAM_C, subtitles = null)
+        controller.switchStream(progressiveStream(STREAM_C), subtitles = null)
         val listenerC = addedListeners.last()
 
         assertEquals(listOf(STREAM_A, STREAM_B, STREAM_C), selectedStreams.map(::streamUri))
@@ -130,6 +132,8 @@ internal class PlaybackControllerCallbackGenerationTest {
         return mediaItem.localConfiguration?.uri.toString()
     }
 
+    private fun progressiveStream(url: String) = StreamSource(url = url, isHls = false)
+
     private fun PlaybackController.setPrivateField(name: String, value: Any) {
         PlaybackController::class.java.getDeclaredField(name).apply {
             isAccessible = true
@@ -147,7 +151,11 @@ internal class PlaybackControllerCallbackGenerationTest {
 
         override fun onPlaybackEnded() = Unit
 
-        override fun onTracksUpdated(audioTracks: List<AudioTrackUIState>, selectedIndex: Int) = Unit
+        override fun onTracksUpdated(
+            audioTracks: List<AudioTrackUIState>,
+            selectedIndex: Int,
+            subtitleTracks: List<SubtitleTrackUIState>,
+        ) = Unit
 
         override fun onError(message: String) {
             errors += message

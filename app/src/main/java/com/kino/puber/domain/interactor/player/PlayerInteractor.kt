@@ -16,6 +16,15 @@ import kotlinx.coroutines.CancellationException
 private const val WATCHED_STATUS = 1
 private const val UNWATCHED_STATUS = 0
 
+/**
+ * The stream to play, with the container the API published it under.
+ * [isHls] is taken from the field the url came from rather than guessed from its text.
+ */
+internal data class StreamSource(
+    val url: String,
+    val isHls: Boolean,
+)
+
 internal data class ResolvedMedia(
     val files: List<VideoFile>?,
     val audios: List<Audio>?,
@@ -191,11 +200,11 @@ internal class PlayerInteractor(
         }
     }
 
-    fun selectStreamUrl(files: List<VideoFile>?, qualityIndex: Int): String? {
-        return selectBaseStreamUrl(files, qualityIndex)?.let(::withSurroundAudioPreference)
+    fun selectStreamUrl(files: List<VideoFile>?, qualityIndex: Int): StreamSource? {
+        return selectBaseStreamUrl(files, qualityIndex)?.withSurroundAudioPreference()
     }
 
-    private fun selectBaseStreamUrl(files: List<VideoFile>?, qualityIndex: Int): String? {
+    private fun selectBaseStreamUrl(files: List<VideoFile>?, qualityIndex: Int): StreamSource? {
         if (files.isNullOrEmpty()) return null
         return if (qualityIndex == 0) {
             selectAutoStreamUrl(files)
@@ -204,22 +213,29 @@ internal class PlayerInteractor(
         }
     }
 
-    private fun selectAutoStreamUrl(files: List<VideoFile>): String? {
-        val url = files.firstOrNull()?.url
-        return url?.hls4 ?: url?.hls ?: url?.http
+    private fun selectAutoStreamUrl(files: List<VideoFile>): StreamSource? {
+        val url = files.firstOrNull()?.url ?: return null
+        return hlsSource(url.hls4) ?: hlsSource(url.hls) ?: progressiveSource(url.http)
     }
 
-    private fun selectManualStreamUrl(files: List<VideoFile>, qualityIndex: Int): String? {
+    private fun selectManualStreamUrl(files: List<VideoFile>, qualityIndex: Int): StreamSource? {
         val uniqueFiles = files.distinctBy { it.quality ?: "${it.h}p" }
             .sortedByDescending { it.qualityId ?: 0 }
-        val url = (uniqueFiles.getOrNull(qualityIndex - 1) ?: files.first()).url
-        return url?.hls ?: url?.hls4 ?: url?.http
+        val url = (uniqueFiles.getOrNull(qualityIndex - 1) ?: files.first()).url ?: return null
+        return hlsSource(url.hls) ?: hlsSource(url.hls4) ?: progressiveSource(url.http)
     }
 
-    private fun withSurroundAudioPreference(baseUrl: String): String {
-        if (!playerPreferencesRepository.preferSurroundAudio) return baseUrl
-        val separator = if ("?" in baseUrl) "&" else "?"
-        return "${baseUrl}${separator}ac3default=1"
+    private fun hlsSource(url: String?): StreamSource? =
+        url?.let { StreamSource(url = it, isHls = true) }
+
+    // The progressive field is trusted unless it plainly carries a playlist.
+    private fun progressiveSource(url: String?): StreamSource? =
+        url?.let { StreamSource(url = it, isHls = it.substringBefore('?').endsWith(".m3u8", true)) }
+
+    private fun StreamSource.withSurroundAudioPreference(): StreamSource {
+        if (!playerPreferencesRepository.preferSurroundAudio) return this
+        val separator = if ("?" in url) "&" else "?"
+        return copy(url = "$url${separator}ac3default=1")
     }
 
     private fun findFirstUnwatchedEpisode(item: Item): Pair<Int, Int>? {

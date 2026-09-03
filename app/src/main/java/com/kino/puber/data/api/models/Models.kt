@@ -374,7 +374,11 @@ data class SubtitleLink(
     val url: String,
     val shift: Int? = null,
     val embed: Boolean? = null,
-)
+    val forced: Boolean? = null,
+    val file: String? = null,
+) {
+    fun shouldSideLoad(isHls: Boolean): Boolean = isHls || embed != true
+}
 
 @Serializable
 data class TVChannel(
