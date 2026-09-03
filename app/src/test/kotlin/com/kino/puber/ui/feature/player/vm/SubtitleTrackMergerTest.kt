@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 
 internal class SubtitleTrackMergerTest {
 
@@ -17,6 +19,102 @@ internal class SubtitleTrackMergerTest {
         variantLabel = { label, ordinal -> "$label · вариант $ordinal" },
         unknownLabel = { position -> "Субтитры $position" },
     )
+
+    @ParameterizedTest
+    @CsvSource(
+        "0, 0, ''",
+        "0, 2, '1:api-0.srt 2:api-1.srt'",
+        "2, 0, 'hls-0 hls-1'",
+        "1, 2, '1:api-0.srt 2:api-1.srt'",
+        "2, 1, 'hls-0 hls-1'",
+        "1, 1, 'hls-0'",
+        "2, 2, 'hls-0 hls-1'",
+    )
+    fun merge_usesLargerLanguageGroup_preferringHlsOnTies(
+        hlsCount: Int,
+        apiCount: Int,
+        expectedIds: String,
+    ) {
+        val apiTracks = List(apiCount) { index ->
+            apiTrack("Russian API", "rus", url = "https://api.test/subtitles/api-$index.srt")
+        }
+        val sideLoadedTracks = List(apiCount) { index ->
+            playerTrack("Russian API", "rus", "${index + 1}:api-$index.srt", index)
+        }
+        val hlsTracks = List(hlsCount) { index ->
+            playerTrack(
+                "Russian HLS", "ru", "hls-$index", apiCount + index,
+                uri = "https://cdn.test/hls/rus-$index.m3u8",
+            )
+        }
+
+        val result = merger.merge(
+            listOf(offTrack()) + apiTracks,
+            listOf(offTrack()) + sideLoadedTracks + hlsTracks,
+        )
+
+        assertEquals(offTrack(), result.first())
+        assertEquals(
+            expectedIds.split(' ').filter { it.isNotEmpty() },
+            result.drop(1).map { it.playerTrackId },
+        )
+    }
+
+    @Test
+    fun merge_choosesSourceIndependentlyForEachCanonicalLanguage() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack("Russian 1", "rus", url = "https://api.test/subtitles/rus-1.srt"),
+            apiTrack("English", "eng", url = "https://api.test/subtitles/eng.srt"),
+            apiTrack("Russian 2", "rus", url = "https://api.test/subtitles/rus-2.srt"),
+        )
+        val playerTracks = listOf(
+            playerTrack("Russian HLS", "ru-RU", "hls-rus", 0, uri = "https://cdn.test/hls/rus.m3u8"),
+            playerTrack("English HLS 1", "en-US", "hls-eng-1", 1, uri = "https://cdn.test/hls/eng-1.m3u8"),
+            playerTrack("Russian API 1", "RUS", "1:rus-1.srt", 2),
+            playerTrack("English API", "eng", "2:eng.srt", 3),
+            playerTrack("Russian API 2", " ru_RU ", "3:rus-2.srt", 4),
+            playerTrack("English HLS 2", "en_GB", "hls-eng-2", 5, uri = "https://cdn.test/hls/eng-2.m3u8"),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(
+            listOf("1:rus-1.srt", "3:rus-2.srt", "hls-eng-1", "hls-eng-2"),
+            result.drop(1).map { it.playerTrackId },
+        )
+        assertEquals(listOf(2, 4, 1, 5), result.drop(1).map { it.playerGroupIndex })
+    }
+
+    @Test
+    fun merge_enrichesWinningApiGroup_andOrdersForcedVariantLast() {
+        val apiTracks = listOf(
+            offTrack(),
+            apiTrack("Russian forced", "rus", "https://api.test/pd/forced", true, "/rus-forced.srt"),
+            apiTrack("Russian full", "rus", "https://api.test/pd/full", false, "/rus-full.srt"),
+        )
+        val playerTracks = listOf(
+            playerTrack(
+                "Russian HLS", "ru", "hls-rus", 0,
+                uri = "https://cdn.test/subtitles/rus-forced.srt/index.m3u8",
+            ),
+            playerTrack("Russian API forced", "rus", "1:rus-forced.srt", 1),
+            playerTrack("Russian API full", "rus", "2:rus-full.srt", 2),
+        )
+
+        val result = merger.merge(apiTracks, playerTracks)
+
+        assertEquals(listOf("Off", "Русский", "Русский · частичные"), result.map { it.label })
+        assertEquals(listOf("2:rus-full.srt", "1:rus-forced.srt"), result.drop(1).map { it.playerTrackId })
+        assertEquals(listOf(2, 1), result.drop(1).map { it.playerGroupIndex })
+        assertEquals(listOf(0, 0), result.drop(1).map { it.playerTrackIndex })
+        assertEquals(listOf(false, true), result.drop(1).map { it.isForced })
+        assertEquals(listOf("/rus-full.srt", "/rus-forced.srt"), result.drop(1).map { it.sourceFile })
+        assertEquals(
+            listOf("https://api.test/pd/full", "https://api.test/pd/forced"),
+            result.drop(1).map { it.url },
+        )
+    }
 
     @Test
     fun merge_usesPlayerTracksAsBackbone_andEnrichesExactIdentity() {
@@ -307,7 +405,7 @@ internal class SubtitleTrackMergerTest {
     }
 
     @Test
-    fun merge_hidesSideLoadedTrack_evenWhenItsLanguageIsMissingFromTheManifest() {
+    fun merge_keepsSideLoadedTrack_whenItsLanguageIsMissingFromTheManifest() {
         val apiTracks = listOf(
             offTrack(),
             apiTrack("rus", "rus", url = "https://api.test/subtitles/rus.srt"),
@@ -326,7 +424,10 @@ internal class SubtitleTrackMergerTest {
 
         val result = merger.merge(apiTracks, playerTracks)
 
-        assertEquals(listOf("Off", "Русский"), result.map { it.label })
+        assertEquals(listOf("Off", "Русский", "Английский"), result.map { it.label })
+        assertEquals(listOf("hls-rus", "eng.srt"), result.drop(1).map { it.playerTrackId })
+        assertEquals(listOf(0, 1), result.drop(1).map { it.playerGroupIndex })
+        assertEquals("https://api.test/subtitles/eng.srt", result[2].url)
     }
 
     @Test
