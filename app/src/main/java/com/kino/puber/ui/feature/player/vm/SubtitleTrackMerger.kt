@@ -22,9 +22,22 @@ internal class SubtitleTrackMerger(
             return listOf(offTrack)
         }
 
-        val enrichedPlayerTracks = enrichPlayerTracks(playerSubtitles, apiSubtitles)
+        val selectedPlayerTracks = selectTracksByLanguage(playerSubtitles)
+        val enrichedPlayerTracks = enrichPlayerTracks(selectedPlayerTracks, apiSubtitles)
         val orderedPlayerTracks = orderByLanguage(enrichedPlayerTracks)
         return listOf(offTrack) + labeler.apply(orderedPlayerTracks)
+    }
+
+    /**
+     * API subtitles are side-loaded before the manifest is known. For each language,
+     * keep the source with more tracks, preferring HLS on ties to avoid duplicate variants.
+     * Compare discovered player tracks so every retained row can be selected for playback.
+     */
+    private fun selectTracksByLanguage(
+        tracks: List<SubtitleTrackUIState>,
+    ): List<SubtitleTrackUIState> = tracks.groupBy(::orderingLanguage).values.flatMap { languageTracks ->
+        val (manifestTracks, sideLoadedTracks) = languageTracks.partition { it.isFromManifest }
+        if (manifestTracks.size >= sideLoadedTracks.size) manifestTracks else sideLoadedTracks
     }
 
     /**
@@ -53,28 +66,13 @@ internal class SubtitleTrackMerger(
     private fun orderingLanguage(track: SubtitleTrackUIState): String =
         canonicalSubtitleLanguage(track.language)
 
-    /**
-     * Every external subtitle is side-loaded because the manifest contents are unknown
-     * before preparation, so a subtitle the manifest also publishes shows up twice.
-     *
-     * Renditions and API subtitles share no identifier — a rendition is addressed by its
-     * HLS playlist URL, an API subtitle by its file path — so the duplicate cannot be
-     * identified per track. A manifest that publishes subtitles at all is treated as the
-     * complete list and the side-loaded copies are hidden; the side-loaded tracks carry
-     * playback only when the manifest offers no subtitles of its own.
-     */
     private fun enrichPlayerTracks(
         playerSubtitles: List<SubtitleTrackUIState>,
         apiSubtitles: List<SubtitleTrackUIState>,
     ): List<SubtitleTrackUIState> {
-        val manifestPublishesSubtitles = playerSubtitles.any { it.isFromManifest }
-        val apiMatches = playerSubtitles.map { track -> findExactIdentityMatch(track, apiSubtitles) }
         val claimedApiIndices = mutableSetOf<Int>()
-        return playerSubtitles.mapIndexedNotNull { position, playerTrack ->
-            if (manifestPublishesSubtitles && !playerTrack.isFromManifest) {
-                return@mapIndexedNotNull null
-            }
-            apiMatches[position]
+        return playerSubtitles.map { playerTrack ->
+            findExactIdentityMatch(playerTrack, apiSubtitles)
                 ?.takeIf(claimedApiIndices::add)
                 ?.let { apiIndex -> playerTrack.withApiMetadata(apiSubtitles[apiIndex]) }
                 ?: playerTrack
