@@ -66,6 +66,8 @@ import kotlinx.coroutines.delay
 
 internal const val BOOKMARK_PICKER_DIALOG_TAG = "bookmark-picker-dialog"
 internal const val BOOKMARK_CREATE_FOLDER_DIALOG_TAG = "bookmark-create-folder-dialog"
+internal const val BOOKMARK_ADD_FOLDER_ROW_TAG = "bookmark-add-folder-row"
+internal const val BOOKMARK_CREATE_FOLDER_CONFIRM_TAG = "bookmark-create-folder-confirm"
 internal fun bookmarkFolderRowTag(folderId: Int) = "bookmark-folder-$folderId"
 
 private const val FocusDelayMs = 100L
@@ -231,7 +233,9 @@ private fun AddFolderRow(
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(BOOKMARK_ADD_FOLDER_ROW_TAG),
     ) {
         Text(
             text = stringResource(R.string.bookmark_picker_add_folder),
@@ -288,7 +292,9 @@ private fun CreateFolderDialog(
                 },
                 enabled = state.canCreateFolder,
                 primary = true,
-                modifier = Modifier.focusRequester(createFocusRequester),
+                modifier = Modifier
+                    .focusRequester(createFocusRequester)
+                    .testTag(BOOKMARK_CREATE_FOLDER_CONFIRM_TAG),
                 onClick = { onAction(BookmarkPickerAction.CreateFolder) },
             )
             TvSafeButton(

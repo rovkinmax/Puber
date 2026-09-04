@@ -27,13 +27,6 @@ class BookmarkFolderInteractor(
         return api.createBookmark(normalizedTitle).getOrThrow()
     }
 
-    suspend fun createFolderAndAdd(itemId: Int, title: String): Bookmark {
-        val folder = createFolder(title)
-        api.addBookmarkItem(itemId = itemId, folderId = folder.id).getOrThrow()
-        itemDetailsRepository.invalidate(itemId)
-        return folder
-    }
-
     suspend fun setItemInFolder(itemId: Int, folderId: Int, selected: Boolean) {
         if (selected) {
             api.addBookmarkItem(itemId = itemId, folderId = folderId).getOrThrow()
@@ -47,7 +40,8 @@ class BookmarkFolderInteractor(
         return resolveQuickFolder(getFolders())
     }
 
-    private fun resolveQuickFolder(folders: List<Bookmark>): Bookmark? {
+    /** Resolves the quick folder against an already-fetched folder list, without a further request. */
+    fun resolveQuickFolder(folders: List<Bookmark>): Bookmark? {
         val configuredId = preferences.quickFolderId.value
         folders.firstOrNull { it.id == configuredId }?.let { return it }
 
@@ -72,6 +66,10 @@ class BookmarkFolderInteractor(
     suspend fun setQuickSaved(itemId: Int, saved: Boolean): QuickBookmarkUpdate {
         val folder = if (saved) ensureQuickFolder() else getQuickFolder()
         if (folder == null) {
+            // Un-saving with no quick folder: there is nothing to remove from, and the item was
+            // never reported as saved either — `VideoItemUIMapper` and `DetailsInteractor` both
+            // read "saved" as quick-folder membership. Membership of other folders is the
+            // picker's business and is deliberately left alone.
             return QuickBookmarkUpdate(isSaved = false, folder = null)
         }
         setItemInFolder(itemId = itemId, folderId = folder.id, selected = saved)

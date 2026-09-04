@@ -33,7 +33,7 @@ import kotlinx.datetime.LocalDate
 internal class DetailsScreenUIMapper(
     private val resources: ResourceProvider,
     private val itemMapper: VideoItemUIMapper,
-    private val bookmarkPreferencesRepository: BookmarkPreferencesRepository? = null,
+    private val bookmarkPreferencesRepository: BookmarkPreferencesRepository,
 ) {
 
     fun map(item: Item, isInWatchlist: Boolean = item.inWatchlist ?: false): DetailsScreenState.Content {
@@ -87,7 +87,7 @@ internal class DetailsScreenUIMapper(
         val episodes = if (item.type.isSeriesLike()) mapEpisodes(item, schedule) else null
         val requestedEpisode = episodes?.findEpisode(initialEpisode)
         val seriesStatus = mapSeriesStatus(item)
-        val bookmarkMode = bookmarkPreferencesRepository?.mode?.value ?: BookmarkMode.Simple
+        val bookmarkMode = bookmarkPreferencesRepository.mode.value
         val isSeriesLike = item.type.isSeriesLike()
         return DetailsScreenState.Content(
             details = itemMapper.mapDetailedItem(item),

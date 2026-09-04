@@ -53,12 +53,11 @@ internal class FavoriteVM(
                 val item = action.item as VideoItemUIState
                 setItemSaved(item, action.isSaved)
             }
-            is CommonAction.ItemBookmarksRequested<*> -> {
+            is CommonAction.ItemBookmarksRequested<*> ->
                 router.openBookmarkPicker(
                     item = action.item as VideoItemUIState,
                     listener = { result -> if (result != null) loadData() },
                 )
-            }
             is CommonAction.RetryClicked -> loadData()
             else -> super.onAction(action)
         }

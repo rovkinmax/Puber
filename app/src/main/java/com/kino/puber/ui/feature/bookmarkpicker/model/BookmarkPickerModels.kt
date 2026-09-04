@@ -8,7 +8,6 @@ import kotlinx.parcelize.Parcelize
 @Parcelize
 internal data class BookmarkPickerParams(
     val itemId: Int,
-    val itemTitle: String,
     val resultCode: Int,
 ) : Parcelable
 
@@ -16,6 +15,8 @@ internal data class BookmarkPickerParams(
 internal data class BookmarkPickerResult(
     val itemId: Int,
     val selectedFolderIds: List<Int>,
+    /** Whether the quick folder is among [selectedFolderIds] — drives `VideoItemUIState.isSaved`. */
+    val isInQuickFolder: Boolean = false,
 ) : Parcelable {
     val isBookmarked: Boolean
         get() = selectedFolderIds.isNotEmpty()
@@ -32,6 +33,7 @@ internal sealed interface BookmarkPickerViewState {
         val isCreateFolderDialogVisible: Boolean = false,
         val changingFolderIds: Set<Int> = emptySet(),
         val isCreatingFolder: Boolean = false,
+        val quickFolderId: Int? = null,
     ) : BookmarkPickerViewState {
         val canCreateFolder: Boolean
             get() = newFolderTitle.isNotBlank() && !isCreatingFolder

@@ -115,7 +115,7 @@ private object ProbeScreens : Screens {
 
     override fun bookmarks(): PuberScreen = unsupported()
 
-    override fun bookmarkPicker(itemId: Int, itemTitle: String, resultCode: Int): PuberScreen = unsupported()
+    override fun bookmarkPicker(itemId: Int, resultCode: Int): PuberScreen = unsupported()
 
     override fun favorites(): PuberScreen = unsupported()
 

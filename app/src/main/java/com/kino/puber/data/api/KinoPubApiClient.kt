@@ -754,16 +754,6 @@ class KinoPubApiClient(
             }
         }.map { response -> response.folders }
 
-    /**
-     * Toggle bookmark (add/remove from folder)
-     */
-    suspend fun toggleBookmark(itemId: Int, folderId: Int): Result<Unit> =
-        apiCall<BookmarkActionResponse> {
-            httpClient.post("${mainApiBaseUrl}bookmarks/toggle-item") {
-                setBody(bookmarkFormBody("item" to itemId, "folder" to folderId))
-            }
-        }.map { }
-
     private fun bookmarkFormBody(vararg fields: Pair<String, Any>): FormDataContent {
         return FormDataContent(
             Parameters.build {

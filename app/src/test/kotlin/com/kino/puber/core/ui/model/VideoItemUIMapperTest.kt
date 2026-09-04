@@ -11,6 +11,7 @@ import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.Posters
 import com.kino.puber.data.api.models.Season
 import com.kino.puber.data.preferences.BookmarkPreferencesRepository
+import com.kino.puber.domain.interactor.bookmarks.BookmarkFolderInteractor
 import com.kino.puber.util.FakeResourceProvider
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -95,9 +96,35 @@ class VideoItemUIMapperTest {
     }
 
     @Test
-    fun mapShortItem_marksMovieSaved_whenBookmarksExist() {
-        val item = testItem(type = ItemType.MOVIE, bookmarks = listOf(Bookmark(id = 1, title = "Saved")))
+    fun mapShortItem_marksMovieSaved_whenItIsInTheConfiguredQuickFolder() {
+        val item = testItem(type = ItemType.MOVIE, bookmarks = listOf(Bookmark(id = 7, title = "Renamed")))
+        val quickFolderMapper = VideoItemUIMapper(
+            FakeResourceProvider(),
+            bookmarkPreferencesRepository = BookmarkPreferencesRepository(quickFolderId = 7),
+        )
+        assertEquals(true, quickFolderMapper.mapShortItem(item).isSaved)
+    }
+
+    @Test
+    fun mapShortItem_marksMovieSaved_whenItIsInTheLegacyQuickFolderAndNoIdIsConfiguredYet() {
+        val item = testItem(
+            type = ItemType.MOVIE,
+            bookmarks = listOf(Bookmark(id = 5, title = BookmarkFolderInteractor.LEGACY_QUICK_FOLDER_TITLE)),
+        )
         assertEquals(true, mapper.mapShortItem(item).isSaved)
+    }
+
+    @Test
+    fun mapShortItem_doesNotMarkMovieSaved_whenItIsOnlyInAnotherFolder() {
+        // The context menu's un-save writes to the quick folder alone, so "bookmarked anywhere"
+        // would label an item saved that the menu cannot un-save.
+        val item = testItem(type = ItemType.MOVIE, bookmarks = listOf(Bookmark(id = 9, title = "Избранное")))
+        val quickFolderMapper = VideoItemUIMapper(
+            FakeResourceProvider(),
+            bookmarkPreferencesRepository = BookmarkPreferencesRepository(quickFolderId = 7),
+        )
+        assertEquals(false, quickFolderMapper.mapShortItem(item).isSaved)
+        assertEquals(true, quickFolderMapper.mapShortItem(item).isBookmarked)
     }
 
     @Test

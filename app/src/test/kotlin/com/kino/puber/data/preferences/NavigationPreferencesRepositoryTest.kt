@@ -289,6 +289,26 @@ internal class NavigationPreferencesRepositoryTest {
     }
 
     @Test
+    fun fixedConfiguration_isReturnedVerbatimRegardlessOfTogglesAndBookmarkMode() {
+        val fixedTabs = listOf(TabType.Home, TabType.Bookmarks, TabType.Cartoons, TabType.Movies)
+        val repository = NavigationPreferencesRepository(
+            navigationMode = NavigationMode.TopTabs,
+            visibleTabs = fixedTabs,
+            contentPreferences = ContentPreferences(
+                showCartoonsTab = false,
+                showAnimeTab = false,
+                showAnime = false,
+            ),
+        )
+
+        // Deriving would drop Cartoons (its toggle is off) and Bookmarks (Simple mode); a pinned
+        // configuration is the whole answer.
+        assertEquals(fixedTabs, repository.getVisibleTabs(NavigationMode.TopTabs, BookmarkMode.Simple))
+        assertEquals(fixedTabs, repository.getVisibleTabs(NavigationMode.TopTabs, BookmarkMode.Extended))
+        assertEquals(fixedTabs, repository.getVisibleTabs(NavigationMode.SideDrawer))
+    }
+
+    @Test
     fun optionalTabs_areInsertedCanonicallyInBothNavigationModes() {
         val fixture = fixture(
             storedTabs = "Home,Movies,Series,Collections,History",

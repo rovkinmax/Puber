@@ -16,6 +16,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -36,9 +37,9 @@ internal class BookmarkPickerVMTest {
     private val errorHandler = mockk<ErrorHandler>(relaxed = true)
     private val params = BookmarkPickerParams(
         itemId = 42,
-        itemTitle = "Interstellar",
         resultCode = 93,
     )
+    private val quickFolder = Bookmark(id = 7, title = "Watch later", count = 3)
 
     @BeforeEach
     fun setUp() {
@@ -54,6 +55,7 @@ internal class BookmarkPickerVMTest {
         coEvery { interactor.getItemFolders(42) } returns listOf(
             BookmarkFolder(id = 8, title = "Family"),
         )
+        every { interactor.resolveQuickFolder(any()) } returns quickFolder
         coEvery { interactor.setItemInFolder(any(), any(), any()) } returns Unit
     }
 
@@ -181,7 +183,55 @@ internal class BookmarkPickerVMTest {
             router.back(
                 resultCode = 93,
                 result = match<BookmarkPickerResult> { result ->
-                    result.itemId == 42 && result.selectedFolderIds == listOf(8)
+                    result.itemId == 42 &&
+                        result.selectedFolderIds == listOf(8) &&
+                        !result.isInQuickFolder
+                },
+            )
+        }
+    }
+
+    @Test
+    fun back_reportsQuickFolderMembershipWhenTheQuickFolderIsSelected() {
+        val vm = loadedVM()
+
+        vm.onAction(BookmarkPickerAction.FolderToggled(7))
+        mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
+        vm.onBackPressed()
+
+        verify(exactly = 1) {
+            router.back(
+                resultCode = 93,
+                result = match<BookmarkPickerResult> { result ->
+                    result.selectedFolderIds == listOf(7, 8) && result.isInQuickFolder
+                },
+            )
+        }
+    }
+
+    @Test
+    fun backWhileCreatingFolder_waitsInsteadOfReportingAnIncompleteSelection() {
+        val vm = loadedVM()
+        val created = CompletableDeferred<Bookmark>()
+        coEvery { interactor.createFolder(title = "Weekend") } coAnswers { created.await() }
+
+        vm.onAction(BookmarkPickerAction.AddFolderRequested)
+        vm.onAction(BookmarkPickerAction.NewFolderTitleChanged("Weekend"))
+        vm.onAction(BookmarkPickerAction.CreateFolder)
+        mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
+        vm.onBackPressed()
+
+        verify(exactly = 0) { router.back(any(), any()) }
+
+        created.complete(Bookmark(id = 11, title = "Weekend", count = 0))
+        mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
+        vm.onBackPressed()
+
+        verify(exactly = 1) {
+            router.back(
+                resultCode = 93,
+                result = match<BookmarkPickerResult> { result ->
+                    result.selectedFolderIds == listOf(8, 11)
                 },
             )
         }

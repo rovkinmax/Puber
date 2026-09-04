@@ -15,12 +15,15 @@ import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.Season
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
+import com.kino.puber.domain.interactor.details.DetailsBookmarkState
 import com.kino.puber.domain.interactor.details.DetailsInteractor
 import com.kino.puber.domain.interactor.details.MovieBookmarkUpdate
 import com.kino.puber.domain.interactor.details.MovieWatchedUpdate
 import com.kino.puber.domain.interactor.details.WatchedUpdate
 import com.kino.puber.domain.interactor.schedule.EpisodeScheduleInteractor
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
 import com.kino.puber.ui.feature.details.model.DetailsAction
 import com.kino.puber.ui.feature.details.model.DetailsEpisodeTarget
 import com.kino.puber.ui.feature.details.model.DetailsInfoUIState
@@ -43,6 +46,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 
+private const val SIMILAR_ITEM_ID = 100
+
 class DetailsVMTest {
 
     companion object {
@@ -57,6 +62,7 @@ class DetailsVMTest {
     private lateinit var interactor: DetailsInteractor
     private lateinit var episodeScheduleInteractor: EpisodeScheduleInteractor
     private lateinit var savedItemInteractor: SavedItemInteractor
+    private val bookmarkPreferences = BookmarkPreferencesRepository()
     private lateinit var errorHandler: ErrorHandler
 
     private val params = DetailsScreenParams(itemId = 42)
@@ -78,10 +84,10 @@ class DetailsVMTest {
 
         coEvery { interactor.getItemDetails(42) } returns testItem
         coEvery { interactor.refreshItemDetails(42) } returns refreshedItem
-        coEvery { interactor.isInWatchLaterFolder(any()) } returns false
+        coEvery { interactor.getBookmarkState(any(), any()) } returns bookmarkState()
         coEvery { interactor.getSimilarItems(42) } returns listOf(similarItem)
         every { mapper.map(any(), any()) } returns content()
-        every { mapper.mapSimilarItems(any()) } returns listOf(videoItem(id = 100))
+        every { mapper.mapSimilarItems(any()) } returns listOf(videoItem(id = SIMILAR_ITEM_ID))
     }
 
     @Test
@@ -443,7 +449,9 @@ class DetailsVMTest {
         val movie = movieItem()
         coEvery { interactor.getItemDetails(42) } returns movie
         every { mapper.map(movie, any()) } returns content(isBookmarked = true)
-        coEvery { interactor.isBookmarked(movie, BookmarkMode.Simple) } returns true
+        coEvery {
+            interactor.getBookmarkState(movie, BookmarkMode.Simple)
+        } returns bookmarkState(isBookmarked = true)
         coEvery { interactor.setMovieBookmarked(42, bookmarked = false) } returns MovieBookmarkUpdate(
             isBookmarked = false,
             folderTitle = "Watch later",
@@ -468,7 +476,9 @@ class DetailsVMTest {
         )
         val vm = startedVM()
         coEvery { interactor.refreshItemDetails(42) } returns movie
-        coEvery { interactor.isInWatchLaterFolder(movie) } throws IllegalStateException("read failed")
+        coEvery {
+            interactor.getBookmarkState(movie, any())
+        } throws IllegalStateException("read failed")
 
         vm.onAction(DetailsAction.BookmarkToggleClicked)
 
@@ -483,13 +493,17 @@ class DetailsVMTest {
         val refreshed = movie.copy(title = "Refreshed")
         coEvery { interactor.getItemDetails(42) } returns movie
         every { mapper.map(movie, any()) } returns content(isBookmarked = true)
-        coEvery { interactor.isBookmarked(movie, BookmarkMode.Simple) } returns true
+        coEvery {
+            interactor.getBookmarkState(movie, BookmarkMode.Simple)
+        } returns bookmarkState(isBookmarked = true)
         coEvery { interactor.setMovieBookmarked(42, bookmarked = false) } returns MovieBookmarkUpdate(
             isBookmarked = false,
             folderTitle = "Watch later",
         )
         coEvery { interactor.refreshItemDetails(42) } returns refreshed
-        coEvery { interactor.isInWatchLaterFolder(refreshed) } returns true
+        coEvery {
+            interactor.getBookmarkState(refreshed, any())
+        } returns bookmarkState(isInWatchLaterFolder = true)
         every { mapper.map(refreshed, true) } returns content(isInWatchlist = true)
         val vm = startedVM()
 
@@ -619,6 +633,36 @@ class DetailsVMTest {
         params: DetailsScreenParams = this.params,
     ): DetailsVM = createVM(params).also { it.testOnStart() }
 
+    @Test
+    fun bookmarkPickerResult_marksTheSimilarItemBookmarkedAndReportsTheChangeOnBack() {
+        val screen = mockk<PuberScreen>()
+        every { screens.bookmarkPicker(any(), any()) } returns screen
+        val vm = startedVM()
+
+        vm.onAction(CommonAction.ItemBookmarksRequested(videoItem(SIMILAR_ITEM_ID)))
+        val listener = slot<(BookmarkPickerResult?) -> Unit>()
+        verify { router.navigateForResult<BookmarkPickerResult>(screen, any(), capture(listener)) }
+        listener.captured(BookmarkPickerResult(itemId = SIMILAR_ITEM_ID, selectedFolderIds = listOf(3)))
+
+        val state = vm.testStateValue as DetailsScreenState.Content
+        assertTrue(state.similarItems.single().isBookmarked)
+        vm.onBackPressed()
+        verifyContentChangeBack(itemId = SIMILAR_ITEM_ID, ContentChangeType.Bookmark)
+    }
+
+    @Test
+    fun itemBookmarksRequested_opensTheBookmarkPickerForThatItem() {
+        val screen = mockk<PuberScreen>()
+        every {
+            screens.bookmarkPicker(itemId = 42, resultCode = any())
+        } returns screen
+        val vm = createVM()
+
+        vm.onAction(CommonAction.ItemBookmarksRequested(videoItem(42)))
+
+        verify { router.navigateForResult<BookmarkPickerResult>(screen, any(), any()) }
+    }
+
     private fun createVM(
         params: DetailsScreenParams = this.params,
     ) = DetailsVM(
@@ -628,6 +672,7 @@ class DetailsVMTest {
         interactor = interactor,
         episodeScheduleInteractor = episodeScheduleInteractor,
         savedItemInteractor = savedItemInteractor,
+        bookmarkPreferencesRepository = bookmarkPreferences,
         resources = FakeResourceProvider(),
         errorHandler = errorHandler,
     )
@@ -724,3 +769,11 @@ class DetailsVMTest {
         type = ItemType.MOVIE,
     )
 }
+
+private fun bookmarkState(
+    isInWatchLaterFolder: Boolean = false,
+    isBookmarked: Boolean = false,
+) = DetailsBookmarkState(
+    isInWatchLaterFolder = isInWatchLaterFolder,
+    isBookmarked = isBookmarked,
+)

@@ -12,6 +12,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -441,19 +442,24 @@ private suspend fun LazyListState.awaitRestoredFocusScrollSettled() {
 }
 
 @Composable
-private fun CurrentScreen(key: String) {
+private fun CurrentScreen(keyPrefix: String) {
     val navigator = LocalNavigator.currentOrThrow
     val screens = navigator.items.map { it as PuberScreen }
 
     Box {
         resolveVisibleScreenLayers(screens).forEach { screen ->
-            val screenKey = screenCompositionKey(key, screen.key)
-            CompositionLocalProvider(
-                LocalScreenKey provides screenKey,
-                LocalPuberScopePrefix provides screenKey,
-            ) {
-                navigator.saveableState(screenKey) {
-                    screen.Content()
+            val screenKey = screenCompositionKey(keyPrefix, screen.key)
+            key(screenKey) {
+                CompositionLocalProvider(
+                    LocalScreenKey provides screenKey,
+                    LocalPuberScopePrefix provides screenKey,
+                ) {
+                    // Pass the layer's own screen: saveableState derives its state key
+                    // from it, and defaulting to lastItem would re-key every lower
+                    // layer whenever an overlay is pushed, tearing down its DI scope.
+                    navigator.saveableState(screenKey, screen) {
+                        screen.Content()
+                    }
                 }
             }
         }

@@ -11,6 +11,7 @@ import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.isSeriesLike
 import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
+import com.kino.puber.domain.interactor.bookmarks.BookmarkFolderInteractor
 
 class VideoItemUIMapper(
     private val resources: ResourceProvider,
@@ -42,11 +43,29 @@ class VideoItemUIMapper(
             isSaved = if (item.type.isSeriesLike()) {
                 item.inWatchlist == true || item.subscribed == true
             } else {
-                item.bookmarks.orEmpty().isNotEmpty()
+                item.isInQuickFolder()
             },
             isBookmarked = item.bookmarks.orEmpty().isNotEmpty(),
             bookmarkMode = bookmarkPreferencesRepository?.mode?.value ?: BookmarkMode.Simple,
         )
+    }
+
+    /**
+     * `isSaved` drives the single save/unsave row of the context menu, and for a movie that row
+     * writes to the quick folder only (see `BookmarkFolderInteractor.setQuickSaved`). Reading
+     * "bookmarked anywhere" here would label a movie filed in some other folder as saved while
+     * unsaving it silently did nothing. Matches `DetailsInteractor.getBookmarkState` in Simple mode.
+     */
+    private fun Item.isInQuickFolder(): Boolean {
+        val folders = bookmarks.orEmpty()
+        val configuredId = bookmarkPreferencesRepository?.quickFolderId?.value
+        return if (configuredId != null) {
+            folders.any { it.id == configuredId }
+        } else {
+            // The id stays unset until the interactor resolves it against the account's folder
+            // list, so fall back to the same legacy title that resolution looks for.
+            folders.any { it.title == BookmarkFolderInteractor.LEGACY_QUICK_FOLDER_TITLE }
+        }
     }
 
     fun mapHeroItems(items: List<Item>): List<HeroItemState> {

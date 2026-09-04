@@ -21,6 +21,7 @@ class DetailsScreenUIMapperTest {
     private val mapper = DetailsScreenUIMapper(
         resources = FakeResourceProvider(),
         itemMapper = VideoItemUIMapper(FakeResourceProvider()),
+        bookmarkPreferencesRepository = BookmarkPreferencesRepository(),
     )
 
     @Test
