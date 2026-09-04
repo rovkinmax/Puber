@@ -95,18 +95,15 @@ internal class BookmarkFolderInteractorTest {
     }
 
     @Test
-    fun createFolderAndAdd_trimsTitleAndInvalidatesDetails() = runTest {
+    fun createFolder_trimsTitle() = runTest {
         val preferences = BookmarkPreferencesRepository()
         val created = Bookmark(id = 13, title = "Family")
         coEvery { api.createBookmark("Family") } returns Result.success(created)
-        coEvery { api.addBookmarkItem(itemId = 42, folderId = 13) } returns Result.success(Unit)
 
-        val folder = interactor(preferences).createFolderAndAdd(42, "  Family  ")
+        val folder = interactor(preferences).createFolder("  Family  ")
 
         assertEquals(created, folder)
         coVerify(exactly = 1) { api.createBookmark("Family") }
-        coVerify(exactly = 1) { api.addBookmarkItem(itemId = 42, folderId = 13) }
-        verify(exactly = 1) { itemDetailsRepository.invalidate(42) }
     }
 
     @Test

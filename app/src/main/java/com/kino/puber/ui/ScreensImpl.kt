@@ -66,11 +66,10 @@ internal object ScreensImpl : Screens {
 
     override fun bookmarks(): PuberScreen = BookmarksScreen()
 
-    override fun bookmarkPicker(itemId: Int, itemTitle: String, resultCode: Int): PuberScreen {
+    override fun bookmarkPicker(itemId: Int, resultCode: Int): PuberScreen {
         return BookmarkPickerScreen(
             BookmarkPickerParams(
                 itemId = itemId,
-                itemTitle = itemTitle,
                 resultCode = resultCode,
             )
         )

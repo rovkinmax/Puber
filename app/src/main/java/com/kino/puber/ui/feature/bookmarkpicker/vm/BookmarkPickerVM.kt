@@ -46,6 +46,10 @@ internal class BookmarkPickerVM(
             dismissCreateFolderDialog()
             return
         }
+        // The create dialog is hidden as soon as the folder exists, but the item is only added to
+        // it by a second request. Closing in that window would report a selection missing the very
+        // folder the user just created, so BACK waits it out.
+        if (state?.isCreatingFolder == true) return
         val selectedFolderIds = state
             ?.folders
             ?.filter(BookmarkFolderUi::isSelected)
@@ -56,6 +60,7 @@ internal class BookmarkPickerVM(
                 BookmarkPickerResult(
                     itemId = params.itemId,
                     selectedFolderIds = it,
+                    isInQuickFolder = state.quickFolderId != null && state.quickFolderId in it,
                 )
             },
         )
@@ -94,6 +99,7 @@ internal class BookmarkPickerVM(
                             isSelected = folder.id in selectedIds,
                         )
                     },
+                    quickFolderId = interactor.resolveQuickFolder(folders)?.id,
                 )
             )
         }
@@ -104,29 +110,36 @@ internal class BookmarkPickerVM(
         if (folderId in state.changingFolderIds) return
         val folder = state.folders.firstOrNull { it.id == folderId } ?: return
         val newSelection = !folder.isSelected
-        updateViewState(
-            state.copy(changingFolderIds = state.changingFolderIds + folderId)
-        )
+        // Applied up front so the row and any result reported before the request lands agree with
+        // what the user just did; reverted below if the request fails.
+        setFolderSelected(folderId, newSelection)
+        updateViewState<BookmarkPickerViewState.Content> {
+            copy(changingFolderIds = changingFolderIds + folderId)
+        }
         launch {
-            interactor.setItemInFolder(
-                itemId = params.itemId,
-                folderId = folderId,
-                selected = newSelection,
-            )
-            updateViewState<BookmarkPickerViewState.Content> {
-                copy(
-                    folders = folders.map { current ->
-                        if (current.id == folderId) {
-                            current.copy(
-                                isSelected = newSelection,
-                            )
-                        } else {
-                            current
-                        }
-                    },
-                    changingFolderIds = changingFolderIds - folderId,
+            runCatching {
+                interactor.setItemInFolder(
+                    itemId = params.itemId,
+                    folderId = folderId,
+                    selected = newSelection,
                 )
+            }.onFailure { error ->
+                setFolderSelected(folderId, folder.isSelected)
+                throw error
             }
+            updateViewState<BookmarkPickerViewState.Content> {
+                copy(changingFolderIds = changingFolderIds - folderId)
+            }
+        }
+    }
+
+    private fun setFolderSelected(folderId: Int, selected: Boolean) {
+        updateViewState<BookmarkPickerViewState.Content> {
+            copy(
+                folders = folders.map { current ->
+                    if (current.id == folderId) current.copy(isSelected = selected) else current
+                },
+            )
         }
     }
 
@@ -169,27 +182,27 @@ internal class BookmarkPickerVM(
                     folders = folders + BookmarkFolderUi(
                         id = folder.id,
                         title = folder.title,
-                        isSelected = false,
+                        // A folder is only created here in order to file the item into it, so the
+                        // row is selected from the moment it appears.
+                        isSelected = true,
                     ),
                     newFolderTitle = "",
                     isCreateFolderDialogVisible = false,
                     changingFolderIds = changingFolderIds + folder.id,
                 )
             }
-            interactor.setItemInFolder(
-                itemId = params.itemId,
-                folderId = folder.id,
-                selected = true,
-            )
+            runCatching {
+                interactor.setItemInFolder(
+                    itemId = params.itemId,
+                    folderId = folder.id,
+                    selected = true,
+                )
+            }.onFailure { error ->
+                setFolderSelected(folder.id, selected = false)
+                throw error
+            }
             updateViewState<BookmarkPickerViewState.Content> {
                 copy(
-                    folders = folders.map { current ->
-                        if (current.id == folder.id) {
-                            current.copy(isSelected = true)
-                        } else {
-                            current
-                        }
-                    },
                     changingFolderIds = changingFolderIds - folder.id,
                     isCreatingFolder = false,
                 )

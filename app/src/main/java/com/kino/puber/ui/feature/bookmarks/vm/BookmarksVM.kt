@@ -55,12 +55,11 @@ internal class BookmarksVM(
                 val item = action.item as VideoItemUIState
                 setItemSaved(item, action.isSaved)
             }
-            is CommonAction.ItemBookmarksRequested<*> -> {
+            is CommonAction.ItemBookmarksRequested<*> ->
                 router.openBookmarkPicker(
                     item = action.item as VideoItemUIState,
                     listener = { result -> if (result != null) loadBookmarks() },
                 )
-            }
             else -> super.onAction(action)
         }
     }
@@ -103,50 +102,59 @@ internal class BookmarksVM(
             val previousFolderId = (stateValue as? BookmarksViewState.Content)?.selectedFolderId
             val selectedFolder = folders.firstOrNull { it.id == previousFolderId }
                 ?: folders.firstOrNull()
-            val items = if (selectedFolder != null) {
-                loadAllFolderItems(selectedFolder.id)
-            } else {
-                emptyList()
-            }
             updateViewState(
                 BookmarksViewState.Content(
                     folders = folders,
                     selectedFolderId = selectedFolder?.id,
-                    items = mapper.mapShortItemList(items).markSaved(),
-                    isLoadingItems = false,
+                    items = emptyList(),
+                    isLoadingItems = selectedFolder != null,
                 )
             )
+            if (selectedFolder != null) {
+                loadAllFolderItems(selectedFolder.id)
+            }
         }
     }
 
     private fun loadFolderItems(folderId: Int) {
         launch {
-            val items = loadAllFolderItems(folderId)
-            updateViewState<BookmarksViewState.Content> {
-                copy(
-                    items = mapper.mapShortItemList(items).markSaved(),
-                    isLoadingItems = false,
-                )
-            }
+            loadAllFolderItems(folderId)
         }
     }
 
-    private suspend fun loadAllFolderItems(folderId: Int): List<Item> {
-        val firstPage = interactor.getBookmarkItems(folderId, page = 1)
-        if (firstPage.pagination.current >= firstPage.pagination.total) {
-            return firstPage.items
-        }
-        val items = firstPage.items.toMutableList()
-        var page = firstPage.pagination.current + 1
-        while (page <= firstPage.pagination.total) {
+    /**
+     * Walks every page of a folder, publishing each one as it arrives so a large folder shows its
+     * first rows immediately instead of after the whole walk. `total` is re-read from every
+     * response, and a folder that shrinks mid-walk (the page asked for is not the page returned)
+     * ends the walk with what has been collected rather than discarding it.
+     */
+    private suspend fun loadAllFolderItems(folderId: Int) {
+        val items = mutableListOf<Item>()
+        var page = 1
+        var totalPages = 1
+        while (page <= totalPages) {
             val response = interactor.getBookmarkItems(folderId, page)
-            check(response.pagination.current == page) {
-                "Bookmark pagination current ${response.pagination.current} did not match requested page $page"
-            }
+            if (response.pagination.current != page) break
             items += response.items
+            totalPages = response.pagination.total
             page++
+            publishFolderItems(folderId, items, isLoadingItems = page <= totalPages)
         }
-        return items.distinctBy { it.id }
+        publishFolderItems(folderId, items, isLoadingItems = false)
+    }
+
+    private fun publishFolderItems(folderId: Int, items: List<Item>, isLoadingItems: Boolean) {
+        updateViewState<BookmarksViewState.Content> {
+            // A folder switched during the walk owns the list now; drop the stale pages.
+            if (selectedFolderId != folderId) {
+                this
+            } else {
+                copy(
+                    items = mapper.mapShortItemList(items.distinctBy { it.id }).markSaved(),
+                    isLoadingItems = isLoadingItems,
+                )
+            }
+        }
     }
 
     private fun setItemSaved(item: VideoItemUIState, saved: Boolean) {

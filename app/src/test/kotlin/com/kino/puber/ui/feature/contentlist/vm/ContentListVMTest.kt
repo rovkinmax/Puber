@@ -19,17 +19,18 @@ import com.kino.puber.data.api.models.Pagination
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
 import com.kino.puber.domain.interactor.genre.GenreInteractor
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
 import com.kino.puber.ui.feature.contentlist.model.ContentListAction
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.contentlist.model.TabTypeConfig
-import com.kino.puber.ui.feature.showall.ShowAllScreen
 import com.kino.puber.ui.feature.main.model.TabType
+import com.kino.puber.ui.feature.showall.ShowAllScreen
 import com.kino.puber.util.MainDispatcherExtension
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
-import io.mockk.coVerify
 import io.mockk.verify
 import io.mockk.verifyOrder
 import kotlinx.coroutines.CompletableDeferred
@@ -284,6 +285,19 @@ class ContentListVMTest {
 
         verify(exactly = 1) { interactor.invalidateItemDetails(42) }
         verify(exactly = 1) { interactor.invalidateItemDetails(100) }
+    }
+
+    @Test
+    fun itemBookmarksRequested_opensTheBookmarkPickerForThatItem() {
+        val screen = mockk<PuberScreen>()
+        every {
+            screens.bookmarkPicker(itemId = 42, resultCode = any())
+        } returns screen
+        val vm = createVM()
+
+        vm.onAction(CommonAction.ItemBookmarksRequested(videoItem(42)))
+
+        verify { router.navigateForResult<BookmarkPickerResult>(screen, any(), any()) }
     }
 
     private fun createVM() = ContentListVM(

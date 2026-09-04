@@ -4,6 +4,7 @@ import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.Screens
 import com.kino.puber.core.ui.navigation.TabRouter
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.ui.feature.main.model.MainAction
 import com.kino.puber.ui.feature.main.model.MainUIMapper
@@ -72,6 +73,7 @@ internal class MainScreenComponentContractTest {
             mainUIMapper = mockk(relaxed = true),
             tabRouter = tabRouter,
             navigationPreferencesRepository = mockk<NavigationPreferencesRepository>(relaxed = true),
+            bookmarkPreferencesRepository = BookmarkPreferencesRepository(),
         )
         return ViewModelFixture(vm, router, screens, tabRouter)
     }

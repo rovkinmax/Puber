@@ -4,6 +4,7 @@ import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.data.api.models.ApiResponseList
 import com.kino.puber.data.api.models.Bookmark
+import com.kino.puber.data.api.models.BookmarkFolder
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.TmdbCastMember
@@ -33,36 +34,69 @@ class DetailsInteractorTest {
     )
 
     @Test
-    fun isInWatchLaterFolder_usesConfiguredQuickFolderIdentity() = runTest {
+    fun getBookmarkState_movieUsesConfiguredQuickFolderIdentity() = runTest {
         val item = movie(bookmarks = listOf(Bookmark(id = 7, title = "Renamed")))
-        coEvery { bookmarkFolderInteractor.isInQuickFolder(item.id) } returns true
+        coEvery { bookmarkFolderInteractor.getItemFolders(item.id) } returns listOf(
+            BookmarkFolder(id = 7, title = "Different response title"),
+        )
+        coEvery { bookmarkFolderInteractor.getQuickFolder() } returns Bookmark(7, "Renamed")
 
-        val result = interactor.isInWatchLaterFolder(item)
+        val state = interactor.getBookmarkState(item, BookmarkMode.Simple)
 
-        assertEquals(true, result)
-        coVerify(exactly = 1) { bookmarkFolderInteractor.isInQuickFolder(item.id) }
+        assertEquals(true, state.isInWatchLaterFolder)
+        assertEquals(true, state.isBookmarked)
     }
 
     @Test
-    fun isBookmarked_simpleSeriesRemainsIndependentFromFolderBookmarks() = runTest {
-        val item = Item(id = 42, title = "Series", type = ItemType.SERIAL)
+    fun getBookmarkState_movieResolvesBothFlagsFromOneMembershipRead() = runTest {
+        val item = movie(bookmarks = emptyList())
+        coEvery { bookmarkFolderInteractor.getItemFolders(item.id) } returns listOf(
+            BookmarkFolder(id = 8, title = "Other"),
+        )
+        coEvery { bookmarkFolderInteractor.getQuickFolder() } returns Bookmark(7, "Quick")
 
-        val result = interactor.isBookmarked(item, BookmarkMode.Simple)
+        val state = interactor.getBookmarkState(item, BookmarkMode.Extended)
 
-        assertEquals(false, result)
+        // Filed elsewhere: bookmarked in Extended mode, but not in the quick folder.
+        assertEquals(false, state.isInWatchLaterFolder)
+        assertEquals(true, state.isBookmarked)
+        coVerify(exactly = 1) { bookmarkFolderInteractor.getItemFolders(item.id) }
+        coVerify(exactly = 1) { bookmarkFolderInteractor.getQuickFolder() }
+    }
+
+    @Test
+    fun getBookmarkState_movieWithoutFoldersSkipsQuickFolderLookup() = runTest {
+        val item = movie(bookmarks = emptyList())
+        coEvery { bookmarkFolderInteractor.getItemFolders(item.id) } returns emptyList()
+
+        val state = interactor.getBookmarkState(item, BookmarkMode.Simple)
+
+        assertEquals(false, state.isInWatchLaterFolder)
+        assertEquals(false, state.isBookmarked)
+        coVerify(exactly = 0) { bookmarkFolderInteractor.getQuickFolder() }
+    }
+
+    @Test
+    fun getBookmarkState_simpleSeriesRemainsIndependentFromFolderBookmarks() = runTest {
+        val item = Item(id = 42, title = "Series", type = ItemType.SERIAL, inWatchlist = true)
+
+        val state = interactor.getBookmarkState(item, BookmarkMode.Simple)
+
+        assertEquals(true, state.isInWatchLaterFolder)
+        assertEquals(false, state.isBookmarked)
         coVerify(exactly = 0) { bookmarkFolderInteractor.getItemFolders(any()) }
     }
 
     @Test
-    fun isBookmarked_extendedChecksAllFolderMemberships() = runTest {
-        val item = movie(bookmarks = emptyList())
+    fun getBookmarkState_extendedSeriesChecksAllFolderMemberships() = runTest {
+        val item = Item(id = 42, title = "Series", type = ItemType.SERIAL)
         coEvery { bookmarkFolderInteractor.getItemFolders(item.id) } returns listOf(
-            com.kino.puber.data.api.models.BookmarkFolder(id = 8, title = "Other")
+            BookmarkFolder(id = 8, title = "Other"),
         )
 
-        val result = interactor.isBookmarked(item, BookmarkMode.Extended)
+        val state = interactor.getBookmarkState(item, BookmarkMode.Extended)
 
-        assertEquals(true, result)
+        assertEquals(true, state.isBookmarked)
         coVerify(exactly = 1) { bookmarkFolderInteractor.getItemFolders(item.id) }
     }
 

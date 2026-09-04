@@ -33,17 +33,34 @@ internal class DetailsInteractor(
         return tmdbCastRepository.getCast(imdbId)
     }
 
-    suspend fun isInWatchLaterFolder(item: Item): Boolean {
-        if (item.type.isSeriesLike()) return item.inWatchlist ?: false
-        return bookmarkFolderInteractor.isInQuickFolder(item.id)
-    }
-
-    suspend fun isBookmarked(item: Item, mode: BookmarkMode): Boolean {
-        return when {
-            mode == BookmarkMode.Simple && item.type.isSeriesLike() -> false
-            mode == BookmarkMode.Simple -> bookmarkFolderInteractor.isInQuickFolder(item.id)
-            else -> bookmarkFolderInteractor.getItemFolders(item.id).isNotEmpty()
+    /**
+     * Both flags derive from the same folder membership, so they are resolved together: fetching
+     * them separately cost a movie four requests where at most two are needed.
+     */
+    suspend fun getBookmarkState(item: Item, mode: BookmarkMode): DetailsBookmarkState {
+        if (item.type.isSeriesLike()) {
+            return DetailsBookmarkState(
+                isInWatchLaterFolder = item.inWatchlist ?: false,
+                isBookmarked = when (mode) {
+                    BookmarkMode.Simple -> false
+                    BookmarkMode.Extended -> bookmarkFolderInteractor.getItemFolders(item.id).isNotEmpty()
+                },
+            )
         }
+        val folders = bookmarkFolderInteractor.getItemFolders(item.id)
+        val quickFolderId = if (folders.isEmpty()) {
+            null
+        } else {
+            bookmarkFolderInteractor.getQuickFolder()?.id
+        }
+        val isInQuickFolder = quickFolderId != null && folders.any { it.id == quickFolderId }
+        return DetailsBookmarkState(
+            isInWatchLaterFolder = isInQuickFolder,
+            isBookmarked = when (mode) {
+                BookmarkMode.Simple -> isInQuickFolder
+                BookmarkMode.Extended -> folders.isNotEmpty()
+            },
+        )
     }
 
     suspend fun setMovieBookmarked(id: Int, bookmarked: Boolean): MovieBookmarkUpdate {
@@ -97,6 +114,11 @@ internal class DetailsInteractor(
         const val UNWATCHED_STATUS = 0
     }
 }
+
+internal data class DetailsBookmarkState(
+    val isInWatchLaterFolder: Boolean,
+    val isBookmarked: Boolean,
+)
 
 internal data class MovieWatchedUpdate(
     val isWatched: Boolean,

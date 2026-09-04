@@ -196,8 +196,6 @@ private fun RapidSwitchingHost(
         },
         tabRouter = tabRouter,
         tabAppRouterHolder = tabAppRouterHolder,
-        onSearchClick = {},
-        onSettingsClick = {},
     )
 }
 

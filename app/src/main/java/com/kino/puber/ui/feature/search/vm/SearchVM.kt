@@ -56,12 +56,11 @@ internal class SearchVM(
                 val item = action.item as VideoItemUIState
                 setItemSaved(item, action.isSaved)
             }
-            is CommonAction.ItemBookmarksRequested<*> -> {
+            is CommonAction.ItemBookmarksRequested<*> ->
                 router.openBookmarkPicker(
                     item = action.item as VideoItemUIState,
                     listener = ::onBookmarkPickerResult,
                 )
-            }
             is CommonAction.RetryClicked -> executeCurrentSearch()
             else -> super.onAction(action)
         }

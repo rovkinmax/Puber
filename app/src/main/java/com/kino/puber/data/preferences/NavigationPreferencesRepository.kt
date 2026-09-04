@@ -66,14 +66,16 @@ class NavigationPreferencesRepository private constructor(
         mode: NavigationMode,
         bookmarkMode: BookmarkMode = BookmarkMode.Simple,
     ): List<TabType> {
-        val baseTabs = fixedConfiguration?.visibleTabs ?: run {
-            if (mode == NavigationMode.TopTabs) {
-                migrateTopTabsIfNeeded()
-            }
-            val key = tabsKeyForMode(mode)
-            val stored = persistentPreferences.getString(key, null)
-            stored?.let(::deserializeTabs) ?: defaultTabsForMode(mode)
+        // A pinned configuration is the whole answer: derivation would drop tabs it lists
+        // (Cartoons/Anime when their toggles are off, Bookmarks outside Extended mode).
+        fixedConfiguration?.let { return it.visibleTabs }
+
+        if (mode == NavigationMode.TopTabs) {
+            migrateTopTabsIfNeeded()
         }
+        val key = tabsKeyForMode(mode)
+        val stored = persistentPreferences.getString(key, null)
+        val baseTabs = stored?.let(::deserializeTabs) ?: defaultTabsForMode(mode)
         val contentTabs = insertOptionalTabs(baseTabs.filterNot { it == TabType.Bookmarks })
         return if (bookmarkMode == BookmarkMode.Extended) {
             insertBookmarksTab(contentTabs, mode)

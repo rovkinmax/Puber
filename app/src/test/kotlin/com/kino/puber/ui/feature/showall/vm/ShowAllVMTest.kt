@@ -19,6 +19,7 @@ import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.data.api.models.Pagination
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.contentlist.ContentListInteractor
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
 import com.kino.puber.ui.feature.contentlist.model.SectionConfig
 import com.kino.puber.ui.feature.showall.model.ShowAllViewState
 import com.kino.puber.util.MainDispatcherExtension
@@ -32,6 +33,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
@@ -194,6 +196,48 @@ class ShowAllVMTest {
         verify(exactly = 1) { mapper.mapShortItemList(listOf(item)) }
         vm.testCancelScope()
         paginator.close()
+    }
+
+    @Test
+    fun bookmarkPickerResult_marksTheItemBookmarkedAndDropsTheStaleFirstPage() = runBlocking {
+        val item = Item(id = 25, title = "Interactor result", type = ItemType.MOVIE)
+        val mapper = mockk<VideoItemUIMapper>()
+        coEvery { interactor.loadPage(any(), page = 1) } returns page(item)
+        every { mapper.mapShortItemList(listOf(item)) } returns listOf(videoItem(25))
+        val screen = mockk<PuberScreen>()
+        every { screens.bookmarkPicker(any(), any()) } returns screen
+        val paginator = Paginator.Store<Item> { old, new -> old.id == new.id }
+        val vm = createVM(paginator = paginator, mapper = mapper)
+        vm.testOnStart()
+        withTimeout(2_000) {
+            while (vm.testStateValue !is ShowAllViewState.Content) {
+                delay(10)
+            }
+        }
+
+        vm.onAction(CommonAction.ItemBookmarksRequested(videoItem(25)))
+        val listener = slot<(BookmarkPickerResult?) -> Unit>()
+        verify { router.navigateForResult<BookmarkPickerResult>(screen, any(), capture(listener)) }
+        listener.captured(BookmarkPickerResult(itemId = 25, selectedFolderIds = listOf(7)))
+
+        val state = vm.testStateValue as ShowAllViewState.Content
+        assertTrue(state.items.single().isBookmarked)
+        verify { interactor.invalidateFirstPageCache() }
+        vm.testCancelScope()
+        paginator.close()
+    }
+
+    @Test
+    fun itemBookmarksRequested_opensTheBookmarkPickerForThatItem() {
+        val screen = mockk<PuberScreen>()
+        every {
+            screens.bookmarkPicker(itemId = 42, resultCode = any())
+        } returns screen
+        val vm = createVM()
+
+        vm.onAction(CommonAction.ItemBookmarksRequested(videoItem(42)))
+
+        verify { router.navigateForResult<BookmarkPickerResult>(screen, any(), any()) }
     }
 
     private fun createVM(

@@ -319,7 +319,13 @@ internal class HomeVM(
         updateViewState<HomeViewState.Content> {
             copy(
                 sections = sections.map { section ->
-                    section.copy(items = section.items.map { it.withBookmarkResult(result) })
+                    // Collection cards reuse VideoItemUIState with a collection id, so matching
+                    // them against an item id would flag an unrelated collection as bookmarked.
+                    if (section.type == HomeSectionType.Collections) {
+                        section
+                    } else {
+                        section.copy(items = section.items.map { it.withBookmarkResult(result) })
+                    }
                 },
             )
         }

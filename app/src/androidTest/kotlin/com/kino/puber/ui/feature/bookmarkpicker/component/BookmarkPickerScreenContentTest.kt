@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
@@ -11,7 +13,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kino.puber.R
@@ -77,14 +79,14 @@ internal class BookmarkPickerScreenContentTest {
             }
         }
 
-        composeRule.onNodeWithText(targetString(R.string.bookmark_picker_add_folder)).performClick()
+        composeRule.onNodeWithTag(BOOKMARK_ADD_FOLDER_ROW_TAG).activate()
 
         composeRule.onNodeWithTag(BOOKMARK_PICKER_DIALOG_TAG).assertDoesNotExist()
         composeRule.onNodeWithTag(BOOKMARK_CREATE_FOLDER_DIALOG_TAG).assertIsDisplayed()
         composeRule.onNodeWithText(targetString(R.string.bookmark_picker_new_folder_title))
             .assertIsDisplayed()
         composeRule.onNode(hasSetTextAction()).performTextInput("Weekend")
-        composeRule.onNodeWithText(targetString(R.string.bookmark_picker_create)).performClick()
+        composeRule.onNodeWithTag(BOOKMARK_CREATE_FOLDER_CONFIRM_TAG).activate()
 
         assertEquals(BookmarkPickerAction.AddFolderRequested, actions.first())
         assertEquals(
@@ -106,7 +108,7 @@ internal class BookmarkPickerScreenContentTest {
             }
         }
 
-        composeRule.onNodeWithTag(bookmarkFolderRowTag(2)).performClick()
+        composeRule.onNodeWithTag(bookmarkFolderRowTag(2)).activate()
 
         assertEquals(listOf(BookmarkPickerAction.FolderToggled(2)), actions)
     }
@@ -128,4 +130,14 @@ internal class BookmarkPickerScreenContentTest {
 
     private fun targetString(resourceId: Int): String =
         InstrumentationRegistry.getInstrumentation().targetContext.getString(resourceId)
+}
+
+/**
+ * `androidx.tv.material3` components are activated by DPAD enter while focused and expose that as a
+ * semantics click; they register no pointer input, so `performClick()` never reaches their
+ * `onClick`. Driving the semantics action also keeps the target explicit, instead of depending on
+ * which row currently holds focus.
+ */
+private fun SemanticsNodeInteraction.activate(): SemanticsNodeInteraction = apply {
+    performSemanticsAction(SemanticsActions.OnClick)
 }

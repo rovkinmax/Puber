@@ -44,8 +44,7 @@ internal class DetailsVM(
     private val interactor: DetailsInteractor,
     private val episodeScheduleInteractor: EpisodeScheduleInteractor,
     private val savedItemInteractor: SavedItemInteractor,
-    private val bookmarkPreferencesRepository: BookmarkPreferencesRepository =
-        BookmarkPreferencesRepository(),
+    private val bookmarkPreferencesRepository: BookmarkPreferencesRepository,
     private val resources: ResourceProvider,
     override val errorHandler: ErrorHandler,
 ) : PuberVM<DetailsScreenState>(router) {
@@ -91,13 +90,14 @@ internal class DetailsVM(
                 ?.castCards
                 .orEmpty()
             val bookmarkMode = bookmarkPreferencesRepository.mode.value
+            val bookmarkState = interactor.getBookmarkState(item, bookmarkMode)
             val mapped = scheduleController.map(
                 item = item,
-                isInWatchlist = interactor.isInWatchLaterFolder(item),
+                isInWatchlist = bookmarkState.isInWatchLaterFolder,
             )
             updateViewState(
                 preserveCastPhotos(mapped, previousCastCards).copy(
-                    isBookmarked = interactor.isBookmarked(item, bookmarkMode),
+                    isBookmarked = bookmarkState.isBookmarked,
                     bookmarkMode = bookmarkMode,
                     seasonsPanelVisible = mapped.initialEpisodeFocusId != null,
                 ),
@@ -159,12 +159,11 @@ internal class DetailsVM(
                 val item = action.item as VideoItemUIState
                 setSimilarItemSaved(item, action.isSaved)
             }
-            is CommonAction.ItemBookmarksRequested<*> -> {
+            is CommonAction.ItemBookmarksRequested<*> ->
                 router.openBookmarkPicker(
                     item = action.item as VideoItemUIState,
                     listener = ::onSimilarBookmarkPickerResult,
                 )
-            }
             is CommonAction.RetryClicked -> loadData()
             else -> super.onAction(action)
         }
@@ -378,7 +377,6 @@ internal class DetailsVM(
             bookmarkPreferencesRepository.mode.value == BookmarkMode.Extended ->
                 router.openBookmarkPicker(
                     itemId = item.id,
-                    itemTitle = item.title,
                     listener = ::onCurrentBookmarkPickerResult,
                 )
             !item.type.isSeriesLike() -> toggleSimpleMovieBookmark()
@@ -612,7 +610,8 @@ internal class DetailsVM(
             isInWatchlist
         } else {
             try {
-                interactor.isInWatchLaterFolder(item)
+                interactor.getBookmarkState(item, bookmarkPreferencesRepository.mode.value)
+                    .isInWatchLaterFolder
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {

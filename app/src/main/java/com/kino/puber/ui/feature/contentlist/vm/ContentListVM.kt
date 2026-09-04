@@ -63,12 +63,11 @@ internal class ContentListVM(
             is CommonAction.ItemFocused<*> -> onItemFocused(action.item as VideoItemUIState)
             is CommonAction.ItemSelected<*> -> onItemSelected(action.item as VideoItemUIState)
             is CommonAction.ItemPlayed<*> -> onItemPlayed(action.item as VideoItemUIState)
-            is CommonAction.ItemBookmarksRequested<*> -> {
+            is CommonAction.ItemBookmarksRequested<*> ->
                 router.openBookmarkPicker(
                     item = action.item as VideoItemUIState,
                     listener = ::onBookmarkPickerResult,
                 )
-            }
             is ContentListAction.ShowAll -> openShowAll(action.config)
             is ContentListAction.GenreSelected -> onGenreSelected(action.genreId)
             is ContentListAction.HeroSelected -> openDetails(action.itemId)

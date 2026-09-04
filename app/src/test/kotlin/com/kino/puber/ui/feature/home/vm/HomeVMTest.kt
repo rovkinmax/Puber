@@ -19,8 +19,9 @@ import com.kino.puber.domain.interactor.api.ApiDomainInteractor
 import com.kino.puber.domain.interactor.api.ApiDomainState
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.home.HomeInteractor
-import com.kino.puber.ui.feature.home.model.HomeUIMapper
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
 import com.kino.puber.ui.feature.home.model.HomeSectionType
+import com.kino.puber.ui.feature.home.model.HomeUIMapper
 import com.kino.puber.util.FakeResourceProvider
 import com.kino.puber.util.MainDispatcherExtension
 import io.mockk.coEvery
@@ -188,6 +189,19 @@ class HomeVMTest {
 
         coVerify(exactly = 1) { interactor.getWatchLaterItems() }
         verify { mapper.mapItemSection(listOf(watchLaterItem), HomeSectionType.WatchLater) }
+    }
+
+    @Test
+    fun itemBookmarksRequested_opensTheBookmarkPickerForThatItem() {
+        val screen = mockk<PuberScreen>()
+        every {
+            screens.bookmarkPicker(itemId = 42, resultCode = any())
+        } returns screen
+        val vm = createVM()
+
+        vm.onAction(CommonAction.ItemBookmarksRequested(videoItem(42)))
+
+        verify { router.navigateForResult<BookmarkPickerResult>(screen, any(), any()) }
     }
 
     private fun createVM() = HomeVM(
