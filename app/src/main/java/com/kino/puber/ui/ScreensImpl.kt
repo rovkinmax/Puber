@@ -30,6 +30,8 @@ import com.kino.puber.ui.feature.history.component.HistoryScreen
 import com.kino.puber.ui.feature.history.model.HistoryPresentation
 import com.kino.puber.ui.feature.collections.component.CollectionsScreen
 import com.kino.puber.ui.feature.bookmarks.component.BookmarksScreen
+import com.kino.puber.ui.feature.bookmarkpicker.component.BookmarkPickerScreen
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerParams
 import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.parcelize.Parcelize
 
@@ -63,6 +65,15 @@ internal object ScreensImpl : Screens {
     override fun collections(): PuberScreen = CollectionsScreen()
 
     override fun bookmarks(): PuberScreen = BookmarksScreen()
+
+    override fun bookmarkPicker(itemId: Int, resultCode: Int): PuberScreen {
+        return BookmarkPickerScreen(
+            BookmarkPickerParams(
+                itemId = itemId,
+                resultCode = resultCode,
+            )
+        )
+    }
 
     override fun favorites(): PuberScreen {
         return FavoritesScreen()

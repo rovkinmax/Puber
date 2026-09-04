@@ -453,6 +453,7 @@ private fun DetailsMainPage(
         ActionButtonsRow(
             buttons = state.buttons,
             isInWatchlist = state.isInWatchlist,
+            isBookmarked = state.isBookmarked,
             isWatched = state.isWatched,
             onAction = onAction,
             currentEpisode = state.currentEpisode,
@@ -475,6 +476,7 @@ private fun DetailsMainPage(
 private fun ActionButtonsRow(
     buttons: List<DetailsButtonUIState>,
     isInWatchlist: Boolean,
+    isBookmarked: Boolean,
     isWatched: Boolean,
     onAction: (UIAction) -> Unit,
     currentEpisode: VideoItemUIState?,
@@ -514,6 +516,7 @@ private fun ActionButtonsRow(
             DetailsActionButton(
                 button = button,
                 isInWatchlist = isInWatchlist,
+                isBookmarked = isBookmarked,
                 isWatched = isWatched,
                 onAction = onAction,
                 currentEpisode = currentEpisode,
@@ -528,6 +531,7 @@ private fun ActionButtonsRow(
 private fun DetailsActionButton(
     button: DetailsButtonUIState,
     isInWatchlist: Boolean,
+    isBookmarked: Boolean,
     isWatched: Boolean,
     onAction: (UIAction) -> Unit,
     currentEpisode: VideoItemUIState?,
@@ -544,6 +548,7 @@ private fun DetailsActionButton(
         )
         is DetailsButtonUIState.IconOnly -> DetailsIconButton(button, onAction, modifier)
         is DetailsButtonUIState.WatchlistToggle -> DetailsWatchlistButton(button, isInWatchlist, onAction, modifier)
+        is DetailsButtonUIState.BookmarkToggle -> DetailsBookmarkButton(button, isBookmarked, onAction, modifier)
         is DetailsButtonUIState.WatchedToggle -> DetailsWatchedButton(button, isWatched, onAction, modifier)
     }
 }
@@ -603,6 +608,30 @@ private fun DetailsWatchlistButton(
     ) {
         Icon(
             imageVector = if (checked) PhosphorIcons.Fill.BookmarkSimple else PhosphorIcons.Duotone.BookmarkSimple,
+            contentDescription = stringResource(button.contentDescription),
+            modifier = Modifier.size(20.dp),
+            tint = if (checked) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+        )
+    }
+}
+
+@Composable
+private fun DetailsBookmarkButton(
+    button: DetailsButtonUIState.BookmarkToggle,
+    checked: Boolean,
+    onAction: (UIAction) -> Unit,
+    modifier: Modifier,
+) {
+    IconButton(
+        onClick = { onAction(button.action) },
+        modifier = modifier,
+    ) {
+        Icon(
+            imageVector = if (checked) {
+                PhosphorIcons.Fill.BookmarkSimple
+            } else {
+                PhosphorIcons.Duotone.BookmarkSimple
+            },
             contentDescription = stringResource(button.contentDescription),
             modifier = Modifier.size(20.dp),
             tint = if (checked) MaterialTheme.colorScheme.primary else LocalContentColor.current,

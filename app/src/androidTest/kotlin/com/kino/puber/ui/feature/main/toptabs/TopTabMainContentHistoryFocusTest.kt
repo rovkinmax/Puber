@@ -218,8 +218,6 @@ private data object TopTabHistoryProbeHostScreen : PuberScreen {
             onAction = {},
             tabRouter = requireNotNull(TopTabHistoryProbeHost.tabRouter),
             tabAppRouterHolder = requireNotNull(TopTabHistoryProbeHost.tabAppRouterHolder),
-            onSearchClick = {},
-            onSettingsClick = {},
         )
     }
 }

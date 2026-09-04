@@ -13,7 +13,9 @@ import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.Trailer
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
+import com.kino.puber.domain.interactor.details.DetailsBookmarkState
 import com.kino.puber.domain.interactor.details.DetailsInteractor
 import com.kino.puber.domain.interactor.schedule.EpisodeScheduleInteractor
 import com.kino.puber.domain.model.EpisodeScheduleResult
@@ -52,6 +54,7 @@ class DetailsVMCastTest {
     private lateinit var interactor: DetailsInteractor
     private lateinit var episodeScheduleInteractor: EpisodeScheduleInteractor
     private lateinit var savedItemInteractor: SavedItemInteractor
+    private val bookmarkPreferences = BookmarkPreferencesRepository()
     private lateinit var errorHandler: ErrorHandler
 
     @BeforeEach
@@ -71,7 +74,7 @@ class DetailsVMCastTest {
 
         coEvery { interactor.getItemDetails(42) } returns testItem
         coEvery { interactor.refreshItemDetails(42) } returns testItem
-        coEvery { interactor.isInWatchLaterFolder(any()) } returns false
+        coEvery { interactor.getBookmarkState(any(), any()) } returns bookmarkState()
         coEvery { interactor.getSimilarItems(42) } returns emptyList()
         coEvery { episodeScheduleInteractor.getSchedule(any()) } returns
             EpisodeScheduleResult.MissingCredentials
@@ -220,6 +223,7 @@ class DetailsVMCastTest {
         interactor = interactor,
         episodeScheduleInteractor = episodeScheduleInteractor,
         savedItemInteractor = savedItemInteractor,
+        bookmarkPreferencesRepository = bookmarkPreferences,
         resources = FakeResourceProvider(),
         errorHandler = errorHandler,
     ).also { it.testOnStart() }
@@ -264,3 +268,11 @@ class DetailsVMCastTest {
         type = ItemType.SERIAL,
     )
 }
+
+private fun bookmarkState(
+    isInWatchLaterFolder: Boolean = false,
+    isBookmarked: Boolean = false,
+) = DetailsBookmarkState(
+    isInWatchLaterFolder = isInWatchLaterFolder,
+    isBookmarked = isBookmarked,
+)

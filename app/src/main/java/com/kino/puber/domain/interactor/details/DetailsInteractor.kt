@@ -1,20 +1,19 @@
 package com.kino.puber.domain.interactor.details
 
 import com.kino.puber.data.api.KinoPubApiClient
-import com.kino.puber.data.api.models.BookmarkFolder
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.WatchingToggleResponse
 import com.kino.puber.data.api.models.isSeriesLike
 import com.kino.puber.data.repository.ItemDetailsRepository
 import com.kino.puber.data.repository.TmdbCastRepository
-import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
-import kotlinx.coroutines.CancellationException
+import com.kino.puber.domain.interactor.bookmarks.BookmarkFolderInteractor
 
 internal class DetailsInteractor(
     private val api: KinoPubApiClient,
     private val itemDetailsRepository: ItemDetailsRepository,
-    private val watchLaterBookmarkInteractor: WatchLaterBookmarkInteractor,
+    private val bookmarkFolderInteractor: BookmarkFolderInteractor,
     private val tmdbCastRepository: TmdbCastRepository,
 ) {
 
@@ -34,40 +33,41 @@ internal class DetailsInteractor(
         return tmdbCastRepository.getCast(imdbId)
     }
 
-    suspend fun isInWatchLaterFolder(item: Item): Boolean {
-        if (item.type.isSeriesLike()) return item.inWatchlist ?: false
-        if (item.bookmarks.orEmpty().isNotEmpty()) {
-            return true
+    /**
+     * Both flags derive from the same folder membership, so they are resolved together: fetching
+     * them separately cost a movie four requests where at most two are needed.
+     */
+    suspend fun getBookmarkState(item: Item, mode: BookmarkMode): DetailsBookmarkState {
+        if (item.type.isSeriesLike()) {
+            return DetailsBookmarkState(
+                isInWatchLaterFolder = item.inWatchlist ?: false,
+                isBookmarked = when (mode) {
+                    BookmarkMode.Simple -> false
+                    BookmarkMode.Extended -> bookmarkFolderInteractor.getItemFolders(item.id).isNotEmpty()
+                },
+            )
         }
-        return getMovieBookmarkFolders(item.id).isNotEmpty()
+        val folders = bookmarkFolderInteractor.getItemFolders(item.id)
+        val quickFolderId = if (folders.isEmpty()) {
+            null
+        } else {
+            bookmarkFolderInteractor.getQuickFolder()?.id
+        }
+        val isInQuickFolder = quickFolderId != null && folders.any { it.id == quickFolderId }
+        return DetailsBookmarkState(
+            isInWatchLaterFolder = isInQuickFolder,
+            isBookmarked = when (mode) {
+                BookmarkMode.Simple -> isInQuickFolder
+                BookmarkMode.Extended -> folders.isNotEmpty()
+            },
+        )
     }
 
     suspend fun setMovieBookmarked(id: Int, bookmarked: Boolean): MovieBookmarkUpdate {
-        if (bookmarked) {
-            val folder = watchLaterBookmarkInteractor.add(id).getOrThrow().let { bookmark ->
-                BookmarkFolder(id = bookmark.id, title = bookmark.title, count = bookmark.count ?: 0)
-            }
-            itemDetailsRepository.invalidate(id)
-            return MovieBookmarkUpdate(
-                isBookmarked = true,
-                folderTitle = folder.title,
-            )
-        }
-
-        val folders = getMovieBookmarkFolders(id)
-        val folder = folders.firstOrNull()
-        if (folder != null) {
-            api.removeBookmarkItem(itemId = id, folderId = folder.id).getOrThrow()
-            itemDetailsRepository.invalidate(id)
-        }
-        val remainingFolders = if (folder != null) {
-            readRemainingBookmarkFolders(id, folders.drop(1))
-        } else {
-            emptyList()
-        }
+        val update = bookmarkFolderInteractor.setQuickSaved(id, bookmarked)
         return MovieBookmarkUpdate(
-            isBookmarked = remainingFolders.isNotEmpty(),
-            folderTitle = folder?.title,
+            isBookmarked = update.isSaved,
+            folderTitle = update.folder?.title,
         )
     }
 
@@ -101,19 +101,6 @@ internal class DetailsInteractor(
         return WatchedUpdate(isWatched = response.confirmedWatchedOr(watched))
     }
 
-    private suspend fun readRemainingBookmarkFolders(
-        id: Int,
-        knownRemaining: List<BookmarkFolder>,
-    ): List<BookmarkFolder> {
-        return try {
-            getMovieBookmarkFolders(id)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Throwable) {
-            knownRemaining
-        }
-    }
-
     private fun WatchingToggleResponse.confirmedWatchedOr(requested: Boolean): Boolean {
         return when {
             watched != null -> watched == WATCHED_STATUS
@@ -122,15 +109,16 @@ internal class DetailsInteractor(
         }
     }
 
-    private suspend fun getMovieBookmarkFolders(id: Int): List<BookmarkFolder> {
-        return api.getItemBookmarkFolders(id).getOrThrow()
-    }
-
     private companion object {
         const val WATCHED_STATUS = 1
         const val UNWATCHED_STATUS = 0
     }
 }
+
+internal data class DetailsBookmarkState(
+    val isInWatchLaterFolder: Boolean,
+    val isBookmarked: Boolean,
+)
 
 internal data class MovieWatchedUpdate(
     val isWatched: Boolean,

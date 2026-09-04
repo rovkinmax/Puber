@@ -2,6 +2,7 @@ package com.kino.puber.data.preferences
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.ui.feature.main.model.TabType
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,15 +62,26 @@ class NavigationPreferencesRepository private constructor(
         persistentPreferences.edit().putString(KEY_NAVIGATION_MODE, mode.name).apply()
     }
 
-    fun getVisibleTabs(mode: NavigationMode): List<TabType> {
+    fun getVisibleTabs(
+        mode: NavigationMode,
+        bookmarkMode: BookmarkMode = BookmarkMode.Simple,
+    ): List<TabType> {
+        // A pinned configuration is the whole answer: derivation would drop tabs it lists
+        // (Cartoons/Anime when their toggles are off, Bookmarks outside Extended mode).
         fixedConfiguration?.let { return it.visibleTabs }
+
         if (mode == NavigationMode.TopTabs) {
             migrateTopTabsIfNeeded()
         }
         val key = tabsKeyForMode(mode)
         val stored = persistentPreferences.getString(key, null)
         val baseTabs = stored?.let(::deserializeTabs) ?: defaultTabsForMode(mode)
-        return insertOptionalTabs(baseTabs)
+        val contentTabs = insertOptionalTabs(baseTabs.filterNot { it == TabType.Bookmarks })
+        return if (bookmarkMode == BookmarkMode.Extended) {
+            insertBookmarksTab(contentTabs, mode)
+        } else {
+            contentTabs
+        }
     }
 
     private fun migrateTopTabsIfNeeded() {
@@ -100,10 +112,29 @@ class NavigationPreferencesRepository private constructor(
         return normalized
     }
 
+    private fun insertBookmarksTab(tabs: List<TabType>, mode: NavigationMode): List<TabType> {
+        val normalized = tabs.filterNot { it == TabType.Bookmarks }.toMutableList()
+        // Bookmarks belongs next to the other "my stuff" entries. A stored tab list need not
+        // contain either anchor, and falling back to index 0 there would push Bookmarks ahead of
+        // Home; sit it before Settings instead, or last, the way insertOptionalTabs degrades.
+        val anchors = when (mode) {
+            NavigationMode.TopTabs -> listOf(TabType.Home)
+            NavigationMode.SideDrawer -> listOf(TabType.Favourites, TabType.Home)
+        }
+        val insertionIndex = anchors.firstNotNullOfOrNull { anchor ->
+            normalized.indexOf(anchor).takeIf { it >= 0 }?.plus(1)
+        }
+            ?: normalized.indexOf(TabType.Settings).takeIf { it >= 0 }
+            ?: normalized.size
+        normalized.add(index = insertionIndex, element = TabType.Bookmarks)
+        return normalized
+    }
+
     fun setVisibleTabs(mode: NavigationMode, tabs: List<TabType>) {
         if (fixedConfiguration != null) return
         val key = tabsKeyForMode(mode)
-        val withSettings = ensureRequiredTabs(mode, tabs).filterNot { it.isOptionalContentTab() }
+        val withSettings = ensureRequiredTabs(mode, tabs)
+            .filterNot { it.isOptionalContentTab() || it == TabType.Bookmarks }
         persistentPreferences.edit().putString(key, serializeTabs(withSettings)).apply()
     }
 
