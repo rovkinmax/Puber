@@ -180,8 +180,17 @@ internal class HomeVM(
         val freshSeriesDeferred = async { interactor.getFreshItems("serial").logFailure("fresh series") }
         val popularMoviesDeferred = async { interactor.getPopularByType("movie").logFailure("popular movies") }
         val popularSeriesDeferred = async { interactor.getPopularByType("serial").logFailure("popular series") }
-        val watchLaterDeferred = if (bookmarkPreferencesRepository.mode.value == BookmarkMode.Simple) {
+        // Extended mode reaches every folder through the Bookmarks tab, so Home carries no
+        // bookmark rows there. Simple mode has neither that tab nor the folder picker: without
+        // these two rows, folders the account already had would be unreachable in the app.
+        val isSimpleMode = bookmarkPreferencesRepository.mode.value == BookmarkMode.Simple
+        val watchLaterDeferred = if (isSimpleMode) {
             async { interactor.getWatchLaterItems().logFailure("watch later") }
+        } else {
+            null
+        }
+        val bookmarksDeferred = if (isSimpleMode) {
+            async { interactor.getGenericBookmarkItems().logFailure("bookmark items") }
         } else {
             null
         }
@@ -199,6 +208,7 @@ internal class HomeVM(
             popularMoviesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularMovies) },
             popularSeriesDeferred.await()?.let { mapper.mapItemSection(it, HomeSectionType.PopularSeries) },
             watchLaterDeferred?.await()?.let { mapper.mapItemSection(it, HomeSectionType.WatchLater) },
+            bookmarksDeferred?.await()?.let { mapper.mapItemSection(it, HomeSectionType.Bookmarks) },
             collectionsDeferred.await()?.let { mapper.mapCollectionSection(it) },
             mapper.mapItemSection(hotItems, HomeSectionType.Hot),
         ).sortedBy { it.type.ordinal }

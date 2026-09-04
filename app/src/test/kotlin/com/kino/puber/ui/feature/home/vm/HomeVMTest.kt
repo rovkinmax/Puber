@@ -75,6 +75,7 @@ class HomeVMTest {
         coEvery { interactor.getFreshItems(any()) } returns Result.success(emptyList())
         coEvery { interactor.getPopularByType(any()) } returns Result.success(emptyList())
         coEvery { interactor.getWatchLaterItems() } returns Result.success(emptyList())
+        coEvery { interactor.getGenericBookmarkItems() } returns Result.success(emptyList())
         coEvery { interactor.getCollections() } returns Result.success(emptyList())
         every { mapper.mapItemSection(any(), any()) } returns null
         every { mapper.mapCollectionSection(any()) } returns null
@@ -174,8 +175,10 @@ class HomeVMTest {
 
         coVerify(exactly = 1) { interactor.getWatchingItems() }
         coVerify(exactly = 0) { interactor.getWatchLaterItems() }
+        coVerify(exactly = 0) { interactor.getGenericBookmarkItems() }
         verify { mapper.mapItemSection(listOf(watchingItem), HomeSectionType.ContinueWatching) }
         verify(exactly = 0) { mapper.mapItemSection(any(), HomeSectionType.WatchLater) }
+        verify(exactly = 0) { mapper.mapItemSection(any(), HomeSectionType.Bookmarks) }
     }
 
     @Test
@@ -189,6 +192,21 @@ class HomeVMTest {
 
         coVerify(exactly = 1) { interactor.getWatchLaterItems() }
         verify { mapper.mapItemSection(listOf(watchLaterItem), HomeSectionType.WatchLater) }
+    }
+
+    @Test
+    fun simpleMode_loadsTheOtherFoldersSection() {
+        // Simple mode shows neither the Bookmarks tab nor the folder picker, so this row is the
+        // only way an account's other folders stay reachable.
+        val bookmarkItem = item(4)
+        coEvery { interactor.getGenericBookmarkItems() } returns Result.success(listOf(bookmarkItem))
+        val vm = createVM()
+
+        vm.testOnStart()
+        mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { interactor.getGenericBookmarkItems() }
+        verify { mapper.mapItemSection(listOf(bookmarkItem), HomeSectionType.Bookmarks) }
     }
 
     @Test

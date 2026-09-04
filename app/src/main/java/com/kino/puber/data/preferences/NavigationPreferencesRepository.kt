@@ -114,12 +114,19 @@ class NavigationPreferencesRepository private constructor(
 
     private fun insertBookmarksTab(tabs: List<TabType>, mode: NavigationMode): List<TabType> {
         val normalized = tabs.filterNot { it == TabType.Bookmarks }.toMutableList()
-        val anchor = when (mode) {
-            NavigationMode.TopTabs -> TabType.Home
-            NavigationMode.SideDrawer -> TabType.Favourites
+        // Bookmarks belongs next to the other "my stuff" entries. A stored tab list need not
+        // contain either anchor, and falling back to index 0 there would push Bookmarks ahead of
+        // Home; sit it before Settings instead, or last, the way insertOptionalTabs degrades.
+        val anchors = when (mode) {
+            NavigationMode.TopTabs -> listOf(TabType.Home)
+            NavigationMode.SideDrawer -> listOf(TabType.Favourites, TabType.Home)
         }
-        val anchorIndex = normalized.indexOf(anchor)
-        normalized.add(index = if (anchorIndex >= 0) anchorIndex + 1 else 0, element = TabType.Bookmarks)
+        val insertionIndex = anchors.firstNotNullOfOrNull { anchor ->
+            normalized.indexOf(anchor).takeIf { it >= 0 }?.plus(1)
+        }
+            ?: normalized.indexOf(TabType.Settings).takeIf { it >= 0 }
+            ?: normalized.size
+        normalized.add(index = insertionIndex, element = TabType.Bookmarks)
         return normalized
     }
 

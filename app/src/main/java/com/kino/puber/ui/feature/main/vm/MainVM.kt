@@ -108,14 +108,19 @@ internal class MainVM(
             }
         }
         if (bookmarkModeChanged) {
-            tabRefreshVersions[TabType.Home] = (tabRefreshVersions[TabType.Home] ?: 0) + 1
+            // Every list maps its items through VideoItemUIMapper, which stamps the mode into
+            // each VideoItemUIState, so a tab left standing keeps offering the previous mode's
+            // context menu until it is rebuilt.
+            BOOKMARK_MODE_AFFECTED_TABS.forEach { tab ->
+                tabRefreshVersions[tab] = (tabRefreshVersions[tab] ?: 0) + 1
+            }
         }
         updateViewState(updatedState)
 
         val selectedTabChanged = updatedState.selectedTab != previousState.selectedTab
         val selectedTabNeedsRefresh =
             showAnimeChanged && updatedState.selectedTab in ANIME_FILTERED_TABS ||
-                bookmarkModeChanged && updatedState.selectedTab == TabType.Home
+                bookmarkModeChanged && updatedState.selectedTab in BOOKMARK_MODE_AFFECTED_TABS
         if (selectedTabChanged || selectedTabNeedsRefresh) {
             tabRouter.openTab(buildTabContent(updatedState.selectedTab, updatedState.navigationMode))
         }
@@ -143,6 +148,13 @@ internal class MainVM(
             TabType.Series,
             TabType.Cartoons,
         )
+
+        // Every tab that renders video items, so every tab whose context menus carry the mode.
+        // Settings is excluded: it is the tab the change is made from, and rebuilding it under
+        // the user would throw away the focus and scroll position of the row they just used.
+        // Bookmarks is excluded because it only exists in Extended mode and is built fresh there.
+        val BOOKMARK_MODE_AFFECTED_TABS = TabType.entries.toSet() -
+            setOf(TabType.Settings, TabType.Bookmarks)
     }
 
     private data class MainPreferences(

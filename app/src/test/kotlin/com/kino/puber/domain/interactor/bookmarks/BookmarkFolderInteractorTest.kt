@@ -3,6 +3,10 @@ package com.kino.puber.domain.interactor.bookmarks
 import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.data.api.models.BookmarkFolder
+import com.kino.puber.data.api.models.Item
+import com.kino.puber.data.api.models.ItemType
+import com.kino.puber.data.api.models.PaginatedResponse
+import com.kino.puber.data.api.models.Pagination
 import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.data.repository.ItemDetailsRepository
 import io.mockk.coEvery
@@ -118,6 +122,51 @@ internal class BookmarkFolderInteractorTest {
         }
         verify(exactly = 0) { itemDetailsRepository.invalidate(any()) }
     }
+
+    @Test
+    fun getOtherFolderItems_skipsTheQuickFolderAndEmptyFoldersAndDeduplicates() = runTest {
+        val preferences = BookmarkPreferencesRepository(quickFolderId = 7)
+        coEvery { api.getBookmarks() } returns Result.success(
+            listOf(
+                Bookmark(id = 7, title = "Буду смотреть", count = 3),
+                Bookmark(id = 8, title = "Family", count = 2),
+                Bookmark(id = 9, title = "Empty", count = 0),
+                Bookmark(id = 10, title = "Later", count = 1),
+            )
+        )
+        coEvery { api.getBookmarkItems(8, null) } returns Result.success(page(item(1), item(2)))
+        coEvery { api.getBookmarkItems(10, null) } returns Result.success(page(item(2), item(3)))
+
+        val items = interactor(preferences).getOtherFolderItems(limit = 20)
+
+        assertEquals(listOf(1, 2, 3), items.map { it.id })
+        coVerify(exactly = 0) { api.getBookmarkItems(7, any()) }
+        coVerify(exactly = 0) { api.getBookmarkItems(9, any()) }
+    }
+
+    @Test
+    fun getOtherFolderItems_stopsRequestingFoldersOnceTheLimitIsReached() = runTest {
+        val preferences = BookmarkPreferencesRepository(quickFolderId = 7)
+        coEvery { api.getBookmarks() } returns Result.success(
+            listOf(
+                Bookmark(id = 8, title = "Family", count = 2),
+                Bookmark(id = 10, title = "Later", count = 5),
+            )
+        )
+        coEvery { api.getBookmarkItems(8, null) } returns Result.success(page(item(1), item(2)))
+
+        val items = interactor(preferences).getOtherFolderItems(limit = 2)
+
+        assertEquals(listOf(1, 2), items.map { it.id })
+        coVerify(exactly = 0) { api.getBookmarkItems(10, any()) }
+    }
+
+    private fun item(id: Int) = Item(id = id, title = "Item $id", type = ItemType.MOVIE)
+
+    private fun page(vararg items: Item) = PaginatedResponse(
+        items = items.toList(),
+        pagination = Pagination(current = 1, perpage = items.size, total = 1),
+    )
 
     private fun interactor(preferences: BookmarkPreferencesRepository) = BookmarkFolderInteractor(
         api = api,

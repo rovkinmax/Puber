@@ -36,6 +36,7 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Duotone
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.duotone.CalendarBlank
+import com.adamglin.phosphoricons.fill.BookmarkSimple
 import com.adamglin.phosphoricons.fill.Eye
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -79,6 +80,7 @@ data class VideoItemUIState(
 )
 
 internal const val WATCHED_INDICATOR_TEST_TAG = "watched_indicator"
+internal const val BOOKMARK_INDICATOR_TEST_TAG = "bookmark_indicator"
 internal const val SCHEDULED_VIDEO_ITEM_TEST_TAG = "scheduled_video_item"
 
 @Composable
@@ -134,6 +136,13 @@ private fun Modifier.videoItemModifier(
 @Composable
 private fun BoxScope.PlayableVideoItemContent(state: VideoItemUIState) {
     VideoItemArtwork(state)
+    BookmarkIndicatorBadge(
+        // Only Extended mode can put an item into an arbitrary folder, and only there does the
+        // context menu open the picker. In Simple mode the single save row writes to the quick
+        // folder alone, so a badge for "filed somewhere" would mark items that row cannot unsave.
+        visible = state.isBookmarked && state.bookmarkMode == BookmarkMode.Extended,
+        modifier = Modifier.align(Alignment.TopStart),
+    )
     UnwatchedCountBadge(
         count = state.unwatchedCount,
         modifier = Modifier.align(Alignment.TopEnd),
@@ -293,6 +302,33 @@ private fun ScheduledVideoItemContent(state: VideoItemUIState) {
 }
 
 @Composable
+internal fun BookmarkIndicatorBadge(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (!visible) return
+
+    Box(
+        modifier = modifier
+            .testTag(BOOKMARK_INDICATOR_TEST_TAG)
+            .padding(6.dp)
+            .background(
+                MaterialTheme.colorScheme.scrim.copy(alpha = 0.48F),
+                RoundedCornerShape(6.dp),
+            )
+            .padding(4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = PhosphorIcons.Fill.BookmarkSimple,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.9F),
+        )
+    }
+}
+
+@Composable
 internal fun WatchedIndicatorBadge(
     visible: Boolean,
     modifier: Modifier = Modifier,
@@ -429,6 +465,30 @@ private fun PreviewPlainCard() = PuberTheme {
 private fun PreviewBadgeOnly() = PuberTheme {
     VideoItem(
         state = previewState(unwatchedCount = 12),
+        onClick = {},
+    )
+}
+
+@Preview(name = "Filed in a bookmark folder (Extended)")
+@Composable
+private fun PreviewBookmarkedExtended() = PuberTheme {
+    VideoItem(
+        state = previewState(ratings = singleRating).copy(
+            isBookmarked = true,
+            bookmarkMode = BookmarkMode.Extended,
+        ),
+        onClick = {},
+    )
+}
+
+@Preview(name = "Bookmarked + unwatched badge (Extended)")
+@Composable
+private fun PreviewBookmarkedWithBadge() = PuberTheme {
+    VideoItem(
+        state = previewState(showTitle = true, unwatchedCount = 3, ratings = twoRatings).copy(
+            isBookmarked = true,
+            bookmarkMode = BookmarkMode.Extended,
+        ),
         onClick = {},
     )
 }

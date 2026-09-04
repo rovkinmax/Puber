@@ -15,6 +15,7 @@ import com.kino.puber.data.api.models.Item
 import com.kino.puber.domain.interactor.bookmarks.BookmarkInteractor
 import com.kino.puber.ui.feature.bookmarks.model.BookmarksViewState
 import com.kino.puber.ui.feature.bookmarkpicker.openBookmarkPicker
+import kotlinx.coroutines.Job
 
 internal class BookmarksVM(
     router: AppRouter,
@@ -24,6 +25,8 @@ internal class BookmarksVM(
 ) : PuberVM<BookmarksViewState>(router) {
 
     override val initialViewState: BookmarksViewState = BookmarksViewState.Loading
+
+    private var folderItemsJob: Job? = null
 
     override fun dispatchError(error: ErrorEntity) {
         when (val state = stateValue) {
@@ -111,13 +114,20 @@ internal class BookmarksVM(
                 )
             )
             if (selectedFolder != null) {
-                loadAllFolderItems(selectedFolder.id)
+                loadFolderItems(selectedFolder.id)
             }
         }
     }
 
+    /**
+     * A walk owns the item list until it finishes, so a new one must cancel the one it replaces:
+     * two live walks both pass the `selectedFolderId` guard in [publishFolderItems], letting the
+     * older walk's shorter accumulation land after the newer one and letting whichever finishes
+     * first clear `isLoadingItems` while the other is still paging.
+     */
     private fun loadFolderItems(folderId: Int) {
-        launch {
+        folderItemsJob?.cancel()
+        folderItemsJob = launch {
             loadAllFolderItems(folderId)
         }
     }
