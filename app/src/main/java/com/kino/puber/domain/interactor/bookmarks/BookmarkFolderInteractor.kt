@@ -45,11 +45,18 @@ class BookmarkFolderInteractor(
         val configuredId = preferences.quickFolderId.value
         folders.firstOrNull { it.id == configuredId }?.let { return it }
 
-        if (configuredId != null) {
+        folders.firstOrNull { it.title == LEGACY_QUICK_FOLDER_TITLE }?.let { folder ->
+            preferences.setQuickFolderId(folder.id)
+            return folder
+        }
+        // An empty list is not evidence that the folder is gone: `getBookmarks()` reads
+        // `ApiResponseList.items`, which is nullable, so a response that omits the array decodes
+        // as a successful empty result. Forgetting the id there would make the next quick save
+        // create a second "Буду смотреть" folder and report every already-saved movie as unsaved.
+        if (configuredId != null && folders.isNotEmpty()) {
             preferences.setQuickFolderId(null)
         }
-        return folders.firstOrNull { it.title == LEGACY_QUICK_FOLDER_TITLE }
-            ?.also { folder -> preferences.setQuickFolderId(folder.id) }
+        return null
     }
 
     suspend fun ensureQuickFolder(): Bookmark {
@@ -74,6 +81,28 @@ class BookmarkFolderInteractor(
         }
         setItemInFolder(itemId = itemId, folderId = folder.id, selected = saved)
         return QuickBookmarkUpdate(isSaved = saved, folder = folder)
+    }
+
+    /**
+     * Items from every folder except the quick one, in folder order and capped at [limit].
+     *
+     * Simple mode has no folder browser: the Bookmarks tab and the folder picker are both
+     * Extended-only, so this row is the sole way to reach folders made elsewhere (the web client,
+     * or a spell in Extended mode). Folders are walked in order and the walk stops as soon as
+     * [limit] items are collected, so a long folder list does not turn into a long request chain.
+     */
+    suspend fun getOtherFolderItems(limit: Int): List<Item> {
+        require(limit > 0) { "Bookmark item limit must be positive" }
+        val folders = getFolders()
+        val quickFolderId = resolveQuickFolder(folders)?.id
+        val collected = LinkedHashMap<Int, Item>()
+        val candidates = folders.filter { it.id != quickFolderId && it.count != 0 }
+        for (folder in candidates) {
+            if (collected.size >= limit) break
+            api.getBookmarkItems(folder.id).getOrThrow().items
+                .forEach { item -> collected.putIfAbsent(item.id, item) }
+        }
+        return collected.values.take(limit)
     }
 
     suspend fun getQuickFolderItems(): QuickBookmarkItems {

@@ -12,6 +12,7 @@ import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.data.api.models.Pagination
 import com.kino.puber.data.preferences.ContentPreferences
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
+import com.kino.puber.domain.interactor.bookmarks.BookmarkFolderInteractor
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -27,6 +28,7 @@ class HomeInteractorTest {
 
     private lateinit var api: KinoPubApiClient
     private lateinit var watchLaterBookmarkInteractor: WatchLaterBookmarkInteractor
+    private lateinit var bookmarkFolderInteractor: BookmarkFolderInteractor
     private lateinit var navigationPreferencesRepository: NavigationPreferencesRepository
     private lateinit var contentPreferences: MutableStateFlow<ContentPreferences>
     private lateinit var interactor: HomeInteractor
@@ -35,12 +37,14 @@ class HomeInteractorTest {
     fun setup() {
         api = mockk()
         watchLaterBookmarkInteractor = mockk()
+        bookmarkFolderInteractor = mockk()
         navigationPreferencesRepository = mockk()
         contentPreferences = MutableStateFlow(defaultContentPreferences())
         every { navigationPreferencesRepository.contentPreferences } returns contentPreferences
         interactor = HomeInteractor(
             api = api,
             watchLaterBookmarkInteractor = watchLaterBookmarkInteractor,
+            bookmarkFolderInteractor = bookmarkFolderInteractor,
             navigationPreferencesRepository = navigationPreferencesRepository,
         )
     }

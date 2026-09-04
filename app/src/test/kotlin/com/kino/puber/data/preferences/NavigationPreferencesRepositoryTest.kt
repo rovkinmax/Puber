@@ -446,6 +446,26 @@ internal class NavigationPreferencesRepositoryTest {
         assertTrue(fixture.preferences.transactions.isEmpty())
     }
 
+    @Test
+    fun extendedMode_keepsBookmarksAfterHome_whenTheDrawerHasNoFavouritesTab() {
+        val fixture = fixture(storedDrawerTabs = "Home,Movies,History,Settings")
+
+        assertEquals(
+            listOf(TabType.Home, TabType.Bookmarks, TabType.Movies, TabType.History, TabType.Settings),
+            fixture.repository.getVisibleTabs(NavigationMode.SideDrawer, BookmarkMode.Extended),
+        )
+    }
+
+    @Test
+    fun extendedMode_putsBookmarksBeforeSettings_whenNoAnchorTabIsVisible() {
+        val fixture = fixture(storedDrawerTabs = "Movies,History,Settings")
+
+        assertEquals(
+            listOf(TabType.Movies, TabType.History, TabType.Bookmarks, TabType.Settings),
+            fixture.repository.getVisibleTabs(NavigationMode.SideDrawer, BookmarkMode.Extended),
+        )
+    }
+
     private fun fixture(
         storedTabs: String? = null,
         storedDrawerTabs: String? = null,

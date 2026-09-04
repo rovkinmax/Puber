@@ -6,11 +6,14 @@ import com.kino.puber.data.api.models.KCollection
 import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.data.api.models.isAnime
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
+import com.kino.puber.domain.interactor.bookmarks.BookmarkFolderInteractor
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
+import kotlinx.coroutines.CancellationException
 
 class HomeInteractor(
     private val api: KinoPubApiClient,
     private val watchLaterBookmarkInteractor: WatchLaterBookmarkInteractor,
+    private val bookmarkFolderInteractor: BookmarkFolderInteractor,
     private val navigationPreferencesRepository: NavigationPreferencesRepository,
 ) {
 
@@ -32,6 +35,16 @@ class HomeInteractor(
 
     suspend fun getWatchLaterItems(): Result<List<Item>> {
         return watchLaterBookmarkInteractor.getItems()
+    }
+
+    suspend fun getGenericBookmarkItems(): Result<List<Item>> {
+        return try {
+            Result.success(bookmarkFolderInteractor.getOtherFolderItems(BOOKMARK_SECTION_ITEM_LIMIT))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            Result.failure(error)
+        }
     }
 
     suspend fun getCollections(): Result<List<KCollection>> {
@@ -88,5 +101,8 @@ class HomeInteractor(
 
     companion object {
         private const val FIRST_PAGE = 1
+
+        /** One Home row's worth of items; the folder walk stops as soon as it has this many. */
+        private const val BOOKMARK_SECTION_ITEM_LIMIT = 20
     }
 }

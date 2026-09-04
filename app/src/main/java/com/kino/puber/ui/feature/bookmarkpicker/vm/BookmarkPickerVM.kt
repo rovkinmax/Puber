@@ -5,12 +5,14 @@ import com.kino.puber.core.error.ErrorHandler
 import com.kino.puber.core.ui.PuberVM
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.data.api.models.Bookmark
 import com.kino.puber.domain.interactor.bookmarks.BookmarkFolderInteractor
 import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkFolderUi
 import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerAction
 import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerParams
 import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
 import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerViewState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
@@ -67,16 +69,11 @@ internal class BookmarkPickerVM(
     }
 
     override fun dispatchError(error: ErrorEntity) {
-        when (val state = stateValue) {
-            is BookmarkPickerViewState.Content -> {
-                updateViewState(
-                    state.copy(
-                        changingFolderIds = emptySet(),
-                        isCreatingFolder = false,
-                    )
-                )
-                showMessage(error.message)
-            }
+        when (stateValue) {
+            // Each request clears its own row before the error reaches here. Clearing every row
+            // instead would drop the spinner of a toggle that is still in flight, letting the
+            // user press it again and race two writes for the same folder.
+            is BookmarkPickerViewState.Content -> showMessage(error.message)
             else -> updateViewState(BookmarkPickerViewState.Error(error.message))
         }
     }
@@ -125,6 +122,9 @@ internal class BookmarkPickerVM(
                 )
             }.onFailure { error ->
                 setFolderSelected(folderId, folder.isSelected)
+                updateViewState<BookmarkPickerViewState.Content> {
+                    copy(changingFolderIds = changingFolderIds - folderId)
+                }
                 throw error
             }
             updateViewState<BookmarkPickerViewState.Content> {
@@ -176,7 +176,7 @@ internal class BookmarkPickerVM(
         if (!state.isCreateFolderDialogVisible || !state.canCreateFolder) return
         updateViewState(state.copy(isCreatingFolder = true))
         launch {
-            val folder = interactor.createFolder(state.newFolderTitle.trim())
+            val folder = createFolderOrClearProgress(state.newFolderTitle.trim())
             updateViewState<BookmarkPickerViewState.Content> {
                 copy(
                     folders = folders + BookmarkFolderUi(
@@ -199,6 +199,12 @@ internal class BookmarkPickerVM(
                 )
             }.onFailure { error ->
                 setFolderSelected(folder.id, selected = false)
+                updateViewState<BookmarkPickerViewState.Content> {
+                    copy(
+                        changingFolderIds = changingFolderIds - folder.id,
+                        isCreatingFolder = false,
+                    )
+                }
                 throw error
             }
             updateViewState<BookmarkPickerViewState.Content> {
@@ -207,6 +213,21 @@ internal class BookmarkPickerVM(
                     isCreatingFolder = false,
                 )
             }
+        }
+    }
+
+    /**
+     * On a failed create the draft dialog stays open with the typed title so the user can retry,
+     * but the in-progress flag has to go or Create and Cancel are both left disabled.
+     */
+    private suspend fun createFolderOrClearProgress(title: String): Bookmark {
+        return try {
+            interactor.createFolder(title)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            updateViewState<BookmarkPickerViewState.Content> { copy(isCreatingFolder = false) }
+            throw error
         }
     }
 }
