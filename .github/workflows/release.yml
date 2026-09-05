@@ -23,13 +23,60 @@ jobs:
           distribution: temurin
       - name: Assert GitHub-hosted runner
         run: test "${RUNNER_ENVIRONMENT:-github-hosted}" = github-hosted
-      - run: ./gradlew :app:assembleProdRelease
-      - name: Prepare release artifacts and checksum
+      - name: Preflight production signing
+        env:
+          PUBER_RELEASE_SIGNING_MODE: production
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.STOREPASS }}
+          KEYALIAS: ${{ secrets.KEYALIAS }}
         run: |
-          mkdir -p release-artifacts
-          apk_path="$(find app/build/outputs/apk/prod/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
-          test -n "$apk_path"
-          cp "$apk_path" "release-artifacts/puber-${GITHUB_REF_NAME}.apk"
+          set -euo pipefail
+          test "$PUBER_RELEASE_SIGNING_MODE" = production
+          test -n "$RELEASE_KEYSTORE_BASE64"
+          test -n "$STOREPASS"
+          test -n "$KEYALIAS"
+          # The key password is STOREPASS, never an independent input.
+      - name: Build and prepare production artifacts
+        env:
+          PUBER_RELEASE_SIGNING_MODE: production
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.STOREPASS }}
+          KEYALIAS: ${{ secrets.KEYALIAS }}
+        run: |
+          set -euo pipefail
+          cleanup_signing() {
+            status=$?
+            trap - EXIT
+            rm -f app/release.jks app/keystore.properties
+            rm -rf app/build
+            if [ "$status" -ne 0 ]; then rm -rf release-artifacts; fi
+            exit "$status"
+          }
+          trap cleanup_signing EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          umask 077
+          test "$PUBER_RELEASE_SIGNING_MODE" = production
+          test -n "$RELEASE_KEYSTORE_BASE64"
+          test -n "$STOREPASS"
+          test -n "$KEYALIAS"
+          test ! -e app/keystore.properties && test ! -L app/keystore.properties
+          test ! -e app/release.jks && test ! -L app/release.jks
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > app/release.jks
+          pin=3e0ddb2c5d39953d278f8cce813ff07a6b74059f1f9caa8fd752602e2bb8b61a
+          alias_sha="$(keytool -exportcert -keystore app/release.jks -storepass:env STOREPASS -alias "$KEYALIAS" | sha256sum | cut -d ' ' -f 1)"
+          test "$alias_sha" = "$pin"
+          ./gradlew --no-daemon :app:assembleProdRelease
+          mapfile -t apks < <(find app/build/outputs/apk/prod/release -maxdepth 1 -type f -name '*.apk')
+          test "${#apks[@]}" -eq 1
+          apksigner="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$apksigner"
+          proof="$("$apksigner" verify --print-certs "${apks[0]}")"
+          signer_sha="$(printf '%s\n' "$proof" | sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')"
+          test "$signer_sha" = "$pin"
+          unset proof
+          mkdir release-artifacts
+          cp "${apks[0]}" "release-artifacts/puber-${GITHUB_REF_NAME}.apk"
           (cd release-artifacts && sha256sum "puber-${GITHUB_REF_NAME}.apk" > "puber-${GITHUB_REF_NAME}.apk.sha256")
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

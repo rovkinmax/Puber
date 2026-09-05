@@ -21,7 +21,7 @@ def sh(args, cwd, **kwargs):
 
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory); bare = root / "origin.git"
-    work, target, bare_path = publish_fixture.materialize(root, bare)
+    work, base_oid, target, bare_path = publish_fixture.materialize(root, bare)
     graph = json.loads((work / ".kent/workflows/puber-release.json").read_text())
     publish_node = next(n for n in graph["nodes"] if n["key"] == "publish")
     monitor_node = next(n for n in graph["nodes"] if n["key"] == "monitor")
@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory() as directory:
         "current_nodes": [{"node_id": publish_node["id"]}], "current_scripts": [{"path": ".kent/scripts/workflow-puber-release-publish", "current_node": {"node_id": publish_node["id"]}}],
         "execution_target": {"commit_oid": target}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
         "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"}, "worktree_path": str(work),
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 90, "name": "Puber Release"}, "worktree_path": str(work),
     }
     fake = root / "fake"; fake.mkdir()
     task_path = fake / "task.json"; task_path.write_text(json.dumps(task), encoding="utf-8")
@@ -55,7 +55,7 @@ endpoint=args[1]
 if endpoint.endswith("/git/ref/heads/master"):
  print(json.dumps({"ref":"refs/heads/master","node_id":"master","url":"https://api.github.com/ref","object":{"type":"commit","sha":target}})); sys.exit(0)
 if "/pulls/" in endpoint:
- print(json.dumps({"html_url":"https://github.com/rovkinmax/Puber/pull/7","state":"closed","merged":True,"merged_at":"2026-08-25T00:00:00Z","base":{"ref":"master","sha":"b"*40,"repo":{"full_name":"rovkinmax/Puber"}},"head":{"ref":"release/99.0.0","sha":"c"*40,"repo":{"full_name":"rovkinmax/Puber"}},"merge_commit_sha":target})); sys.exit(0)
+ print(json.dumps({"html_url":"https://github.com/rovkinmax/Puber/pull/7","state":"closed","merged":True,"merged_at":"2026-08-25T00:00:00Z","base":{"ref":"master","sha":os.environ["PUBER_PR_BASE"],"repo":{"full_name":"rovkinmax/Puber"}},"head":{"ref":"release/99.0.0","sha":os.environ["PUBER_PR_HEAD"],"repo":{"full_name":"rovkinmax/Puber"}},"merge_commit_sha":target})); sys.exit(0)
 if "/git/ref/tags/" in endpoint:
  try: sha=subprocess.check_output(["git","--git-dir",os.environ["PUBER_BARE"],"rev-parse","refs/tags/"+tag],text=True).strip()
  except subprocess.CalledProcessError: print("404",file=sys.stderr); sys.exit(1)
@@ -108,11 +108,77 @@ sys.exit(3)
 """,
         encoding="utf-8",
     ); gh.chmod(0o755)
-    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(publish_fixture.KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(task_path), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_BODY": str(body_file), "PUBER_APK": str(apk_file), "PUBER_CHECKSUM": str(checksum_file), "PUBER_CALLS": str(calls_file)}
+    profile_path = "app/src/main/generated/baselineProfiles/baseline-prof.txt"
+    startup_path = "app/src/main/generated/baselineProfiles/startup-prof.txt"
+    profile_before_hash = publish_fixture.helper.git_blob_sha256(work, base_oid, profile_path)
+    profile_after_hash = publish_fixture.helper.git_blob_sha256(work, target, profile_path)
+    startup_before_hash = publish_fixture.helper.git_blob_sha256(work, base_oid, startup_path)
+    startup_after_hash = publish_fixture.helper.git_blob_sha256(work, target, startup_path)
+    profile_report_value = {
+        "schema": "puber_profile_report_v1", "operation_id": "a" * 64,
+        "task_short_id": "PUB-99", "release_type": "minor",
+        "release_version": "99.0.0", "release_tag": "v99.0.0",
+        "release_branch": "release/99.0.0", "release_base_oid": base_oid,
+        "candidate_oid": target, "tv_serial": "emulator-5554",
+        "command": ".kent/scripts/workflow-puber-release-profile-generation:tools/generate-baseline-profile.sh",
+        "lease_state": "released", "generation_state": "passed",
+        "network_isolation_state": "passed", "elapsed_ms": 1,
+        "baseline_before_sha256": profile_before_hash, "baseline_after_sha256": profile_after_hash,
+        "startup_before_sha256": startup_before_hash, "startup_after_sha256": startup_after_hash,
+        "changed_profiles": [profile_path],
+    }
+    profile_report = publish_fixture.helper.canonical_json(profile_report_value)
+    profile_digest = publish_fixture.helper.sha256_bytes(profile_report.encode())
+    preparation_value = {
+        **publish_fixture.helper.VALIDATION_SIGNING,
+        "schema": "puber_release_preparation_report_v2", "operation_id": "a" * 64,
+        "task_short_id": "PUB-99", "release_type": "minor",
+        "release_version": "99.0.0", "release_tag": "v99.0.0",
+        "release_branch": "release/99.0.0", "release_base_oid": base_oid,
+        "candidate_oid": target, "release_head_oid": target,
+        "profile_report_digest": profile_digest,
+        "compile_command": "./tools/agentw :app:compileProdReleaseArtProfile",
+        "compile_state": "passed", "assemble_command": "./tools/agentw :app:assembleProdRelease",
+        "assemble_state": "passed", "final_changed_paths": ["app/build.gradle.kts", profile_path],
+        "version_file_sha256": publish_fixture.helper.git_blob_sha256(work, target, "app/build.gradle.kts"),
+        "baseline_profile_sha256": profile_after_hash, "startup_profile_sha256": startup_after_hash,
+        "no_profile_diff": False, "elapsed_ms": 1,
+    }
+    for field, replacement in (
+        ("schema", "puber_release_preparation_report_v1"),
+        ("packaging_artifact_publishable", True),
+        ("production_signing_used", True),
+        ("packaging_artifact_signer_certificate_sha256", "0" * 64),
+    ):
+        forged = {**preparation_value, field: replacement}
+        try:
+            publish_fixture.helper.parse_release_preparation_report(forged, publish_fixture.helper.digest_json(forged))
+        except publish_fixture.helper.ContractError:
+            pass
+        else:
+            raise AssertionError("forged preparation signing claim was accepted")
+    preparation_report = publish_fixture.helper.canonical_json(preparation_value)
+    preparation_digest = publish_fixture.helper.sha256_bytes(preparation_report.encode())
+    checkpoint = {
+        "schema": "puber_release_profile_checkpoint_v2", "task_id": task_id,
+        "task_short_id": "PUB-99", "operation_id": "a" * 64,
+        "release_branch": "release/99.0.0", "release_base_oid": base_oid,
+        "candidate_oid": target, "release_head_oid": target,
+        "candidate_serials": ["emulator-5554"], "state": "completed",
+        "resource_serial": "emulator-5554", "profile_report": profile_report,
+        "profile_report_digest": profile_digest, "release_preparation_report": preparation_report,
+        "release_preparation_report_digest": preparation_digest,
+        "output_hashes": {profile_path: profile_after_hash, startup_path: startup_after_hash},
+    }
+    checkpoint_path = work / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_text(publish_fixture.helper.canonical_json(checkpoint) + "\n", encoding="utf-8")
+    checkpoint_path.chmod(0o600)
+    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(publish_fixture.KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(task_path), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": target, "PUBER_PR_BASE": base_oid, "PUBER_BODY": str(body_file), "PUBER_APK": str(apk_file), "PUBER_CHECKSUM": str(checksum_file), "PUBER_CALLS": str(calls_file)}
     os.environ.update({key: env[key] for key in ("KENT_ENGINEERING_KIT_ROOT", "PUBER_KENT_BIN", "PUBER_GH_BIN", "PUBER_FAKE_TASK", "PUBER_TARGET", "PUBER_BARE", "PUBER_BODY", "PUBER_APK", "PUBER_CHECKSUM", "PUBER_CALLS")})
     probe = subprocess.run([str(gh), "api", "repos/rovkinmax/Puber/pulls/7"], cwd=work, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert probe.returncode == 0, probe.stderr
-    publish_payload = {"_kent":{"task_id":task_id,"node_id":publish_node["id"],"transition_branch_key":"merge_watch_pr_merged"},"workspace_path":str(work),"operation_id":"a"*64,"pr_url":"https://github.com/rovkinmax/Puber/pull/7","branch_name":"release/99.0.0","merge_strategy":"auto","pr_head_oid":"c"*40,"pr_base_oid":"b"*40}
+    publish_payload = {"_kent":{"task_id":task_id,"node_id":publish_node["id"],"transition_branch_key":"merge_watch_pr_merged"},"workspace_path":str(work),"operation_id":"a"*64,"pr_url":"https://github.com/rovkinmax/Puber/pull/7","branch_name":"release/99.0.0","merge_strategy":"auto","pr_head_oid":target,"pr_base_oid":base_oid}
     published_result = subprocess.run([str(work/".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(publish_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert published_result.returncode == 0, published_result.stderr
     published = json.loads(published_result.stdout)
@@ -121,11 +187,13 @@ sys.exit(3)
     task_path.write_text(json.dumps(task), encoding="utf-8")
     monitor_payload = {"_kent":{"task_id":task_id,"node_id":monitor_node["id"],"transition_branch_key":"monitor_release"}}
     monitor_payload.update({key: published[key] for key in ("release_version","release_tag","target_commit","pr_url","tag_push_status","release_notes_path","publication_report","publication_report_digest","release_run")})
+    monitor_payload["commentary"] = "private-transport-commentary"
     result = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert result.returncode == 0, result.stderr
     output = json.loads(result.stdout)
     assert output["transition"] == "release_release_published", output
     assert json.loads(output["publication_report"])["unresolved"] is False
+    assert "private-transport-commentary" not in result.stdout + result.stderr
     release_report = json.loads(output["release_report"])
     assert release_report["unresolved"] is False
     assert release_report["observation_operation_digest"] and release_report["observation_provenance_fingerprint"]
@@ -217,6 +285,7 @@ sys.exit(3)
         assert not any("/actions/runs?" in line for line in calls_file.read_text(encoding="utf-8").splitlines())
 
     retry = {"_kent": {**monitor_payload["_kent"], "transition_branch_key": "monitor_needs_user_action"}}
+    retry["commentary"] = "private-retry-commentary"
     retry.update({key: blocked[key] for key in ("blocker_reason", "workspace_path", "operation_id", "pr_url", "branch_name", "release_version", "release_tag", "target_commit", "tag_push_status", "release_notes_path", "publication_report", "publication_report_digest", "release_run")})
     calls_file.write_text("", encoding="utf-8")
     os.environ["PUBER_MODE"] = "no_discovery"
@@ -224,6 +293,10 @@ sys.exit(3)
     body_file.write_text((work / published["release_notes_path"]).read_text(encoding="utf-8"), encoding="utf-8")
     retry_result = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert retry_result.returncode == 0 and json.loads(retry_result.stdout)["transition"] == "release_release_published"
+    assert "private-retry-commentary" not in retry_result.stdout + retry_result.stderr
+    for transport_checkpoint_path in (work / ".kent/runtime").rglob("*.json"):
+        assert "private-transport-commentary" not in transport_checkpoint_path.read_text()
+        assert "private-retry-commentary" not in transport_checkpoint_path.read_text()
     assert not any("/actions/runs?" in line for line in calls_file.read_text(encoding="utf-8").splitlines())
 
     os.environ["PUBER_MODE"] = "edit_lost_ack"

@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
 """Fail-closed Puber release runtime shared by all S05 Script nodes."""
 from __future__ import annotations
-import hashlib, importlib, json, os, re, shutil, stat, subprocess, sys, tempfile, tomllib
+import fcntl, hashlib, importlib, json, math, os, re, secrets, shutil, stat, subprocess, sys, tempfile, tomllib
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
 sys.dont_write_bytecode = True
 for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
     os.environ.pop(_name, None)
 ROOT = Path(__file__).resolve().parents[2]
-KIT_COMMIT = "349267977781ce0cf6991f96c4e738b594cda4d4"
+KIT_COMMIT = "93420b9537bbaf4d673d63305e872945e0693e83"
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
-WORKFLOW_REVISION = 88
+WORKFLOW_REVISION = 90
 REPOSITORY = "rovkinmax/Puber"
 SCRIPT_PATHS = {
     "release_intent_gate": ".kent/scripts/workflow-puber-release-intent",
+    "profile_generation": ".kent/scripts/workflow-puber-release-profile-generation",
     "publish": ".kent/scripts/workflow-puber-release-publish",
     "monitor": ".kent/scripts/workflow-wait-github-release",
     "cleanup": ".kent/scripts/workflow-release-cleanup",
@@ -34,7 +36,41 @@ TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 NOT_SELECTED_RUN = {"schema": "puber_release_run_v1", "state": "not_selected"}
 RUN_KEYS = {"schema", "state", "repository", "workflow_path", "workflow_name", "event", "run_id", "attempt", "head_sha", "ref", "head_branch"}
-PUBLICATION_KEYS = {"schema", "operation_digest", "previous_operation_digest", "pr_url", "release_version", "release_tag", "target_commit", "notes_report", "notes_digest", "tag_phase", "tag_status", "unresolved"}
+PROFILE_REPORT_KEYS = {
+    "schema", "operation_id", "task_short_id", "release_type",
+    "release_version", "release_tag", "release_branch", "release_base_oid",
+    "candidate_oid", "tv_serial", "command", "lease_state",
+    "generation_state", "network_isolation_state", "elapsed_ms",
+    "baseline_before_sha256", "baseline_after_sha256",
+    "startup_before_sha256", "startup_after_sha256", "changed_profiles",
+}
+PREPARATION_REPORT_KEYS = {
+    "schema", "operation_id", "task_short_id", "release_type",
+    "release_version", "release_tag", "release_branch", "release_base_oid",
+    "candidate_oid", "release_head_oid", "profile_report_digest",
+    "compile_command", "compile_state", "assemble_command", "assemble_state",
+    "final_changed_paths", "version_file_sha256", "baseline_profile_sha256",
+    "startup_profile_sha256", "no_profile_diff", "elapsed_ms",
+}
+VALIDATION_SIGNING = {
+    "packaging_signing_mode": "debug_validation",
+    "packaging_artifact_publishable": False,
+    "production_signing_used": False,
+    "validation_signing_source": "tracked_app_debug_jks",
+    "validation_signing_blob_oid": "109bfc97479cd17724a3ba75a8d3b5ca9df22f52",
+    "validation_signing_sha256": "91c981cee70e84338ff5c7938ae8110f8c0a2378a7a936c245133b4d5ee7620f",
+    "validation_signer_certificate_sha256": "6b29181257cb520329553691b7a48c9b1123899950105127b3dd67012c49a83e",
+    "packaging_artifact_signer_certificate_sha256": "6b29181257cb520329553691b7a48c9b1123899950105127b3dd67012c49a83e",
+}
+PREPARATION_REPORT_KEYS |= VALIDATION_SIGNING.keys()
+PROFILE_CHECKPOINT_KEYS = {
+    "schema", "task_id", "task_short_id", "operation_id", "release_branch",
+    "release_base_oid", "candidate_oid", "release_head_oid",
+    "candidate_serials", "state", "resource_serial", "profile_report",
+    "profile_report_digest", "release_preparation_report",
+    "release_preparation_report_digest", "output_hashes",
+}
+PUBLICATION_KEYS = {"schema", "operation_digest", "previous_operation_digest", "pr_url", "release_version", "release_tag", "target_commit", "release_head_oid", "release_preparation_report_digest", "notes_report", "notes_digest", "tag_phase", "tag_status", "unresolved"}
 RELEASE_KEYS = {"schema", "observation_operation_digest", "observation_provenance_fingerprint", "run", "jobs", "release", "assets", "checksum", "notes_digest", "publication_report_digest", "unresolved"}
 CLEANUP_KEYS = {"schema", "operation_digest", "cleanup_session_id", "cleanup_mode", "session_identity", "publication_report", "publication_report_digest", "release_report", "release_report_digest", "release_notes_path", "release_notes_digest", "unresolved", "destructive_action", "blocker_reason"}
 NOTES_KEYS = {"schema", "path", "mode", "bytes", "sha256", "encoding", "line_endings", "final_newline", "producer", "previous_tag", "range", "target_commit"}
@@ -51,8 +87,27 @@ def _json_one(raw: bytes) -> dict[str, Any]:
     if not raw or len(raw) > 8 * 1024 * 1024:
         raise ContractError("stdin must contain exactly one bounded JSON object")
     try:
-        value = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        def pairs(items):
+            result = {}
+            for key, item in items:
+                if key in result:
+                    raise ContractError("duplicate JSON field")
+                result[key] = item
+            return result
+        def constant(_):
+            raise ContractError("non-finite JSON value")
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs, parse_constant=constant)
+        def depth(item, level=0):
+            if isinstance(item, float) and not math.isfinite(item):
+                raise ContractError("non-finite JSON value")
+            if level > 32:
+                raise ContractError("JSON nesting exceeds bound")
+            if isinstance(item, dict):
+                for child in item.values(): depth(child, level + 1)
+            elif isinstance(item, list):
+                for child in item: depth(child, level + 1)
+        depth(value)
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
         raise ContractError(f"invalid JSON input: {error}") from error
     if not isinstance(value, dict):
         raise ContractError("stdin must contain one JSON object")
@@ -70,7 +125,7 @@ def sha256_bytes(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 def canonical_bytes(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 def canonical_json(value: Any) -> str:
     return canonical_bytes(value).decode("utf-8")
@@ -308,7 +363,16 @@ def task_show(root: Path, task_id: str) -> dict[str, Any]:
         raise ContractError("Kent task show failed")
     return _json_one(result.stdout.encode("utf-8"))
 
-def validate_task(root: Path, task_id: str, node_key: str, task: dict[str, Any] | None = None, *, allowed_notes_path: str | None = None) -> dict[str, Any]:
+def validate_task(
+    root: Path,
+    task_id: str,
+    node_key: str,
+    task: dict[str, Any] | None = None,
+    *,
+    allowed_notes_path: str | None = None,
+    allowed_checkout_head: str | None = None,
+    profile_recovery_admission: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
     if not TASK_ID.fullmatch(task_id):
         raise ContractError("_kent.task_id is invalid")
     task = task if task is not None else task_show(root, task_id)
@@ -333,17 +397,41 @@ def validate_task(root: Path, task_id: str, node_key: str, task: dict[str, Any] 
     if Path(worktree).expanduser().resolve() != root:
         raise ContractError("Kent task worktree is not the selected repository root")
     commit = require_string(execution.get("commit_oid"), "execution_target.commit_oid")
-    if not SHA1.fullmatch(commit) or git(root, "rev-parse", "HEAD") != commit:
+    current_head = git(root, "rev-parse", "HEAD")
+    if (
+        not SHA1.fullmatch(commit)
+        or (
+            current_head != commit
+            and (
+                not isinstance(allowed_checkout_head, str)
+                or not SHA1.fullmatch(allowed_checkout_head)
+                or current_head != allowed_checkout_head
+            )
+        )
+    ):
         raise ContractError("selected checkout is not the exact Task execution commit")
+    validated = {"task": task, "task_id": task_id, "task_short_id": _safe_task_short_id(summary.get("short_id")), "node_id": node_id, "commit": commit}
     status = git(root, "status", "--porcelain=v1", "--untracked-files=all")
     if status:
         allowed = validate_notes_path(root, allowed_notes_path, task_short_id=_safe_task_short_id(summary.get("short_id")), require_exists=False) if allowed_notes_path else None
         lines = [line for line in status.splitlines() if line]
         if not allowed or any(line not in {f"?? {allowed}", f"?? {allowed}/"} for line in lines):
-            raise ContractError("selected checkout is not clean")
-    return {"task": task, "task_id": task_id, "task_short_id": _safe_task_short_id(summary.get("short_id")), "node_id": node_id, "commit": commit}
+            if node_key != "profile_generation" or profile_recovery_admission is None:
+                raise ContractError("selected checkout is not clean")
+            # Only the profile consumer can admit its checkpoint-bound recovery.
+            # This is not a caller-supplied dirty-path allowlist.
+            profile_recovery_admission(validated)
+    return validated
 
-def validate_envelope(payload: Mapping[str, Any], root: Path, node_key: str, *, task: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def validate_envelope(
+    payload: Mapping[str, Any],
+    root: Path,
+    node_key: str,
+    *,
+    task: dict[str, Any] | None = None,
+    allowed_checkout_head: str | None = None,
+    profile_recovery_admission: Callable[[dict[str, Any]], None] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if not isinstance(payload, Mapping):
         raise ContractError("Script input must be one object")
     metadata = payload.get("_kent")
@@ -354,11 +442,35 @@ def validate_envelope(payload: Mapping[str, Any], root: Path, node_key: str, *, 
         raise ContractError("_kent.node_id does not match the current Script")
     branch = require_string(metadata.get("transition_branch_key"), "_kent.transition_branch_key")
     edge = graph_edge(root, branch, node_key)
-    expected = {"_kent", *(item.get("key") for item in edge.get("parameters", []))}
-    if None in expected or set(payload) != expected:
+    expected = {item.get("key") for item in edge.get("parameters", [])}
+    if None in expected or expected & {"_kent", "commentary"}:
+        raise ContractError(f"graph edge {branch} contains invalid business parameters")
+    if "commentary" in payload:
+        commentary = payload["commentary"]
+        if not isinstance(commentary, str):
+            raise ContractError("commentary must be a bounded UTF-8 string")
+        try:
+            if len(commentary.encode("utf-8")) > 8 * 1024 * 1024:
+                raise ContractError("commentary must be a bounded UTF-8 string")
+        except UnicodeEncodeError as error:
+            raise ContractError("commentary must be a bounded UTF-8 string") from error
+    business = {key: value for key, value in payload.items() if key not in {"_kent", "commentary"}}
+    if set(business) != expected:
         raise ContractError(f"input fields do not exactly match graph edge {branch}")
-    allowed_notes = payload.get("release_notes_path") if isinstance(payload.get("release_notes_path"), str) else None
-    return dict(payload), validate_task(root, task_id, node_key, task, allowed_notes_path=allowed_notes), edge
+    allowed_notes = business.get("release_notes_path") if isinstance(business.get("release_notes_path"), str) else None
+    return (
+        business,
+        validate_task(
+            root,
+            task_id,
+            node_key,
+            task,
+            allowed_notes_path=allowed_notes,
+            allowed_checkout_head=allowed_checkout_head,
+            profile_recovery_admission=profile_recovery_admission,
+        ),
+        edge,
+    )
 
 def validate_notes_path(root: Path, value: Any, *, task_short_id: str | None = None, require_exists: bool = True) -> str:
     path = require_string(value, "release_notes_path")
@@ -682,16 +794,327 @@ def parse_notes_report(raw: Any, root: Path, task_short_id: str, *, expected_tag
         raise ContractError("notes bytes/readback are not canonical")
     return dict(value)
 
-def publication_report(operation_digest: str, pr_url: str, version: str, tag: str, target: str, notes: Mapping[str, Any], *, tag_phase: str, tag_status: str, unresolved: bool, previous_operation_digest: str = "") -> tuple[str, str]:
+def parse_profile_report(raw: Any, digest: Any, *, expected: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    value = raw if isinstance(raw, dict) else parse_closed_json(raw, "puber_profile_report_v1", PROFILE_REPORT_KEYS)
+    if set(value) != PROFILE_REPORT_KEYS or value.get("schema") != "puber_profile_report_v1":
+        raise ContractError("profile report is not closed")
+    encoded = canonical_json(value).encode("utf-8")
+    if not isinstance(digest, str) or digest != sha256_bytes(encoded) or not HEX64.fullmatch(digest):
+        raise ContractError("profile report digest mismatch")
+    for key in ("operation_id", "task_short_id", "release_type", "release_version",
+                "release_tag", "release_branch", "release_base_oid", "candidate_oid"):
+        if expected is not None and key in expected and value.get(key) != expected[key]:
+            raise ContractError(f"profile report {key} drifted")
+    if value.get("command") != ".kent/scripts/workflow-puber-release-profile-generation:tools/generate-baseline-profile.sh" or value.get("lease_state") != "released" or value.get("generation_state") != "passed" or value.get("network_isolation_state") != "passed":
+        raise ContractError("profile report command or state is not exact")
+    if not re.fullmatch(r"^emulator-[A-Za-z0-9._=-]+$", str(value.get("tv_serial", ""))):
+        raise ContractError("profile report TV serial is not an emulator serial")
+    if isinstance(value.get("elapsed_ms"), bool) or not isinstance(value.get("elapsed_ms"), int) or value["elapsed_ms"] < 0:
+        raise ContractError("profile report elapsed_ms is invalid")
+    for key in ("baseline_before_sha256", "baseline_after_sha256", "startup_before_sha256", "startup_after_sha256"):
+        if not HEX64.fullmatch(str(value.get(key, ""))):
+            raise ContractError("profile report output hash is invalid")
+    changed = value.get("changed_profiles")
+    if not isinstance(changed, list) or changed != sorted(changed) or len(changed) != len(set(changed)) or any(item not in {"app/src/main/generated/baselineProfiles/baseline-prof.txt", "app/src/main/generated/baselineProfiles/startup-prof.txt"} for item in changed):
+        raise ContractError("profile report changed profile set is invalid")
+    return dict(value)
+
+def parse_release_preparation_report(raw: Any, digest: Any, *, expected: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    value = raw if isinstance(raw, dict) else parse_closed_json(raw, "puber_release_preparation_report_v2", PREPARATION_REPORT_KEYS)
+    if set(value) != PREPARATION_REPORT_KEYS or value.get("schema") != "puber_release_preparation_report_v2":
+        raise ContractError("release preparation report is not closed")
+    if any(type(value.get(key)) is not type(wanted) or value[key] != wanted for key, wanted in VALIDATION_SIGNING.items()):
+        raise ContractError("release preparation signing proof drifted")
+    encoded = canonical_json(value).encode("utf-8")
+    if not isinstance(digest, str) or digest != sha256_bytes(encoded) or not HEX64.fullmatch(digest):
+        raise ContractError("release preparation report digest mismatch")
+    for key in ("operation_id", "task_short_id", "release_type", "release_version",
+                "release_tag", "release_branch", "release_base_oid", "candidate_oid",
+                "release_head_oid"):
+        if expected is not None and key in expected and value.get(key) != expected[key]:
+            raise ContractError(f"release preparation report {key} drifted")
+    for key in ("release_base_oid", "candidate_oid", "release_head_oid"):
+        if not SHA1.fullmatch(str(value.get(key, ""))):
+            raise ContractError("release preparation report commit identity is invalid")
+    if not HEX64.fullmatch(str(value.get("profile_report_digest", ""))):
+        raise ContractError("release preparation profile digest is invalid")
+    if value.get("compile_command") != "./tools/agentw :app:compileProdReleaseArtProfile" or value.get("assemble_command") != "./tools/agentw :app:assembleProdRelease" or value.get("compile_state") != "passed" or value.get("assemble_state") != "passed":
+        raise ContractError("release preparation packaging proof is not exact")
+    changed = value.get("final_changed_paths")
+    allowed = {"app/build.gradle.kts", "app/src/main/generated/baselineProfiles/baseline-prof.txt", "app/src/main/generated/baselineProfiles/startup-prof.txt"}
+    if not isinstance(changed, list) or changed != sorted(changed) or len(changed) != len(set(changed)) or any(item not in allowed for item in changed) or "app/build.gradle.kts" not in changed:
+        raise ContractError("release preparation changed path set is invalid")
+    for key in ("version_file_sha256", "baseline_profile_sha256", "startup_profile_sha256"):
+        if not HEX64.fullmatch(str(value.get(key, ""))):
+            raise ContractError("release preparation blob hash is invalid")
+    if not isinstance(value.get("no_profile_diff"), bool) or value["no_profile_diff"] != (not any(item.startswith("app/src/main/generated/baselineProfiles/") for item in changed)):
+        raise ContractError("release preparation no-profile-diff state is invalid")
+    if isinstance(value.get("elapsed_ms"), bool) or not isinstance(value.get("elapsed_ms"), int) or value["elapsed_ms"] < 0:
+        raise ContractError("release preparation elapsed_ms is invalid")
+    return dict(value)
+
+CHECKPOINT_BASENAME = "release-profile-checkpoint.json"
+CHECKPOINT_LIMIT = 2 * 1024 * 1024
+
+
+def _directory_identity(metadata):
+    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid() or metadata.st_mode & 0o022:
+        raise ContractError("profile checkpoint directory is unsafe")
+    return (metadata.st_dev, metadata.st_ino)
+
+
+@contextmanager
+def _checkpoint_directory(root: Path, task_short_id: str, *, create=False):
+    if not isinstance(task_short_id, str) or not TASK_SHORT_ID.fullmatch(task_short_id) or not root.is_absolute():
+        raise ContractError("invalid checkpoint root or task identity")
+    descriptors = []
+    names = (str(root), ".kent", "runtime", task_short_id)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        for index, name in enumerate(names):
+            parent = descriptors[-1] if descriptors else None
+            try:
+                fd = os.open(name, flags, dir_fd=parent)
+            except FileNotFoundError:
+                if index < 2:
+                    raise ContractError("validated checkpoint repository directory is missing")
+                if not create:
+                    raise
+                try:
+                    os.mkdir(name, mode=0o700, dir_fd=parent)
+                    os.fsync(parent)
+                except FileExistsError:
+                    pass
+                fd = os.open(name, flags, dir_fd=parent)
+            descriptors.append(fd)
+            _directory_identity(os.fstat(fd))
+        identities = tuple(_directory_identity(os.fstat(fd)) for fd in descriptors)
+        # The admitted directory inode is a stable guard shared by every store
+        # operation, without adding a file to the closed Janitor entry set.
+        # Non-cooperating same-uid filesystem writes cannot be serialized here.
+        try:
+            fcntl.flock(descriptors[-1], fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ContractError("profile checkpoint store is busy; retry after the current operation") from error
+        def stable():
+            for index, (name, fd) in enumerate(zip(names, descriptors)):
+                parent = descriptors[index - 1] if index else None
+                try:
+                    linked = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                except OSError as error:
+                    raise ContractError("profile checkpoint parent disappeared during access") from error
+                if (_directory_identity(os.fstat(fd)) != identities[index]
+                    or _directory_identity(linked) != identities[index]):
+                    raise ContractError("profile checkpoint parent identity drifted")
+        stable()
+        yield descriptors[-1], identities, stable
+        stable()
+    except FileNotFoundError:
+        raise
+    except OSError as error:
+        raise ContractError("profile checkpoint descriptor operation failed") from error
+    finally:
+        for fd in reversed(descriptors): os.close(fd)
+
+
+def _checkpoint_metadata(metadata):
+    if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_nlink != 1
+        or not 0 < metadata.st_size <= CHECKPOINT_LIMIT):
+        raise ContractError("profile checkpoint permissions, type or size are unsafe")
+    return (metadata.st_dev, metadata.st_ino, metadata.st_size)
+
+
+def _read_checkpoint_descriptor(directory):
+    fd = os.open(CHECKPOINT_BASENAME, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    try:
+        identity = _checkpoint_metadata(os.fstat(fd))
+        chunks = bytearray()
+        while len(chunks) <= CHECKPOINT_LIMIT:
+            chunk = os.read(fd, min(65536, CHECKPOINT_LIMIT + 1 - len(chunks)))
+            if not chunk: break
+            chunks.extend(chunk)
+        if (_checkpoint_metadata(os.fstat(fd)) != identity or len(chunks) != identity[2]
+            or _checkpoint_metadata(os.stat(CHECKPOINT_BASENAME, dir_fd=directory, follow_symlinks=False)) != identity):
+            raise ContractError("profile checkpoint read identity drifted")
+        raw = bytes(chunks)
+        return raw, (*identity, sha256_bytes(raw))
+    except OSError as error:
+        raise ContractError("profile checkpoint file disappeared or changed during read") from error
+    finally:
+        os.close(fd)
+
+
+def read_profile_checkpoint(root: Path, task_short_id: str, *, expected: Mapping[str, Any] | None = None,
+                            with_receipt=False, missing_ok=False):
+    try:
+        with _checkpoint_directory(root, task_short_id) as (directory, parents, stable):
+            raw, identity = _read_checkpoint_descriptor(directory)
+            value = validate_profile_checkpoint(_json_one(raw), expected=expected)
+            if value["task_short_id"] != task_short_id:
+                raise ContractError("profile checkpoint task drifted")
+            stable()
+            return (value, (parents, identity)) if with_receipt else value
+    except FileNotFoundError as error:
+        if missing_ok: return None
+        raise ContractError("profile checkpoint is missing") from error
+
+
+def write_profile_checkpoint(root: Path, task_short_id: str, value: Mapping[str, Any]):
+    validate_profile_checkpoint(dict(value), expected={"task_short_id": task_short_id})
+    raw = canonical_bytes(value) + b"\n"
+    if len(raw) > CHECKPOINT_LIMIT:
+        raise ContractError("profile checkpoint exceeds size bound")
+    with _checkpoint_directory(root, task_short_id, create=True) as (directory, parents, stable):
+        previous = None
+        try:
+            old_raw, previous = _read_checkpoint_descriptor(directory)
+            validate_profile_checkpoint(_json_one(old_raw), expected={"task_short_id": task_short_id})
+        except FileNotFoundError:
+            pass
+        temporary = ".release-profile-" + secrets.token_hex(16) + ".tmp"
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+        try:
+            os.fchmod(fd, 0o600)
+            stream = os.fdopen(fd, "wb")
+            fd = None  # The stream now owns this descriptor, including write failures.
+            with stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+                identity = _checkpoint_metadata(os.fstat(stream.fileno()))
+            stable()
+            try:
+                _, current = _read_checkpoint_descriptor(directory)
+            except FileNotFoundError:
+                current = None
+            if current != previous:
+                raise ContractError("profile checkpoint changed before replacement")
+            os.replace(temporary, CHECKPOINT_BASENAME, src_dir_fd=directory, dst_dir_fd=directory)
+            os.fsync(directory)
+            result, receipt = _read_checkpoint_descriptor(directory)
+            if result != raw or receipt != (*identity, sha256_bytes(raw)):
+                raise ContractError("profile checkpoint canonical write readback drifted")
+            stable()
+        finally:
+            if fd is not None: os.close(fd)
+            try: os.unlink(temporary, dir_fd=directory)
+            except FileNotFoundError: pass
+
+
+def delete_profile_checkpoint(root: Path, task_short_id: str, receipt):
+    with _checkpoint_directory(root, task_short_id) as (directory, parents, stable):
+        if parents != receipt[0]:
+            raise ContractError("profile checkpoint deletion parent receipt mismatch")
+        _, identity = _read_checkpoint_descriptor(directory)
+        if identity != receipt[1]:
+            raise ContractError("profile checkpoint deletion file receipt mismatch")
+        stable()
+        os.unlink(CHECKPOINT_BASENAME, dir_fd=directory)
+        os.fsync(directory)
+        try:
+            os.stat(CHECKPOINT_BASENAME, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        raise ContractError("profile checkpoint deletion absence proof failed")
+
+
+def validate_profile_checkpoint(value, *, expected=None):
+    if not isinstance(value, dict) or set(value) != PROFILE_CHECKPOINT_KEYS or value.get("schema") != "puber_release_profile_checkpoint_v2":
+        raise ContractError("profile checkpoint field set is not closed")
+    if any(key in value for key in ("token", "credential", "environment")):
+        raise ContractError("profile checkpoint contains sensitive fields")
+    for key in ("task_id", "task_short_id", "operation_id", "release_branch", "release_base_oid", "candidate_oid", "release_head_oid", "resource_serial", "profile_report", "profile_report_digest", "release_preparation_report", "release_preparation_report_digest"):
+        if not isinstance(value.get(key), str):
+            raise ContractError("profile checkpoint string field is invalid")
+    if not TASK_ID.fullmatch(value["task_id"]) or not TASK_SHORT_ID.fullmatch(value["task_short_id"]) or not HEX64.fullmatch(value["operation_id"]) or not RELEASE_BRANCH.fullmatch(value["release_branch"]) or not SHA1.fullmatch(value["release_base_oid"]) or not SHA1.fullmatch(value["candidate_oid"]) or (value["release_head_oid"] and not SHA1.fullmatch(value["release_head_oid"])):
+        raise ContractError("profile checkpoint identity is invalid")
+    identity_keys = (
+        "task_id", "task_short_id", "operation_id", "release_branch",
+        "release_base_oid", "candidate_oid", "release_head_oid",
+    )
+    if expected is not None and any(key in expected and value.get(key) != expected[key] for key in identity_keys):
+        raise ContractError("profile checkpoint identity drifted")
+    if not isinstance(value["state"], str) or value["state"] not in {"acquiring", "generating", "failed", "completed"}:
+        raise ContractError("profile checkpoint state is invalid")
+    if not isinstance(value["candidate_serials"], list) or any(not isinstance(item, str) for item in value["candidate_serials"]) or value["candidate_serials"] != sorted(value["candidate_serials"]) or any(not re.fullmatch(r"^emulator-[A-Za-z0-9._=-]+$", str(item)) for item in value["candidate_serials"]):
+        raise ContractError("profile checkpoint candidate serials are invalid")
+    serials = value["candidate_serials"]
+    if len(serials) != len(set(serials)) or (not serials and value["state"] != "failed"):
+        raise ContractError("profile checkpoint serial set is invalid")
+    if value["resource_serial"] and value["resource_serial"] not in serials:
+        raise ContractError("profile checkpoint resource is not selected")
+    hashes = value["output_hashes"]
+    paths = {"app/src/main/generated/baselineProfiles/baseline-prof.txt", "app/src/main/generated/baselineProfiles/startup-prof.txt"}
+    if not isinstance(hashes, dict) or set(hashes) != paths or any(not isinstance(h, str) or not HEX64.fullmatch(h) for h in hashes.values()):
+        raise ContractError("profile checkpoint output hashes are invalid")
+    bound = dict(expected or {})
+    bound.update({key: value[key] for key in identity_keys})
+    version = value["release_branch"].removeprefix("release/")
+    bound.update({"release_version": version, "release_tag": "v" + version})
+    if bool(value["profile_report"]) != bool(value["profile_report_digest"]):
+        raise ContractError("profile checkpoint profile proof is incomplete")
+    if value["profile_report"]:
+        profile = parse_profile_report(value["profile_report"], value["profile_report_digest"], expected=bound)
+        if profile["tv_serial"] != value["resource_serial"] or any(hashes[path] != profile[key] for path, key in (
+            ("app/src/main/generated/baselineProfiles/baseline-prof.txt", "baseline_after_sha256"),
+            ("app/src/main/generated/baselineProfiles/startup-prof.txt", "startup_after_sha256"))):
+            raise ContractError("profile checkpoint nested profile identity drifted")
+    if value["state"] == "completed" and not value["profile_report"]:
+        raise ContractError("completed checkpoint lacks profile proof")
+    if bool(value["release_preparation_report"]) != bool(value["release_preparation_report_digest"]):
+        raise ContractError("profile checkpoint preparation proof is incomplete")
+    if value["release_preparation_report"]:
+        if not value["profile_report"]:
+            raise ContractError("preparation checkpoint lacks profile proof")
+        bound["release_type"] = profile["release_type"]
+        preparation = parse_release_preparation_report(value["release_preparation_report"], value["release_preparation_report_digest"], expected=bound)
+        if value["state"] != "completed" or preparation["profile_report_digest"] != value["profile_report_digest"] or preparation["baseline_profile_sha256"] != hashes["app/src/main/generated/baselineProfiles/baseline-prof.txt"] or preparation["startup_profile_sha256"] != hashes["app/src/main/generated/baselineProfiles/startup-prof.txt"]:
+            raise ContractError("profile checkpoint nested preparation identity drifted")
+    return value
+
+def git_blob_sha256(root: Path, revision: str, relative: str) -> str:
+    if not SHA1.fullmatch(revision) or relative not in {"app/build.gradle.kts", "app/src/main/generated/baselineProfiles/baseline-prof.txt", "app/src/main/generated/baselineProfiles/startup-prof.txt"}:
+        raise ContractError("release blob request is outside the closed allowlist")
+    result = run_bytes(["git", "show", f"{revision}:{relative}"], cwd=root, check=False)
+    if result.returncode != 0:
+        raise ContractError(f"release blob is missing: {relative}")
+    return sha256_bytes(result.stdout)
+
+def release_diff_paths(root: Path, base_oid: str, head_oid: str) -> list[str]:
+    if not SHA1.fullmatch(base_oid) or not SHA1.fullmatch(head_oid):
+        raise ContractError("release diff OIDs are not exact")
+    result = run(["git", "diff", "--name-only", "--no-renames", f"{base_oid}..{head_oid}"], cwd=root, check=False)
+    if result.returncode != 0:
+        raise ContractError("release diff cannot be read")
+    paths = [line for line in result.stdout.splitlines() if line]
+    if len(paths) != len(set(paths)):
+        raise ContractError("release diff contains duplicate paths")
+    allowed = {"app/build.gradle.kts", "app/src/main/generated/baselineProfiles/baseline-prof.txt", "app/src/main/generated/baselineProfiles/startup-prof.txt"}
+    if any(path not in allowed for path in paths) or "app/build.gradle.kts" not in paths:
+        raise ContractError("release diff contains an unrelated path or omits the version bump")
+    return sorted(paths)
+
+def validate_release_diff(root: Path, base_oid: str, head_oid: str, profile_report: Mapping[str, Any], preparation_report: Mapping[str, Any]) -> list[str]:
+    paths = release_diff_paths(root, base_oid, head_oid)
+    changed_profiles = profile_report.get("changed_profiles")
+    expected = {"app/build.gradle.kts", *(changed_profiles if isinstance(changed_profiles, list) else [])}
+    if set(paths) != expected or paths != sorted(preparation_report.get("final_changed_paths", [])):
+        raise ContractError("release diff does not match the closed profile/preparation reports")
+    return paths
+
+def publication_report(operation_digest: str, pr_url: str, version: str, tag: str, target: str, notes: Mapping[str, Any], *, tag_phase: str, tag_status: str, unresolved: bool, previous_operation_digest: str = "", release_head_oid: str = "", release_preparation_report_digest: str = "") -> tuple[str, str]:
     if not HEX64.fullmatch(operation_digest):
         raise ContractError("operation digest is not exact")
     if previous_operation_digest and not HEX64.fullmatch(previous_operation_digest):
         raise ContractError("previous operation digest is not exact")
-    report = {"schema": "puber_publication_report_v1", "operation_digest": operation_digest, "previous_operation_digest": previous_operation_digest, "pr_url": pr_url, "release_version": version, "release_tag": tag, "target_commit": target, "notes_report": dict(notes), "notes_digest": notes["sha256"], "tag_phase": tag_phase, "tag_status": tag_status, "unresolved": unresolved}
+    if not SHA1.fullmatch(target) or not SHA1.fullmatch(release_head_oid) or not HEX64.fullmatch(release_preparation_report_digest):
+        raise ContractError("publication provenance identity is not exact")
+    report = {"schema": "puber_publication_report_v1", "operation_digest": operation_digest, "previous_operation_digest": previous_operation_digest, "pr_url": pr_url, "release_version": version, "release_tag": tag, "target_commit": target, "release_head_oid": release_head_oid, "release_preparation_report_digest": release_preparation_report_digest, "notes_report": dict(notes), "notes_digest": notes["sha256"], "tag_phase": tag_phase, "tag_status": tag_status, "unresolved": unresolved}
     encoded = canonical_json(report)
     return encoded, sha256_bytes(encoded.encode("utf-8"))
 
-def parse_publication_report(raw: Any, digest: Any, *, expected_pr: str | None = None, expected_version: str | None = None, expected_tag: str | None = None, expected_target: str | None = None, task_short_id: str | None = None, root: Path | None = None) -> dict[str, Any]:
+def parse_publication_report(raw: Any, digest: Any, *, expected_pr: str | None = None, expected_version: str | None = None, expected_tag: str | None = None, expected_target: str | None = None, task_short_id: str | None = None, root: Path | None = None, expected_release_head: str | None = None, expected_preparation_digest: str | None = None) -> dict[str, Any]:
     value = raw if isinstance(raw, dict) else parse_closed_json(raw, "puber_publication_report_v1", PUBLICATION_KEYS)
     if set(value) != PUBLICATION_KEYS or value.get("schema") != "puber_publication_report_v1":
         raise ContractError("publication report is not closed")
@@ -702,8 +1125,10 @@ def parse_publication_report(raw: Any, digest: Any, *, expected_pr: str | None =
         raise ContractError("publication report version/tag drifted")
     if expected_pr and value["pr_url"] != expected_pr or expected_target and value["target_commit"] != expected_target:
         raise ContractError("publication report PR/target drifted")
-    if not SHA1.fullmatch(str(value.get("target_commit", ""))) or value.get("pr_url") and canonical_pr_url(value["pr_url"]) != value["pr_url"]:
+    if not SHA1.fullmatch(str(value.get("target_commit", ""))) or not SHA1.fullmatch(str(value.get("release_head_oid", ""))) or not HEX64.fullmatch(str(value.get("release_preparation_report_digest", ""))) or value.get("pr_url") and canonical_pr_url(value["pr_url"]) != value["pr_url"]:
         raise ContractError("publication report identity is invalid")
+    if expected_release_head and value["release_head_oid"] != expected_release_head or expected_preparation_digest and value["release_preparation_report_digest"] != expected_preparation_digest:
+        raise ContractError("publication report preparation provenance drifted")
     phase = value.get("tag_phase")
     tag_status = value.get("tag_status")
     unresolved = value.get("unresolved")
@@ -983,16 +1408,18 @@ def main() -> int:
         return _intent_failure(state, operation_id, "minor", version, "release_type must be exactly minor, patch, or major", invalid=True)
     try:
         safe_version_tag(version, tag)
-        if values.get("release_branch"):
-            safe_release_branch(values["release_branch"], version)
+        release_branch = safe_release_branch(
+            values.get("release_branch", f"release/{version}"),
+            version,
+        )
         attested = attest(ROOT, state, "release_intent_gate", edge["key"])
         operation_id = attested["binding"].provenance_fingerprint
-        return _intent_success(state, operation_id, kind, version)
+        return _intent_success(state, operation_id, kind, version, release_branch)
     except ContractError as error:
         return _intent_failure(state, operation_id, kind, version, str(error))
 
-def _intent_success(state: dict[str, Any], operation_id: str, kind: str, version: str) -> int:
-    fields = {"workspace_path": str(ROOT), "operation_id": operation_id, "task_short_id": state["task_short_id"], "release_type": kind, "release_version": version}
+def _intent_success(state: dict[str, Any], operation_id: str, kind: str, version: str, release_branch: str) -> int:
+    fields = {"workspace_path": str(ROOT), "operation_id": operation_id, "task_short_id": state["task_short_id"], "release_type": kind, "release_version": version, "release_branch": release_branch}
     emit_exact(ROOT, "release_intent_passed", "prepare", fields)
     return 0
 

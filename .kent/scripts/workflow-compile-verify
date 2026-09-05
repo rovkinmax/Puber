@@ -1,11 +1,193 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+exec /usr/bin/python3 -I -c '
+import json
+import math
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
 
-# S05 source checks never execute Gradle. This project-owned child accepts one
-# JSON carrier and reports the deferred verification boundary without effects.
-input="$(cat)"
-if [[ -z "$input" ]] || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$input"; then
-  jq -nc '{transition:"verification_blocked", verification_status:"blocked", verification_report:"compile verifier requires one JSON object"}'
-  exit 0
-fi
-jq -nc '{transition:"verification_deferred", verification_status:"blocked", verification_report:"S05 source-only correction does not execute Gradle"}'
+
+INPUT_LIMIT = 1024 * 1024
+FIELD_LIMIT = INPUT_LIMIT
+TASK = ":app:compileDevDebugKotlin"
+
+
+def reject_constant(value):
+    raise ValueError(value)
+
+def finite_float(value):
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(value)
+    return result
+
+
+def unique_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(key)
+        result[key] = value
+    return result
+
+
+def emit(transition):
+    sys.stdout.write("{\"transition\":\"" + transition + "\"}\n")
+
+
+def block(message):
+    sys.stderr.write(message + "\n")
+    emit("blocked")
+    raise SystemExit(0)
+
+
+def valid_field(value):
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        return len(value.encode("utf-8")) <= FIELD_LIMIT
+    except UnicodeEncodeError:
+        return False
+
+
+try:
+    raw = sys.stdin.buffer.read(INPUT_LIMIT + 1)
+    if len(raw) > INPUT_LIMIT:
+        block("compile verifier input is invalid")
+    payload = json.loads(
+        raw,
+        object_pairs_hook=unique_pairs,
+        parse_constant=reject_constant,
+        parse_float=finite_float,
+    )
+except (RecursionError, UnicodeError, ValueError):
+    block("compile verifier input is invalid")
+
+if (
+    not isinstance(payload, dict)
+    or not {"workspace_path", "review_context"} <= set(payload)
+    or set(payload) - {"workspace_path", "review_context", "_kent", "commentary"}
+):
+    block("compile verifier input is invalid")
+
+if "_kent" in payload and not isinstance(payload["_kent"], dict):
+    block("compile verifier input is invalid")
+if "commentary" in payload and payload["commentary"] != "" and not valid_field(payload["commentary"]):
+    block("compile verifier input is invalid")
+
+payload = {key: payload[key] for key in ("workspace_path", "review_context")}
+if any(not valid_field(value) for value in payload.values()):
+    block("compile verifier input is invalid")
+
+try:
+    current = Path.cwd().resolve(strict=True)
+    requested = Path(payload["workspace_path"])
+    if not requested.is_absolute() or requested.resolve(strict=True) != current:
+        block("compile verifier workspace is invalid")
+    git_marker = current / ".git"
+    metadata = git_marker.lstat()
+except (OSError, RuntimeError, ValueError):
+    block("compile verifier workspace is invalid")
+
+if stat.S_ISREG(metadata.st_mode):
+    relative_command = "./tools/agentw"
+elif stat.S_ISDIR(metadata.st_mode):
+    relative_command = "./gradlew"
+else:
+    block("compile verifier workspace is invalid")
+
+tmpdir = os.environ.get("TMPDIR", "")
+prefix = "/dev/fd/"
+descriptor_text = tmpdir[len(prefix):] if tmpdir.startswith(prefix) else ""
+if (
+    not descriptor_text
+    or not descriptor_text.isascii()
+    or not descriptor_text.isdigit()
+    or len(descriptor_text) > 10
+):
+    block("compile verifier infrastructure is unavailable")
+
+tmp_descriptor = int(descriptor_text)
+if (
+    tmp_descriptor < 3
+    or tmp_descriptor > 2147483647
+    or str(tmp_descriptor) != descriptor_text
+):
+    block("compile verifier infrastructure is unavailable")
+
+try:
+    tmp_metadata = os.fstat(tmp_descriptor)
+except (OSError, OverflowError):
+    block("compile verifier infrastructure is unavailable")
+
+if (
+    not stat.S_ISDIR(tmp_metadata.st_mode)
+    or tmp_metadata.st_uid != os.getuid()
+    or tmp_metadata.st_mode & 0o077
+):
+    block("compile verifier infrastructure is unavailable")
+
+command = current / relative_command[2:]
+try:
+    command_metadata = command.lstat()
+except OSError:
+    block("compile verifier infrastructure is unavailable")
+
+if (
+    not stat.S_ISREG(command_metadata.st_mode)
+    or command_metadata.st_uid != os.getuid()
+    or command_metadata.st_nlink != 1
+    or command_metadata.st_mode & 0o022
+    or not command_metadata.st_mode & stat.S_IXUSR
+):
+    block("compile verifier infrastructure is unavailable")
+
+gradle_tmp = current / "build" / "kent-workflow" / "gradle-tmp"
+for directory in (
+    current / "build",
+    current / "build" / "kent-workflow",
+    gradle_tmp,
+):
+    try:
+        directory.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    except OSError:
+        block("compile verifier infrastructure is unavailable")
+    try:
+        directory_metadata = directory.lstat()
+    except OSError:
+        block("compile verifier infrastructure is unavailable")
+    if (
+        not stat.S_ISDIR(directory_metadata.st_mode)
+        or directory_metadata.st_uid != os.getuid()
+        or directory_metadata.st_mode & 0o022
+        or directory == gradle_tmp and directory_metadata.st_mode & 0o077
+    ):
+        block("compile verifier infrastructure is unavailable")
+
+gradle_environment = dict(os.environ)
+gradle_environment["TMPDIR"] = str(gradle_tmp)
+
+try:
+    result = subprocess.run(
+        [relative_command, TASK],
+        cwd=current,
+        env=gradle_environment,
+        stdin=subprocess.DEVNULL,
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+        check=False,
+    )
+except OSError:
+    block("compile verifier infrastructure is unavailable")
+
+if result.returncode == 0:
+    emit("passed")
+elif result.returncode > 0:
+    emit("failed")
+else:
+    block("compile verifier execution was interrupted")
+'
