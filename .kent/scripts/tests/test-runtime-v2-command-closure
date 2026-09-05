@@ -3,8 +3,41 @@ from pathlib import Path
 import hashlib, subprocess
 ROOT=Path(__file__).resolve().parents[3]
 KIT=Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
-assert KIT.is_dir() and subprocess.run(["git","rev-parse","HEAD"],cwd=KIT,text=True,capture_output=True).stdout.strip()=="349267977781ce0cf6991f96c4e738b594cda4d4"
-pairs=[(".kent/scripts/workflow_runtime_contracts.py","workflowkit/runtime.py"),(".kent/scripts/workflow-verify-report","templates/project/workflow-verify-report"),(".kent/scripts/workflow-evidence-ledger","templates/project/workflow-evidence-ledger"),(".kent/scripts/workflow-task-janitor","templates/project/workflow-task-janitor"),(".kent/scripts/workflow-wait-github-pr","templates/project/workflow-wait-github-pr"),(".kent/scripts/workflow-wait-github-ci","templates/project/workflow-wait-github-ci")]
+COMMIT="93420b9537bbaf4d673d63305e872945e0693e83"
+assert KIT.is_dir() and subprocess.run(["git","rev-parse","HEAD"],cwd=KIT,text=True,capture_output=True).stdout.strip()==COMMIT
+pairs=[(".kent/scripts/workflow_runtime_contracts.py","workflowkit/runtime.py"),(".kent/scripts/workflow-evidence-ledger","templates/project/workflow-evidence-ledger"),(".kent/scripts/workflow-task-janitor","templates/project/workflow-task-janitor"),(".kent/scripts/workflow-wait-github-pr","templates/project/workflow-wait-github-pr"),(".kent/scripts/workflow-wait-github-ci","templates/project/workflow-wait-github-ci")]
 for target,source in pairs: assert hashlib.sha256((ROOT/target).read_bytes()).digest()==hashlib.sha256((KIT/source).read_bytes()).digest(), target
+expected_verify=subprocess.run(
+    [
+        "git",
+        "show",
+        f"{COMMIT}:templates/project/workflow-verify-report",
+    ],
+    cwd=KIT,
+    check=True,
+    stdout=subprocess.PIPE,
+).stdout
+assert hashlib.sha256((ROOT/".kent/scripts/workflow-verify-report").read_bytes()).digest()==hashlib.sha256(expected_verify).digest()
 profile=(ROOT/'.kent/workflow-profile.toml').read_text(); assert 'runtime_contracts = "2.0.0"' in profile and 'topology_kind = "puber-release"' in profile
 print('runtime-v2-command-closure: passed')
+
+import json, runpy
+pins = runpy.run_path(str(ROOT / ".kent/scripts/workflow-puber-release-intent"))["VALIDATION_SIGNING"]
+manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text())
+assert "app/debug.jks" not in manifest["additional_paths"]
+debug_roots = [
+    item for item in manifest["external_roots"]
+    if item.get("kind") == "source-sha256"
+    and item.get("key") == "app/debug.jks=" + pins["validation_signing_sha256"]
+]
+assert debug_roots == [{
+    "kind": "source-sha256",
+    "key": "app/debug.jks=" + pins["validation_signing_sha256"],
+    "runtime_digest_required": True,
+}]
+blob = subprocess.run(["git", "ls-files", "--stage", "--", "app/debug.jks"], cwd=ROOT, text=True, capture_output=True, check=True).stdout.strip()
+assert blob == "100644 " + pins["validation_signing_blob_oid"] + " 0\tapp/debug.jks"
+assert hashlib.sha256((ROOT / "app/debug.jks").read_bytes()).hexdigest() == pins["validation_signing_sha256"]
+certificate = subprocess.run(["keytool", "-exportcert", "-keystore", str(ROOT / "app/debug.jks"), "-storepass", "android", "-alias", "androiddebugkey"], capture_output=True, check=True).stdout
+assert hashlib.sha256(certificate).hexdigest() == pins["validation_signer_certificate_sha256"]
+print("runtime-v2-validation-key-closure: passed")

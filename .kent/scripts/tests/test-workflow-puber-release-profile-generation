@@ -1,0 +1,1550 @@
+#!/usr/bin/env python3
+"""Focused, no-device tests for the release profile operation contract."""
+from __future__ import annotations
+
+import importlib.util
+import contextlib
+import io
+import json
+import os
+import signal
+import stat
+import subprocess
+import tempfile
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from subprocess import CompletedProcess
+
+ROOT = Path(__file__).resolve().parents[3]
+SCRIPT = ROOT / ".kent/scripts/workflow-puber-release-profile-generation"
+spec = importlib.util.spec_from_loader(
+    "profile_generation_test_module",
+    SourceFileLoader("profile_generation_test_module", str(SCRIPT)),
+)
+module = importlib.util.module_from_spec(spec)
+assert spec and spec.loader
+spec.loader.exec_module(module)
+
+
+def state() -> dict[str, str]:
+    return {
+        "task_id": "task-12345678-1234-4234-8234-123456789abc",
+        "task_short_id": "PUB-99",
+        "operation_id": "a" * 64,
+        "release_type": "minor",
+        "release_version": "99.0.0",
+        "release_tag": "v99.0.0",
+        "release_branch": "release/99.0.0",
+        "release_base_oid": "b" * 40,
+        "candidate_oid": "c" * 40,
+    }
+
+
+def report_for(changed: list[str]) -> tuple[str, str]:
+    value = {
+        "schema": module.PROFILE_REPORT_SCHEMA,
+        "operation_id": "a" * 64,
+        "task_short_id": "PUB-99",
+        "release_type": "minor",
+        "release_version": "99.0.0",
+        "release_tag": "v99.0.0",
+        "release_branch": "release/99.0.0",
+        "release_base_oid": "b" * 40,
+        "candidate_oid": "c" * 40,
+        "tv_serial": "emulator-5554",
+        "command": module.COMMAND_IDENTITY,
+        "lease_state": "released",
+        "generation_state": "passed",
+        "network_isolation_state": "passed",
+        "elapsed_ms": 12,
+        "baseline_before_sha256": "1" * 64,
+        "baseline_after_sha256": "2" * 64,
+        "startup_before_sha256": "3" * 64,
+        "startup_after_sha256": "3" * 64,
+        "changed_profiles": changed,
+    }
+    encoded = module.helper.canonical_json(value)
+    return encoded, module.helper.sha256_bytes(encoded.encode())
+
+
+def test_closed_report_changed_and_identical_outputs() -> None:
+    for changed in (
+        [module.PROFILE_PATHS[0]],
+        [],
+        list(module.PROFILE_PATHS),
+    ):
+        raw, digest = report_for(changed)
+        assert module._validate_report(raw, digest, state=state())["changed_profiles"] == changed
+    raw, digest = report_for([])
+    invalid = json.loads(raw)
+    invalid["unexpected"] = True
+    try:
+        module._validate_report(json.dumps(invalid), digest, state=state())
+    except module.helper.ContractError:
+        pass
+    else:
+        raise AssertionError("open profile report was accepted")
+
+
+def test_checkpoint_is_atomic_mode_0600_and_sensitive_fields_are_rejected() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / ".kent").mkdir()
+        path = root / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+        value = {
+            "schema": module.CHECKPOINT_SCHEMA,
+            "task_id": state()["task_id"],
+            "task_short_id": state()["task_short_id"],
+            "operation_id": state()["operation_id"],
+            "release_branch": state()["release_branch"],
+            "release_base_oid": state()["release_base_oid"],
+            "candidate_oid": state()["candidate_oid"],
+            "release_head_oid": "",
+            "candidate_serials": ["emulator-5554"],
+            "state": "acquiring",
+            "resource_serial": "",
+            "profile_report": "",
+            "profile_report_digest": "",
+            "release_preparation_report": "",
+            "release_preparation_report_digest": "",
+            "output_hashes": {path_name: "d" * 64 for path_name in module.PROFILE_PATHS},
+        }
+        module.helper.write_profile_checkpoint(root, "PUB-99", value)
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert module.helper.read_profile_checkpoint(root, "PUB-99") == value
+        unsafe = dict(value)
+        unsafe["token"] = "must-not-be-accepted"
+        try:
+            module.helper.write_profile_checkpoint(root, "PUB-99", unsafe)
+        except module.helper.ContractError:
+            pass
+        else:
+            raise AssertionError("sensitive checkpoint field was accepted")
+
+
+def test_lease_envelope_rejects_wrong_resource_and_missing_token() -> None:
+    with_resource = "resource=emulator-5556\ntoken=opaque\n"
+    assert module._parse_acquired(with_resource, ["emulator-5554", "emulator-5556"]) == (
+        "emulator-5556",
+        "opaque",
+    )
+    for raw in ("resource=emulator-9999\ntoken=opaque\n", "resource=emulator-5554\n"):
+        try:
+            module._parse_acquired(raw, ["emulator-5554"])
+        except module.helper.ContractError:
+            pass
+        else:
+            raise AssertionError("invalid lease acquisition was accepted")
+
+
+def test_child_environment_is_allowlisted_and_serial_is_explicit() -> None:
+    old = os.environ.get("KinoPubAccessToken")
+    old_path = os.environ.get("PUBER_PROFILE_GENERATOR_BIN")
+    try:
+        os.environ["KinoPubAccessToken"] = "sentinel"
+        os.environ["PUBER_PROFILE_GENERATOR_BIN"] = "/tmp/sentinel"
+        child = module._child_env("emulator-5554")
+    finally:
+        if old is None:
+            os.environ.pop("KinoPubAccessToken", None)
+        else:
+            os.environ["KinoPubAccessToken"] = old
+        if old_path is None:
+            os.environ.pop("PUBER_PROFILE_GENERATOR_BIN", None)
+        else:
+            os.environ["PUBER_PROFILE_GENERATOR_BIN"] = old_path
+    assert child["ANDROID_SERIAL"] == "emulator-5554"
+    assert "KinoPubAccessToken" not in child
+    assert "PUBER_PROFILE_GENERATOR_BIN" not in child
+    assert all(key in module._child_env("emulator-5554") for key in ("PATH", "HOME"))
+
+
+def test_main_admission_rejects_tool_override_and_dangling_local_properties() -> None:
+    original_root = module.ROOT
+    original_read = module.helper.read_zero_argument
+    original_validate = module.helper.validate_envelope
+    original_override = os.environ.get("PUBER_PROFILE_GENERATOR_BIN")
+    try:
+        module.helper.read_zero_argument = lambda: {}
+        module.helper.validate_envelope = lambda *args, **kwargs: ({}, {}, {})
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            module.ROOT = root
+            adapter = root / ".kent/adapters/mobile/emulator-resource-lock.sh"
+            adapter.parent.mkdir(parents=True)
+            adapter.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            adapter.chmod(0o755)
+            fake = root / "arbitrary-generator"
+            fake.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            fake.chmod(0o755)
+            os.environ["PUBER_PROFILE_GENERATOR_BIN"] = str(fake)
+            errors = io.StringIO()
+            with contextlib.redirect_stderr(errors):
+                assert module.main() == 2
+            assert "executable override is forbidden" in errors.getvalue()
+
+            os.environ.pop("PUBER_PROFILE_GENERATOR_BIN", None)
+            (root / "local.properties").symlink_to(root / "missing-local.properties")
+            errors = io.StringIO()
+            with contextlib.redirect_stderr(errors):
+                assert module.main() == 2
+            assert "local.properties is unsafe" in errors.getvalue()
+    finally:
+        module.ROOT = original_root
+        module.helper.read_zero_argument = original_read
+        module.helper.validate_envelope = original_validate
+        if original_override is None:
+            os.environ.pop("PUBER_PROFILE_GENERATOR_BIN", None)
+        else:
+            os.environ["PUBER_PROFILE_GENERATOR_BIN"] = original_override
+
+
+def test_exact_tools_and_sdk_only_local_properties_are_admitted() -> None:
+    assert module._tool(
+        module.ROOT / ".kent/adapters/mobile/emulator-resource-lock.sh",
+        "PUBER_RESOURCE_LOCK_BIN",
+    ).endswith(".kent/adapters/mobile/emulator-resource-lock.sh")
+    assert module._tool(
+        module.ROOT / "tools/generate-baseline-profile.sh",
+        "PUBER_PROFILE_GENERATOR_BIN",
+    ).endswith("tools/generate-baseline-profile.sh")
+    original_root = module.ROOT
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            module.ROOT = root
+            (root / "local.properties").write_text(
+                "sdk.dir=/opt/android-sdk\n",
+                encoding="utf-8",
+            )
+            assert module._child_env("emulator-5554")["ANDROID_SERIAL"] == "emulator-5554"
+    finally:
+        module.ROOT = original_root
+
+
+def test_inventory_and_generator_fail_closed_without_a_device() -> None:
+    original = module.helper.run
+    try:
+        module.helper.run = lambda *args, **kwargs: CompletedProcess(
+            args[0], 1, "", "probe failed"
+        )
+        try:
+            module._inventory("/fake/adapter")
+        except module.helper.ContractError as error:
+            assert "inventory" in str(error)
+        else:
+            raise AssertionError("inventory failure was accepted")
+    finally:
+        module.helper.run = original
+
+
+def test_recovery_parser_never_exposes_token() -> None:
+    resource, token = module._parse_acquired(
+        "resource=emulator-5554\ntoken=opaque-token\n", ["emulator-5554"]
+    )
+    assert resource == "emulator-5554"
+    assert token == "opaque-token"
+    assert "opaque-token" not in json.dumps(
+        {"resource_serial": resource, "profile_report": ""}
+    )
+
+
+def test_profile_outputs_are_the_only_script_owned_paths() -> None:
+    assert module.ALLOWED_STATUS_PATHS == set(module.PROFILE_PATHS)
+    assert "app/build.gradle.kts" not in module.ALLOWED_STATUS_PATHS
+
+
+def test_profile_state_preserves_immutable_task_identity() -> None:
+    payload = {
+        "workspace_path": str(module.ROOT),
+        "operation_id": state()["operation_id"],
+        "task_short_id": state()["task_short_id"],
+        "release_type": state()["release_type"],
+        "release_version": state()["release_version"],
+        "release_tag": state()["release_tag"],
+        "release_branch": state()["release_branch"],
+        "release_base_oid": state()["release_base_oid"],
+        "candidate_oid": state()["candidate_oid"],
+    }
+    original_git = module.helper.git
+    original_run = module.helper.run
+    try:
+        module.helper.git = lambda _root, *args: (
+            state()["release_branch"]
+            if args[0] == "symbolic-ref"
+            else state()["candidate_oid"]
+        )
+        module.helper.run = lambda *args, **kwargs: CompletedProcess(
+            args[0], 0, "", ""
+        )
+        derived = module._state_from_payload(payload, state())
+        assert derived["task_id"] == state()["task_id"]
+    finally:
+        module.helper.git = original_git
+        module.helper.run = original_run
+
+
+def test_preparation_report_is_closed_and_digest_bound() -> None:
+    value = {
+        **module.helper.VALIDATION_SIGNING,
+        "schema": "puber_release_preparation_report_v2",
+        "operation_id": "a" * 64,
+        "task_short_id": "PUB-99",
+        "release_type": "minor",
+        "release_version": "99.0.0",
+        "release_tag": "v99.0.0",
+        "release_branch": "release/99.0.0",
+        "release_base_oid": "b" * 40,
+        "candidate_oid": "c" * 40,
+        "release_head_oid": "d" * 40,
+        "profile_report_digest": "e" * 64,
+        "compile_command": "./tools/agentw :app:compileProdReleaseArtProfile",
+        "compile_state": "passed",
+        "assemble_command": "./tools/agentw :app:assembleProdRelease",
+        "assemble_state": "passed",
+        "final_changed_paths": ["app/build.gradle.kts"],
+        "version_file_sha256": "1" * 64,
+        "baseline_profile_sha256": "2" * 64,
+        "startup_profile_sha256": "3" * 64,
+        "no_profile_diff": True,
+        "elapsed_ms": 42,
+    }
+    encoded = module.helper.canonical_json(value)
+    digest = module.helper.sha256_bytes(encoded.encode())
+    assert module.helper.parse_release_preparation_report(encoded, digest)["no_profile_diff"] is True
+    broken = dict(value)
+    broken["final_changed_paths"] = ["app/build.gradle.kts", module.PROFILE_PATHS[0]]
+    broken_raw = module.helper.canonical_json(broken)
+    broken_digest = module.helper.sha256_bytes(broken_raw.encode())
+    try:
+        module.helper.parse_release_preparation_report(broken_raw, broken_digest)
+    except module.helper.ContractError:
+        pass
+    else:
+        raise AssertionError("synthetic profile diff was accepted")
+
+
+class MainFixture:
+    def __init__(self, *, real_admission: bool = False) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name).resolve() / "work"
+        self.control = Path(self.temporary.name) / "control"
+        self.root.mkdir()
+        self.control.mkdir()
+        self.adapter_log = self.control / "adapter.jsonl"
+        self.generator_log = self.control / "generator.jsonl"
+        self.original_profiles = {
+            module.PROFILE_PATHS[0]: b"Lcom/kino/puber/Main;\n",
+            module.PROFILE_PATHS[1]: b"SLcom/kino/puber/Startup;\n",
+        }
+        for relative, raw in self.original_profiles.items():
+            target = self.root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(raw)
+        sentinel = self.root / "sentinel.txt"
+        sentinel.write_text("unrelated fixture\n", encoding="utf-8")
+        self.sentinel_before = sentinel.read_bytes()
+        (self.root / ".gitignore").write_text(
+            ".kent/runtime/\n",
+            encoding="utf-8",
+        )
+        self._write_adapter()
+        self._write_generator()
+        if real_admission:
+            graph_path = ".kent/workflows/puber-release.json"
+            (self.root / graph_path).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / graph_path).write_bytes((ROOT / graph_path).read_bytes())
+        self._git("init", "-q")
+        self._git("config", "user.email", "test@example.invalid")
+        self._git("config", "user.name", "Puber Test")
+        self._git("checkout", "-q", "-b", state()["release_branch"])
+        self._git("add", ".")
+        self._git("commit", "-q", "-m", "profile main fixture")
+        self.candidate_oid = self._git("rev-parse", "HEAD").stdout.strip()
+        self.payload = {
+            "workspace_path": str(self.root),
+            "operation_id": state()["operation_id"],
+            "task_short_id": state()["task_short_id"],
+            "release_type": state()["release_type"],
+            "release_version": state()["release_version"],
+            "release_tag": state()["release_tag"],
+            "release_branch": state()["release_branch"],
+            "release_base_oid": self.candidate_oid,
+            "candidate_oid": self.candidate_oid,
+        }
+        self.validated = {
+            "task_id": state()["task_id"],
+            "task_short_id": state()["task_short_id"],
+            "commit": self.candidate_oid,
+        }
+        self.transitions: list[tuple[str, str, dict[str, object]]] = []
+        self.original_root = module.ROOT
+        self.original_read = module.helper.read_zero_argument
+        self.original_validate = module.helper.validate_envelope
+        self.original_task_show = module.helper.task_show
+        self.original_closure = module._assert_runtime_source_closure
+        self.original_emit = module.helper.emit_exact
+        self.original_task_id = os.environ.get("KENT_TASK_ID")
+        self.original_handlers = {
+            signum: signal.getsignal(signum)
+            for signum in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM)
+        }
+        module.ROOT = self.root
+        module.helper.read_zero_argument = lambda: {}
+        module.helper.validate_envelope = (
+            lambda *args, **kwargs: (dict(self.payload), dict(self.validated), {})
+        )
+        module._assert_runtime_source_closure = lambda _validated: None
+        module.helper.emit_exact = self._emit
+        if real_admission:
+            node_id = module.helper._node_id(self.root, "profile_generation")
+            self.payload["commentary"] = "private-transport-commentary"
+            self.payload["_kent"] = {
+                "task_id": state()["task_id"],
+                "node_id": node_id,
+                "transition_branch_key": "prepare_profile_generation",
+            }
+            self.task = {
+                "actions": [], "attention_count": 0, "body": "",
+                "current_nodes": [{"node_id": node_id}],
+                "current_scripts": [{
+                    "path": module.helper.SCRIPT_PATHS["profile_generation"],
+                    "current_node": {"node_id": node_id},
+                }],
+                "execution_target": {"commit_oid": self.candidate_oid},
+                "label_ids": [], "live_sessions": [], "project": {},
+                "retained_session_count": 0, "source_workspace": {},
+                "status": {"node_ids": [node_id]},
+                "summary": {
+                    "id": state()["task_id"], "short_id": "PUB-99",
+                    "project_id": module.helper.PROJECT_ID,
+                    "workflow_id": module.helper.WORKFLOW_ID,
+                },
+                "workflow": {
+                    "workflow_id": module.helper.WORKFLOW_ID,
+                    "version": module.helper.WORKFLOW_REVISION,
+                    "name": module.helper.WORKFLOW_NAME,
+                },
+                "worktree_path": str(self.root),
+            }
+            module.helper.read_zero_argument = lambda: dict(self.payload)
+            module.helper.task_show = lambda *_args: self.task
+            module.helper.validate_envelope = self.original_validate
+
+    def _write_adapter(self) -> None:
+        target = self.root / ".kent/adapters/mobile/emulator-resource-lock.sh"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            f"""#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+control = Path({str(self.control)!r})
+args = sys.argv[1:]
+with (control / "adapter.jsonl").open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps(args) + "\\n")
+mode = (control / "adapter-mode").read_text(encoding="utf-8").strip()
+owned = control / "owned-token"
+owned_resource = control / "owned-resource"
+release_count = control / "release-count"
+if args == ["adb-emulators", "tv"]:
+    if mode == "inventory_fail":
+        sys.exit(9)
+    if mode != "inventory_empty":
+        print("emulator-5554")
+        print("emulator-5556")
+    sys.exit(0)
+if args and args[0] == "acquire-any":
+    owned.write_text("opaque-token", encoding="utf-8")
+    owned_resource.write_text("emulator-5556", encoding="utf-8")
+    if mode == "acquire_missing_token":
+        print("resource=emulator-5556")
+        sys.exit(0)
+    if mode == "acquire_malformed_ack":
+        print("not-an-acquire-envelope")
+        sys.exit(0)
+    print("resource=emulator-5556")
+    print("token=opaque-token")
+    sys.exit(0)
+if args and args[0] == "release":
+    if (
+        not owned.exists()
+        or not owned_resource.exists()
+        or args[1:] != [owned_resource.read_text(), owned.read_text()]
+    ):
+        sys.exit(8)
+    count = int(release_count.read_text() or "0") if release_count.exists() else 0
+    release_count.write_text(str(count + 1), encoding="utf-8")
+    if mode == "release_fail_always" or (mode == "release_fail_once" and count == 0):
+        sys.exit(8)
+    owned.unlink(missing_ok=True)
+    owned_resource.unlink(missing_ok=True)
+    sys.exit(0)
+if args and args[0] == "resume-owned":
+    if mode == "resume_fail":
+        sys.exit(64)
+    if (
+        not owned.exists()
+        or not owned_resource.exists()
+        or owned_resource.read_text(encoding="utf-8") != args[1]
+    ):
+        sys.exit(75)
+    print(owned.read_text(encoding="utf-8"))
+    sys.exit(0)
+sys.exit(2)
+""",
+            encoding="utf-8",
+        )
+        target.chmod(0o755)
+
+    def _write_generator(self) -> None:
+        target = self.root / "tools/generate-baseline-profile.sh"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            f"""#!/usr/bin/env python3
+import json
+import os
+import signal
+import subprocess
+import sys
+from pathlib import Path
+
+control = Path({str(self.control)!r})
+root = Path.cwd()
+mode = (control / "generator-mode").read_text(encoding="utf-8").strip()
+with (control / "generator.jsonl").open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps({{"serial": os.environ.get("ANDROID_SERIAL", ""),
+                              "has_token": any("TOKEN" in key.upper() for key in os.environ)}}) + "\\n")
+baseline = root / {module.PROFILE_PATHS[0]!r}
+if mode in {{"changed", "fail_after_change", "cancel", "uncatchable", "unexpected_output", "source_drift"}}:
+    baseline.write_bytes(baseline.read_bytes() + b"Lcom/kino/puber/Changed;\\n")
+if mode == "fail_after_change":
+    sys.exit(7)
+if mode == "cancel":
+    os.kill(os.getppid(), signal.SIGINT)
+    sys.exit(130)
+if mode == "uncatchable":
+    os.kill(os.getppid(), signal.SIGKILL)
+    sys.exit(137)
+if mode == "unexpected_output":
+    baseline.write_text("mockwebserver\\n", encoding="utf-8")
+if mode == "source_drift":
+    subprocess.run(["git", "add", {module.PROFILE_PATHS[0]!r}], check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "unexpected source drift"], check=True)
+sys.exit(0)
+""",
+            encoding="utf-8",
+        )
+        target.chmod(0o755)
+
+    def _git(self, *args: str) -> CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            cwd=self.root,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+    def _emit(
+        self,
+        _root: Path,
+        transition: str,
+        target_node: str,
+        fields: dict[str, object],
+    ) -> None:
+        self.transitions.append((transition, target_node, fields))
+
+    def set_modes(self, generator: str, adapter: str = "normal") -> None:
+        (self.control / "generator-mode").write_text(generator, encoding="utf-8")
+        (self.control / "adapter-mode").write_text(adapter, encoding="utf-8")
+        self.adapter_log.unlink(missing_ok=True)
+        self.generator_log.unlink(missing_ok=True)
+        (self.control / "release-count").unlink(missing_ok=True)
+
+    def calls(self) -> list[list[str]]:
+        if not self.adapter_log.exists():
+            return []
+        return [
+            json.loads(line)
+            for line in self.adapter_log.read_text(encoding="utf-8").splitlines()
+        ]
+
+    def run(self) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            result = module.main()
+        assert "private-transport-commentary" not in stdout.getvalue() + stderr.getvalue()
+        assert "private-transport-commentary" not in json.dumps(self.transitions)
+        for checkpoint in (self.root / ".kent/runtime").rglob("*.json"):
+            assert "private-transport-commentary" not in checkpoint.read_text()
+        return result, stdout.getvalue(), stderr.getvalue()
+
+    def checkpoint(self) -> dict[str, object]:
+        value = module._read_checkpoint("PUB-99")
+        assert value is not None
+        return value
+
+    def seed_checkpoint(self, status: str, outputs: dict[str, bytes]) -> None:
+        module._checkpoint(
+            "PUB-99",
+            state={
+                **state(),
+                "release_base_oid": self.candidate_oid,
+                "candidate_oid": self.candidate_oid,
+            },
+            candidate_serials=["emulator-5554", "emulator-5556"],
+            status=status,
+            resource_serial="emulator-5556" if status == "generating" else "",
+            output_hashes={
+                path: module.helper.sha256_bytes(raw) for path, raw in outputs.items()
+            },
+        )
+        if status == "generating":
+            (self.control / "owned-token").write_text("opaque-token", encoding="utf-8")
+            (self.control / "owned-resource").write_text("emulator-5556", encoding="utf-8")
+
+    def assert_profiles_restored(self) -> None:
+        for relative, raw in self.original_profiles.items():
+            assert (self.root / relative).read_bytes() == raw
+        assert (self.root / "sentinel.txt").read_bytes() == self.sentinel_before
+
+    def close(self) -> None:
+        module.ROOT = self.original_root
+        module.helper.read_zero_argument = self.original_read
+        module.helper.validate_envelope = self.original_validate
+        module.helper.task_show = self.original_task_show
+        module._assert_runtime_source_closure = self.original_closure
+        module.helper.emit_exact = self.original_emit
+        for signum, handler in self.original_handlers.items():
+            signal.signal(signum, handler)
+        if self.original_task_id is None:
+            os.environ.pop("KENT_TASK_ID", None)
+        else:
+            os.environ["KENT_TASK_ID"] = self.original_task_id
+        self.temporary.cleanup()
+
+    def __enter__(self) -> "MainFixture":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
+
+
+def test_real_admission_interrupted_dirty_profiles_releases_without_byte_loss() -> None:
+    for relative in module.PROFILE_PATHS:
+        with MainFixture(real_admission=True) as fixture:
+            fixture.set_modes("no_diff")
+            fixture.seed_checkpoint("generating", fixture.original_profiles)
+            path = fixture.root / relative
+            path.write_bytes(path.read_bytes() + b"Lcom/kino/puber/Unknown;\n")
+            expected = {p: (fixture.root / p).read_bytes() for p in module.PROFILE_PATHS}
+            result, _, stderr = fixture.run()
+            assert result == 2 and "ownership could not be proven" in stderr, stderr
+            assert ["release", "emulator-5556", "opaque-token"] in fixture.calls()
+            assert not fixture.generator_log.exists()
+            assert fixture.checkpoint()["state"] == "failed"
+            assert fixture.checkpoint()["output_hashes"] == {
+                p: module.helper.sha256_bytes(raw)
+                for p, raw in fixture.original_profiles.items()
+            }
+            assert {p: (fixture.root / p).read_bytes() for p in module.PROFILE_PATHS} == expected
+            assert not fixture.transitions
+
+
+def test_real_admission_completed_dirty_output_reuses_lost_ack() -> None:
+    for relative in module.PROFILE_PATHS:
+        with MainFixture(real_admission=True) as fixture:
+            fixture.set_modes("no_diff")
+            result, _, stderr = fixture.run()
+            assert result == 0 and not stderr, stderr
+            checkpoint = fixture.checkpoint()
+            path = fixture.root / relative
+            path.write_bytes(path.read_bytes() + b"Lcom/kino/puber/Generated;\n")
+            digest = module.helper.sha256_bytes(path.read_bytes())
+            report = json.loads(checkpoint["profile_report"])
+            prefix = "baseline" if relative == module.PROFILE_PATHS[0] else "startup"
+            report[f"{prefix}_after_sha256"] = digest
+            report["changed_profiles"] = [relative]
+            checkpoint["output_hashes"][relative] = digest
+            checkpoint["profile_report"] = module.helper.canonical_json(report)
+            checkpoint["profile_report_digest"] = module.helper.sha256_bytes(
+                checkpoint["profile_report"].encode()
+            )
+            module.helper.write_profile_checkpoint(fixture.root, "PUB-99", checkpoint)
+            fixture.set_modes("no_diff")
+            fixture.transitions.clear()
+            result, _, stderr = fixture.run()
+            assert result == 0 and not stderr, stderr
+            assert fixture.calls() == [] and not fixture.generator_log.exists()
+            assert fixture.checkpoint() == checkpoint
+            assert fixture.transitions[0][0] == "profile_generation_passed"
+            assert fixture.transitions[0][2]["profile_report_digest"] == checkpoint["profile_report_digest"]
+
+
+def test_real_admission_recovery_rejects_foreign_or_ambiguous_input() -> None:
+    cases = (
+        "missing", "malformed", "v1", "task", "operation", "base", "candidate",
+        "branch", "node", "execution", "source", "unrelated", "staged",
+    )
+    for case in cases:
+        with MainFixture(real_admission=True) as fixture:
+            fixture.set_modes("no_diff")
+            if case != "missing":
+                fixture.seed_checkpoint("generating", fixture.original_profiles)
+            path = fixture.root / module.PROFILE_PATHS[0]
+            path.write_bytes(path.read_bytes() + b"Lcom/kino/puber/Unknown;\n")
+            checkpoint_path = fixture.root / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+            if case in {"malformed", "v1", "task", "operation", "base", "candidate", "branch"}:
+                checkpoint = fixture.checkpoint()
+                if case == "malformed":
+                    checkpoint_path.write_text("{")
+                else:
+                    key, value = {
+                        "v1": ("schema", "puber_release_profile_checkpoint_v1"),
+                        "task": ("task_id", "task-87654321-1234-4234-8234-123456789abc"),
+                        "operation": ("operation_id", "d" * 64),
+                        "base": ("release_base_oid", "d" * 40),
+                        "candidate": ("candidate_oid", "d" * 40),
+                        "branch": ("release_branch", "release/98.0.0"),
+                    }[case]
+                    checkpoint[key] = value
+                    checkpoint_path.write_text(module.helper.canonical_json(checkpoint))
+            if case == "node":
+                fixture.payload["_kent"]["node_id"] = "wrong-node"
+            if case == "execution":
+                fixture.task["execution_target"]["commit_oid"] = "d" * 40
+            if case == "source":
+                def reject_source(_validated: object) -> None:
+                    raise module.ProfileError("fixture source closure drift")
+                module._assert_runtime_source_closure = reject_source
+            if case == "unrelated":
+                (fixture.root / "sentinel.txt").write_bytes(b"unrelated user edit\n")
+            if case == "staged":
+                fixture._git("add", module.PROFILE_PATHS[0])
+            before = {p: (fixture.root / p).read_bytes() for p in (*module.PROFILE_PATHS, "sentinel.txt")}
+            checkpoint_before = checkpoint_path.read_bytes() if checkpoint_path.exists() else None
+            result, _, stderr = fixture.run()
+            assert result == 2 and stderr, (case, result, stderr)
+            assert fixture.calls() == [] and not fixture.generator_log.exists(), case
+            assert not fixture.transitions, case
+            assert {p: (fixture.root / p).read_bytes() for p in before} == before, case
+            assert (checkpoint_path.read_bytes() if checkpoint_path.exists() else None) == checkpoint_before, case
+
+
+def test_real_admission_completed_mismatch_preserves_user_bytes() -> None:
+    for relative in module.PROFILE_PATHS:
+        with MainFixture(real_admission=True) as fixture:
+            fixture.set_modes("no_diff")
+            assert fixture.run()[0] == 0
+            checkpoint = fixture.checkpoint()
+            path = fixture.root / relative
+            path.write_bytes(path.read_bytes() + b"Lcom/kino/puber/User;\n")
+            before = path.read_bytes()
+            fixture.set_modes("no_diff")
+            fixture.transitions.clear()
+            result, _, stderr = fixture.run()
+            assert result == 2 and "output hashes drifted" in stderr, stderr
+            assert path.read_bytes() == before and fixture.checkpoint() == checkpoint
+            assert fixture.calls() == [] and not fixture.generator_log.exists()
+            assert not fixture.transitions
+
+
+def test_real_admission_clean_interruption_and_generic_dirty_guard() -> None:
+    with MainFixture(real_admission=True) as fixture:
+        fixture.set_modes("no_diff")
+        fixture.seed_checkpoint("generating", fixture.original_profiles)
+        result, _, stderr = fixture.run()
+        assert result == 0 and not stderr, stderr
+        assert fixture.transitions[0][0] == "profile_generation_needs_user_action"
+        assert ["release", "emulator-5556", "opaque-token"] in fixture.calls()
+        fixture.assert_profiles_restored()
+        retry_fields = fixture.transitions[-1][2]
+        fixture.payload = {
+            **retry_fields,
+            "_kent": {**fixture.payload["_kent"],
+                      "transition_branch_key": "profile_generation_needs_user_action"},
+            "commentary": "private-transport-commentary",
+        }
+        fixture.transitions.clear()
+        fixture.set_modes("no_diff")
+        result, _, stderr = fixture.run()
+        assert result == 0 and not stderr, stderr
+        assert fixture.transitions[-1][0] == "profile_generation_passed"
+        assert fixture.checkpoint()["state"] == "completed"
+    for node in module.helper.SCRIPT_PATHS:
+        with MainFixture(real_admission=True) as fixture:
+            fixture.set_modes("no_diff")
+            (fixture.root / module.PROFILE_PATHS[0]).write_bytes(b"user edit\n")
+            node_id = module.helper._node_id(fixture.root, node)
+            fixture.task["status"]["node_ids"] = [node_id]
+            fixture.task["current_nodes"] = [{"node_id": node_id}]
+            fixture.task["current_scripts"] = [{
+                "path": module.helper.SCRIPT_PATHS[node],
+                "current_node": {"node_id": node_id},
+            }]
+            kwargs = {} if node == "profile_generation" else {
+                "profile_recovery_admission": lambda _: (_ for _ in ()).throw(
+                    AssertionError("another consumer invoked profile recovery")
+                ),
+            }
+            try:
+                module.helper.validate_task(
+                    fixture.root, state()["task_id"], node, fixture.task, **kwargs,
+                )
+            except module.helper.ContractError as error:
+                assert str(error) == "selected checkout is not clean", str(error)
+            else:
+                raise AssertionError(f"generic clean guard relaxed for {node}")
+
+
+def test_main_changed_and_no_diff_success() -> None:
+    for mode, expected_changed in (
+        ("changed", [module.PROFILE_PATHS[0]]),
+        ("no_diff", []),
+    ):
+        with MainFixture() as fixture:
+            fixture.set_modes(mode)
+            result, stdout, stderr = fixture.run()
+            assert result == 0 and not stdout and not stderr
+            assert [item[0] for item in fixture.transitions] == [
+                "profile_generation_passed"
+            ]
+            checkpoint = fixture.checkpoint()
+            assert checkpoint["state"] == "completed"
+            report = json.loads(str(checkpoint["profile_report"]))
+            assert report["changed_profiles"] == expected_changed
+            assert report["tv_serial"] == "emulator-5556"
+            assert fixture.calls() == [
+                ["adb-emulators", "tv"],
+                [
+                    "acquire-any",
+                    "emulator-5554",
+                    "emulator-5556",
+                    "--",
+                    "900",
+                    "7200",
+                ],
+                ["release", "emulator-5556", "opaque-token"],
+            ]
+            generator = json.loads(fixture.generator_log.read_text().strip())
+            assert generator == {"serial": "emulator-5556", "has_token": False}
+            assert (fixture.root / "sentinel.txt").read_bytes() == fixture.sentinel_before
+
+
+def test_main_failures_roll_back_and_emit_only_the_self_loop() -> None:
+    for generator_mode, adapter_mode, reason in (
+        ("fail_after_change", "normal", "generator failed"),
+        ("cancel", "normal", "cancelled"),
+        ("unexpected_output", "normal", "instrumentation harness data"),
+        ("changed", "release_fail_once", "could not be proven released"),
+    ):
+        with MainFixture() as fixture:
+            fixture.set_modes(generator_mode, adapter_mode)
+            result, stdout, stderr = fixture.run()
+            assert result == 0 and not stderr, (reason, stdout, stderr)
+            assert [item[0] for item in fixture.transitions] == [
+                "profile_generation_needs_user_action"
+            ]
+            assert reason in str(fixture.transitions[0][2]["blocker_reason"])
+            fixture.assert_profiles_restored()
+            assert fixture.checkpoint()["state"] == "failed"
+            assert all(item[0] != "profile_generation_passed" for item in fixture.transitions)
+            calls = fixture.calls()
+            assert ["release", "emulator-5556", "opaque-token"] in calls
+            if adapter_mode == "release_fail_once":
+                release_index = calls.index(
+                    ["release", "emulator-5556", "opaque-token"]
+                )
+                assert ["resume-owned", "emulator-5556"] in calls[release_index + 1 :]
+
+
+def test_main_source_drift_interrupts_after_owned_rollback() -> None:
+    with MainFixture() as fixture:
+        fixture.set_modes("source_drift")
+        result, stdout, stderr = fixture.run()
+        assert result == 2 and not stdout and "release candidate changed" in stderr
+        assert fixture.transitions == []
+        fixture.assert_profiles_restored()
+        assert fixture._git("rev-parse", "HEAD").stdout.strip() != fixture.candidate_oid
+        assert ["release", "emulator-5556", "opaque-token"] in fixture.calls()
+
+
+def test_main_source_closure_drift_interrupts_before_device_effects() -> None:
+    with MainFixture() as fixture:
+        fixture.set_modes("fail_after_change")
+
+        def drift(_validated: dict[str, object]) -> None:
+            raise module.ProfileError("selected sealed RuntimeSourceInputs are stale")
+
+        module._assert_runtime_source_closure = drift
+        result, stdout, stderr = fixture.run()
+        assert result == 2 and not stdout
+        assert "RuntimeSourceInputs are stale" in stderr
+        assert fixture.transitions == []
+        assert fixture.calls() == []
+        assert not fixture.generator_log.exists()
+        fixture.assert_profiles_restored()
+
+
+def test_main_unrecoverable_release_failure_emits_no_transition() -> None:
+    with MainFixture() as fixture:
+        fixture.set_modes("changed", "release_fail_always")
+        result, stdout, stderr = fixture.run()
+        assert result == 2 and not stdout
+        assert "lease recovery failed" in stderr
+        assert fixture.transitions == []
+        fixture.assert_profiles_restored()
+        assert fixture.checkpoint()["state"] == "failed"
+        calls = fixture.calls()
+        assert ["resume-owned", "emulator-5556"] in calls
+        assert calls.count(["release", "emulator-5556", "opaque-token"]) >= 2
+
+
+def test_main_completed_checkpoint_reuse_and_identity_drift_rejection() -> None:
+    with MainFixture() as fixture:
+        fixture.set_modes("changed")
+        assert fixture.run()[0] == 0
+        fixture.transitions.clear()
+        fixture.set_modes("fail_after_change", "inventory_fail")
+        result, stdout, stderr = fixture.run()
+        assert result == 0 and not stdout and not stderr
+        assert [item[0] for item in fixture.transitions] == [
+            "profile_generation_passed"
+        ]
+        assert fixture.calls() == []
+        assert not fixture.generator_log.exists()
+
+    with MainFixture() as fixture:
+        fixture.set_modes("no_diff")
+        checkpoint_path = (
+            fixture.root / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+        )
+        assert fixture.run()[0] == 0
+        fixture.transitions.clear()
+        fixture.set_modes("no_diff")
+        fixture.payload["operation_id"] = "f" * 64
+        fixture.validated["task_id"] = state()["task_id"]
+        result, stdout, stderr = fixture.run()
+        assert result == 2 and not stdout and "identity drifted" in stderr
+        assert fixture.transitions == []
+        assert fixture.calls() == []
+        assert not fixture.generator_log.exists()
+        fixture.assert_profiles_restored()
+
+
+def test_main_uncatchable_generation_preserves_unrecorded_output_after_lease_recovery() -> None:
+    with MainFixture() as fixture:
+        fixture.set_modes("uncatchable")
+        first_pid = os.fork()
+        if first_pid == 0:
+            os._exit(module.main())
+        _, first_status = os.waitpid(first_pid, 0)
+        assert os.WIFSIGNALED(first_status)
+        assert os.WTERMSIG(first_status) == signal.SIGKILL
+        assert fixture.checkpoint()["state"] == "generating"
+        assert (
+            fixture.root / module.PROFILE_PATHS[0]
+        ).read_bytes() != fixture.original_profiles[module.PROFILE_PATHS[0]]
+        interrupted = {
+            path: (fixture.root / path).read_bytes() for path in module.PROFILE_PATHS
+        }
+        hashes = fixture.checkpoint()["output_hashes"]
+
+        fixture.transitions.clear()
+        fixture.set_modes("no_diff")
+        result, stdout, stderr = fixture.run()
+        assert {path: (fixture.root / path).read_bytes() for path in interrupted} == interrupted
+        assert result == 2 and not stdout and "ownership" in stderr
+        assert fixture.transitions == []
+        calls = fixture.calls()
+        resume_index = calls.index(["resume-owned", "emulator-5556"])
+        release_index = calls.index(
+            ["release", "emulator-5556", "opaque-token"]
+        )
+        assert resume_index < release_index
+        assert not any(call[0] == "acquire-any" for call in calls)
+        assert not fixture.generator_log.exists()
+        assert fixture.checkpoint()["state"] == "failed"
+        assert fixture.checkpoint()["resource_serial"] == ""
+        assert fixture.checkpoint()["output_hashes"] == hashes
+        assert not (fixture.control / "owned-token").exists()
+        # Releasing the emulator does not turn unknown bytes into owned output.
+        fixture.set_modes("no_diff")
+        result, stdout, stderr = fixture.run()
+        assert result == 2 and not stdout and "ownership" in stderr
+        assert {path: (fixture.root / path).read_bytes() for path in interrupted} == interrupted
+        assert not fixture.generator_log.exists()
+
+
+def _assert_generating_preserves_user_profile(relative: str, *, mixed: bool = False) -> None:
+    with MainFixture() as fixture:
+        fixture.set_modes("no_diff")
+        owned = dict(fixture.original_profiles)
+        if mixed:
+            owned[module.PROFILE_PATHS[0]] += b"Lcom/kino/puber/RecordedOutput;\n"
+        fixture.seed_checkpoint("generating", owned)
+        for path, raw in owned.items():
+            (fixture.root / path).write_bytes(raw)
+        profile = fixture.root / relative
+        profile.write_bytes(profile.read_bytes() + b"Luser/KeepMyEdit;\n")
+        before = {path: (fixture.root / path).read_bytes() for path in owned}
+        hashes = fixture.checkpoint()["output_hashes"]
+        result, stdout, stderr = fixture.run()
+        assert {path: (fixture.root / path).read_bytes() for path in owned} == before, (
+            relative, mixed, "generating recovery overwrote unproven bytes"
+        )
+        assert result == 2 and not stdout and "ownership" in stderr
+        assert fixture.transitions == []
+        assert fixture.calls() == [
+            ["resume-owned", "emulator-5554"],
+            ["resume-owned", "emulator-5556"],
+            ["release", "emulator-5556", "opaque-token"],
+        ]
+        assert not (fixture.control / "owned-token").exists()
+        assert not fixture.generator_log.exists()
+        assert fixture.checkpoint()["state"] == "failed"
+        assert fixture.checkpoint()["resource_serial"] == ""
+        assert fixture.checkpoint()["output_hashes"] == hashes
+        assert (fixture.root / "sentinel.txt").read_bytes() == fixture.sentinel_before
+
+
+def test_main_generating_recovery_preserves_user_baseline() -> None:
+    _assert_generating_preserves_user_profile(module.PROFILE_PATHS[0])
+
+
+def test_main_generating_recovery_preserves_user_startup() -> None:
+    _assert_generating_preserves_user_profile(module.PROFILE_PATHS[1])
+
+
+def test_main_generating_recovery_checks_both_profiles_before_restoring_either() -> None:
+    _assert_generating_preserves_user_profile(module.PROFILE_PATHS[1], mixed=True)
+
+
+def test_main_generating_clean_no_drift_recovery_allows_safe_retry() -> None:
+    with MainFixture() as fixture:
+        fixture.set_modes("no_diff")
+        fixture.seed_checkpoint("generating", fixture.original_profiles)
+        result, stdout, stderr = fixture.run()
+        assert result == 0 and not stdout and not stderr
+        assert [item[0] for item in fixture.transitions] == [
+            "profile_generation_needs_user_action"
+        ]
+        assert "previous profile generation was interrupted" in fixture.transitions[0][2]["blocker_reason"]
+        assert fixture.calls() == [
+            ["resume-owned", "emulator-5554"],
+            ["resume-owned", "emulator-5556"],
+            ["release", "emulator-5556", "opaque-token"],
+        ]
+        assert not fixture.generator_log.exists()
+        fixture.assert_profiles_restored()
+        assert fixture.checkpoint()["state"] == "failed"
+        fixture.transitions.clear()
+        fixture.set_modes("no_diff")
+        result, stdout, stderr = fixture.run()
+        assert result == 0 and not stdout and not stderr
+        assert [item[0] for item in fixture.transitions] == ["profile_generation_passed"]
+        fixture.assert_profiles_restored()
+
+
+def test_main_unowned_or_unrelated_generating_recovery_fails_closed() -> None:
+    for mode in ("unowned", "unrelated"):
+        with MainFixture() as fixture:
+            fixture.set_modes("no_diff")
+            checkpoint_path = (
+                fixture.root
+                / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+            )
+            module._checkpoint(
+                "PUB-99",
+                state={
+                    **state(),
+                    "release_base_oid": fixture.candidate_oid,
+                    "candidate_oid": fixture.candidate_oid,
+                },
+                candidate_serials=["emulator-5554", "emulator-5556"],
+                status="generating",
+                resource_serial="emulator-5556",
+                output_hashes={
+                    path: module.helper.sha256_bytes(raw)
+                    for path, raw in fixture.original_profiles.items()
+                },
+            )
+            profile = fixture.root / module.PROFILE_PATHS[0]
+            profile.write_bytes(profile.read_bytes() + b"interrupted output\n")
+            if mode == "unrelated":
+                sentinel = fixture.root / "sentinel.txt"
+                sentinel.write_bytes(sentinel.read_bytes() + b"unrelated change\n")
+                (fixture.control / "owned-token").write_text(
+                    "opaque-token", encoding="utf-8"
+                )
+                (fixture.control / "owned-resource").write_text(
+                    "emulator-5556", encoding="utf-8"
+                )
+            result, stdout, stderr = fixture.run()
+            assert result == 2 and not stdout
+            assert fixture.transitions == []
+            assert fixture.checkpoint()["state"] == "generating"
+            assert profile.read_bytes().endswith(b"interrupted output\n")
+            assert not fixture.generator_log.exists()
+            if mode == "unowned":
+                assert "could not be proven recovered" in stderr
+                assert ["resume-owned", "emulator-5556"] in fixture.calls()
+            else:
+                assert "unexpected changed path: sentinel.txt" in stderr
+                assert fixture.calls() == []
+
+
+def _assert_retry_preserves_user_profile(status: str, relative: str) -> None:
+    with MainFixture() as fixture:
+        fixture.set_modes("no_diff")
+        fixture.seed_checkpoint(status, fixture.original_profiles)
+        checkpoint = fixture.checkpoint()
+        user_bytes = fixture.original_profiles[relative] + b"Luser/KeepMyEdit;\n"
+        (fixture.root / relative).write_bytes(user_bytes)
+        result, stdout, stderr = fixture.run()
+        assert (fixture.root / relative).read_bytes() == user_bytes, (
+            status, relative, "retry overwrote unowned user bytes"
+        )
+        assert result == 2 and not stdout and "ownership" in stderr
+        assert fixture.transitions == []
+        assert fixture.checkpoint() == checkpoint
+        assert not fixture.generator_log.exists()
+        assert not any(call[0] == "acquire-any" for call in fixture.calls())
+        assert (fixture.root / "sentinel.txt").read_bytes() == fixture.sentinel_before
+
+
+def test_main_failed_retry_preserves_user_baseline() -> None:
+    _assert_retry_preserves_user_profile("failed", module.PROFILE_PATHS[0])
+
+
+def test_main_failed_retry_preserves_user_startup() -> None:
+    _assert_retry_preserves_user_profile("failed", module.PROFILE_PATHS[1])
+
+
+def test_main_acquiring_retry_preserves_user_baseline() -> None:
+    _assert_retry_preserves_user_profile("acquiring", module.PROFILE_PATHS[0])
+
+
+def test_main_acquiring_retry_preserves_user_startup() -> None:
+    _assert_retry_preserves_user_profile("acquiring", module.PROFILE_PATHS[1])
+
+
+def test_main_failed_rollback_retry_preserves_later_user_edit() -> None:
+    from unittest.mock import patch
+    with MainFixture() as fixture:
+        fixture.set_modes("fail_after_change")
+        with patch.object(module, "_restore_outputs", side_effect=OSError("injected rollback failure")):
+            result, _, stderr = fixture.run()
+        assert result == 0 and not stderr
+        assert fixture.checkpoint()["state"] == "failed"
+        assert "profile rollback failed" in fixture.transitions[-1][2]["blocker_reason"]
+        profile = fixture.root / module.PROFILE_PATHS[0]
+        user_bytes = profile.read_bytes() + b"Luser/EditAfterFailedRollback;\n"
+        profile.write_bytes(user_bytes)
+        fixture.transitions.clear()
+        fixture.set_modes("no_diff")
+        result, stdout, stderr = fixture.run()
+        assert profile.read_bytes() == user_bytes, "retry erased edit after failed rollback"
+        assert result == 2 and not stdout and "ownership" in stderr
+        assert fixture.transitions == []
+        assert not fixture.generator_log.exists()
+
+
+def test_main_retry_checks_all_dirty_outputs_before_restoring_any() -> None:
+    for status in ("failed", "acquiring"):
+        with MainFixture() as fixture:
+            fixture.set_modes("no_diff")
+            owned = {
+                path: raw + b"Lcom/kino/puber/OwnedPartial;\n"
+                for path, raw in fixture.original_profiles.items()
+            }
+            fixture.seed_checkpoint(status, owned)
+            for path, raw in owned.items():
+                (fixture.root / path).write_bytes(raw)
+            startup = fixture.root / module.PROFILE_PATHS[1]
+            startup.write_bytes(startup.read_bytes() + b"Luser/KeepMyEdit;\n")
+            before = {path: (fixture.root / path).read_bytes() for path in owned}
+            result, stdout, stderr = fixture.run()
+            assert {path: (fixture.root / path).read_bytes() for path in owned} == before
+            assert result == 2 and not stdout and "ownership" in stderr
+            assert fixture.transitions == []
+            assert not fixture.generator_log.exists()
+
+
+def test_main_retry_recovers_hash_proven_outputs() -> None:
+    for status in ("failed", "acquiring", "generating"):
+        with MainFixture() as fixture:
+            fixture.set_modes("no_diff")
+            owned = {
+                path: raw + b"Lcom/kino/puber/OwnedPartial;\n"
+                for path, raw in fixture.original_profiles.items()
+            }
+            fixture.seed_checkpoint(status, owned)
+            for path, raw in owned.items():
+                (fixture.root / path).write_bytes(raw)
+            result, stdout, stderr = fixture.run()
+            assert result == 0 and not stdout and not stderr
+            if status == "generating":
+                assert [item[0] for item in fixture.transitions] == [
+                    "profile_generation_needs_user_action"
+                ]
+                fixture.assert_profiles_restored()
+                fixture.transitions.clear()
+                fixture.set_modes("no_diff")
+                result, stdout, stderr = fixture.run()
+                assert result == 0 and not stdout and not stderr
+            assert [item[0] for item in fixture.transitions] == ["profile_generation_passed"]
+            fixture.assert_profiles_restored()
+
+
+def test_main_retry_checks_clean_output_hash_before_restoration() -> None:
+    for status in ("failed", "acquiring"):
+        with MainFixture() as fixture:
+            fixture.set_modes("no_diff")
+            owned = {
+                path: raw + b"Lcom/kino/puber/RecordedOutput;\n"
+                for path, raw in fixture.original_profiles.items()
+            }
+            fixture.seed_checkpoint(status, owned)
+            # The baseline matches its recorded hash, but the Git-clean startup
+            # does not. A dirty-path-only check must not authorize restoration.
+            (fixture.root / module.PROFILE_PATHS[0]).write_bytes(owned[module.PROFILE_PATHS[0]])
+            before = {path: (fixture.root / path).read_bytes() for path in owned}
+            result, stdout, stderr = fixture.run()
+            assert {path: (fixture.root / path).read_bytes() for path in owned} == before
+            assert result == 2 and not stdout and "ownership" in stderr
+            assert fixture.transitions == []
+            assert not fixture.generator_log.exists()
+
+
+def test_main_malformed_acquire_ack_recovers_bare_token_and_releases() -> None:
+    for mode in ("acquire_missing_token", "acquire_malformed_ack"):
+        with MainFixture() as fixture:
+            fixture.set_modes("no_diff", mode)
+            result, stdout, stderr = fixture.run()
+            assert not (fixture.control / "owned-token").exists(), (
+                mode, "successful acquire stranded its lease", stderr
+            )
+            assert result == 0 and not stdout and not stderr
+            assert [item[0] for item in fixture.transitions] == [
+                "profile_generation_needs_user_action"
+            ]
+            assert fixture.calls() == [
+                ["adb-emulators", "tv"],
+                ["acquire-any", "emulator-5554", "emulator-5556", "--", "900", "7200"],
+                ["resume-owned", "emulator-5554"],
+                ["resume-owned", "emulator-5556"],
+                ["release", "emulator-5556", "opaque-token"],
+            ]
+            assert not fixture.generator_log.exists()
+            assert fixture.checkpoint()["state"] == "failed"
+            assert "opaque-token" not in json.dumps(fixture.transitions)
+            assert "opaque-token" not in json.dumps(fixture.checkpoint())
+            fixture.assert_profiles_restored()
+
+
+def test_owned_recovery_accepts_only_one_bare_token_without_leaking_it() -> None:
+    from unittest.mock import patch
+    for raw in (
+        "", "token=opaque-token\n", "opaque-token\nsecond-token\n",
+        "opaque-token\n\n", " opaque-token\n", "opaque-token \n",
+        "opaque token\n", "opaque-token\r\n",
+    ):
+        calls = []
+        def run(args, **_kwargs):
+            calls.append(args)
+            return CompletedProcess(args, 0, raw, "")
+        with patch.object(module.helper, "run", side_effect=run):
+            try:
+                module._recover_owned("/fake/adapter", ["emulator-5554"])
+            except module.helper.ContractError as error:
+                assert "opaque-token" not in str(error)
+            else:
+                raise AssertionError("malformed resume-owned token was accepted")
+        assert calls == [["/fake/adapter", "resume-owned", "emulator-5554"]]
+    for raw in ("opaque-token", "opaque-token\n"):
+        calls = []
+        def run(args, **_kwargs):
+            calls.append(args)
+            return CompletedProcess(args, 0, raw if args[1] == "resume-owned" else "", "")
+        with patch.object(module.helper, "run", side_effect=run):
+            assert module._recover_owned("/fake/adapter", ["emulator-5554"]) == {"emulator-5554"}
+        assert calls == [
+            ["/fake/adapter", "resume-owned", "emulator-5554"],
+            ["/fake/adapter", "release", "emulator-5554", "opaque-token"],
+        ]
+
+
+def _documented_lease_block() -> str:
+    document = (ROOT / "docs/release.md").read_text(encoding="utf-8")
+    section = document.split(
+        "The release profile stage requires a running **Android TV emulator**",
+        1,
+    )[1]
+    return section.split("```bash\n", 1)[1].split("\n```", 1)[0]
+
+
+def test_documented_lease_block_executes_checked_inventory_and_exact_release() -> None:
+    block = _documented_lease_block()
+    assert 'acquire-any' not in block
+    assert block.count('resume-owned') == 1
+    document = (ROOT / "docs/release.md").read_text()
+    assert "fresh acquisition only" in document and "resume only the descriptor-safe workflow" in document
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        adapter = root / ".kent/adapters/mobile/emulator-resource-lock.sh"
+        adapter.parent.mkdir(parents=True)
+        log = root / "effects.jsonl"
+        adapter.write_text("""#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+with Path(os.environ["DOC_LOG"]).open("a") as f: f.write(json.dumps(args) + "\\n")
+mode = os.environ["DOC_MODE"]
+if args == ["adb-emulators", "tv"]:
+    inventories = {"empty":"", "duplicate":"emulator-5554\\nemulator-5554\\n", "malformed":"emulator-5554 extra\\n", "blank":"emulator-5554\\n\\n", "absent":"emulator-5556\\n"}
+    sys.stdout.write(inventories.get(mode, "emulator-5554\\nemulator-5556\\n"))
+elif args == ["acquire", "emulator-5554", "900", "7200"]:
+    if mode == "acquire_failed": sys.exit(1)
+    sys.stdout.write({"missing_token":"", "malformed_ack":"token=oops\\n", "multiple":"first\\nsecond\\n"}.get(mode, "doc-token\\n"))
+elif args == ["resume-owned", "emulator-5554"]:
+    print("recovered-token")
+elif args[0] == "release":
+    if mode == "release_failed": sys.exit(1)
+else: sys.exit(2)
+""")
+        adapter.chmod(0o755)
+        generator = root / "tools/generate-baseline-profile.sh"
+        generator.parent.mkdir()
+        generator.write_text("""#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+with Path(os.environ["DOC_LOG"]).open("a") as f: f.write(json.dumps(["generator", os.environ["ANDROID_SERIAL"]]) + "\\n")
+if os.environ["DOC_MODE"] == "generator_failed": sys.exit(1)
+""")
+        generator.chmod(0o755)
+        def execute(mode, serial="emulator-5554"):
+            log.unlink(missing_ok=True)
+            result = subprocess.run(["bash", "-c", block], cwd=root, text=True, capture_output=True,
+                env={**os.environ, "KENT_TASK_ID":state()["task_id"], "DEVICE_SERIAL":serial, "DOC_LOG":str(log), "DOC_MODE":mode})
+            return result, [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+        inventory = ["adb-emulators", "tv"]
+        acquire = ["acquire", "emulator-5554", "900", "7200"]
+        for serial in ("", "physical-123", "emulator-5554 extra"):
+            result, calls = execute("success", serial)
+            assert result.returncode and calls == [], (result.stderr, calls)
+        for mode in ("empty", "duplicate", "malformed", "blank", "absent"):
+            result, calls = execute(mode)
+            assert result.returncode and calls == [inventory], (mode, result.stderr, calls)
+        result, calls = execute("success")
+        assert result.returncode == 0, result.stderr
+        assert calls == [inventory, acquire, ["generator", "emulator-5554"], ["release", "emulator-5554", "doc-token"]], calls
+        for mode in ("missing_token", "malformed_ack", "multiple"):
+            result, calls = execute(mode)
+            assert result.returncode and calls == [inventory, acquire, ["resume-owned", "emulator-5554"], ["release", "emulator-5554", "recovered-token"]], (mode, calls, result.stderr)
+        for mode in ("generator_failed", "release_failed"):
+            result, calls = execute(mode)
+            assert result.returncode and calls[-1] == ["release", "emulator-5554", "doc-token"]
+        result, calls = execute("acquire_failed")
+        assert result.returncode and calls == [inventory, acquire]
+        # A standalone invocation never consumes a prior checkpoint or resumes its lease.
+        # Such recovery belongs to the workflow Script, not this fresh-acquire recipe.
+        checkpoint = root / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+        checkpoint.parent.mkdir(parents=True)
+        checkpoint.write_bytes(b"prior checkpoint is not standalone recovery authority")
+        original = checkpoint.read_bytes()
+        result, calls = execute("success")
+        assert result.returncode == 0 and calls[1] == acquire
+        assert not any(call[0] == "resume-owned" for call in calls)
+        assert checkpoint.read_bytes() == original
+
+
+def test_descriptor_store_adversarial_matrix() -> None:
+    from unittest.mock import patch
+    helper = module.helper
+    def blocked(call):
+        try: call()
+        except (helper.ContractError, OSError): return
+        raise AssertionError("unsafe checkpoint operation was accepted")
+    def value():
+        return {"schema": module.CHECKPOINT_SCHEMA,
+            **{k: state()[k] for k in ("task_id", "task_short_id", "operation_id", "release_branch", "release_base_oid", "candidate_oid")},
+            "release_head_oid":"", "candidate_serials":["emulator-5554"], "state":"acquiring", "resource_serial":"",
+            "profile_report":"", "profile_report_digest":"", "release_preparation_report":"", "release_preparation_report_digest":"",
+            "output_hashes":{p:"d"*64 for p in module.PROFILE_PATHS}}
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / ".kent").mkdir()
+        helper.write_profile_checkpoint(root, "PUB-99", value())
+        path = root / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+        raw = path.read_bytes()
+        _, receipt = helper.read_profile_checkpoint(root, "PUB-99", with_receipt=True)
+        for component in (root / ".kent", root / ".kent/runtime", path.parent, path):
+            saved = component.with_name(component.name + "-saved")
+            component.rename(saved)
+            component.symlink_to(saved, target_is_directory=saved.is_dir())
+            try:
+                blocked(lambda: helper.read_profile_checkpoint(root, "PUB-99"))
+                blocked(lambda: helper.write_profile_checkpoint(root, "PUB-99", value()))
+                blocked(lambda: helper.delete_profile_checkpoint(root, "PUB-99", receipt))
+                assert path.read_bytes() == raw
+            finally:
+                component.unlink(); saved.rename(component)
+        for component in (root, root / ".kent", root / ".kent/runtime", path.parent):
+            mode = stat.S_IMODE(component.stat().st_mode)
+            component.chmod(0o777)
+            blocked(lambda: helper.read_profile_checkpoint(root, "PUB-99"))
+            blocked(lambda: helper.write_profile_checkpoint(root, "PUB-99", value()))
+            component.chmod(mode)
+        for component in (root / ".kent", root / ".kent/runtime", path.parent):
+            saved = component.with_name(component.name + "-saved")
+            component.rename(saved); component.write_text("unrelated")
+            blocked(lambda: helper.read_profile_checkpoint(root, "PUB-99"))
+            assert component.read_text() == "unrelated"
+            component.unlink(); saved.rename(component)
+        # Receipt rejects an identical-byte replacement inode and leaves it intact.
+        replacement = path.with_name("replacement")
+        replacement.write_bytes(raw); replacement.chmod(0o600); os.replace(replacement, path)
+        replaced = path.stat().st_ino
+        blocked(lambda: helper.delete_profile_checkpoint(root, "PUB-99", receipt))
+        assert path.read_bytes() == raw and path.stat().st_ino == replaced
+        _, receipt = helper.read_profile_checkpoint(root, "PUB-99", with_receipt=True)
+        saved = path.parent.with_name("PUB-99-old")
+        path.parent.rename(saved); path.parent.mkdir(mode=0o700)
+        path.write_bytes(raw); path.chmod(0o600)
+        blocked(lambda: helper.delete_profile_checkpoint(root, "PUB-99", receipt))
+        assert path.read_bytes() == raw
+        for mode in (0o644, 0o400, 0o666):
+            path.chmod(mode); blocked(lambda: helper.read_profile_checkpoint(root, "PUB-99"))
+        path.chmod(0o600)
+        linked = path.with_name("hardlink")
+        os.link(path, linked)
+        blocked(lambda: helper.read_profile_checkpoint(root, "PUB-99"))
+        linked.unlink()
+        for make in (lambda: os.mkfifo(path, 0o600), lambda: path.mkdir()):
+            path.unlink(); make()
+            blocked(lambda: helper.read_profile_checkpoint(root, "PUB-99"))
+            if path.is_dir(): path.rmdir()
+            else: path.unlink()
+            path.write_bytes(raw); path.chmod(0o600)
+        malformed = [b"{}", b'{"schema":1,"schema":2}', b'{"x":NaN}', b'{"x":1e999}',
+            b'{"x":' + b'[' * 40 + b'0' + b']' * 40 + b'}', b'!' * (helper.CHECKPOINT_LIMIT + 1),
+            raw.replace(b'checkpoint_v2', b'checkpoint_v1')]
+        for invalid in malformed:
+            path.write_bytes(invalid)
+            blocked(lambda: helper.read_profile_checkpoint(root, "PUB-99"))
+            blocked(lambda: helper.write_profile_checkpoint(root, "PUB-99", value()))
+            assert path.read_bytes() == invalid
+        path.write_bytes(raw)
+        # Deterministic owner and in-read identity drift without chown or devices.
+        real_fstat = os.fstat
+        def foreign(fd):
+            result = real_fstat(fd)
+            fields = list(result); fields[4] = os.getuid() + 1
+            return os.stat_result(fields)
+        with patch.object(helper.os, "fstat", side_effect=foreign):
+            blocked(lambda: helper.read_profile_checkpoint(root, "PUB-99"))
+        real_read = os.read
+        changed = False
+        def drift(fd, count):
+            nonlocal changed
+            data = real_read(fd, count)
+            if not changed:
+                changed = True
+                with path.open("ab") as stream: stream.write(b" ")
+            return data
+        with patch.object(helper.os, "read", side_effect=drift):
+            blocked(lambda: helper.read_profile_checkpoint(root, "PUB-99"))
+        path.write_bytes(raw)
+        unrelated = path.with_name("unrelated"); unrelated.write_bytes(b"preserve")
+        for name in ("replace", "fsync", "fdopen"):
+            with patch.object(helper.os, name, side_effect=OSError("injected interrupted write")):
+                blocked(lambda: helper.write_profile_checkpoint(root, "PUB-99", value()))
+            assert path.read_bytes() == raw and unrelated.read_bytes() == b"preserve"
+            assert not list(path.parent.glob(".release-profile-*.tmp"))
+        real_fsync = os.fsync
+        def fail_directory_fsync(fd):
+            if stat.S_ISDIR(real_fstat(fd).st_mode): raise OSError("directory fsync failed after replace")
+            return real_fsync(fd)
+        with patch.object(helper.os, "fsync", side_effect=fail_directory_fsync):
+            blocked(lambda: helper.write_profile_checkpoint(root, "PUB-99", value()))
+        # A failed durability acknowledgement may leave a complete canonical postimage,
+        # never a partial checkpoint or success receipt.
+        assert helper.read_profile_checkpoint(root, "PUB-99") == value()
+        assert path.read_bytes() == raw and unrelated.read_bytes() == b"preserve"
+        real_open = os.open
+        def swap_parent(name, flags, *args, **kwargs):
+            fd = real_open(name, flags, *args, **kwargs)
+            if name == helper.CHECKPOINT_BASENAME:
+                parent = path.parent
+                parent.rename(parent.with_name("PUB-99-swapped"))
+                parent.mkdir(mode=0o700)
+                path.write_bytes(raw); path.chmod(0o600)
+            return fd
+        with patch.object(helper.os, "open", side_effect=swap_parent):
+            blocked(lambda: helper.read_profile_checkpoint(root, "PUB-99"))
+        assert path.read_bytes() == raw
+        _, receipt = helper.read_profile_checkpoint(root, "PUB-99", with_receipt=True)
+        helper.delete_profile_checkpoint(root, "PUB-99", receipt)
+        assert not path.exists()
+        assert (path.parent.with_name("PUB-99-swapped") / "unrelated").read_bytes() == b"preserve"
+
+
+if __name__ == "__main__":
+    test_real_admission_interrupted_dirty_profiles_releases_without_byte_loss()
+    test_real_admission_completed_dirty_output_reuses_lost_ack()
+    test_real_admission_recovery_rejects_foreign_or_ambiguous_input()
+    test_real_admission_completed_mismatch_preserves_user_bytes()
+    test_real_admission_clean_interruption_and_generic_dirty_guard()
+    test_descriptor_store_adversarial_matrix()
+    test_closed_report_changed_and_identical_outputs()
+    test_checkpoint_is_atomic_mode_0600_and_sensitive_fields_are_rejected()
+    test_lease_envelope_rejects_wrong_resource_and_missing_token()
+    test_child_environment_is_allowlisted_and_serial_is_explicit()
+    test_main_admission_rejects_tool_override_and_dangling_local_properties()
+    test_exact_tools_and_sdk_only_local_properties_are_admitted()
+    test_inventory_and_generator_fail_closed_without_a_device()
+    test_recovery_parser_never_exposes_token()
+    test_profile_outputs_are_the_only_script_owned_paths()
+    test_profile_state_preserves_immutable_task_identity()
+    test_preparation_report_is_closed_and_digest_bound()
+    test_main_changed_and_no_diff_success()
+    test_main_failures_roll_back_and_emit_only_the_self_loop()
+    test_main_source_drift_interrupts_after_owned_rollback()
+    test_main_source_closure_drift_interrupts_before_device_effects()
+    test_main_unrecoverable_release_failure_emits_no_transition()
+    test_main_completed_checkpoint_reuse_and_identity_drift_rejection()
+    test_main_uncatchable_generation_preserves_unrecorded_output_after_lease_recovery()
+    test_main_generating_recovery_preserves_user_baseline()
+    test_main_generating_recovery_preserves_user_startup()
+    test_main_generating_recovery_checks_both_profiles_before_restoring_either()
+    test_main_generating_clean_no_drift_recovery_allows_safe_retry()
+    test_main_unowned_or_unrelated_generating_recovery_fails_closed()
+    test_main_failed_retry_preserves_user_baseline()
+    test_main_failed_retry_preserves_user_startup()
+    test_main_acquiring_retry_preserves_user_baseline()
+    test_main_acquiring_retry_preserves_user_startup()
+    test_main_failed_rollback_retry_preserves_later_user_edit()
+    test_main_retry_checks_all_dirty_outputs_before_restoring_any()
+    test_main_retry_recovers_hash_proven_outputs()
+    test_main_retry_checks_clean_output_hash_before_restoration()
+    test_main_malformed_acquire_ack_recovers_bare_token_and_releases()
+    test_owned_recovery_accepts_only_one_bare_token_without_leaking_it()
+    test_documented_lease_block_executes_checked_inventory_and_exact_release()
+    print(
+        "workflow-puber-release-profile-generation: passed "
+        "scenarios=changed,no_diff,generator_failure,cancellation,"
+        "release_recovery,release_unrecoverable,unexpected_output,"
+        "source_drift,source_closure_drift,self_loop,"
+        "completed_reuse,identity_drift,uncatchable_recovery,"
+        "unowned_recovery,unrelated_dirty,documented_lease,"
+        "failed_acquiring_user_edit_preservation,failed_rollback_retry,"
+        "all_output_ownership_admission,hash_proven_recovery,"
+        "malformed_acquire_recovery,strict_bare_resume_token,"
+        "generating_user_edit_preservation,unrecorded_output_preservation,"
+        "generating_clean_recovery,clean_output_hash_admission"
+    )

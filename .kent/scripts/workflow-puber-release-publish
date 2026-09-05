@@ -33,11 +33,87 @@ def _base_fields(payload: dict, state: dict, version: str, tag: str) -> dict:
         "release_version": version,
         "release_tag": tag,
         "target_commit": payload.get("target_commit", ""),
+        "release_head_oid": payload.get("release_head_oid", ""),
+        "release_preparation_report_digest": payload.get("release_preparation_report_digest", ""),
         "release_notes_path": payload.get("release_notes_path", ""),
         "publication_report": payload.get("publication_report", ""),
         "publication_report_digest": payload.get("publication_report_digest", ""),
         "release_run": payload.get("release_run", helper.canonical_json(helper.NOT_SELECTED_RUN)),
     }
+
+def _validate_preparation_proof(payload: dict, state: dict, version: str, tag: str, pr_head_oid: str) -> dict:
+    expected = {
+        "task_id": state["task_id"], "task_short_id": state["task_short_id"],
+        "operation_id": payload.get("operation_id", ""),
+        "release_type": helper.declarations(state["task"].get("body")).get("release_type", "minor"),
+        "release_version": version, "release_tag": tag,
+        "release_branch": payload.get("branch_name", f"release/{version}"),
+    }
+    for key in ("release_base_oid", "candidate_oid"):
+        if payload.get(key):
+            expected[key] = payload[key]
+    checkpoint = helper.read_profile_checkpoint(ROOT, state["task_short_id"], expected=expected)
+    for key in ("release_base_oid", "candidate_oid"):
+        if key in expected and checkpoint[key] != expected[key]:
+            raise helper.ContractError(f"profile checkpoint {key} drifted")
+        expected[key] = checkpoint[key]
+    if checkpoint["state"] != "completed" or checkpoint["release_head_oid"] != pr_head_oid:
+        raise helper.ContractError("release preparation checkpoint is not complete or PR head-bound")
+    profile = helper.parse_profile_report(
+        checkpoint["profile_report"], checkpoint["profile_report_digest"], expected=expected
+    )
+    preparation = helper.parse_release_preparation_report(
+        checkpoint["release_preparation_report"],
+        checkpoint["release_preparation_report_digest"],
+        expected=expected,
+    )
+    if preparation["release_head_oid"] != pr_head_oid or preparation["profile_report_digest"] != checkpoint["profile_report_digest"]:
+        raise helper.ContractError("release preparation proof is not bound to the exact PR head")
+    helper.validate_release_diff(
+        ROOT,
+        checkpoint["release_base_oid"],
+        pr_head_oid,
+        profile,
+        preparation,
+    )
+    expected_blobs = {
+        "app/build.gradle.kts": preparation["version_file_sha256"],
+        "app/src/main/generated/baselineProfiles/baseline-prof.txt": preparation["baseline_profile_sha256"],
+        "app/src/main/generated/baselineProfiles/startup-prof.txt": preparation["startup_profile_sha256"],
+    }
+    profile_hashes = {
+        "app/src/main/generated/baselineProfiles/baseline-prof.txt": (
+            profile["baseline_before_sha256"],
+            profile["baseline_after_sha256"],
+        ),
+        "app/src/main/generated/baselineProfiles/startup-prof.txt": (
+            profile["startup_before_sha256"],
+            profile["startup_after_sha256"],
+        ),
+    }
+    actual_changed_profiles = {
+        path for path, (before_hash, after_hash) in profile_hashes.items()
+        if before_hash != after_hash
+    }
+    if set(profile["changed_profiles"]) != actual_changed_profiles:
+        raise helper.ContractError("profile report contains a synthetic or omitted changed-profile entry")
+    if any(
+        helper.git_blob_sha256(ROOT, checkpoint["release_base_oid"], path) != before_hash
+        for path, (before_hash, _after_hash) in profile_hashes.items()
+    ):
+        raise helper.ContractError("release-base profile blob does not match the profile report")
+    if any(
+        expected_blobs[path] != after_hash
+        for path, (_before_hash, after_hash) in profile_hashes.items()
+    ):
+        raise helper.ContractError("profile and preparation report blob hashes disagree")
+    allowed = {"app/build.gradle.kts", *actual_changed_profiles}
+    if set(preparation["final_changed_paths"]) != allowed:
+        raise helper.ContractError("release preparation changed path set is not exact")
+    for path in expected_blobs:
+        if helper.git_blob_sha256(ROOT, pr_head_oid, path) != expected_blobs[path]:
+            raise helper.ContractError(f"PR head blob does not match preparation proof: {path}")
+    return preparation
 
 def main() -> int:
     payload = None
@@ -60,9 +136,21 @@ def main() -> int:
         pr = helper.pr_state(ROOT, pr_url)
         if pr["headRefName"] != base["branch_name"] or pr["headRefOid"] != base["pr_head_oid"] or pr["baseRefOid"] != base["pr_base_oid"]:
             raise helper.ContractError("merged PR head/base identity drifted")
+        preparation = _validate_preparation_proof(payload, state, version, tag, base["pr_head_oid"])
+        base["release_head_oid"] = base["pr_head_oid"]
+        base["release_preparation_report_digest"] = helper.sha256_bytes(
+            helper.canonical_json(preparation).encode("utf-8")
+        )
         target = pr["mergeCommit"]["oid"]
         if helper.remote_master(ROOT) != target or helper.git(ROOT, "rev-parse", "HEAD") != target:
             raise helper.ContractError("merged target is not exact current remote master and local checkout")
+        for path, expected_hash in {
+            "app/build.gradle.kts": preparation["version_file_sha256"],
+            "app/src/main/generated/baselineProfiles/baseline-prof.txt": preparation["baseline_profile_sha256"],
+            "app/src/main/generated/baselineProfiles/startup-prof.txt": preparation["startup_profile_sha256"],
+        }.items():
+            if helper.git_blob_sha256(ROOT, target, path) != expected_hash:
+                raise helper.ContractError(f"merged target blob does not match preparation proof: {path}")
         base["target_commit"] = target
         existing_report = None
         if payload.get("publication_report"):
@@ -80,7 +168,7 @@ def main() -> int:
             operation_digest = attested["operation"].operation_digest
             previous_operation_digest = existing_report["operation_digest"]
             tag_status = helper.publish_tag(ROOT, tag, target)
-        report, report_digest = helper.publication_report(operation_digest, pr_url, version, tag, target, notes, tag_phase="tag_published", tag_status=tag_status, unresolved=True, previous_operation_digest=previous_operation_digest)
+        report, report_digest = helper.publication_report(operation_digest, pr_url, version, tag, target, notes, tag_phase="tag_published", tag_status=tag_status, unresolved=True, previous_operation_digest=previous_operation_digest, release_head_oid=base["release_head_oid"], release_preparation_report_digest=base["release_preparation_report_digest"])
         fields = {
             **base,
             "pr_url": pr_url,
@@ -97,7 +185,12 @@ def main() -> int:
         tag = values.get("release_tag", f"v{version}" if version else "")
         fields = _base_fields(payload or {}, state, version, tag)
         fields["blocker_reason"] = str(error)
-        helper.emit_exact(ROOT, "publish_needs_user_action", "publish", fields)
+        helper.emit_exact(
+            ROOT,
+            "publish_needs_user_action",
+            "publish",
+            {key: fields[key] for key in PUBLISH_FIELDS},
+        )
         return 0
 
 if __name__ == "__main__":

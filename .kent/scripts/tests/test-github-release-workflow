@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import re
+import re, runpy, subprocess, tempfile, os, hashlib, copy, tomllib
+import sys
+sys.dont_write_bytecode = True
 ROOT=Path(__file__).resolve().parents[3]
 pr=(ROOT/'.github/workflows/pr-checks.yml').read_text(); release=(ROOT/'.github/workflows/release.yml').read_text()
 assert 'permissions:\n  contents: read' in pr
@@ -10,3 +12,93 @@ assert not re.search(r'secrets\.|upload-artifact|gh release|signing|keystore',pr
 assert 'workflow_dispatch:' not in release and "tags:" in release and '--generate-notes=false' in release and '--notes ""' in release
 assert not re.search(r'actions/[A-Za-z0-9_-]+@[vV]\d',pr+release)
 print('github-release-workflow: passed')
+
+helper = runpy.run_path(str(ROOT / ".kent/scripts/workflow-puber-release-intent"))
+builder = runpy.run_path(str(ROOT / ".kent/workflows/builders/puber_release.py"))
+assert builder["check_signing_contract"]() == []
+workflow = helper["_normalized_workflow"](ROOT, ".github/workflows/release.yml")
+job = workflow["jobs"][0]
+assert workflow["environment"] == job["effective_environment"] == {}
+assert job["secret_refs"] == ["KEYALIAS", "RELEASE_KEYSTORE_BASE64", "STOREPASS"]
+assert all("github.token" not in step["secret_refs"] for step in job["steps"])
+# Run the actual preflight with missing inputs: no Gradle/key/device/release effects.
+preflight = job["steps"][3]["run"]
+for missing in ("RELEASE_KEYSTORE_BASE64", "STOREPASS", "KEYALIAS"):
+    environment = {"PATH":os.environ["PATH"], "PUBER_RELEASE_SIGNING_MODE":"production"}
+    # No credential fixtures: all three values are empty, including the selected missing input.
+    environment.update({key:"" for key in job["secret_refs"] if key != missing})
+    result = subprocess.run(["bash", "-c", preflight], env=environment, capture_output=True)
+    assert result.returncode != 0
+# Exact unchanged public debug key identity, including its certificate (read-only).
+key = ROOT / "app/debug.jks"
+assert not key.is_symlink() and hashlib.sha256(key.read_bytes()).hexdigest() == helper["VALIDATION_SIGNING"]["validation_signing_sha256"]
+certificate = subprocess.run(["keytool", "-exportcert", "-keystore", str(key), "-storepass", "android", "-alias", "androiddebugkey"], capture_output=True, check=True).stdout
+assert hashlib.sha256(certificate).hexdigest() == helper["VALIDATION_SIGNING"]["validation_signer_certificate_sha256"]
+assert "KEYPASS" not in release
+assert "keystorePropertiesFile.exists() ->" not in (ROOT / "app/build.gradle.kts").read_text()
+print("github-release-signing: source scope, missing-input preflight and debug certificate passed")
+
+# Source-backed fail-closed cleanup: missing credentials exit before decoding/build,
+# but the already installed trap still removes transient app/build state.
+with tempfile.TemporaryDirectory() as directory:
+    scratch = Path(directory)
+    transient = scratch / "app/build"
+    transient.mkdir(parents=True)
+    (transient / "partial-output").write_bytes(b"not an APK")
+    result = subprocess.run(["bash", "-c", job["steps"][4]["run"]], cwd=scratch,
+        env={"PATH":os.environ["PATH"], "PUBER_RELEASE_SIGNING_MODE":"production", "RELEASE_KEYSTORE_BASE64":"", "STOREPASS":"", "KEYALIAS":""}, capture_output=True)
+    assert result.returncode != 0 and not transient.exists()
+    assert not (scratch / "app/release.jks").exists()
+    assert not (scratch / "app/keystore.properties").exists()
+    assert not (scratch / "release-artifacts").exists()
+print("github-release-cleanup: credential-free pre-build failure passed")
+
+# Negative source fixtures never contain production credentials or create Git refs.
+from unittest.mock import patch
+import shutil
+with tempfile.TemporaryDirectory() as directory:
+    scratch = Path(directory)
+    paths = [".github/workflows/release.yml", ".kent/scripts/workflow-puber-release-intent", ".kent/workflows/specs/puber-release.toml", "app/build.gradle.kts", "app/debug.jks"]
+    for relative in paths:
+        target = scratch / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, target)
+    check = builder["check_signing_contract"]
+    globals_ = check.__globals__
+    saved_root, saved_spec = globals_["ROOT"], globals_["SPEC"]
+    real_run = subprocess.run
+    blob = helper["VALIDATION_SIGNING"]["validation_signing_blob_oid"]
+    def isolated_run(command, *args, **kwargs):
+        if command[:3] == ["git", "ls-files", "--stage"]:
+            return subprocess.CompletedProcess(command, 0, "100644 " + blob + " 0\tapp/debug.jks\n", "")
+        return real_run(command, *args, **kwargs)
+    globals_["ROOT"], globals_["SPEC"] = scratch, scratch / ".kent/workflows/specs/puber-release.toml"
+    try:
+        with patch.object(subprocess, "run", side_effect=isolated_run):
+            assert check() == []
+            yaml_path = scratch / ".github/workflows/release.yml"
+            original = yaml_path.read_text()
+            for bad in (
+                original.replace("    steps:", "    env:\n      PUBER_RELEASE_SIGNING_MODE: production\n    steps:", 1),
+                original.replace("trap cleanup_signing EXIT", "true # no cleanup"),
+                original.replace('test "$alias_sha" = "$pin"', "true"),
+                original.replace('test "$signer_sha" = "$pin"', "true"),
+                original.replace("secrets.KEYALIAS", "secrets.KEYPASS"),
+            ):
+                yaml_path.write_text(bad)
+                assert check(), "broadened production authority was accepted"
+            yaml_path.write_text(original)
+            key_path = scratch / "app/debug.jks"
+            original_key = key_path.read_bytes()
+            key_path.write_bytes(b"not a key")
+            assert check(), "modified debug key was accepted"
+            key_path.unlink(); key_path.symlink_to(ROOT / "app/debug.jks")
+            assert check(), "symlinked debug key was accepted"
+            key_path.unlink(); key_path.mkdir()
+            assert check(), "non-regular debug key was accepted"
+            key_path.rmdir(); key_path.write_bytes(original_key)
+            with patch.object(subprocess, "run", side_effect=lambda command, *a, **kw: subprocess.CompletedProcess(command, 0, "", "") if command[:3] == ["git", "ls-files", "--stage"] else real_run(command, *a, **kw)):
+                assert check(), "untracked debug key was accepted"
+    finally:
+        globals_["ROOT"], globals_["SPEC"] = saved_root, saved_spec
+print("github-release-negative-source-fixtures: passed")

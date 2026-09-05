@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import importlib.util
 import os
+import stat
 import sys
 sys.dont_write_bytecode = True
 from importlib.machinery import SourceFileLoader
@@ -30,11 +31,15 @@ SCRIPT_PATHS = [
 def sh(args, cwd, **kwargs):
     return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
 
-def materialize(root: Path, bare: Path) -> tuple[Path, str, str]:
+def materialize(root: Path, bare: Path) -> tuple[Path, str, str, str]:
     work = root / "work"
     sh(["git", "clone", "--quiet", str(ROOT), str(work)], root)
     manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text(encoding="utf-8"))
-    for relative in sorted(set(SCRIPT_PATHS) | set(manifest["additional_paths"])):
+    manifest_paths = set(SCRIPT_PATHS) | set(manifest["additional_paths"])
+    for external in manifest["external_roots"]:
+        if external.get("kind") == "source-sha256" and "=" in external.get("key", ""):
+            manifest_paths.add(external["key"].split("=", 1)[0])
+    for relative in sorted(manifest_paths):
         source = ROOT / relative
         target = work / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -43,11 +48,23 @@ def materialize(root: Path, bare: Path) -> tuple[Path, str, str]:
     sh(["git", "config", "user.name", "Puber Test"], work)
     sh(["git", "add", "."], work)
     if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=work).returncode != 0:
-        sh(["git", "commit", "--quiet", "-m", "test fixture"], work)
+        sh(["git", "commit", "--quiet", "-m", "test fixture source closure"], work)
+    base = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
+    sh(["git", "checkout", "--quiet", "-b", "release/99.0.0"], work)
+    build_file = work / "app/build.gradle.kts"
+    build_file.write_text(
+        build_file.read_text(encoding="utf-8").replace('val currentVersion = "1.9.1"', 'val currentVersion = "99.0.0"'),
+        encoding="utf-8",
+    )
+    profile = work / "app/src/main/generated/baselineProfiles/baseline-prof.txt"
+    profile.write_bytes(profile.read_bytes() + b"\n# deterministic publish fixture\n")
+    sh(["git", "add", "app/build.gradle.kts", str(profile.relative_to(work))], work)
+    sh(["git", "commit", "--quiet", "-m", "test release preparation"], work)
+    target = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
     sh(["git", "init", "--bare", str(bare)], root)
     sh(["git", "remote", "set-url", "origin", str(bare)], work)
     sh(["git", "push", "--quiet", "-u", "origin", "HEAD:master"], work)
-    return work, sh(["git", "rev-parse", "HEAD"], work).stdout.strip(), str(bare)
+    return work, base, target, str(bare)
 
 def write_fake_bins(root: Path, task: dict, target: str, bare: str, log: Path) -> tuple[Path, Path]:
     fake = root / "fake"; fake.mkdir()
@@ -66,7 +83,7 @@ target=os.environ["PUBER_TARGET"]
 if endpoint.endswith("/git/ref/heads/master"):
  print(json.dumps({"ref":"refs/heads/master","node_id":"master","url":"https://api.github.com/ref","object":{"type":"commit","sha":target}})); sys.exit(0)
 if "/pulls/" in endpoint:
- print(json.dumps({"html_url":"https://github.com/rovkinmax/Puber/pull/7","state":"closed","merged":True,"merged_at":"2026-08-25T00:00:00Z","base":{"ref":"master","sha":"b"*40,"repo":{"full_name":"rovkinmax/Puber"}},"head":{"ref":"release/99.0.0","sha":"c"*40,"repo":{"full_name":"rovkinmax/Puber"}},"merge_commit_sha":target})); sys.exit(0)
+ print(json.dumps({"html_url":"https://github.com/rovkinmax/Puber/pull/7","state":"closed","merged":True,"merged_at":"2026-08-25T00:00:00Z","base":{"ref":"master","sha":os.environ["PUBER_PR_BASE"],"repo":{"full_name":"rovkinmax/Puber"}},"head":{"ref":"release/99.0.0","sha":os.environ["PUBER_PR_HEAD"],"repo":{"full_name":"rovkinmax/Puber"}},"merge_commit_sha":target})); sys.exit(0)
 if "/git/ref/tags/" in endpoint:
  tag=endpoint.rsplit("/",1)[1]
  try: sha=subprocess.check_output(["git","--git-dir",os.environ["PUBER_BARE"],"rev-parse","refs/tags/"+tag],text=True).strip()
@@ -79,9 +96,1164 @@ sys.exit(3)
     ); gh.chmod(0o755)
     return kent, gh
 
+class StageContractError(AssertionError):
+    pass
+
+
+class Revision90StageRunner:
+    STAGE_CONTRACTS = {
+        "prepare": {
+            "incoming": "release_intent_passed",
+            "outgoing": "prepare_profile_generation",
+            "role": "release-manager",
+            "sources": (
+                ".kent/commands/release.md",
+                ".kent/commands/release-branch.md",
+                ".kent/subagents/release-manager.md",
+            ),
+            "fragments": (
+                "creates no commit or PR",
+                "matching completed actions as idempotent success",
+                "prepare_profile_generation only",
+            ),
+        },
+        "profile_generation": {
+            "incoming": "prepare_profile_generation",
+            "outgoing": "profile_generation_passed",
+            "script": ".kent/scripts/workflow-puber-release-profile-generation",
+            "sources": (
+                ".kent/commands/release.md",
+                ".kent/scripts/workflow-puber-release-profile-generation",
+            ),
+            "fragments": (
+                "tools/generate-baseline-profile.sh",
+                "profile_generation_passed",
+                "release candidate changed during profile generation",
+            ),
+        },
+        "finalize_release": {
+            "incoming": "profile_generation_passed",
+            "outgoing": "finalize_release_done",
+            "role": "release-manager",
+            "sources": (
+                ".kent/commands/release.md",
+                ".kent/subagents/release-manager.md",
+            ),
+            "fragments": (
+                ":app:compileProdReleaseArtProfile",
+                ":app:assembleProdRelease",
+                "additive preparation commit",
+                "puber_release_preparation_report_v2",
+                "debug_validation",
+                "non-publishable",
+            ),
+        },
+        "compliance": {
+            "incoming": "finalize_release_done",
+            "outgoing": "compliance_ship_pr",
+            "role": "compliance_reviewer",
+            "sources": (
+                ".kent/commands/release.md",
+                ".kent/commands/compliance-review.md",
+            ),
+            "fragments": (
+                "independently validate the closed profile",
+                "Reject any unrelated path",
+                "must validate that checkpoint",
+            ),
+        },
+        "ship_pr": {
+            "incoming": "compliance_ship_pr",
+            "outgoing": "ship_pr_ci_watch",
+            "role": "delivery-operator",
+            "sources": (
+                ".kent/commands/release.md",
+                ".kent/commands/ship-pr.md",
+            ),
+            "fragments": (
+                "one non-force push",
+                "create/update. The resulting PR diff",
+                "never amend or force-push",
+            ),
+        },
+    }
+
+    def __init__(
+        self,
+        *,
+        work: Path,
+        bare: Path,
+        env: dict[str, str],
+        gh: Path,
+        task_id: str,
+        task_path: Path,
+        agentw: Path,
+    ) -> None:
+        self.work = work
+        self.bare = bare.resolve()
+        self.env = env
+        self.gh = gh
+        self.task_id = task_id
+        self.task_path = task_path
+        self.agentw = agentw
+        self.graph = json.loads(
+            (work / ".kent/workflows/puber-release.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.manifest = json.loads(
+            (work / ".kent/workflows/puber-release.manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.nodes = {item["key"]: item for item in self.graph["nodes"]}
+        self.nodes_by_id = {item["id"]: item for item in self.graph["nodes"]}
+        self.edges = {item["key"]: item for item in self.graph["edges"]}
+        self.transition_groups = {
+            item["id"]: item for item in self.graph["transition_groups"]
+        }
+        self.stage_log: list[str] = []
+        self.stage_inputs: dict[str, dict] = {}
+        self._validate_static_contracts()
+
+    def _bound_source(self, relative: str) -> str:
+        expected = {
+            item["key"].split("=", 1)[0]: item["key"].split("=", 1)[1]
+            for item in self.manifest["external_roots"]
+            if item.get("kind") == "source-sha256"
+            and "=" in item.get("key", "")
+        }
+        if relative not in expected:
+            raise StageContractError(f"unbound stage contract: {relative}")
+        path = self.work / relative
+        actual = helper.sha256_bytes(path.read_bytes())
+        if actual != expected[relative]:
+            raise StageContractError(f"stage contract digest drifted: {relative}")
+        return path.read_text(encoding="utf-8")
+
+    def _source_node(self, edge_key: str) -> str:
+        edge = self.edges[edge_key]
+        group = self.transition_groups[edge["transition_group_id"]]
+        return self.nodes_by_id[group["source_node_id"]]["key"]
+
+    def _target_node(self, edge_key: str) -> str:
+        return self.nodes_by_id[self.edges[edge_key]["target_node_id"]]["key"]
+
+    def _fields(self, edge_key: str) -> list[str]:
+        return [item["key"] for item in self.edges[edge_key]["parameters"]]
+
+    def _validate_static_contracts(self) -> None:
+        if (
+            self.graph["workflow"]["version"] != 90
+            or self.graph["workflow"]["source_revision"] != 90
+            or self.graph["workflow"]["schema_version"] != 4
+            or len(self.graph["nodes"]) != 17
+            or len(self.graph["transition_groups"]) != 46
+            or len(self.graph["edges"]) != 46
+        ):
+            raise StageContractError("release graph identity or topology drifted")
+        remote = sh(["git", "remote", "get-url", "origin"], self.work).stdout.strip()
+        if Path(remote).resolve() != self.bare:
+            raise StageContractError("fixture origin is not the isolated bare remote")
+        for stage, contract in self.STAGE_CONTRACTS.items():
+            node = self.nodes[stage]
+            incoming = contract["incoming"]
+            outgoing = contract["outgoing"]
+            if self._target_node(incoming) != stage:
+                raise StageContractError(f"{stage} incoming graph edge drifted")
+            if self._source_node(outgoing) != stage:
+                raise StageContractError(f"{stage} outgoing graph edge drifted")
+            if "role" in contract:
+                if (
+                    node["kind"] != "agent"
+                    or node["subagent_role"] != contract["role"]
+                    or node["completion_mode"] != "shell_command"
+                ):
+                    raise StageContractError(f"{stage} agent contract drifted")
+            else:
+                if (
+                    node["kind"] != "script"
+                    or node["script_path"] != contract["script"]
+                ):
+                    raise StageContractError(f"{stage} script contract drifted")
+            source = "\n".join(
+                self._bound_source(relative) for relative in contract["sources"]
+            )
+            prompt = self.edges[incoming]["prompt_template"]
+            combined = f"{prompt}\n{source}"
+            for fragment in contract["fragments"]:
+                if fragment not in combined:
+                    raise StageContractError(
+                        f"{stage} required repository contract drifted: {fragment}"
+                    )
+
+    def _admit(self, stage: str, incoming: str, carrier: dict) -> None:
+        contract = self.STAGE_CONTRACTS[stage]
+        if incoming != contract["incoming"]:
+            raise StageContractError(f"{stage} incoming transition drifted")
+        required = self._fields(incoming)
+        if set(carrier) != set(required) or len(carrier) != len(required):
+            raise StageContractError(f"{stage} incoming carrier drifted")
+        rendered = self.edges[incoming]["prompt_template"]
+        for key in required:
+            rendered = rendered.replace(f"{{{{.Params.{key}}}}}", str(carrier[key]))
+        if "{{.Params." in rendered:
+            raise StageContractError(f"{stage} prompt carrier binding drifted")
+        for relative in contract["sources"]:
+            self._bound_source(relative)
+        self.stage_inputs[stage] = dict(carrier)
+
+    def _emit(self, edge_key: str, values: dict) -> tuple[str, dict]:
+        required = self._fields(edge_key)
+        if set(values) != set(required) or len(values) != len(required):
+            raise StageContractError(f"{edge_key} output carrier drifted")
+        return edge_key, {key: values[key] for key in required}
+
+    def _checkpoint_path(self, task_short_id: str) -> Path:
+        return (
+            self.work
+            / ".kent"
+            / "runtime"
+            / task_short_id
+            / "release-profile-checkpoint.json"
+        )
+
+    def _read_checkpoint(self, task_short_id: str) -> dict:
+        return helper.read_profile_checkpoint(self.work, task_short_id)
+
+    def _expected(self, carrier: dict) -> dict:
+        return {
+            key: carrier[key]
+            for key in (
+                "operation_id",
+                "task_short_id",
+                "release_type",
+                "release_version",
+                "release_tag",
+                "release_branch",
+                "release_base_oid",
+                "candidate_oid",
+            )
+        }
+
+    def _validate_preparation(self, carrier: dict) -> tuple[dict, dict, dict]:
+        checkpoint = self._read_checkpoint(carrier["task_short_id"])
+        expected = self._expected(carrier)
+        if (
+            checkpoint["task_id"] != self.task_id
+            or checkpoint["state"] != "completed"
+            or any(checkpoint[key] != expected[key] for key in (
+                "task_short_id",
+                "operation_id",
+                "release_branch",
+                "release_base_oid",
+                "candidate_oid",
+            ))
+        ):
+            raise StageContractError("release checkpoint identity drifted")
+        profile = helper.parse_profile_report(
+            checkpoint["profile_report"],
+            checkpoint["profile_report_digest"],
+            expected=expected,
+        )
+        preparation = helper.parse_release_preparation_report(
+            checkpoint["release_preparation_report"],
+            checkpoint["release_preparation_report_digest"],
+            expected=expected,
+        )
+        current_head = sh(["git", "rev-parse", "HEAD"], self.work).stdout.strip()
+        if (
+            carrier.get("release_head_oid", current_head) != current_head
+            or checkpoint["release_head_oid"] != current_head
+            or preparation["release_head_oid"] != current_head
+            or preparation["profile_report_digest"]
+            != checkpoint["profile_report_digest"]
+        ):
+            raise StageContractError("release preparation head or digest drifted")
+        if (
+            carrier.get("profile_report", checkpoint["profile_report"])
+            != checkpoint["profile_report"]
+            or carrier.get(
+                "profile_report_digest", checkpoint["profile_report_digest"]
+            )
+            != checkpoint["profile_report_digest"]
+            or carrier.get(
+                "release_preparation_report",
+                checkpoint["release_preparation_report"],
+            )
+            != checkpoint["release_preparation_report"]
+            or carrier.get(
+                "release_preparation_report_digest",
+                checkpoint["release_preparation_report_digest"],
+            )
+            != checkpoint["release_preparation_report_digest"]
+        ):
+            raise StageContractError("release preparation carrier drifted")
+        changed = helper.validate_release_diff(
+            self.work,
+            carrier["release_base_oid"],
+            current_head,
+            profile,
+            preparation,
+        )
+        if changed != preparation["final_changed_paths"]:
+            raise StageContractError("release preparation diff drifted")
+        return checkpoint, profile, preparation
+
+    def execute(
+        self,
+        stage: str,
+        incoming: str,
+        carrier: dict,
+    ) -> tuple[str, dict]:
+        self._admit(stage, incoming, carrier)
+        self.stage_log.append(stage)
+        if stage == "prepare":
+            remote_base = sh(
+                ["git", "ls-remote", "origin", "refs/heads/master"], self.work
+            ).stdout.split()[0]
+            task = json.loads(self.task_path.read_text(encoding="utf-8"))
+            if remote_base != task["execution_target"]["commit_oid"]:
+                raise StageContractError("release base workspace identity drifted")
+            branch = carrier["release_branch"]
+            branches = sh(
+                ["git", "branch", "--format=%(refname:short)"], self.work
+            ).stdout.splitlines()
+            if branch not in branches:
+                sh(["git", "checkout", "--quiet", "-b", branch, remote_base], self.work)
+                candidate = remote_base
+            else:
+                sh(["git", "checkout", "--quiet", branch], self.work)
+                current = sh(["git", "rev-parse", "HEAD"], self.work).stdout.strip()
+                if current == remote_base:
+                    candidate = remote_base
+                else:
+                    checkpoint = self._read_checkpoint(carrier["task_short_id"])
+                    candidate = checkpoint["candidate_oid"]
+                    completed = {
+                        **carrier,
+                        "release_tag": f"v{carrier['release_version']}",
+                        "release_base_oid": remote_base,
+                        "candidate_oid": candidate,
+                        "release_head_oid": current,
+                    }
+                    self._validate_preparation(completed)
+            return self._emit(
+                "prepare_profile_generation",
+                {
+                    "workspace_path": carrier["workspace_path"],
+                    "operation_id": carrier["operation_id"],
+                    "task_short_id": carrier["task_short_id"],
+                    "release_type": carrier["release_type"],
+                    "release_version": carrier["release_version"],
+                    "release_tag": f"v{carrier['release_version']}",
+                    "release_branch": branch,
+                    "release_base_oid": remote_base,
+                    "candidate_oid": candidate,
+                },
+            )
+
+        if stage == "profile_generation":
+            payload = {
+                "_kent": {
+                    "task_id": self.task_id,
+                    "node_id": self.nodes[stage]["id"],
+                    "transition_branch_key": incoming,
+                },
+                **carrier,
+            }
+            result = subprocess.run(
+                [str(self.work / self.nodes[stage]["script_path"])],
+                cwd=self.work,
+                input=json.dumps(payload),
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self.env,
+            )
+            if result.returncode != 0:
+                raise StageContractError(
+                    f"profile script failed: {result.stdout} {result.stderr}"
+                )
+            output = json.loads(result.stdout)
+            transition = output.pop("transition")
+            if transition != "profile_generation_passed":
+                raise StageContractError(
+                    f"profile stage failed closed: {output.get('blocker_reason', '')}"
+                )
+            return self._emit(transition, output)
+
+        if stage == "finalize_release":
+            expected = self._expected(carrier)
+            profile = helper.parse_profile_report(
+                carrier["profile_report"],
+                carrier["profile_report_digest"],
+                expected=expected,
+            )
+            checkpoint = self._read_checkpoint(carrier["task_short_id"])
+            current_head = sh(["git", "rev-parse", "HEAD"], self.work).stdout.strip()
+            if checkpoint["release_preparation_report"]:
+                completed = {
+                    **carrier,
+                    "release_head_oid": current_head,
+                    "release_preparation_report": checkpoint[
+                        "release_preparation_report"
+                    ],
+                    "release_preparation_report_digest": checkpoint[
+                        "release_preparation_report_digest"
+                    ],
+                }
+                _checkpoint, _profile, preparation = self._validate_preparation(
+                    completed
+                )
+                verification_summary = (
+                    "reused closed compileProdReleaseArtProfile and "
+                    "assembleProdRelease evidence"
+                )
+            else:
+                if current_head != carrier["candidate_oid"]:
+                    raise StageContractError(
+                        "finalize candidate changed before packaging"
+                    )
+                build_file = self.work / "app/build.gradle.kts"
+                lines = build_file.read_text(encoding="utf-8").splitlines()
+                version_lines = [
+                    index
+                    for index, line in enumerate(lines)
+                    if line.startswith("val currentVersion = ")
+                ]
+                if len(version_lines) != 1:
+                    raise StageContractError("version source drifted")
+                lines[version_lines[0]] = (
+                    f'val currentVersion = "{carrier["release_version"]}"'
+                )
+                build_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                build_env = {
+                    key: value
+                    for key, value in self.env.items()
+                    if key
+                    in {
+                        "PATH",
+                        "HOME",
+                        "USER",
+                        "LOGNAME",
+                        "TMPDIR",
+                        "TMP",
+                        "TEMP",
+                        "TERM",
+                        "LANG",
+                        "LC_ALL",
+                        "JAVA_HOME",
+                        "ANDROID_HOME",
+                        "ANDROID_SDK_ROOT",
+                        "GRADLE_USER_HOME",
+                        "KOTLIN_HOME",
+                        "CI",
+                        "PYTHONDONTWRITEBYTECODE",
+                    }
+                }
+                for task_name in (
+                    ":app:compileProdReleaseArtProfile",
+                    ":app:assembleProdRelease",
+                ):
+                    sh([str(self.agentw), task_name], self.work, env={**build_env, "PUBER_RELEASE_SIGNING_MODE": "debug_validation"})
+                changed = sh(
+                    ["git", "diff", "--name-only"], self.work
+                ).stdout.splitlines()
+                expected_paths = [
+                    "app/build.gradle.kts",
+                    *profile["changed_profiles"],
+                ]
+                if changed != expected_paths:
+                    raise StageContractError("finalize changed path set drifted")
+                sh(["git", "add", *expected_paths], self.work)
+                sh(
+                    [
+                        "git",
+                        "commit",
+                        "--quiet",
+                        "-m",
+                        f"Prepare release {carrier['release_version']}",
+                    ],
+                    self.work,
+                )
+                current_head = sh(
+                    ["git", "rev-parse", "HEAD"], self.work
+                ).stdout.strip()
+                baseline_path = (
+                    "app/src/main/generated/baselineProfiles/baseline-prof.txt"
+                )
+                startup_path = (
+                    "app/src/main/generated/baselineProfiles/startup-prof.txt"
+                )
+                preparation = {
+                    **helper.VALIDATION_SIGNING,
+                    "schema": "puber_release_preparation_report_v2",
+                    **expected,
+                    "release_head_oid": current_head,
+                    "profile_report_digest": carrier["profile_report_digest"],
+                    "compile_command": (
+                        "./tools/agentw :app:compileProdReleaseArtProfile"
+                    ),
+                    "compile_state": "passed",
+                    "assemble_command": "./tools/agentw :app:assembleProdRelease",
+                    "assemble_state": "passed",
+                    "final_changed_paths": expected_paths,
+                    "version_file_sha256": helper.git_blob_sha256(
+                        self.work, current_head, "app/build.gradle.kts"
+                    ),
+                    "baseline_profile_sha256": helper.git_blob_sha256(
+                        self.work, current_head, baseline_path
+                    ),
+                    "startup_profile_sha256": helper.git_blob_sha256(
+                        self.work, current_head, startup_path
+                    ),
+                    "no_profile_diff": not profile["changed_profiles"],
+                    "elapsed_ms": 1,
+                }
+                preparation_report = helper.canonical_json(preparation)
+                preparation_digest = helper.sha256_bytes(
+                    preparation_report.encode("utf-8")
+                )
+                checkpoint.update(
+                    {
+                        "release_head_oid": current_head,
+                        "release_preparation_report": preparation_report,
+                        "release_preparation_report_digest": preparation_digest,
+                        "output_hashes": {
+                            baseline_path: preparation[
+                                "baseline_profile_sha256"
+                            ],
+                            startup_path: preparation["startup_profile_sha256"],
+                        },
+                    }
+                )
+                helper.write_profile_checkpoint(self.work, carrier["task_short_id"], checkpoint)
+                verification_summary = (
+                    "./tools/agentw :app:compileProdReleaseArtProfile passed; "
+                    "./tools/agentw :app:assembleProdRelease passed"
+                )
+            return self._emit(
+                "finalize_release_done",
+                {
+                    **carrier,
+                    "release_head_oid": current_head,
+                    "release_preparation_report": helper.canonical_json(
+                        preparation
+                    ),
+                    "release_preparation_report_digest": helper.sha256_bytes(
+                        helper.canonical_json(preparation).encode("utf-8")
+                    ),
+                    "verification_summary": verification_summary,
+                },
+            )
+
+        if stage == "compliance":
+            before = sh(
+                ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+                self.work,
+            ).stdout
+            _checkpoint, _profile, preparation = self._validate_preparation(carrier)
+            if (
+                preparation["compile_state"] != "passed"
+                or preparation["assemble_state"] != "passed"
+            ):
+                raise StageContractError("packaging evidence is not passing")
+            after = sh(
+                ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+                self.work,
+            ).stdout
+            if before != after:
+                raise StageContractError("compliance mutated the checkout")
+            report = helper.canonical_json(
+                {
+                    "schema": "puber_release_compliance_report_v1",
+                    "release_head_oid": carrier["release_head_oid"],
+                    "state": "passed",
+                }
+            )
+            return self._emit(
+                "compliance_ship_pr",
+                {**carrier, "compliance_report": report},
+            )
+
+        if stage == "ship_pr":
+            _checkpoint, _profile, preparation = self._validate_preparation(
+                carrier
+            )
+            head_oid = preparation["release_head_oid"]
+            push = subprocess.run(
+                [
+                    "git",
+                    "push",
+                    "--porcelain",
+                    "origin",
+                    f"HEAD:refs/heads/{carrier['release_branch']}",
+                ],
+                cwd=self.work,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            if "forced update" in (push.stdout + push.stderr).lower():
+                raise StageContractError("release branch was force-pushed")
+            remote_head = sh(
+                [
+                    "git",
+                    "--git-dir",
+                    str(self.bare),
+                    "rev-parse",
+                    f"refs/heads/{carrier['release_branch']}",
+                ],
+                self.work,
+            ).stdout.strip()
+            if remote_head != head_oid:
+                raise StageContractError("remote release head drifted")
+            listed = subprocess.run(
+                [
+                    str(self.gh),
+                    "pr",
+                    "list",
+                    "--head",
+                    carrier["release_branch"],
+                    "--base",
+                    "master",
+                    "--state",
+                    "all",
+                    "--json",
+                    "url,baseRefName,headRefName,headRefOid",
+                ],
+                cwd=self.work,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self.env,
+            )
+            prs = json.loads(listed.stdout)
+            if not prs:
+                created = subprocess.run(
+                    [
+                        str(self.gh),
+                        "pr",
+                        "create",
+                        "--base",
+                        "master",
+                        "--head",
+                        carrier["release_branch"],
+                        "--title",
+                        f"Release {carrier['release_version']}",
+                        "--body",
+                        "Schema-4 release fixture",
+                    ],
+                    cwd=self.work,
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=self.env,
+                )
+                pr_url = created.stdout.strip()
+            else:
+                if len(prs) != 1:
+                    raise StageContractError("release PR identity is ambiguous")
+                pr_url = prs[0]["url"]
+                subprocess.run(
+                    [
+                        str(self.gh),
+                        "pr",
+                        "edit",
+                        pr_url,
+                        "--title",
+                        f"Release {carrier['release_version']}",
+                        "--body",
+                        "Schema-4 release fixture",
+                    ],
+                    cwd=self.work,
+                    check=True,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=self.env,
+                )
+            viewed = subprocess.run(
+                [
+                    str(self.gh),
+                    "pr",
+                    "view",
+                    pr_url,
+                    "--json",
+                    "url,baseRefName,headRefName,headRefOid",
+                ],
+                cwd=self.work,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self.env,
+            )
+            pr = json.loads(viewed.stdout)
+            if pr != {
+                "url": "https://github.com/rovkinmax/Puber/pull/7",
+                "baseRefName": "master",
+                "headRefName": carrier["release_branch"],
+                "headRefOid": head_oid,
+            }:
+                raise StageContractError("release PR carrier drifted")
+            self._validate_preparation(carrier)
+            return self._emit(
+                "ship_pr_ci_watch",
+                {
+                    "pr_url": pr_url,
+                    "branch_name": carrier["release_branch"],
+                    "workspace_path": carrier["workspace_path"],
+                    "release_version": carrier["release_version"],
+                    "release_tag": carrier["release_tag"],
+                },
+            )
+
+        raise StageContractError(f"unsupported release stage: {stage}")
+
+    def run_path(self, initial: dict) -> dict:
+        stage = "prepare"
+        incoming = "release_intent_passed"
+        carrier = initial
+        while stage != "ci_watch":
+            transition, carrier = self.execute(stage, incoming, carrier)
+            stage = self._target_node(transition)
+            incoming = transition
+        return carrier
+
+def test_clean_master_to_exactly_one_release_pr() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        work = (root / "release-work").resolve()
+        bare = root / "origin.git"
+        control = root / "control"
+        control.mkdir()
+        sh(["git", "clone", "--quiet", str(ROOT), str(work)], root)
+        manifest = json.loads(
+            (ROOT / ".kent/workflows/puber-release.manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        fixture_paths = set(SCRIPT_PATHS) | set(manifest["additional_paths"])
+        for external in manifest["external_roots"]:
+            if (
+                external.get("kind") == "source-sha256"
+                and "=" in external.get("key", "")
+            ):
+                fixture_paths.add(external["key"].split("=", 1)[0])
+        for relative in sorted(fixture_paths):
+            source = ROOT / relative
+            target_path = work / relative
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target_path)
+
+        adapter_log = control / "adapter.jsonl"
+        adapter = work / ".kent/adapters/mobile/emulator-resource-lock.sh"
+        adapter.parent.mkdir(parents=True, exist_ok=True)
+        adapter.write_text(
+            f"""#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+with Path({str(adapter_log)!r}).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps(args) + "\\n")
+if args == ["adb-emulators", "tv"]:
+    print("emulator-5554")
+    sys.exit(0)
+if args and args[0] == "acquire-any":
+    print("resource=emulator-5554")
+    print("token=fake-release-token")
+    sys.exit(0)
+if args and args[0] == "release":
+    sys.exit(0)
+if args and args[0] == "resume-owned":
+    sys.exit(75)
+sys.exit(2)
+""",
+            encoding="utf-8",
+        )
+        adapter.chmod(0o755)
+
+        generator_log = control / "generator.jsonl"
+        generator = work / "tools/generate-baseline-profile.sh"
+        generator.write_text(
+            f"""#!/usr/bin/env python3
+import json
+import os
+from pathlib import Path
+root = Path.cwd()
+profile = root / "app/src/main/generated/baselineProfiles/baseline-prof.txt"
+marker = b"\\n# deterministic release PR fixture\\n"
+with Path({str(generator_log)!r}).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps({{
+        "serial": os.environ.get("ANDROID_SERIAL", ""),
+        "sensitive": any(
+            name.upper().endswith(("TOKEN", "PASSWORD", "SECRET"))
+            for name in os.environ
+        ),
+    }}) + "\\n")
+if marker not in profile.read_bytes():
+    profile.write_bytes(profile.read_bytes() + marker)
+""",
+            encoding="utf-8",
+        )
+        generator.chmod(0o755)
+
+        gradle_log = control / "gradle.jsonl"
+        agentw = work / "tools/agentw"
+        agentw.write_text(
+            f"""#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+assert os.environ.get("PUBER_RELEASE_SIGNING_MODE") == "debug_validation"
+assert not any(key in os.environ for key in ("RELEASE_KEYSTORE_BASE64", "STOREPASS", "KEYALIAS", "KEYPASS"))
+with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps({{
+        "args": sys.argv[1:],
+        "signing_mode": os.environ.get("PUBER_RELEASE_SIGNING_MODE", ""),
+        "sensitive": any(
+            name.upper().endswith(("TOKEN", "PASSWORD", "SECRET"))
+            for name in os.environ
+        ),
+    }}) + "\\n")
+""",
+            encoding="utf-8",
+        )
+        agentw.chmod(0o755)
+
+        fixture_manifest_path = work / ".kent/workflows/puber-release.manifest.json"
+        fixture_manifest = json.loads(
+            fixture_manifest_path.read_text(encoding="utf-8")
+        )
+        for external in fixture_manifest["external_roots"]:
+            if (
+                external.get("kind") == "source-sha256"
+                and "=" in external.get("key", "")
+            ):
+                relative, _digest = external["key"].split("=", 1)
+                external["key"] = (
+                    f"{relative}={helper.sha256_bytes((work / relative).read_bytes())}"
+                )
+        fixture_manifest_path.write_text(
+            json.dumps(fixture_manifest, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        sh(["git", "config", "user.email", "test@example.invalid"], work)
+        sh(["git", "config", "user.name", "Puber Test"], work)
+        sh(["git", "add", "."], work)
+        sh(["git", "commit", "--quiet", "-m", "test release source closure"], work)
+        base_oid = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
+        sh(["git", "init", "--bare", str(bare)], root)
+        sh(["git", "remote", "set-url", "origin", str(bare)], work)
+        sh(["git", "push", "--quiet", "-u", "origin", "HEAD:master"], work)
+
+        graph = json.loads(
+            (work / ".kent/workflows/puber-release.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        profile_node = next(
+            item for item in graph["nodes"] if item["key"] == "profile_generation"
+        )
+        task_id = "task-12345678-1234-4234-8234-123456789abc"
+        task = {
+            "actions": [],
+            "attention_count": 0,
+            "body": (
+                "release_type: minor\n"
+                "release_version: 99.0.0\n"
+                "release_tag: v99.0.0\n"
+                "release_branch: release/99.0.0\n"
+            ),
+            "current_nodes": [{"node_id": profile_node["id"]}],
+            "current_scripts": [
+                {
+                    "path": ".kent/scripts/workflow-puber-release-profile-generation",
+                    "current_node": {"node_id": profile_node["id"]},
+                }
+            ],
+            "execution_target": {"commit_oid": base_oid},
+            "label_ids": [],
+            "live_sessions": [],
+            "project": {},
+            "retained_session_count": 0,
+            "source_workspace": {},
+            "status": {"node_ids": [profile_node["id"]]},
+            "summary": {
+                "id": task_id,
+                "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176",
+                "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+                "short_id": "PUB-99",
+            },
+            "workflow": {
+                "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
+                "version": 90,
+                "name": "Puber Release",
+            },
+            "worktree_path": str(work),
+        }
+        fake = root / "fake"
+        fake.mkdir()
+        task_path = fake / "task.json"
+        task_path.write_text(json.dumps(task), encoding="utf-8")
+        kent = fake / "kent"
+        kent.write_text(
+            "#!/bin/sh\nexec /bin/cat \"$PUBER_FAKE_TASK\"\n",
+            encoding="utf-8",
+        )
+        kent.chmod(0o755)
+
+        github_state = control / "github.json"
+        github_log = control / "github.jsonl"
+        github_state.write_text(
+            json.dumps({"prs": [], "create_calls": 0, "update_calls": 0}),
+            encoding="utf-8",
+        )
+        gh = fake / "gh"
+        gh.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+state_path = Path(os.environ["FAKE_GITHUB_STATE"])
+log_path = Path(os.environ["FAKE_GITHUB_LOG"])
+state = json.loads(state_path.read_text(encoding="utf-8"))
+with log_path.open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps(args) + "\\n")
+def head_oid():
+    return subprocess.check_output(
+        [
+            "git",
+            "--git-dir",
+            os.environ["FAKE_GITHUB_BARE"],
+            "rev-parse",
+            "refs/heads/release/99.0.0",
+        ],
+        text=True,
+    ).strip()
+if args[:2] == ["pr", "list"]:
+    print(json.dumps(state["prs"]))
+    sys.exit(0)
+if args[:2] == ["pr", "create"]:
+    if state["prs"]:
+        sys.exit(9)
+    state["create_calls"] += 1
+    state["prs"].append(
+        {
+            "url": "https://github.com/rovkinmax/Puber/pull/7",
+            "baseRefName": "master",
+            "headRefName": "release/99.0.0",
+            "headRefOid": head_oid(),
+        }
+    )
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    print(state["prs"][0]["url"])
+    sys.exit(0)
+if args[:2] == ["pr", "edit"]:
+    if len(state["prs"]) != 1:
+        sys.exit(10)
+    state["update_calls"] += 1
+    state["prs"][0]["headRefOid"] = head_oid()
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    sys.exit(0)
+if args[:2] == ["pr", "view"]:
+    if len(state["prs"]) != 1:
+        sys.exit(11)
+    print(json.dumps(state["prs"][0]))
+    sys.exit(0)
+sys.exit(2)
+""",
+            encoding="utf-8",
+        )
+        gh.chmod(0o755)
+        env = {
+            **os.environ,
+            "KENT_ENGINEERING_KIT_ROOT": str(KIT),
+            "PUBER_KENT_BIN": str(kent),
+            "PUBER_FAKE_TASK": str(task_path),
+            "FAKE_GITHUB_STATE": str(github_state),
+            "FAKE_GITHUB_LOG": str(github_log),
+            "FAKE_GITHUB_BARE": str(bare),
+        }
+        initial = {
+            "workspace_path": str(work),
+            "operation_id": "a" * 64,
+            "task_short_id": "PUB-99",
+            "release_type": "minor",
+            "release_version": "99.0.0",
+            "release_branch": "release/99.0.0",
+        }
+        runner = Revision90StageRunner(
+            work=work,
+            bare=bare,
+            env=env,
+            gh=gh,
+            task_id=task_id,
+            task_path=task_path,
+            agentw=agentw,
+        )
+
+        first_result = runner.run_path(initial)
+        first_stage_log = list(runner.stage_log)
+        first_head = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
+        first_history = sh(
+            ["git", "rev-list", "--count", f"{base_oid}..{first_head}"], work
+        ).stdout.strip()
+        first_paths = sh(
+            ["git", "diff", "--name-only", f"{base_oid}..{first_head}"], work
+        ).stdout.splitlines()
+
+        runner.stage_log.clear()
+        second_result = runner.run_path(initial)
+        second_stage_log = list(runner.stage_log)
+        second_head = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
+        state = json.loads(github_state.read_text(encoding="utf-8"))
+        ship_input = runner.stage_inputs["ship_pr"]
+        checkpoint, profile, preparation = runner._validate_preparation(ship_input)
+
+        expected_stages = [
+            "prepare",
+            "profile_generation",
+            "finalize_release",
+            "compliance",
+            "ship_pr",
+        ]
+        assert first_stage_log == expected_stages
+        assert second_stage_log == expected_stages
+        assert first_result == second_result
+        assert first_result["pr_url"] == "https://github.com/rovkinmax/Puber/pull/7"
+        assert first_head == second_head == state["prs"][0]["headRefOid"]
+        assert first_history == "1"
+        assert sh(
+            ["git", "rev-list", "--count", f"{base_oid}..{second_head}"], work
+        ).stdout.strip() == "1"
+        assert first_paths == preparation["final_changed_paths"]
+        assert first_paths == [
+            "app/build.gradle.kts",
+            "app/src/main/generated/baselineProfiles/baseline-prof.txt",
+        ]
+        assert profile["changed_profiles"] == [
+            "app/src/main/generated/baselineProfiles/baseline-prof.txt"
+        ]
+        assert checkpoint["release_head_oid"] == first_head
+        assert len(state["prs"]) == 1
+        assert state["create_calls"] == 1
+        assert state["update_calls"] == 1
+        assert len(generator_log.read_text(encoding="utf-8").splitlines()) == 1
+        assert json.loads(generator_log.read_text(encoding="utf-8")) == {
+            "serial": "emulator-5554",
+            "sensitive": False,
+        }
+        gradle_calls = [
+            json.loads(line)
+            for line in gradle_log.read_text(encoding="utf-8").splitlines()
+        ]
+        assert gradle_calls == [
+            {
+                "args": [":app:compileProdReleaseArtProfile"],
+                "signing_mode": "debug_validation",
+                "sensitive": False,
+            },
+            {
+                "args": [":app:assembleProdRelease"],
+                "signing_mode": "debug_validation",
+                "sensitive": False,
+            },
+        ]
+        adapter_calls = [
+            json.loads(line)
+            for line in adapter_log.read_text(encoding="utf-8").splitlines()
+        ]
+        assert adapter_calls == [
+            ["adb-emulators", "tv"],
+            ["acquire-any", "emulator-5554", "--", "900", "7200"],
+            ["release", "emulator-5554", "fake-release-token"],
+        ]
+        github_calls = [
+            json.loads(line)
+            for line in github_log.read_text(encoding="utf-8").splitlines()
+        ]
+        assert sum(call[:2] == ["pr", "create"] for call in github_calls) == 1
+        assert sum(call[:2] == ["pr", "edit"] for call in github_calls) == 1
+        assert not any("--force" in call or "-f" in call for call in github_calls)
+        assert sh(
+            ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads"],
+            bare,
+        ).stdout.splitlines() == ["master", "release/99.0.0"]
+
+        before_state = github_state.read_bytes()
+        before_remote = sh(
+            [
+                "git",
+                "--git-dir",
+                str(bare),
+                "rev-parse",
+                "refs/heads/release/99.0.0",
+            ],
+            work,
+        ).stdout.strip()
+        before_github_calls = github_log.read_bytes()
+        drifted_head = {**ship_input, "release_head_oid": base_oid}
+        try:
+            runner.execute("ship_pr", "compliance_ship_pr", drifted_head)
+        except StageContractError:
+            pass
+        else:
+            raise AssertionError("drifted release head reached PR mutation")
+        assert github_state.read_bytes() == before_state
+        assert github_log.read_bytes() == before_github_calls
+        assert sh(
+            [
+                "git",
+                "--git-dir",
+                str(bare),
+                "rev-parse",
+                "refs/heads/release/99.0.0",
+            ],
+            work,
+        ).stdout.strip() == before_remote
+
+        ship_contract = work / ".kent/commands/ship-pr.md"
+        original_contract = ship_contract.read_bytes()
+        ship_contract.write_bytes(original_contract + b"\ncontract drift\n")
+        try:
+            runner.execute("ship_pr", "compliance_ship_pr", ship_input)
+        except StageContractError:
+            pass
+        else:
+            raise AssertionError("unbound Ship command drift was accepted")
+        finally:
+            ship_contract.write_bytes(original_contract)
+        assert github_state.read_bytes() == before_state
+        assert github_log.read_bytes() == before_github_calls
+
+        missing_carrier = dict(ship_input)
+        missing_carrier.pop("compliance_report")
+        try:
+            runner.execute("ship_pr", "compliance_ship_pr", missing_carrier)
+        except StageContractError:
+            pass
+        else:
+            raise AssertionError("incomplete graph carrier was accepted")
+        assert github_state.read_bytes() == before_state
+        assert github_log.read_bytes() == before_github_calls
+        assert (
+            sh(["git", "status", "--porcelain=v1", "--untracked-files=all"], work).stdout
+            == ""
+        )
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory); bare = root / "origin.git"
-    work, target, bare_path = materialize(root, bare)
+    work, base_oid, target, bare_path = materialize(root, bare)
     graph = json.loads((work / ".kent/workflows/puber-release.json").read_text())
     publish_node = next(n for n in graph["nodes"] if n["key"] == "publish")
     task_id = "task-12345678-1234-4234-8234-123456789abc"
@@ -90,17 +1262,108 @@ with tempfile.TemporaryDirectory() as directory:
         "current_nodes": [{"node_id": publish_node["id"]}], "current_scripts": [{"path": ".kent/scripts/workflow-puber-release-publish", "current_node": {"node_id": publish_node["id"]}}],
         "execution_target": {"commit_oid": target}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
         "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"}, "worktree_path": str(work),
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 90, "name": "Puber Release"}, "worktree_path": str(work),
     }
+    profile_path = "app/src/main/generated/baselineProfiles/baseline-prof.txt"
+    startup_path = "app/src/main/generated/baselineProfiles/startup-prof.txt"
+    profile_report_value = {
+        "schema": "puber_profile_report_v1",
+        "operation_id": "a" * 64,
+        "task_short_id": "PUB-99",
+        "release_type": "minor",
+        "release_version": "99.0.0",
+        "release_tag": "v99.0.0",
+        "release_branch": "release/99.0.0",
+        "release_base_oid": base_oid,
+        "candidate_oid": target,
+        "tv_serial": "emulator-5554",
+        "command": ".kent/scripts/workflow-puber-release-profile-generation:tools/generate-baseline-profile.sh",
+        "lease_state": "released",
+        "generation_state": "passed",
+        "network_isolation_state": "passed",
+        "elapsed_ms": 1,
+        "baseline_before_sha256": helper.git_blob_sha256(work, base_oid, profile_path),
+        "baseline_after_sha256": helper.git_blob_sha256(work, target, profile_path),
+        "startup_before_sha256": helper.git_blob_sha256(work, base_oid, startup_path),
+        "startup_after_sha256": helper.git_blob_sha256(work, target, startup_path),
+        "changed_profiles": [profile_path],
+    }
+    profile_report = helper.canonical_json(profile_report_value)
+    profile_digest = helper.sha256_bytes(profile_report.encode())
+    preparation_value = {
+        **helper.VALIDATION_SIGNING,
+        "schema": "puber_release_preparation_report_v2",
+        "operation_id": "a" * 64,
+        "task_short_id": "PUB-99",
+        "release_type": "minor",
+        "release_version": "99.0.0",
+        "release_tag": "v99.0.0",
+        "release_branch": "release/99.0.0",
+        "release_base_oid": base_oid,
+        "candidate_oid": target,
+        "release_head_oid": target,
+        "profile_report_digest": profile_digest,
+        "compile_command": "./tools/agentw :app:compileProdReleaseArtProfile",
+        "compile_state": "passed",
+        "assemble_command": "./tools/agentw :app:assembleProdRelease",
+        "assemble_state": "passed",
+        "final_changed_paths": ["app/build.gradle.kts", profile_path],
+        "version_file_sha256": helper.git_blob_sha256(work, target, "app/build.gradle.kts"),
+        "baseline_profile_sha256": helper.git_blob_sha256(work, target, profile_path),
+        "startup_profile_sha256": helper.git_blob_sha256(work, target, startup_path),
+        "no_profile_diff": False,
+        "elapsed_ms": 1,
+    }
+    for field, replacement in (
+        ("schema", "puber_release_preparation_report_v1"),
+        ("packaging_artifact_publishable", True),
+        ("production_signing_used", True),
+        ("packaging_artifact_signer_certificate_sha256", "0" * 64),
+    ):
+        forged = {**preparation_value, field: replacement}
+        try:
+            helper.parse_release_preparation_report(forged, helper.digest_json(forged))
+        except helper.ContractError:
+            pass
+        else:
+            raise AssertionError("forged preparation signing claim was accepted")
+    preparation_report = helper.canonical_json(preparation_value)
+    preparation_digest = helper.sha256_bytes(preparation_report.encode())
+    checkpoint = {
+        "schema": "puber_release_profile_checkpoint_v2",
+        "task_id": task_id,
+        "task_short_id": "PUB-99",
+        "operation_id": "a" * 64,
+        "release_branch": "release/99.0.0",
+        "release_base_oid": base_oid,
+        "candidate_oid": target,
+        "release_head_oid": target,
+        "candidate_serials": ["emulator-5554"],
+        "state": "completed",
+        "resource_serial": "emulator-5554",
+        "profile_report": profile_report,
+        "profile_report_digest": profile_digest,
+        "release_preparation_report": preparation_report,
+        "release_preparation_report_digest": preparation_digest,
+        "output_hashes": {
+            profile_path: preparation_value["baseline_profile_sha256"],
+            startup_path: preparation_value["startup_profile_sha256"],
+        },
+    }
+    checkpoint_path = work / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+    checkpoint_path.parent.mkdir(parents=True)
+    checkpoint_path.write_text(helper.canonical_json(checkpoint) + "\n", encoding="utf-8")
+    checkpoint_path.chmod(0o600)
     log = root / "gh.log"; kent, gh = write_fake_bins(root, task, target, bare_path, log)
-    payload = {"_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "merge_watch_pr_merged"}, "workspace_path": str(work), "operation_id": "a"*64, "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "branch_name": "release/99.0.0", "merge_strategy": "auto", "pr_head_oid": "c"*40, "pr_base_oid": "b"*40}
-    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(fake_task := root / "fake-task.json"), "PUBER_GH_LOG": str(log), "PUBER_TARGET": target, "PUBER_BARE": bare_path}
+    payload = {"_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "merge_watch_pr_merged"}, "workspace_path": str(work), "operation_id": "a"*64, "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "branch_name": "release/99.0.0", "merge_strategy": "auto", "pr_head_oid": target, "pr_base_oid": base_oid}
+    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(fake_task := root / "fake-task.json"), "PUBER_GH_LOG": str(log), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": target, "PUBER_PR_BASE": base_oid}
     fake_task.write_text(json.dumps(task), encoding="utf-8")
+    payload["commentary"] = "private-transport-commentary"
     os.environ.update({key: env[key] for key in ("KENT_ENGINEERING_KIT_ROOT", "PUBER_KENT_BIN", "PUBER_GH_BIN", "PUBER_GH_LOG", "PUBER_TARGET", "PUBER_BARE")})
     result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert result.returncode == 0, result.stderr
     output = json.loads(result.stdout)
-    assert output["transition"] == "monitor_release"
+    assert output["transition"] == "monitor_release", (result.stdout, result.stderr)
     report = json.loads(output["publication_report"])
     assert report["schema"] == "puber_publication_report_v1" and report["unresolved"] is True
     assert output["publication_report_digest"] == __import__("hashlib").sha256(json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -109,6 +1372,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert not (ROOT / ".git/refs/tags/v99.0.0").exists()
     assert "api" in log.read_text(encoding="utf-8") and "git/ref/heads/master" in log.read_text(encoding="utf-8")
     retry = {
+        "commentary": "private-retry-commentary",
         "_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "publish_needs_user_action"},
         "blocker_reason": "retry",
         "workspace_path": payload["workspace_path"],
@@ -129,6 +1393,11 @@ with tempfile.TemporaryDirectory() as directory:
     retry_result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert retry_result.returncode == 0, retry_result.stderr
     retry_output = json.loads(retry_result.stdout)
+    assert "private-retry-commentary" not in retry_result.stdout + retry_result.stderr
+    assert "private-transport-commentary" not in result.stdout + result.stderr
+    for transport_checkpoint_path in (work / ".kent/runtime").rglob("*.json"):
+        assert "private-transport-commentary" not in transport_checkpoint_path.read_text()
+        assert "private-retry-commentary" not in transport_checkpoint_path.read_text()
     assert retry_output["transition"] == "monitor_release"
     retry_report = json.loads(retry_output["publication_report"])
     assert retry_report["operation_digest"] != report["operation_digest"]
@@ -233,4 +1502,64 @@ with tempfile.TemporaryDirectory() as directory:
     bad_result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=bad_env)
     assert bad_result.returncode == 0 and json.loads(bad_result.stdout)["transition"] == "publish_needs_user_action" and refs() == before
 
-print("workflow-puber-release-publish: passed scenarios=happy,retry,local_tag_only,lost_ack,conflicts,strict_phase_status,zero_effect_task_pr_kit_source_transition_gates")
+    unrelated = work / "docs/unrelated-publish-fixture.txt"
+    unrelated.write_text("must not be published\n", encoding="utf-8")
+    sh(["git", "add", str(unrelated.relative_to(work))], work)
+    sh(["git", "commit", "--quiet", "-m", "test unrelated release path"], work)
+    unrelated_head = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
+    sh(["git", "push", "--quiet", "origin", "HEAD:master"], work)
+    unrelated_preparation = {
+        **preparation_value,
+        "release_head_oid": unrelated_head,
+    }
+    unrelated_preparation_report = helper.canonical_json(unrelated_preparation)
+    unrelated_preparation_digest = helper.sha256_bytes(unrelated_preparation_report.encode())
+    unrelated_checkpoint = {
+        **checkpoint,
+        "release_head_oid": unrelated_head,
+        "release_preparation_report": unrelated_preparation_report,
+        "release_preparation_report_digest": unrelated_preparation_digest,
+    }
+    checkpoint_path.write_text(helper.canonical_json(unrelated_checkpoint) + "\n", encoding="utf-8")
+    checkpoint_path.chmod(0o600)
+    unrelated_task = {
+        **task,
+        "execution_target": {"commit_oid": unrelated_head},
+    }
+    fake_task.write_text(json.dumps(unrelated_task), encoding="utf-8")
+    unrelated_payload = {
+        **payload,
+        "pr_head_oid": unrelated_head,
+    }
+    unrelated_env = {
+        **env,
+        "PUBER_TARGET": unrelated_head,
+        "PUBER_PR_HEAD": unrelated_head,
+    }
+    before_refs = refs()
+    before_notes = notes_path.read_bytes()
+    prior_calls = len(log.read_text(encoding="utf-8").splitlines())
+    unrelated_result = subprocess.run(
+        [str(work / ".kent/scripts/workflow-puber-release-publish")],
+        cwd=work,
+        input=json.dumps(unrelated_payload),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=unrelated_env,
+    )
+    assert unrelated_result.returncode == 0, unrelated_result.stderr
+    unrelated_output = json.loads(unrelated_result.stdout)
+    assert unrelated_output["transition"] == "publish_needs_user_action"
+    assert "release diff" in unrelated_output["blocker_reason"]
+    assert refs() == before_refs
+    assert notes_path.read_bytes() == before_notes
+    new_calls = [
+        json.loads(line)
+        for line in log.read_text(encoding="utf-8").splitlines()[prior_calls:]
+    ]
+    assert not any("/git/ref/tags/" in call[1] for call in new_calls if len(call) > 1)
+    assert unrelated_output.get("publication_report", "") == ""
+
+test_clean_master_to_exactly_one_release_pr()
+print("workflow-puber-release-publish: passed scenarios=happy,retry,local_tag_only,lost_ack,conflicts,strict_phase_status,zero_effect_task_pr_kit_source_transition_diff_gates,clean_master_one_pr_rerun")

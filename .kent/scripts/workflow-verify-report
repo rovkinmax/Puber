@@ -16,6 +16,8 @@ import sys
 import time
 from typing import Any
 
+sys.dont_write_bytecode = True
+
 
 INPUT_LIMIT = 1024 * 1024
 TIMEOUT_SECONDS = 7200
@@ -379,6 +381,7 @@ def replacement_environment(tmp_fd: int) -> dict[str, str]:
         "LC_ALL": "C",
         "GIT_TERMINAL_PROMPT": "0",
         "GCM_INTERACTIVE": "never",
+        "PYTHONDONTWRITEBYTECODE": "1",
         "TMPDIR": _fd_path(tmp_fd),
     }
     valid: dict[str, str] = {}

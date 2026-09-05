@@ -16,6 +16,12 @@ allow_create = false
 allow_default_change = false
 allow_uuid_change = false
 
+# Revision 90 preparation is closed by the deterministic builder as
+# prepare -> profile_generation -> finalize_release -> compliance. Its
+# compliance_fix, ci_fix, and pr_fix transitions re-enter prepare with the
+# complete release identity and prior proof carrier; old readiness remains
+# stale until profile generation and finalization refresh the checkpoint.
+
 [source_manifest]
 schema = "release_source_manifest_v1"
 path = ".kent/workflows/puber-release.manifest.json"
@@ -319,8 +325,8 @@ condition = ""
 continue_on_error = false
 runs_on = "ubuntu-latest"
 runner_trust = "github-hosted-standard-ephemeral-effect"
-credential_profile = "github-platform-contents-write"
-allowed_effects = ["artifact-upload", "github-release-create"]
+credential_profile = "github-platform-contents-write-android-production-signing"
+allowed_effects = ["artifact-upload", "github-release-create", "production-signing"]
 skip_policy = "event-gated"
 branch_protection_required = false
 control_plane_fixtures_forbidden = true
@@ -332,7 +338,7 @@ github_environment = ""
 services = {  }
 container = { "image" = "", "environment" = {  }, "ports" = [], "options" = "" }
 checkout_persist_credentials = false
-secret_refs = []
+secret_refs = ["KEYALIAS", "RELEASE_KEYSTORE_BASE64", "STOREPASS"]
 effective_environment = {  }
 [effect_jobs_v1.jobs.event_selector]
 name = "push"
@@ -350,98 +356,91 @@ name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+with = { "persist-credentials" = false, "ref" = "${{ github.ref }}" }
 run = ""
 effective_shell = ""
 effective_working_directory = ""
 effective_environment = {  }
 secret_refs = []
 validation_required = false
-[effect_jobs_v1.jobs.steps.with]
-"persist-credentials" = false
-"ref" = "${{ github.ref }}"
 [[effect_jobs_v1.jobs.steps]]
 kind = "uses"
 name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00"
+with = { "java-version" = "21", "distribution" = "temurin" }
 run = ""
 effective_shell = ""
 effective_working_directory = ""
 effective_environment = {  }
 secret_refs = []
 validation_required = false
-[effect_jobs_v1.jobs.steps.with]
-"java-version" = "21"
-"distribution" = "temurin"
 [[effect_jobs_v1.jobs.steps]]
 kind = "run"
 name = "Assert GitHub-hosted runner"
 condition = ""
 continue_on_error = false
 uses = ""
+with = {  }
 run = "test \"${RUNNER_ENVIRONMENT:-github-hosted}\" = github-hosted"
 effective_shell = ""
 effective_working_directory = ""
 effective_environment = {  }
 secret_refs = []
 validation_required = false
-with = {  }
 [[effect_jobs_v1.jobs.steps]]
 kind = "run"
-name = ""
+name = "Preflight production signing"
 condition = ""
 continue_on_error = false
 uses = ""
-run = "./gradlew :app:assembleProdRelease"
+with = {  }
+run = "set -euo pipefail\ntest \"$PUBER_RELEASE_SIGNING_MODE\" = production\ntest -n \"$RELEASE_KEYSTORE_BASE64\"\ntest -n \"$STOREPASS\"\ntest -n \"$KEYALIAS\"\n# The key password is STOREPASS, never an independent input.\n"
 effective_shell = ""
 effective_working_directory = ""
-effective_environment = {  }
-secret_refs = []
+effective_environment = { "PUBER_RELEASE_SIGNING_MODE" = "production", "RELEASE_KEYSTORE_BASE64" = "${{ secrets.RELEASE_KEYSTORE_BASE64 }}", "STOREPASS" = "${{ secrets.STOREPASS }}", "KEYALIAS" = "${{ secrets.KEYALIAS }}" }
+secret_refs = ["KEYALIAS", "RELEASE_KEYSTORE_BASE64", "STOREPASS"]
 validation_required = false
-with = {  }
 [[effect_jobs_v1.jobs.steps]]
 kind = "run"
-name = "Prepare release artifacts and checksum"
+name = "Build and prepare production artifacts"
 condition = ""
 continue_on_error = false
 uses = ""
-run = "mkdir -p release-artifacts\napk_path=\"$(find app/build/outputs/apk/prod/release -maxdepth 1 -type f -name '*.apk' | head -n 1)\"\ntest -n \"$apk_path\"\ncp \"$apk_path\" \"release-artifacts/puber-${GITHUB_REF_NAME}.apk\"\n(cd release-artifacts && sha256sum \"puber-${GITHUB_REF_NAME}.apk\" > \"puber-${GITHUB_REF_NAME}.apk.sha256\")\n"
+with = {  }
+run = "set -euo pipefail\ncleanup_signing() {\n  status=$?\n  trap - EXIT\n  rm -f app/release.jks app/keystore.properties\n  rm -rf app/build\n  if [ \"$status\" -ne 0 ]; then rm -rf release-artifacts; fi\n  exit \"$status\"\n}\ntrap cleanup_signing EXIT\ntrap 'exit 130' INT\ntrap 'exit 143' TERM\numask 077\ntest \"$PUBER_RELEASE_SIGNING_MODE\" = production\ntest -n \"$RELEASE_KEYSTORE_BASE64\"\ntest -n \"$STOREPASS\"\ntest -n \"$KEYALIAS\"\ntest ! -e app/keystore.properties && test ! -L app/keystore.properties\ntest ! -e app/release.jks && test ! -L app/release.jks\nprintf '%s' \"$RELEASE_KEYSTORE_BASE64\" | base64 --decode > app/release.jks\npin=3e0ddb2c5d39953d278f8cce813ff07a6b74059f1f9caa8fd752602e2bb8b61a\nalias_sha=\"$(keytool -exportcert -keystore app/release.jks -storepass:env STOREPASS -alias \"$KEYALIAS\" | sha256sum | cut -d ' ' -f 1)\"\ntest \"$alias_sha\" = \"$pin\"\n./gradlew --no-daemon :app:assembleProdRelease\nmapfile -t apks < <(find app/build/outputs/apk/prod/release -maxdepth 1 -type f -name '*.apk')\ntest \"${#apks[@]}\" -eq 1\napksigner=\"$(find \"$ANDROID_HOME/build-tools\" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)\"\ntest -x \"$apksigner\"\nproof=\"$(\"$apksigner\" verify --print-certs \"${apks[0]}\")\"\nsigner_sha=\"$(printf '%s\\n' \"$proof\" | sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')\"\ntest \"$signer_sha\" = \"$pin\"\nunset proof\nmkdir release-artifacts\ncp \"${apks[0]}\" \"release-artifacts/puber-${GITHUB_REF_NAME}.apk\"\n(cd release-artifacts && sha256sum \"puber-${GITHUB_REF_NAME}.apk\" > \"puber-${GITHUB_REF_NAME}.apk.sha256\")\n"
 effective_shell = ""
 effective_working_directory = ""
-effective_environment = {  }
-secret_refs = []
+effective_environment = { "PUBER_RELEASE_SIGNING_MODE" = "production", "RELEASE_KEYSTORE_BASE64" = "${{ secrets.RELEASE_KEYSTORE_BASE64 }}", "STOREPASS" = "${{ secrets.STOREPASS }}", "KEYALIAS" = "${{ secrets.KEYALIAS }}" }
+secret_refs = ["KEYALIAS", "RELEASE_KEYSTORE_BASE64", "STOREPASS"]
 validation_required = false
-with = {  }
 [[effect_jobs_v1.jobs.steps]]
 kind = "uses"
 name = ""
 condition = ""
 continue_on_error = false
 uses = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+with = { "name" = "puber-${{ github.ref_name }}", "path" = "release-artifacts/*", "if-no-files-found" = "error" }
 run = ""
 effective_shell = ""
 effective_working_directory = ""
 effective_environment = {  }
 secret_refs = []
 validation_required = false
-[effect_jobs_v1.jobs.steps.with]
-"name" = "puber-${{ github.ref_name }}"
-"path" = "release-artifacts/*"
-"if-no-files-found" = "error"
 [[effect_jobs_v1.jobs.steps]]
 kind = "run"
 name = "Create GitHub Release with empty initial body"
 condition = ""
 continue_on_error = false
 uses = ""
+with = {  }
 run = "gh release create \"$GITHUB_REF_NAME\" --verify-tag --title \"Puber $GITHUB_REF_NAME\" --notes \"\" --generate-notes=false release-artifacts/*"
 effective_shell = ""
 effective_working_directory = ""
 effective_environment = { "GH_TOKEN" = "${{ github.token }}" }
 secret_refs = []
 validation_required = false
-with = {  }
 
 [[operation_variants]]
 key = "publish_after_merge"
