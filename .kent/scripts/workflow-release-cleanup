@@ -129,9 +129,9 @@ def _validate_carriers(state: dict, carrier: dict, *, require_release_run: bool 
             raise helper.ContractError("cleanup release_run carrier does not equal the nested release report run")
     return publication, release
 
-def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, object], kit: dict[str, object]) -> None:
+def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, object] | None, kit: dict[str, object], *, allow_profile_checkpoint: bool = False) -> dict:
     runtime_root = ROOT / ".kent" / "runtime"
-    marker_digest = kit["canonical_sha256"](marker)
+    marker_digest = kit["canonical_sha256"](marker) if marker is not None else None
     kent_root = ROOT / ".kent"
     for path, label in ((kent_root, ".kent"), (runtime_root, ".kent/runtime")):
         try:
@@ -140,7 +140,9 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
             raise helper.ContractError(f"terminal evidence {label} is missing") from error
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
             raise helper.ContractError(f"terminal evidence {label} is unsafe")
-    expected_name = f".evidence-cleanup-{marker_digest}"
+    # Discovery is only for an interrupted original edge, before Janitor. It
+    # requires the active task ledger and never discovers a tombstone by guess.
+    expected_name = f".evidence-cleanup-{marker_digest}" if marker is not None else ""
     tombstone_names = []
     try:
         runtime_entries = list(runtime_root.iterdir())
@@ -168,7 +170,7 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
             raise helper.ContractError(f"terminal evidence {label} is unsafe")
         return True
     active_present = component(active_dir, "active task directory", True, missing_ok=True)
-    tombstone_present = component(tombstone_dir, "cleanup tombstone directory", True, missing_ok=True)
+    tombstone_present = component(tombstone_dir, "cleanup tombstone directory", True, missing_ok=True) if marker is not None else False
     if bool(tombstone_names) != tombstone_present:
         raise helper.ContractError("terminal evidence cleanup tombstone component is ambiguous")
     if active_present and tombstone_present:
@@ -177,6 +179,8 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
         raise helper.ContractError("terminal evidence task ledger/tombstone is missing")
     selected_dir = active_dir if active_present else tombstone_dir
     allowed_entries = {"evidence-ledger.jsonl", "fix-checkpoint.json", "smoke-checkpoint.json"}
+    if allow_profile_checkpoint:
+        allowed_entries.add("release-profile-checkpoint.json")
     def safe_file(path: Path, label: str) -> None:
         try:
             metadata = path.lstat()
@@ -191,7 +195,12 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
     if any(entry.name not in allowed_entries for entry in entries):
         raise helper.ContractError("terminal evidence ledger directory has unexpected entries")
     for entry in entries:
-        safe_file(entry, entry.name)
+        if entry.name == helper.CHECKPOINT_BASENAME:
+            if not active_present:
+                raise helper.ContractError("profile checkpoint is forbidden in a cleanup tombstone")
+            helper.read_profile_checkpoint(ROOT, task_short_id)
+        else:
+            safe_file(entry, entry.name)
     ledger = selected_dir / "evidence-ledger.jsonl"
     component(ledger, "evidence ledger", False)
     try:
@@ -202,15 +211,65 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
         readback = kit["validate_terminal_chain"](records, task_short_id=task_short_id)
     except Exception as error:
         raise helper.ContractError(f"terminal evidence ledger readback is invalid: {error}") from error
-    if readback != marker:
+    if marker is not None and readback != marker:
         raise helper.ContractError("terminal evidence marker does not match the sealed ledger")
+    return readback
 
-def _cleanup_report(state: dict, session: str, session_identity: dict[str, str], payload: dict, *, operation_digest: str, unresolved: bool, blocker: str, fresh: dict, existing_marker: str | None = None, preserved_prefix: str | None = None, preserved_suffix: str | None = None) -> tuple[str, str]:
+def _sealed_release_digests(marker_line: str, fresh: dict, *, publication_digest: str, preparation_digest: str) -> tuple[str, str]:
+    try:
+        marker = fresh["kit"]["parse_terminal_marker_line"](marker_line)
+    except Exception as error:
+        raise helper.ContractError(f"preserved release terminal marker is invalid: {error}") from error
+    operation_digests = marker.get("operation_report_digests")
+    if not isinstance(operation_digests, list):
+        raise helper.ContractError("preserved release terminal marker has no closed operation digests")
+    sealed = {}
+    for item in operation_digests:
+        if not isinstance(item, dict) or set(item) != {"kind", "sha256"}:
+            raise helper.ContractError("preserved release terminal marker operation digest is not closed")
+        kind = item.get("kind")
+        digest = item.get("sha256")
+        if not isinstance(kind, str) or kind in sealed or not isinstance(digest, str) or not helper.HEX64.fullmatch(digest):
+            raise helper.ContractError("preserved release terminal marker operation digest is invalid")
+        sealed[kind] = digest
+    if set(sealed) != {"merge", "publication", "qualification", "runtime_source"}:
+        raise helper.ContractError("preserved release terminal marker does not contain the exact release digest set")
+    if sealed["publication"] != publication_digest:
+        raise helper.ContractError("preserved release terminal marker publication digest drifted")
+    if sealed["merge"] != preparation_digest:
+        raise helper.ContractError("preserved release terminal marker preparation digest drifted")
+    return sealed["qualification"], sealed["merge"]
+
+def _cleanup_report(state: dict, session: str, session_identity: dict[str, str], payload: dict, *, operation_digest: str, unresolved: bool, blocker: str, fresh: dict, profile_report_digest: str = "", preparation_report_digest: str = "", existing_marker: str | None = None, preserved_prefix: str | None = None, preserved_suffix: str | None = None, recover_seal: bool = False) -> tuple[str, str]:
     publication = payload.get("publication_report", "")
     release = payload.get("release_report", "")
     notes_path = payload.get("release_notes_path", "")
     value = {"schema": "puber_cleanup_report_v1", "operation_digest": operation_digest, "cleanup_session_id": session, "cleanup_mode": "report_only", "session_identity": dict(session_identity), "publication_report": publication, "publication_report_digest": payload.get("publication_report_digest", ""), "release_report": release, "release_report_digest": payload.get("release_report_digest", ""), "release_notes_path": notes_path, "release_notes_digest": payload.get("release_notes_digest", ""), "unresolved": unresolved, "destructive_action": False, "blocker_reason": blocker}
     encoded = helper.canonical_json(value)
+    if recover_seal:
+        # No seal command is allowed here: absence of a checkpoint is not
+        # authority to manufacture terminal evidence. Independently read the
+        # existing chain and bind it to this exact original-edge outcome.
+        kit = fresh["kit"]
+        marker = _validate_terminal_marker_ledger(state["task_short_id"], None, kit)
+        marker_line = kit["terminal_marker_line"](marker)
+        _sealed_release_digests(
+            marker_line, fresh,
+            publication_digest=value["publication_report_digest"],
+            preparation_digest=preparation_report_digest,
+        )
+        sealed_runtime = next(item["sha256"] for item in marker["operation_report_digests"] if item["kind"] == "runtime_source")
+        if (existing_marker is not None or unresolved or blocker
+            or marker["retention_class"] != "cleanup_report_only"
+            or marker["redaction"] != {"status": "passed", "report_sha256": helper.sha256_bytes(encoded.encode("utf-8"))}
+            or sealed_runtime != fresh["binding"].runtime_source_envelope_digest):
+            raise helper.ContractError("original-edge retry does not match the exact terminal seal")
+        report = encoded + "\n" + marker_line
+        try:
+            kit["validate_cleanup_report"](report)
+        except Exception as error:
+            raise helper.ContractError(f"recovered cleanup report is not terminally sealed: {error}") from error
+        return report, helper.sha256_bytes(report.encode("utf-8"))
     if existing_marker is not None:
         if preserved_prefix is None or preserved_suffix is None:
             raise helper.ContractError("preserved terminal report context is incomplete")
@@ -246,6 +305,10 @@ def _cleanup_report(state: dict, session: str, session_identity: dict[str, str],
         publication_digest = value["publication_report_digest"]
         if publication_digest:
             operation_digests.append({"kind": "publication", "sha256": publication_digest})
+        if profile_report_digest:
+            operation_digests.append({"kind": "qualification", "sha256": profile_report_digest})
+        if preparation_report_digest:
+            operation_digests.append({"kind": "merge", "sha256": preparation_report_digest})
         operation_digests.sort(key=lambda item: item["kind"])
         request = {
             "schema": "terminal-evidence-seal-request-v1",
@@ -275,7 +338,12 @@ def _cleanup_report(state: dict, session: str, session_identity: dict[str, str],
             if marker["redaction"]["report_sha256"] != helper.sha256_bytes(encoded.encode("utf-8")):
                 raise helper.ContractError("terminal evidence redaction digest does not match the canonical report line")
             kit["validate_cleanup_report"](encoded + "\n" + marker_line)
-            _validate_terminal_marker_ledger(state["task_short_id"], marker, kit)
+            _validate_terminal_marker_ledger(
+                state["task_short_id"],
+                marker,
+                kit,
+                allow_profile_checkpoint=bool(profile_report_digest or preparation_report_digest),
+            )
         except helper.ContractError:
             raise
         except Exception as error:
@@ -334,7 +402,7 @@ def main() -> int:
             operation_digest = fresh["binding"].provenance_fingerprint
             session, session_identity = _session_for_cleanup(state)
             carrier = payload
-        _validate_carriers(state, carrier, require_release_run=edge["key"] == "release_release_published")
+        publication, release = _validate_carriers(state, carrier, require_release_run=edge["key"] == "release_release_published")
         declarations = helper.declarations(state["task"].get("body"))
         version = declarations.get("release_version")
         branch = carrier.get("branch_name") or declarations.get("release_branch", "")
@@ -343,8 +411,82 @@ def main() -> int:
         elif not helper.RELEASE_BRANCH.fullmatch(branch):
             raise helper.ContractError("cleanup branch carrier is not safe")
         carrier["branch_name"] = branch
+        checkpoint = None
+        checkpoint_receipt = None
+        recover_seal = False
+        profile_report_digest = ""
+        preparation_report_digest = ""
+        if release is not None:
+            if publication is None:
+                raise helper.ContractError("published cleanup is missing its publication report")
+            expected_checkpoint = {
+                "task_id": state["task_id"],
+                "task_short_id": state["task_short_id"],
+                "release_type": declarations.get("release_type", "minor"),
+                "release_version": publication["release_version"],
+                "release_tag": publication["release_tag"],
+                "release_branch": branch,
+                "release_head_oid": publication["release_head_oid"],
+            }
+            preparation_digest = publication.get("release_preparation_report_digest", "") if publication else ""
+            if existing_marker is not None:
+                profile_report_digest, preparation_report_digest = _sealed_release_digests(
+                    existing_marker,
+                    fresh,
+                    publication_digest=carrier["publication_report_digest"],
+                    preparation_digest=preparation_digest,
+                )
+            else:
+                checkpoint = helper.read_profile_checkpoint(
+                    ROOT,
+                    state["task_short_id"],
+                    expected=expected_checkpoint,
+                    missing_ok=edge["key"] == "release_release_published",
+                )
+                if checkpoint is None:
+                    # The checkpoint previously bound this carrier-only output
+                    # field. Keep that binding when recovering from its seal.
+                    helper.safe_release_branch(branch, publication["release_version"])
+                    recover_seal = True
+                    preparation_report_digest = preparation_digest
+                elif checkpoint["state"] != "completed" or checkpoint["release_preparation_report_digest"] != preparation_digest:
+                    raise helper.ContractError("release profile checkpoint is not terminally complete or digest-bound")
+                else:
+                    preparation = helper.parse_release_preparation_report(
+                        checkpoint["release_preparation_report"],
+                        checkpoint["release_preparation_report_digest"],
+                        expected=expected_checkpoint,
+                    )
+                    expected_checkpoint.update({
+                        key: preparation[key]
+                        for key in ("operation_id", "release_base_oid", "candidate_oid")
+                    })
+                    checkpoint, checkpoint_receipt = helper.read_profile_checkpoint(
+                        ROOT, state["task_short_id"], expected=expected_checkpoint, with_receipt=True,
+                    )
+                    profile_report_digest = checkpoint["profile_report_digest"]
+                    preparation_report_digest = checkpoint["release_preparation_report_digest"]
         blocker = carrier.get("blocker_reason", "") or prior_blocker
-        report, report_digest = _cleanup_report(state, session, session_identity, carrier, operation_digest=operation_digest, unresolved=prior_unresolved or bool(blocker), blocker=blocker, fresh=fresh, existing_marker=existing_marker, preserved_prefix=preserved_prefix, preserved_suffix=preserved_suffix)
+        report, report_digest = _cleanup_report(
+            state, session, session_identity, carrier,
+            operation_digest=operation_digest,
+            unresolved=prior_unresolved or bool(blocker),
+            blocker=blocker,
+            fresh=fresh,
+            profile_report_digest=profile_report_digest,
+            preparation_report_digest=preparation_report_digest,
+            existing_marker=existing_marker,
+            preserved_prefix=preserved_prefix,
+            preserved_suffix=preserved_suffix,
+            recover_seal=recover_seal,
+        )
+        if checkpoint_receipt is not None and not blocker and not prior_unresolved:
+            try:
+                helper.delete_profile_checkpoint(ROOT, state["task_short_id"], checkpoint_receipt)
+            except OSError as error:
+                raise helper.ContractError("validated release profile checkpoint could not be removed") from error
+            terminal_marker = fresh["kit"]["parse_terminal_marker_line"](report.splitlines()[-1])
+            _validate_terminal_marker_ledger(state["task_short_id"], terminal_marker, fresh["kit"])
         fields = {"cleanup_report": report, "workspace_path": str(ROOT), "branch_name": branch, "pr_url": carrier.get("pr_url", ""), "cleanup_mode": "report_only", "cleanup_session_id": session, "task_short_id": state["task_short_id"], "publication_report": carrier.get("publication_report", ""), "publication_report_digest": carrier.get("publication_report_digest", ""), "release_report": carrier.get("release_report", ""), "release_report_digest": carrier.get("release_report_digest", ""), "release_notes_path": carrier.get("release_notes_path", ""), "release_notes_digest": carrier.get("release_notes_digest", "")}
         helper.emit_exact(ROOT, "cleanup_task_janitor", "task_janitor", fields)
         return 0

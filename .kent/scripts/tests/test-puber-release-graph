@@ -4,15 +4,150 @@ import copy, json, subprocess, tempfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 GRAPH = ROOT / ".kent/workflows/puber-release.json"
+MANIFEST = ROOT / ".kent/workflows/puber-release.manifest.json"
 def run(value):
     with tempfile.TemporaryDirectory() as d:
         path=Path(d)/"graph.json"; path.write_text(json.dumps(value))
         return subprocess.run(["python3",str(ROOT/".kent/workflows/builders/puber_release.py"),"--check",str(path)],cwd=ROOT,text=True,capture_output=True)
 source=json.loads(GRAPH.read_text())
+assert source["workflow"]["version"] == 90, "checked-in graph is still revision 89"
+assert source["workflow"]["source_revision"] == 90, "source revision 90 is absent"
+assert (len(source["nodes"]), len(source["transition_groups"]), len(source["edges"])) == (17, 46, 46), "profile/finalization topology is absent"
+by_key = {node["key"]: node for node in source["nodes"]}
+assert by_key["profile_generation"]["kind"] == "script"
+assert by_key["profile_generation"]["script_path"] == ".kent/scripts/workflow-puber-release-profile-generation"
+assert by_key["finalize_release"]["kind"] == "agent"
+assert by_key["finalize_release"]["subagent_role"] == "release-manager"
+def edge(key):
+    matches = [item for item in source["edges"] if item["key"] == key]
+    assert len(matches) == 1, key
+    return matches[0]
+assert edge("prepare_profile_generation")["target_node_id"] == by_key["profile_generation"]["id"]
+assert edge("profile_generation_passed")["target_node_id"] == by_key["finalize_release"]["id"]
+assert edge("finalize_release_done")["target_node_id"] == by_key["compliance"]["id"]
+for forbidden in ("prepare_compliance", "profile_generation_compliance", "profile_generation_ship_pr"):
+    assert not any(item["key"] == forbidden for item in source["edges"])
+assert [item["key"] for item in edge("prepare_profile_generation")["parameters"]] == [
+    key for key in (
+        "workspace_path", "operation_id", "task_short_id", "release_type",
+        "release_version", "release_tag", "release_branch",
+        "release_base_oid", "candidate_oid",
+    )
+]
+assert [item["key"] for item in edge("profile_generation_passed")["parameters"]] == [
+    key for key in (
+        "workspace_path", "operation_id", "task_short_id", "release_type",
+        "release_version", "release_tag", "release_branch",
+        "release_base_oid", "candidate_oid", "profile_report",
+        "profile_report_digest",
+    )
+]
+assert edge("profile_generation_needs_user_action")["requires_approval"] is True
+assert [item["key"] for item in edge("finalize_release_done")["parameters"]] == [
+    key for key in (
+        "workspace_path", "operation_id", "task_short_id", "release_type",
+        "release_version", "release_tag", "release_branch",
+        "release_base_oid", "candidate_oid", "release_head_oid",
+        "profile_report", "profile_report_digest", "release_preparation_report",
+        "release_preparation_report_digest", "verification_summary",
+    )
+]
+assert [item["key"] for item in edge("compliance_ship_pr")["parameters"]] == [
+    key for key in (
+        "workspace_path", "operation_id", "task_short_id", "release_type",
+        "release_version", "release_tag", "release_branch", "release_base_oid",
+        "candidate_oid", "release_head_oid", "profile_report",
+        "profile_report_digest", "release_preparation_report",
+        "release_preparation_report_digest", "verification_summary",
+        "compliance_report",
+    )
+]
+revisioned_carrier = (
+    "workspace_path", "operation_id", "task_short_id", "release_type",
+    "release_version", "release_tag", "release_branch", "release_base_oid",
+    "candidate_oid", "release_head_oid", "profile_report",
+    "profile_report_digest", "release_preparation_report",
+    "release_preparation_report_digest", "verification_summary",
+)
+assert [item["key"] for item in edge("release_intent_passed")["parameters"]] == [
+    "workspace_path", "operation_id", "task_short_id", "release_type",
+    "release_version", "release_branch",
+]
+for repair_key, report_key in (
+    ("compliance_fix", "compliance_report"),
+    ("ci_fix", "ci_report"),
+    ("pr_fix", "blocker_reason"),
+):
+    repair = edge(repair_key)
+    assert repair["target_node_id"] == by_key["prepare"]["id"]
+    assert [item["key"] for item in repair["parameters"]] == [
+        key for key in revisioned_carrier + (report_key,)
+    ]
+    assert "version_bump_commit" not in repair["prompt_template"]
+    assert "prepare_profile_generation" in repair["prompt_template"]
+assert not any(
+    item["key"] in {"prepare_compliance", "prepare_ship_pr", "prepare_publish"}
+    for item in source["edges"]
+)
+builder = __import__("runpy").run_path(str(ROOT/".kent/workflows/builders/puber_release.py"))
+def manifest_errors(value):
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "manifest.json"
+        path.write_text(json.dumps(value))
+        check_manifest = builder["check_manifest"]
+        original = check_manifest.__globals__["MANIFEST"]
+        check_manifest.__globals__["MANIFEST"] = path
+        try:
+            return check_manifest()
+        finally:
+            check_manifest.__globals__["MANIFEST"] = original
+
+manifest = json.loads(MANIFEST.read_text())
+bad_manifest = copy.deepcopy(manifest)
+bad_manifest["external_roots"][0], bad_manifest["external_roots"][1] = (
+    bad_manifest["external_roots"][1],
+    bad_manifest["external_roots"][0],
+)
+assert "manifest external_roots must be sorted and unique by kind and key" in manifest_errors(bad_manifest)
+bad_manifest = copy.deepcopy(manifest)
+bad_manifest["external_roots"].insert(1, copy.deepcopy(bad_manifest["external_roots"][0]))
+assert "manifest external_roots must be sorted and unique by kind and key" in manifest_errors(bad_manifest)
+bad_manifest = copy.deepcopy(manifest)
+bad_manifest["additional_paths"] = sorted(
+    bad_manifest["additional_paths"] + [".kent/project-contract.md"]
+)
+assert manifest_errors(bad_manifest) == [
+    "manifest additional_paths may not repeat a derived path"
+]
+bad_manifest = copy.deepcopy(manifest)
+bad_manifest["additional_paths"] = sorted(
+    bad_manifest["additional_paths"] + ["app/debug.jks"]
+)
+assert manifest_errors(bad_manifest) == [
+    "manifest additional_path must be valid UTF-8: app/debug.jks"
+]
+assert source["derived_wiring"] == builder["expected_derived_wiring"](source)
+assert [item["edge_id"] for item in source["derived_wiring"]["edges"]] == [
+    item["id"] for item in source["edges"]
+]
+assert [item["transition_group_id"] for item in source["derived_wiring"]["transition_groups"]] == [
+    item["id"] for item in source["transition_groups"]
+]
+assert [item["node_id"] for item in source["derived_wiring"]["nodes"]] == [
+    item["id"] for item in source["nodes"]
+]
+prepare_wiring = next(
+    item for item in source["derived_wiring"]["edges"]
+    if item["edge_id"] == edge("prepare_profile_generation")["id"]
+)
+assert [item["name"] for item in prepare_wiring["required_provision_fields"]] == [
+    item["key"] for item in edge("prepare_profile_generation")["parameters"]
+]
+assert "candidate_oid" in [item["name"] for item in prepare_wiring["required_provision_fields"]]
+assert "version_bump_commit" not in [item["name"] for item in prepare_wiring["required_provision_fields"]]
 ok=subprocess.run(["python3",str(ROOT/".kent/workflows/builders/puber_release.py"),"--check",str(GRAPH)],cwd=ROOT,text=True,capture_output=True)
 assert ok.returncode==0, ok.stderr
-assert (len(source["nodes"]), len(source["transition_groups"]), len(source["edges"])) == (15, 42, 42)
-for key, (target, params) in __import__("runpy").run_path(str(ROOT/".kent/workflows/builders/puber_release.py"))["SCRIPT_EDGE_PARAMETERS"].items():
+for key, (target, params) in builder["REQUIRED_EDGE_PARAMETERS"].items():
     matches=[edge for edge in source["edges"] if edge["key"]==key]
     assert len(matches)==1 and [item["key"] for item in matches[0].get("parameters",[])] == list(params)
 bad=copy.deepcopy(source); bad["workflow"]["default"]=True
@@ -27,4 +162,24 @@ bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="publish_ne
 assert run(bad).returncode != 0
 bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="release_release_published")["target_node_id"]=next(n["id"] for n in bad["nodes"] if n["key"]=="publish")
 assert run(bad).returncode != 0
+bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="release_intent_passed")["parameters"].pop()
+assert run(bad).returncode != 0
+bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="compliance_fix")["parameters"].pop(1)
+assert run(bad).returncode != 0
+bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="prepare_profile_generation")["target_node_id"]=by_key["finalize_release"]["id"]
+assert run(bad).returncode != 0
+bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="profile_generation_passed")["target_node_id"]=by_key["compliance"]["id"]
+assert run(bad).returncode != 0
+bad=copy.deepcopy(source); bad["derived_wiring"]["edges"].pop()
+assert run(bad).returncode != 0
+bad=copy.deepcopy(source); next(
+    item for item in bad["derived_wiring"]["edges"]
+    if item["edge_id"] == edge("prepare_profile_generation")["id"]
+)["required_provision_fields"][0]["name"] = "version_bump_commit"
+assert run(bad).returncode != 0
 print("puber-release-graph: passed")
+
+assert builder["check_signing_contract"]() == []
+bad = copy.deepcopy(source)
+next(e for e in bad["edges"] if e["key"] == "profile_generation_passed")["prompt_template"] = "Finalize without signing proof"
+assert run(bad).returncode != 0

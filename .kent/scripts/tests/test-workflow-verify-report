@@ -1,8 +1,869 @@
 #!/usr/bin/env python3
-from pathlib import Path
 import hashlib
-ROOT=Path(__file__).resolve().parents[3]
-profile=(ROOT/'.kent/workflow-profile.toml').read_text(); verify=(ROOT/'.kent/scripts/workflow-verify-report').read_bytes()
-assert 'schema_version = 4' in profile and 'runtime_contracts = "2.0.0"' in profile
-assert hashlib.sha256(verify).hexdigest()==hashlib.sha256(Path('/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile/templates/project/workflow-verify-report').read_bytes()).hexdigest()
-print('workflow-verify-report: passed')
+import json
+import os
+from pathlib import Path
+import shutil
+import stat
+import subprocess
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[3]
+KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
+COMMIT = "93420b9537bbaf4d673d63305e872945e0693e83"
+VERIFY = ROOT / ".kent/scripts/workflow-verify-report"
+RUNTIME = ROOT / ".kent/scripts/workflow_runtime_contracts.py"
+CHILD = ROOT / ".kent/scripts/workflow-compile-verify"
+COMPILE_REPORT = ROOT / ".kent/scripts/workflow-compile-report"
+MANIFEST = ROOT / ".kent/workflows/puber-release.manifest.json"
+EXPECTED_VERIFY_SHA256 = (
+    "cf2da0d2e55858b3298922c4e40bb97cb3e5787ff9940fcd91dde684a1f8dfa6"
+)
+EXPECTED_CHILD_SHA256 = (
+    "8e7478d9576be6b536bd30d7320b2e060674a6e1e8cb02c014c73db42fb047f2"
+)
+TASK = ":app:compileDevDebugKotlin"
+BLOCKED_STDOUT = b'{"transition":"blocked"}\n'
+INVALID_INPUT = b"compile verifier input is invalid\n"
+INVALID_WORKSPACE = b"compile verifier workspace is invalid\n"
+INFRASTRUCTURE_UNAVAILABLE = b"compile verifier infrastructure is unavailable\n"
+INTERRUPTED = b"compile verifier execution was interrupted\n"
+
+
+def sha256(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def git(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        ["git", "-C", str(cwd), *args],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def git_mode(path: str) -> str:
+    return git("ls-files", "-s", "--", path).stdout.decode().split()[0]
+
+
+def assert_safe_interpreter(path: Path) -> None:
+    metadata = path.stat()
+    assert stat.S_ISREG(metadata.st_mode), path
+    assert metadata.st_uid == 0, path
+    assert metadata.st_mode & stat.S_IXUSR, path
+    assert not metadata.st_mode & 0o022, path
+
+
+def write_executable(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    path.chmod(0o700)
+
+
+def install_verifier(root: Path, wrapper: bytes | None = None) -> None:
+    scripts = root / ".kent/scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    write_executable(
+        scripts / "workflow-verify-report",
+        VERIFY.read_bytes() if wrapper is None else wrapper,
+    )
+    write_executable(scripts / "workflow-compile-verify", CHILD.read_bytes())
+    (scripts / "workflow_runtime_contracts.py").write_bytes(RUNTIME.read_bytes())
+    (root / ".gitignore").write_text("/build/\n", encoding="utf-8")
+    if (root / ".git").is_dir():
+        (root / ".git/info").mkdir(parents=True, exist_ok=True)
+        (root / ".git/info/exclude").write_text("/build/\n", encoding="utf-8")
+
+
+def initialize_repository(root: Path) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+
+
+def initialize_real_worktree(parent: Path, worktree: Path) -> None:
+    source = parent / "source"
+    source.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "PUB-78 test"],
+        cwd=source,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "pub-78@example.invalid"],
+        cwd=source,
+        check=True,
+    )
+    (source / "seed").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "seed"], cwd=source, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "worktree", "add", "-q", "--detach", str(worktree), "HEAD"],
+        cwd=source,
+        check=True,
+    )
+
+
+def fake_command(
+    path: Path,
+    marker: Path,
+    *,
+    exit_code: int = 0,
+    admission_fd: int | None = None,
+    signal_self: bool = False,
+    sleep_seconds: float = 0.0,
+    output_bytes: int = 0,
+) -> None:
+    descriptor_check = (
+        "descriptor_closed = None\n"
+        if admission_fd is None
+        else (
+            "try:\n"
+            f"    os.fstat({admission_fd})\n"
+            "except OSError:\n"
+            "    descriptor_closed = True\n"
+            "else:\n"
+            "    descriptor_closed = False\n"
+        )
+    )
+    source = (
+        "#!/usr/bin/python3\n"
+        "import json\n"
+        "import os\n"
+        "from pathlib import Path\n"
+        "import signal\n"
+        "import sys\n"
+        "import time\n"
+        "assert sys.stdin.buffer.read() == b''\n"
+        "assert 'private-transport-commentary' not in json.dumps(dict(os.environ))\n"
+        f"{descriptor_check}"
+        f"expected_tmp = Path({str(marker.parent.resolve() / 'build/kent-workflow/gradle-tmp')!r})\n"
+        "actual_tmp = Path(os.environ.get('TMPDIR', ''))\n"
+        "tmp_ok = actual_tmp == expected_tmp and actual_tmp.is_dir()\n"
+        "sentinel = actual_tmp / 'fake-gradle-sentinel'\n"
+        "if tmp_ok:\n"
+        "    sentinel.write_text('sentinel', encoding='utf-8')\n"
+        "    tmp_ok = sentinel.read_text(encoding='utf-8') == 'sentinel'\n"
+        "    sentinel.unlink()\n"
+        f"Path({str(marker)!r}).write_text(json.dumps({{\n"
+        "    'argv': sys.argv[1:],\n"
+        "    'cwd': os.getcwd(),\n"
+        "    'tmpdir': str(actual_tmp),\n"
+        "    'tmp_ok': tmp_ok,\n"
+        "    'descriptor_closed': descriptor_closed,\n"
+        "    'pythonpath': os.environ.get('PYTHONPATH'),\n"
+        "    'pythonhome': os.environ.get('PYTHONHOME'),\n"
+        "    'env_hook': os.environ.get('ENV'),\n"
+        "    'bash_env': os.environ.get('BASH_ENV'),\n"
+        "}), encoding='utf-8')\n"
+        f"sys.stdout.buffer.write(b'O' * {output_bytes} + b'fake stdout\\n')\n"
+        "sys.stdout.flush()\n"
+        "sys.stderr.write('fake stderr\\n')\n"
+        "sys.stderr.flush()\n"
+        f"time.sleep({sleep_seconds!r})\n"
+        + ("os.kill(os.getpid(), signal.SIGTERM)\n" if signal_self else "")
+        + f"raise SystemExit({exit_code})\n"
+    )
+    write_executable(path, source.encode())
+
+
+def parse_wrapper_result(
+    root: Path,
+    result: subprocess.CompletedProcess[str],
+) -> tuple[dict[str, object], dict[str, object], bytes]:
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    carrier = json.loads(result.stdout)
+    report = json.loads(carrier["verification_report"])
+    framed = (
+        (root / report["log_path"]).read_bytes()
+        if report["log_path"] is not None
+        else b""
+    )
+    if framed:
+        assert sha256(framed) == report["log_sha256"]
+    return carrier, report, framed
+
+
+def run_wrapper(
+    root: Path,
+    review_context: str = "PUB-78 focused verification",
+    *,
+    runtime: bool = False,
+    branch: bool = True,
+    transport: dict[str, object] | None = None,
+) -> tuple[dict[str, object], dict[str, object], bytes]:
+    result = subprocess.run(
+        [str(root / ".kent/scripts/workflow-verify-report")],
+        cwd=root,
+        input=json.dumps(
+            {
+                "workspace_path": str(root),
+                "review_context": review_context,
+                **({"_kent": runtime_metadata(branch=branch)} if runtime else {}),
+                **(transport or {}),
+            }
+        ),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=parent_environment,
+        check=False,
+    )
+    return parse_wrapper_result(root, result)
+
+
+def open_admission_directory(root: Path, *, mode: int = 0o700) -> tuple[Path, int]:
+    admission = root / "admission"
+    admission.mkdir(mode=mode, exist_ok=True)
+    admission.chmod(mode)
+    return admission, os.open(admission, os.O_RDONLY | os.O_DIRECTORY)
+
+
+def direct_child(
+    root: Path,
+    payload: bytes,
+    *,
+    tmpdir: str,
+    descriptor: int | None = None,
+    hostile: bool = False,
+) -> subprocess.CompletedProcess[bytes]:
+    environment = dict(parent_environment)
+    environment["TMPDIR"] = tmpdir
+    if hostile:
+        environment.update(hostile_environment)
+        environment["TMPDIR"] = tmpdir
+    return subprocess.run(
+        [str(CHILD)],
+        cwd=root,
+        input=payload,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=environment,
+        pass_fds=() if descriptor is None else (descriptor,),
+        check=False,
+    )
+
+
+def valid_payload(root: Path, review_context: object = "focused") -> bytes:
+    return json.dumps(
+        {"workspace_path": str(root), "review_context": review_context},
+        separators=(",", ":"),
+    ).encode()
+
+
+def runtime_metadata(*, branch: bool = True) -> dict[str, str]:
+    return {
+        "task_id": "fixture-task",
+        "node_id": "fixture-node",
+        **({"transition_branch_key": "fixture-branch"} if branch else {}),
+    }
+
+
+profile = (ROOT / ".kent/workflow-profile.toml").read_text()
+verify = VERIFY.read_bytes()
+expected = subprocess.run(
+    ["git", "show", f"{COMMIT}:templates/project/workflow-verify-report"],
+    cwd=KIT,
+    check=True,
+    stdout=subprocess.PIPE,
+).stdout
+expected_mode = subprocess.run(
+    ["git", "ls-tree", COMMIT, "templates/project/workflow-verify-report"],
+    cwd=KIT,
+    check=True,
+    text=True,
+    stdout=subprocess.PIPE,
+).stdout.split()[0]
+assert "schema_version = 4" in profile
+assert 'runtime_contracts = "2.0.0"' in profile
+assert sha256(verify) == EXPECTED_VERIFY_SHA256
+assert verify == expected
+assert git_mode(".kent/scripts/workflow-verify-report") == expected_mode == "100755"
+assert sha256(CHILD.read_bytes()) == EXPECTED_CHILD_SHA256
+assert git_mode(".kent/scripts/workflow-compile-verify") == "100755"
+assert stat.S_ISREG(CHILD.stat().st_mode)
+assert CHILD.stat().st_mode & stat.S_IXUSR
+assert_safe_interpreter(Path("/bin/sh"))
+assert_safe_interpreter(Path("/usr/bin/python3"))
+
+parent_environment = dict(os.environ)
+parent_environment.pop("PYTHONDONTWRITEBYTECODE", None)
+baseline_report = git("show", "HEAD:.kent/scripts/workflow-compile-report").stdout
+baseline_child = git("show", "HEAD:.kent/scripts/workflow-compile-verify").stdout
+
+with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
+    scratch = Path(temporary)
+    poison = scratch / "poison"
+    poison.mkdir()
+    poison_marker = scratch / "poison-ran"
+    system_version = subprocess.run(
+        [
+            "/usr/bin/python3",
+            "-I",
+            "-c",
+            "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",
+        ],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout.strip()
+    user_sites = (
+        scratch
+        / "home"
+        / "Library"
+        / "Python"
+        / system_version
+        / "lib"
+        / "python"
+        / "site-packages",
+        scratch
+        / "home"
+        / ".local"
+        / "lib"
+        / f"python{system_version}"
+        / "site-packages",
+    )
+    for user_site in user_sites:
+        user_site.mkdir(parents=True)
+        (user_site / "usercustomize.py").write_text(
+            "from pathlib import Path\n"
+            f"Path({str(poison_marker)!r}).write_text('usercustomize')\n",
+            encoding="utf-8",
+        )
+    (poison / "json.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(poison_marker)!r}).write_text('json')\n"
+        "raise RuntimeError('poison json')\n",
+        encoding="utf-8",
+    )
+    for name in ("cat", "jq", "python3", "sh"):
+        helper = poison / name
+        helper.write_text(
+            "#!/bin/sh\n"
+            f"touch {poison_marker}\n"
+            "exit 91\n",
+            encoding="utf-8",
+        )
+        helper.chmod(0o700)
+    hostile_environment = {
+        "PATH": str(poison),
+        "PYTHONPATH": str(poison),
+        "PYTHONHOME": str(poison),
+        "HOME": str(scratch / "home"),
+        "ENV": str(poison / "env-hook"),
+        "BASH_ENV": str(poison / "bash-hook"),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+
+    legacy_root = scratch / "legacy"
+    initialize_repository(legacy_root)
+    scripts = legacy_root / ".kent/scripts"
+    scripts.mkdir(parents=True)
+    write_executable(scripts / "workflow-compile-report", COMPILE_REPORT.read_bytes())
+    write_executable(scripts / "workflow-compile-verify", CHILD.read_bytes())
+    baseline_root = scratch / "baseline"
+    (baseline_root / ".kent/scripts").mkdir(parents=True)
+    write_executable(
+        baseline_root / ".kent/scripts/workflow-compile-report",
+        baseline_report,
+    )
+    write_executable(
+        baseline_root / ".kent/scripts/workflow-compile-verify",
+        baseline_child,
+    )
+    baseline_result = subprocess.run(
+        [str(baseline_root / ".kent/scripts/workflow-compile-report")],
+        cwd=baseline_root,
+        input=b"{}",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=parent_environment,
+        check=False,
+    )
+    current_result = subprocess.run(
+        [str(legacy_root / ".kent/scripts/workflow-compile-report")],
+        cwd=legacy_root,
+        input=b"{}",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=parent_environment,
+        check=False,
+    )
+    assert (
+        baseline_result.returncode,
+        baseline_result.stdout,
+        baseline_result.stderr,
+    ) == (1, b"", b"")
+    assert (
+        current_result.returncode,
+        current_result.stdout,
+        current_result.stderr,
+    ) == (1, b"", INVALID_INPUT)
+
+    for git_shape, relative_command in (
+        ("worktree", Path("tools/agentw")),
+        ("primary", Path("gradlew")),
+    ):
+        for exit_code, expected_status, expected_code in (
+            (0, "passed", "passed"),
+            (7, "needs_changes", "verification_failed"),
+        ):
+            fixture_parent = scratch / f"{git_shape}-{exit_code}"
+            fixture_parent.mkdir()
+            fixture = fixture_parent / "checkout"
+            if git_shape == "worktree":
+                initialize_real_worktree(fixture_parent, fixture)
+            else:
+                fixture.mkdir()
+                initialize_repository(fixture)
+            install_verifier(fixture)
+            marker = fixture / "command-marker"
+            fake_command(
+                fixture / relative_command,
+                marker,
+                exit_code=exit_code,
+                output_bytes=16,
+            )
+            carrier, report, framed = run_wrapper(fixture)
+            assert carrier["transition"] == "deterministic_verify_reported"
+            assert carrier["verification_status"] == expected_status, (
+                git_shape,
+                exit_code,
+                carrier,
+                report,
+                framed,
+            )
+            assert report["schema"] == "workflow-verification-report-v2"
+            assert report["code"] == expected_code
+            assert report["exit_code"] == 0
+            assert b"fake stdout" in framed and b"fake stderr" in framed
+            invocation = json.loads(marker.read_text())
+            assert invocation["argv"] == [TASK]
+            assert invocation["cwd"] == str(fixture.resolve())
+            assert invocation["tmp_ok"] is True
+            assert invocation["tmpdir"] == str(
+                fixture.resolve() / "build/kent-workflow/gradle-tmp"
+            )
+            assert invocation["pythonpath"] is None
+            assert invocation["pythonhome"] is None
+            assert invocation["env_hook"] is None
+            assert invocation["bash_env"] is None
+            assert not poison_marker.exists()
+
+            for transport in (
+                {"commentary": "private-transport-commentary"},
+                {"commentary": "", "_kent": {}},
+                {"commentary": " \t\n", "_kent": {"unknown": [None, 1, {}]}},
+                {"_kent": {"task_id": None, "opaque": {"nested": True}}},
+                {"_kent": {}},
+                {"_kent": {"unknown": 1.25, "node_id": []}},
+            ):
+                marker.unlink()
+                actual_carrier, actual_report, actual_framed = run_wrapper(
+                    fixture, transport=transport,
+                )
+                assert actual_carrier["verification_status"] == expected_status, (
+                    actual_carrier, actual_report, actual_framed,
+                )
+                assert actual_report["code"] == expected_code
+                assert json.loads(marker.read_text()) == invocation
+                assert b"private-transport-commentary" not in actual_framed
+
+            marker.unlink()
+            runtime_carrier, runtime_report, runtime_framed = run_wrapper(
+                fixture, runtime=True,
+            )
+            assert runtime_carrier["verification_status"] == expected_status, (
+                runtime_carrier, runtime_report, runtime_framed,
+            )
+            assert runtime_report["code"] == expected_code
+            assert runtime_report["exit_code"] == 0
+            assert json.loads(marker.read_text()) == invocation
+            assert b"fake stdout" in runtime_framed
+            assert b"fake stderr" in runtime_framed
+            for value in runtime_metadata().values():
+                assert value.encode() not in runtime_framed
+
+            marker.unlink()
+            omitted_carrier, omitted_report, omitted_framed = run_wrapper(
+                fixture, runtime=True, branch=False,
+            )
+            assert omitted_carrier["verification_status"] == expected_status, (
+                omitted_carrier, omitted_report, omitted_framed,
+            )
+            assert omitted_report["code"] == expected_code
+            assert omitted_report["exit_code"] == 0
+            assert json.loads(marker.read_text()) == invocation
+            assert b"fake stdout" in omitted_framed
+            assert b"fake stderr" in omitted_framed
+            for value in runtime_metadata(branch=False).values():
+                assert value.encode() not in omitted_framed
+
+    direct_root = scratch / "direct"
+    direct_root.mkdir()
+    initialize_repository(direct_root)
+    marker = direct_root / "command-marker"
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        fake_command(
+            direct_root / "gradlew",
+            marker,
+            admission_fd=descriptor,
+            output_bytes=8,
+        )
+        result = direct_child(
+            direct_root,
+            valid_payload(direct_root),
+            tmpdir=f"/dev/fd/{descriptor}",
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert result.returncode == 0
+    assert result.stdout == b'{"transition":"passed"}\n', (
+        result.stdout,
+        result.stderr,
+        marker.read_text() if marker.exists() else None,
+    )
+    assert b"fake stdout" in result.stderr and b"fake stderr" in result.stderr
+    invocation = json.loads(marker.read_text())
+    assert invocation["argv"] == [TASK]
+    assert invocation["tmp_ok"] is True
+    assert invocation["descriptor_closed"] is True
+    assert not poison_marker.exists()
+    marker.unlink()
+
+    deep = b"{" + b'"x":{' * 2000 + b"}" * 2001
+    oversized = b'{"workspace_path":"' + b"a" * (1024 * 1024) + b'"}'
+    invalid_inputs = (
+        b"",
+        b"[]",
+        b'{"x":',
+        b'{"workspace_path":"a","workspace_path":"b"}',
+        b'{"workspace_path":NaN}',
+        b"\xff",
+        deep,
+        oversized,
+        b"{}",
+        json.dumps({"workspace_path": str(direct_root)}).encode(),
+        json.dumps(
+            {
+                "workspace_path": str(direct_root),
+                "review_context": "focused",
+                "extra": "no",
+            }
+        ).encode(),
+        valid_payload(direct_root, ""),
+        valid_payload(direct_root, 1),
+        valid_payload(direct_root, "x" * (1024 * 1024)),
+    )
+    business = json.loads(valid_payload(direct_root))
+    invalid_metadata = [None, [], True, 1, "private-invalid-metadata"]
+    omitted_metadata = runtime_metadata(branch=False)
+    invalid_inputs += tuple(
+        json.dumps({**business, "_kent": metadata}).encode()
+        for metadata in invalid_metadata
+    )
+    invalid_inputs += tuple(
+        json.dumps({**business, "commentary": value}).encode()
+        for value in (None, [], {}, True, 1, "\ud800", "x" * (1024 * 1024))
+    )
+    runtime_payload = json.dumps({**business, "_kent": runtime_metadata()}).encode()
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        runtime_result = direct_child(
+            direct_root, runtime_payload,
+            tmpdir=f"/dev/fd/{descriptor}", descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert runtime_result.returncode == 0
+    assert runtime_result.stdout == b'{"transition":"passed"}\n'
+    assert json.loads(marker.read_text()) == invocation
+    marker.unlink()
+    omitted_payload = json.dumps({**business, "_kent": omitted_metadata}).encode()
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        omitted_result = direct_child(
+            direct_root, omitted_payload,
+            tmpdir=f"/dev/fd/{descriptor}", descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert omitted_result.returncode == 0
+    assert omitted_result.stdout == b'{"transition":"passed"}\n'
+    assert json.loads(marker.read_text()) == invocation
+    for value in omitted_metadata.values():
+        assert value.encode() not in omitted_result.stderr
+    marker.unlink()
+    invalid_inputs += (
+        omitted_payload[:-1] + b',"_kent":{}}',
+        omitted_payload.replace(b'"task_id":', b'"task_id":"private-duplicate","task_id":'),
+        omitted_payload.replace(b'"node_id":', b'"node_id":"private-duplicate","node_id":'),
+        runtime_payload[:-1] + b',"_kent":{}}',
+        runtime_payload.replace(b'"task_id":', b'"task_id":"private-duplicate","task_id":'),
+        runtime_payload.replace(b'"node_id":', b'"node_id":"private-duplicate","node_id":'),
+        runtime_payload.replace(
+            b'"transition_branch_key":',
+            b'"transition_branch_key":"private-duplicate","transition_branch_key":',
+        ),
+        runtime_payload.replace(b'"review_context":', b'"review_context":"duplicate","review_context":'),
+        runtime_payload.replace(b'"workspace_path":', b'"workspace_path":"duplicate","workspace_path":'),
+        runtime_payload.replace(b'"fixture-task"', b'NaN'),
+        runtime_payload.replace(b'"fixture-task"', b'Infinity'),
+        runtime_payload.replace(b'"fixture-task"', b'-Infinity'),
+        runtime_payload.replace(b'"fixture-task"', b'1e999'),
+        runtime_payload.replace(b'"fixture-task"', b'-1e999'),
+        runtime_payload.replace(b'"fixture-task"', b'{"nested":[1e999]}'),
+        runtime_payload[:-1] + b',"commentary":"a","commentary":"b"}',
+        runtime_payload.replace(b'"fixture-task"', b'"\xff"'),
+        runtime_payload[:-1] + b',"extra":"private-business"}',
+    )
+    for raw_input in invalid_inputs:
+        result = direct_child(direct_root, raw_input, tmpdir="", hostile=True)
+        assert (result.returncode, result.stdout, result.stderr) == (
+            0,
+            BLOCKED_STDOUT,
+            INVALID_INPUT,
+        ), len(raw_input)
+        assert not marker.exists()
+
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        result = direct_child(
+            direct_root,
+            json.dumps(
+                {
+                    "workspace_path": str(scratch),
+                    "review_context": "focused",
+                }
+            ).encode(),
+            tmpdir=f"/dev/fd/{descriptor}",
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert (result.stdout, result.stderr) == (BLOCKED_STDOUT, INVALID_WORKSPACE)
+    assert not marker.exists()
+
+    descriptor_cases = []
+    unsafe_admission = direct_root / "unsafe-admission"
+    unsafe_admission.mkdir(mode=0o755)
+    unsafe_admission.chmod(0o755)
+    unsafe_descriptor = os.open(unsafe_admission, os.O_RDONLY | os.O_DIRECTORY)
+    descriptor_cases.append((f"/dev/fd/{unsafe_descriptor}", unsafe_descriptor))
+    descriptor_cases.extend(
+        (
+            ("", None),
+            ("/tmp/not-a-descriptor", None),
+            ("/dev/fd/03", None),
+            ("/dev/fd/2", None),
+            ("/dev/fd/2147483648", None),
+            ("/dev/fd/999999", None),
+        )
+    )
+    for tmpdir, open_descriptor in descriptor_cases:
+        result = direct_child(
+            direct_root,
+            valid_payload(direct_root),
+            tmpdir=tmpdir,
+            descriptor=open_descriptor,
+        )
+        assert (result.stdout, result.stderr) == (
+            BLOCKED_STDOUT,
+            INFRASTRUCTURE_UNAVAILABLE,
+        ), tmpdir
+        assert not marker.exists()
+    os.close(unsafe_descriptor)
+
+    command = direct_root / "gradlew"
+    original_command = command.read_bytes()
+    command.unlink()
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        result = direct_child(
+            direct_root,
+            valid_payload(direct_root),
+            tmpdir=f"/dev/fd/{descriptor}",
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert (result.stdout, result.stderr) == (
+        BLOCKED_STDOUT,
+        INFRASTRUCTURE_UNAVAILABLE,
+    )
+    command.symlink_to("/bin/sh")
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        result = direct_child(
+            direct_root,
+            valid_payload(direct_root),
+            tmpdir=f"/dev/fd/{descriptor}",
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert (result.stdout, result.stderr) == (
+        BLOCKED_STDOUT,
+        INFRASTRUCTURE_UNAVAILABLE,
+    )
+    command.unlink()
+    write_executable(command, original_command)
+    command.chmod(0o722)
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        result = direct_child(
+            direct_root,
+            valid_payload(direct_root),
+            tmpdir=f"/dev/fd/{descriptor}",
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert (result.stdout, result.stderr) == (
+        BLOCKED_STDOUT,
+        INFRASTRUCTURE_UNAVAILABLE,
+    )
+    command.chmod(0o700)
+
+    gradle_tmp = direct_root / "build/kent-workflow/gradle-tmp"
+    shutil.rmtree(direct_root / "build")
+    (direct_root / "build").symlink_to(scratch)
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        result = direct_child(
+            direct_root,
+            valid_payload(direct_root),
+            tmpdir=f"/dev/fd/{descriptor}",
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert (result.stdout, result.stderr) == (
+        BLOCKED_STDOUT,
+        INFRASTRUCTURE_UNAVAILABLE,
+    )
+    (direct_root / "build").unlink()
+    gradle_tmp.mkdir(parents=True, mode=0o700)
+    gradle_tmp.chmod(0o755)
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        result = direct_child(
+            direct_root,
+            valid_payload(direct_root),
+            tmpdir=f"/dev/fd/{descriptor}",
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert (result.stdout, result.stderr) == (
+        BLOCKED_STDOUT,
+        INFRASTRUCTURE_UNAVAILABLE,
+    )
+    gradle_tmp.chmod(0o700)
+
+    command.write_bytes(b"not an executable format\n")
+    command.chmod(0o700)
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        result = direct_child(
+            direct_root,
+            valid_payload(direct_root),
+            tmpdir=f"/dev/fd/{descriptor}",
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert (result.stdout, result.stderr) == (
+        BLOCKED_STDOUT,
+        INFRASTRUCTURE_UNAVAILABLE,
+    )
+    assert not marker.exists()
+
+    fake_command(command, marker, admission_fd=None, signal_self=True)
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        result = direct_child(
+            direct_root,
+            valid_payload(direct_root),
+            tmpdir=f"/dev/fd/{descriptor}",
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert result.stdout == BLOCKED_STDOUT
+    assert result.stderr.endswith(INTERRUPTED)
+    marker.unlink()
+
+    for boundary, replacement, expected_code in (
+        (
+            "timeout",
+            verify.replace(b"TIMEOUT_SECONDS = 7200", b"TIMEOUT_SECONDS = 0.05"),
+            "child_timeout",
+        ),
+        (
+            "output",
+            verify.replace(
+                b"OUTPUT_LIMIT = 4 * 1024 * 1024",
+                b"OUTPUT_LIMIT = 512",
+            ),
+            "log_limit_exceeded",
+        ),
+    ):
+        fixture = scratch / f"boundary-{boundary}"
+        fixture.mkdir()
+        initialize_repository(fixture)
+        install_verifier(fixture, replacement)
+        marker = fixture / "command-marker"
+        fake_command(
+            fixture / "gradlew",
+            marker,
+            sleep_seconds=2.0 if boundary == "timeout" else 0.0,
+            output_bytes=4096 if boundary == "output" else 0,
+        )
+        carrier, report, _ = run_wrapper(fixture)
+        assert carrier["verification_status"] == "blocked"
+        assert report["code"] == expected_code
+        assert report["exit_code"] is not None
+        if boundary == "output":
+            assert marker.exists()
+
+    residue = sorted(
+        path.relative_to(scratch)
+        for path in scratch.rglob("*")
+        if path.name == "__pycache__" or path.suffix in {".pyc", ".pyo"}
+    )
+    assert residue == [], residue
+
+manifest = json.loads(MANIFEST.read_text())
+additional_paths = manifest["additional_paths"]
+assert ".kent/scripts/workflow-compile-verify" not in additional_paths
+assert ".kent/scripts/workflow-verify-report" not in additional_paths
+source_keys = [
+    item["key"]
+    for item in manifest["external_roots"]
+    if item["kind"] == "source-sha256"
+]
+assert source_keys == sorted(source_keys)
+expected_bindings = {
+    ".kent/scripts/workflow-compile-verify": EXPECTED_CHILD_SHA256,
+    ".kent/scripts/workflow-verify-report": EXPECTED_VERIFY_SHA256,
+    ".kent/scripts/tests/test-workflow-verify-report": sha256(
+        Path(__file__).read_bytes()
+    ),
+}
+for path, digest in expected_bindings.items():
+    binding = f"{path}={digest}"
+    assert source_keys.count(binding) == 1, binding
+    assert sum(key.startswith(f"{path}=") for key in source_keys) == 1, path
+
+repository_residue = sorted(
+    path.relative_to(ROOT)
+    for path in (ROOT / ".kent/scripts").rglob("*")
+    if path.name == "__pycache__" or path.suffix in {".pyc", ".pyo"}
+)
+assert repository_residue == [], repository_residue
+print("workflow-verify-report: passed")

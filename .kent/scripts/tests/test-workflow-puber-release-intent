@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 import sys
@@ -11,6 +12,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import shutil
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
@@ -20,6 +22,42 @@ assert result.returncode != 0 and "error" in result.stderr
 spec = importlib.util.spec_from_loader("intent_runtime_test", SourceFileLoader("intent_runtime_test", str(ROOT / ".kent/scripts/workflow-puber-release-intent")))
 mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
 assert mod.parse_run_carrier(mod.canonical_json(mod.NOT_SELECTED_RUN)) == mod.NOT_SELECTED_RUN
+
+# Exercise the real entry seam before Task I/O or runtime source admission.
+envelope = {"_kent": {"task_id": "fixture", "node_id": "node",
+                     "transition_branch_key": "branch"}, "workspace_path": "fixture"}
+edge = {"parameters": [{"key": "workspace_path"}]}
+with patch.object(mod, "_node_id", return_value="node"), \
+     patch.object(mod, "graph_edge", return_value=edge), \
+     patch.object(mod, "validate_task", return_value={"validated": True}) as admission:
+    expected_business = {"workspace_path": "fixture"}
+    for commentary in ("private-transport-commentary", "", " \t\n"):
+        transported = {**envelope, "commentary": commentary}
+        before = mod.canonical_json(transported)
+        business, validated, actual_edge = mod.validate_envelope(transported, ROOT, "fixture")
+        assert business == expected_business
+        assert validated == {"validated": True} and actual_edge == edge
+        assert mod.canonical_json(transported) == before
+    assert mod.validate_envelope(envelope, ROOT, "fixture")[0] == expected_business
+    for changes in ({"commentary": None}, {"commentary": []}, {"commentary": True},
+                    {"commentary": 1}, {"commentary": "\ud800"},
+                    {"commentary": "x" * (8 * 1024 * 1024 + 1)}, {"extra": "business"}):
+        admission.reset_mock()
+        try:
+            mod.validate_envelope({**envelope, **changes}, ROOT, "fixture")
+        except mod.ContractError:
+            pass
+        else:
+            raise AssertionError("invalid transport/business accepted")
+        admission.assert_not_called()
+    for reserved in ("_kent", "commentary"):
+        with patch.object(mod, "graph_edge", return_value={"parameters": [{"key": reserved}]}):
+            try:
+                mod.validate_envelope(envelope, ROOT, "fixture")
+            except mod.ContractError:
+                pass
+            else:
+                raise AssertionError("reserved graph business parameter accepted")
 selected = {"schema":"puber_release_run_v1","state":"selected","repository":"rovkinmax/Puber","workflow_path":".github/workflows/release.yml","workflow_name":"Release","event":"push","run_id":1,"attempt":1,"head_sha":"a"*40,"ref":"refs/tags/v1.2.3","head_branch":"v1.2.3"}
 assert mod.parse_run_carrier(mod.canonical_json(selected)) == selected
 for bad in ({"schema":"puber_release_run_v1","state":"selected"}, {"schema":"puber_release_run_v1","state":"selected","extra":1}):
@@ -37,6 +75,199 @@ for version, tag in (("1.2", "v1.2"), ("1.2.3", "release-1.2.3")):
         pass
     else:
         raise AssertionError("unsafe release carrier accepted")
+
+with tempfile.TemporaryDirectory() as checkpoint_directory:
+    checkpoint_root = Path(checkpoint_directory)
+    checkpoint_expected = {
+        "task_id": "task-12345678-1234-4234-8234-123456789abc",
+        "task_short_id": "PUB-99",
+        "operation_id": "a" * 64,
+        "release_branch": "release/99.0.0",
+        "release_base_oid": "b" * 40,
+        "candidate_oid": "c" * 40,
+        "release_head_oid": "d" * 40,
+    }
+    profile_value = {
+        "schema": "puber_profile_report_v1",
+        "operation_id": checkpoint_expected["operation_id"],
+        "task_short_id": checkpoint_expected["task_short_id"],
+        "release_type": "minor",
+        "release_version": "99.0.0",
+        "release_tag": "v99.0.0",
+        "release_branch": checkpoint_expected["release_branch"],
+        "release_base_oid": checkpoint_expected["release_base_oid"],
+        "candidate_oid": checkpoint_expected["candidate_oid"],
+        "tv_serial": "emulator-5554",
+        "command": ".kent/scripts/workflow-puber-release-profile-generation:tools/generate-baseline-profile.sh",
+        "lease_state": "released",
+        "generation_state": "passed",
+        "network_isolation_state": "passed",
+        "elapsed_ms": 1,
+        "baseline_before_sha256": "1" * 64,
+        "baseline_after_sha256": "1" * 64,
+        "startup_before_sha256": "2" * 64,
+        "startup_after_sha256": "2" * 64,
+        "changed_profiles": [],
+    }
+    profile_report = mod.canonical_json(profile_value)
+    profile_digest = mod.sha256_bytes(profile_report.encode())
+    preparation_value = {
+        **mod.VALIDATION_SIGNING,
+        "schema": "puber_release_preparation_report_v2",
+        "operation_id": checkpoint_expected["operation_id"],
+        "task_short_id": checkpoint_expected["task_short_id"],
+        "release_type": "minor",
+        "release_version": "99.0.0",
+        "release_tag": "v99.0.0",
+        "release_branch": checkpoint_expected["release_branch"],
+        "release_base_oid": checkpoint_expected["release_base_oid"],
+        "candidate_oid": checkpoint_expected["candidate_oid"],
+        "release_head_oid": checkpoint_expected["release_head_oid"],
+        "profile_report_digest": profile_digest,
+        "compile_command": "./tools/agentw :app:compileProdReleaseArtProfile",
+        "compile_state": "passed",
+        "assemble_command": "./tools/agentw :app:assembleProdRelease",
+        "assemble_state": "passed",
+        "final_changed_paths": ["app/build.gradle.kts"],
+        "version_file_sha256": "3" * 64,
+        "baseline_profile_sha256": "1" * 64,
+        "startup_profile_sha256": "2" * 64,
+        "no_profile_diff": True,
+        "elapsed_ms": 1,
+    }
+    preparation_report = mod.canonical_json(preparation_value)
+    preparation_digest = mod.sha256_bytes(preparation_report.encode())
+    for key, replacement in (
+        ("schema", "puber_release_preparation_report_v1"),
+        ("packaging_signing_mode", "production"),
+        ("packaging_artifact_publishable", True),
+        ("packaging_artifact_publishable", 0),
+        ("production_signing_used", True),
+        ("validation_signing_source", "untracked"),
+        ("validation_signing_blob_oid", "0" * 40),
+        ("validation_signing_sha256", "0" * 64),
+        ("validation_signer_certificate_sha256", "0" * 64),
+        ("packaging_artifact_signer_certificate_sha256", "0" * 64),
+    ):
+        invalid = {**preparation_value, key: replacement}
+        try:
+            mod.parse_release_preparation_report(invalid, mod.digest_json(invalid))
+        except mod.ContractError:
+            pass
+        else:
+            raise AssertionError(f"unsafe preparation signing field accepted: {key}")
+    for key in mod.VALIDATION_SIGNING:
+        invalid = dict(preparation_value); del invalid[key]
+        try:
+            mod.parse_release_preparation_report(invalid, mod.digest_json(invalid))
+        except mod.ContractError:
+            pass
+        else:
+            raise AssertionError(f"missing preparation signing field accepted: {key}")
+    checkpoint_value = {
+        "schema": "puber_release_profile_checkpoint_v2",
+        **checkpoint_expected,
+        "candidate_serials": ["emulator-5554"],
+        "state": "completed",
+        "resource_serial": "emulator-5554",
+        "profile_report": profile_report,
+        "profile_report_digest": profile_digest,
+        "release_preparation_report": preparation_report,
+        "release_preparation_report_digest": preparation_digest,
+        "output_hashes": {
+            "app/src/main/generated/baselineProfiles/baseline-prof.txt": "1" * 64,
+            "app/src/main/generated/baselineProfiles/startup-prof.txt": "2" * 64,
+        },
+    }
+    checkpoint_path = checkpoint_root / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+    (checkpoint_root / ".kent").mkdir()
+    mod.write_profile_checkpoint(checkpoint_root, "PUB-99", checkpoint_value)
+
+    # Both store operations must exclude a second helper writer at their final
+    # mutation boundary. Raw same-uid filesystem writes do not honor this guard.
+    concurrency_failures = []
+    for operation in ("unlink", "replace"):
+        mod.write_profile_checkpoint(checkpoint_root, "PUB-99", checkpoint_value)
+        _, old_receipt = mod.read_profile_checkpoint(
+            checkpoint_root, "PUB-99", with_receipt=True
+        )
+        replacement = {
+            **checkpoint_value,
+            "candidate_serials": ["emulator-5554", "emulator-5556"],
+        }
+        original_operation = getattr(mod.os, operation)
+        attempted = []
+
+        def interleave(*args, **kwargs):
+            destination = args[0] if operation == "unlink" else args[1]
+            if destination == mod.CHECKPOINT_BASENAME and not attempted:
+                attempted.append(True)
+                try:
+                    mod.write_profile_checkpoint(
+                        checkpoint_root, "PUB-99", replacement
+                    )
+                except mod.ContractError as error:
+                    assert "busy" in str(error), str(error)
+                else:
+                    concurrency_failures.append(operation)
+            return original_operation(*args, **kwargs)
+
+        with patch.object(mod.os, operation, side_effect=interleave):
+            if operation == "unlink":
+                mod.delete_profile_checkpoint(
+                    checkpoint_root, "PUB-99", old_receipt
+                )
+            else:
+                mod.write_profile_checkpoint(
+                    checkpoint_root, "PUB-99", checkpoint_value
+                )
+        assert attempted, operation
+        # Retry is admitted only after the first operation releases its guard.
+        mod.write_profile_checkpoint(checkpoint_root, "PUB-99", replacement)
+        preserved = checkpoint_path.read_bytes()
+        try:
+            mod.delete_profile_checkpoint(checkpoint_root, "PUB-99", old_receipt)
+        except mod.ContractError:
+            pass
+        else:
+            raise AssertionError("stale receipt deleted the retried postimage")
+        assert checkpoint_path.read_bytes() == preserved
+    assert not concurrency_failures, (
+        "concurrent helper writer entered checkpoint mutation: "
+        + ", ".join(concurrency_failures)
+    )
+    mod.write_profile_checkpoint(checkpoint_root, "PUB-99", checkpoint_value)
+
+    def write_checkpoint(value: dict) -> None:
+        # Deliberately bypass the store only to inject an inadmissible read fixture.
+        checkpoint_path.write_text(mod.canonical_json(value) + "\n", encoding="utf-8")
+        checkpoint_path.chmod(0o600)
+
+    assert mod.read_profile_checkpoint(
+        checkpoint_root,
+        checkpoint_expected["task_short_id"],
+        expected=checkpoint_expected,
+    ) == checkpoint_value
+    for key, replacement in (
+        ("task_id", "task-00000000-0000-4000-8000-000000000000"),
+        ("task_short_id", "PUB-999"),
+        ("operation_id", "f" * 64),
+        ("release_branch", "release/999.0.0"),
+        ("release_base_oid", "f" * 40),
+        ("candidate_oid", "e" * 40),
+        ("release_head_oid", "c" * 40),
+    ):
+        write_checkpoint({**checkpoint_value, key: replacement})
+        try:
+            mod.read_profile_checkpoint(
+                checkpoint_root,
+                checkpoint_expected["task_short_id"],
+                expected=checkpoint_expected,
+            )
+        except mod.ContractError:
+            pass
+        else:
+            raise AssertionError(f"foreign checkpoint {key} was accepted")
 os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
 kit = mod._kit_modules()
 profile = kit["ProjectProfile"].from_toml(ROOT, (ROOT / ".kent/workflow-profile.toml").read_text(), source="profile", check_files=False)
@@ -51,17 +282,53 @@ with tempfile.TemporaryDirectory() as directory:
     work = root / "work"
     subprocess.run(["git", "clone", "--quiet", str(ROOT), str(work)], cwd=root, check=True)
     manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text(encoding="utf-8"))
-    for relative in sorted(set(manifest["additional_paths"]) | {
+    source_roots = {item["key"].split("=", 1)[0] for item in manifest["external_roots"] if item["kind"] == "source-sha256"}
+    for relative in sorted(set(manifest["additional_paths"]) | source_roots | {
         ".kent/scripts/workflow-puber-release-intent",
         ".kent/workflows/puber-release.json",
         ".kent/workflows/puber-release.manifest.json",
         ".kent/workflows/specs/puber-release.toml",
         ".kent/workflows/builders/puber_release.py",
+        ".kent/commands/compliance-review.md",
+        ".kent/commands/ship-pr.md",
+        ".kent/scripts/workflow-puber-release-publish",
+        ".kent/scripts/workflow-task-janitor",
+        ".kent/scripts/workflow-wait-github-ci",
+        ".kent/scripts/workflow-wait-github-pr",
     }):
         source = ROOT / relative
         target = work / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
+    fixture_manifest = json.loads(
+        (work / ".kent/workflows/puber-release.manifest.json").read_text()
+    )
+    updated_roots = []
+    for external in fixture_manifest["external_roots"]:
+        if external.get("kind") == "source-sha256" and "=" in external.get("key", ""):
+            relative, _ = external["key"].split("=", 1)
+            if relative in {
+                ".kent/scripts/tests/test-puber-release-graph",
+                ".kent/scripts/workflow-puber-release-intent",
+                ".kent/scripts/tests/test-workflow-puber-release-intent",
+                ".kent/scripts/tests/test-puber-release-graph",
+                ".kent/scripts/tests/test-workflow-puber-release-profile-generation",
+                ".kent/scripts/tests/test-workflow-puber-release-publish",
+                ".kent/scripts/tests/test-workflow-release-cleanup",
+                ".kent/commands/compliance-review.md",
+                ".kent/commands/ship-pr.md",
+                ".kent/scripts/workflow-puber-release-publish",
+                ".kent/scripts/workflow-task-janitor",
+                ".kent/scripts/workflow-wait-github-ci",
+                ".kent/scripts/workflow-wait-github-pr",
+            }:
+                digest = hashlib.sha256((work / relative).read_bytes()).hexdigest()
+                external["key"] = f"{relative}={digest}"
+        updated_roots.append(external)
+    fixture_manifest["external_roots"] = updated_roots
+    (work / ".kent/workflows/puber-release.manifest.json").write_text(
+        json.dumps(fixture_manifest, indent=2) + "\n"
+    )
     subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=work, check=True)
     subprocess.run(["git", "config", "user.name", "Puber Test"], cwd=work, check=True)
     subprocess.run(["git", "add", "."], cwd=work, check=True)
@@ -80,7 +347,7 @@ with tempfile.TemporaryDirectory() as directory:
         "project": {}, "retained_session_count": 0, "source_workspace": {},
         "status": {"node_ids": [node["id"]]},
         "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"},
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 90, "name": "Puber Release"},
         "worktree_path": str(work),
     }
     fake = root / "fake"; fake.mkdir()
@@ -91,7 +358,42 @@ with tempfile.TemporaryDirectory() as directory:
     result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-intent")], cwd=work, input=json.dumps(success), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert result.returncode == 0, result.stderr
     output = json.loads(result.stdout)
-    assert output["transition"] == "release_intent_passed" and output["release_version"] == "99.0.0"
+    assert output["transition"] == "release_intent_passed" and output["release_version"] == "99.0.0", result.stdout + result.stderr
+    assert output["release_branch"] == "release/99.0.0", result.stdout + result.stderr
+    for commentary in ("private-transport-commentary", "", " \t\n"):
+        transported = {**success, "commentary": commentary}
+        repeated = subprocess.run(
+            [str(work / ".kent/scripts/workflow-puber-release-intent")], cwd=work,
+            input=json.dumps(transported), text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, env=env,
+        )
+        assert repeated.returncode == 0, repeated.stderr
+        assert json.loads(repeated.stdout) == output
+        assert "private-transport-commentary" not in repeated.stdout + repeated.stderr
+    for retry_branch in ("release_intent_blocked", "release_intent_needs_user_action",
+                         "release_intent_invalid"):
+        retry_payload = {
+            "_kent": {**success["_kent"], "transition_branch_key": retry_branch},
+            **{key: output[key] for key in (
+                "workspace_path", "operation_id", "task_short_id",
+                "release_type", "release_version",
+            )},
+            "blocker_reason": "fixture resolved",
+        }
+        retry_outputs = []
+        for transport in ({}, {"commentary": "private-retry-commentary"}):
+            repeated = subprocess.run(
+                [str(work / ".kent/scripts/workflow-puber-release-intent")], cwd=work,
+                input=json.dumps({**retry_payload, **transport}), text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+            )
+            assert repeated.returncode == 0, (retry_branch, repeated.stderr)
+            retried = json.loads(repeated.stdout)
+            assert retried["transition"] == "release_intent_passed"
+            assert retried["release_version"] == output["release_version"]
+            assert "private-retry-commentary" not in repeated.stdout + repeated.stderr
+            retry_outputs.append(retried)
+        assert retry_outputs[0] == retry_outputs[1]
     for bad in (
         {},
         {"_kent": success["_kent"], "extra": "field"},
