@@ -58,9 +58,11 @@ internal class HomeUIMapper(
     }
 
     private fun List<VideoItemUIState>.mapSavedBySection(type: HomeSectionType): List<VideoItemUIState> {
+        // Bookmarks is deliberately absent: `isSaved` means "in the quick folder", and this
+        // section holds exactly the items that are not. Forcing it true would offer an un-save
+        // in the context menu that `setQuickSaved` has nothing to remove.
         val isSavedSection = type == HomeSectionType.ContinueWatching ||
-            type == HomeSectionType.WatchLater ||
-            type == HomeSectionType.Bookmarks
+            type == HomeSectionType.WatchLater
         if (!isSavedSection) return this
         return map { item -> item.copy(isSaved = true) }
     }

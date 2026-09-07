@@ -12,6 +12,7 @@ import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.data.api.models.Pagination
 import com.kino.puber.data.preferences.ContentPreferences
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
+import com.kino.puber.domain.interactor.bookmarks.BookmarkFolderInteractor
 import com.kino.puber.domain.interactor.bookmarks.WatchLaterBookmarkInteractor
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -27,6 +28,7 @@ class HomeInteractorTest {
 
     private lateinit var api: KinoPubApiClient
     private lateinit var watchLaterBookmarkInteractor: WatchLaterBookmarkInteractor
+    private lateinit var bookmarkFolderInteractor: BookmarkFolderInteractor
     private lateinit var navigationPreferencesRepository: NavigationPreferencesRepository
     private lateinit var contentPreferences: MutableStateFlow<ContentPreferences>
     private lateinit var interactor: HomeInteractor
@@ -35,12 +37,14 @@ class HomeInteractorTest {
     fun setup() {
         api = mockk()
         watchLaterBookmarkInteractor = mockk()
+        bookmarkFolderInteractor = mockk()
         navigationPreferencesRepository = mockk()
         contentPreferences = MutableStateFlow(defaultContentPreferences())
         every { navigationPreferencesRepository.contentPreferences } returns contentPreferences
         interactor = HomeInteractor(
             api = api,
             watchLaterBookmarkInteractor = watchLaterBookmarkInteractor,
+            bookmarkFolderInteractor = bookmarkFolderInteractor,
             navigationPreferencesRepository = navigationPreferencesRepository,
         )
     }
@@ -190,14 +194,11 @@ class HomeInteractorTest {
     fun personalListsAndCollectionsRemainUnfiltered_whenAnimeIsHidden() = runTest {
         contentPreferences.value = defaultContentPreferences().copy(showAnime = false)
         val anime = item(id = 42, genreIds = intArrayOf(ANIME_GENRE_ID))
-        val genericFolder = Bookmark(id = 2, title = "Favorites")
         val collection = KCollection(id = 7, title = "Collection")
         coEvery { api.getWatchingList(onlySubscribed = true) } returns Result.success(
             ApiResponseList(items = listOf(anime))
         )
         coEvery { watchLaterBookmarkInteractor.getItems() } returns Result.success(listOf(anime))
-        coEvery { api.getBookmarks() } returns Result.success(listOf(genericFolder))
-        coEvery { api.getBookmarkItems(genericFolder.id, null) } returns Result.success(page(anime))
         coEvery { api.getCollections(sort = null, page = 1) } returns Result.success(
             PaginatedResponse(
                 items = listOf(collection),
@@ -207,39 +208,7 @@ class HomeInteractorTest {
 
         assertEquals(listOf(anime), interactor.getWatchingItems().getOrThrow())
         assertEquals(listOf(anime), interactor.getWatchLaterItems().getOrThrow())
-        assertEquals(listOf(anime), interactor.getGenericBookmarkItems().getOrThrow())
         assertEquals(listOf(collection), interactor.getCollections().getOrThrow())
-    }
-
-    @Test
-    fun getGenericBookmarkItems_skipsWatchLaterFolder() = runTest {
-        val watchLaterFolder = Bookmark(id = 1, title = WatchLaterBookmarkInteractor.FOLDER_TITLE)
-        val genericFolder = Bookmark(id = 2, title = "Favorites")
-        val item = Item(id = 42, title = "Movie", type = ItemType.MOVIE)
-        coEvery { api.getBookmarks() } returns Result.success(listOf(watchLaterFolder, genericFolder))
-        coEvery { api.getBookmarkItems(genericFolder.id, null) } returns Result.success(
-            PaginatedResponse(
-                items = listOf(item),
-                pagination = Pagination(current = 1, perpage = 20, total = 1),
-            )
-        )
-
-        val result = interactor.getGenericBookmarkItems()
-
-        assertEquals(listOf(item), result.getOrThrow())
-        coVerify(exactly = 0) { api.getBookmarkItems(watchLaterFolder.id, any()) }
-        coVerify(exactly = 1) { api.getBookmarkItems(genericFolder.id, null) }
-    }
-
-    @Test
-    fun getGenericBookmarkItems_returnsEmptyList_whenOnlyWatchLaterFolderExists() = runTest {
-        val watchLaterFolder = Bookmark(id = 1, title = WatchLaterBookmarkInteractor.FOLDER_TITLE)
-        coEvery { api.getBookmarks() } returns Result.success(listOf(watchLaterFolder))
-
-        val result = interactor.getGenericBookmarkItems()
-
-        assertEquals(emptyList<Item>(), result.getOrThrow())
-        coVerify(exactly = 0) { api.getBookmarkItems(any(), any()) }
     }
 
     private fun page(

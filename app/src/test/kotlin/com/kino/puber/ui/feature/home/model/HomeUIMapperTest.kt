@@ -27,14 +27,23 @@ class HomeUIMapperTest {
     }
 
     @Test
-    fun mapItemSection_marksBookmarkSectionsAsSaved() {
+    fun mapItemSection_marksWatchLaterItemsAsSaved() {
         val item = testItem(id = 42, type = ItemType.MOVIE)
 
         val watchLater = mapper.mapItemSection(listOf(item), HomeSectionType.WatchLater)
-        val bookmarks = mapper.mapItemSection(listOf(item), HomeSectionType.Bookmarks)
 
         assertEquals(true, watchLater!!.items.single().isSaved)
-        assertEquals(true, bookmarks!!.items.single().isSaved)
+    }
+
+    @Test
+    fun mapItemSection_leavesBookmarkSectionItemsUnsaved() {
+        // The section holds items filed anywhere but the quick folder, and `isSaved` means quick
+        // folder alone: forcing it true would offer an un-save with nothing to remove.
+        val item = testItem(id = 42, type = ItemType.MOVIE)
+
+        val bookmarks = mapper.mapItemSection(listOf(item), HomeSectionType.Bookmarks)
+
+        assertEquals(false, bookmarks!!.items.single().isSaved)
     }
 
     @Test

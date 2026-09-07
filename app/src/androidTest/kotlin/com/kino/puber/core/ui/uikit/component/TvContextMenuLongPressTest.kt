@@ -33,6 +33,7 @@ private const val MENU_TITLE = "Context menu"
 private const val FIRST_ACTION = "First action"
 private const val LONG_PRESS_DELAY_MS = 500L
 private const val NEXT_REPEAT_DELAY_MS = 50L
+private const val ACTION_FOCUS_TIMEOUT_MS = 5_000L
 
 internal class TvContextMenuLongPressTest {
 
@@ -160,7 +161,9 @@ internal class TvContextMenuLongPressTest {
         onNodeWithText(FIRST_ACTION, useUnmergedTree = true)
             .onParent()
             .also { action ->
-                waitUntil {
+                // The dialog focuses its first action after an internal delay, so the default
+                // one second wait is marginal on a loaded emulator.
+                waitUntil(timeoutMillis = ACTION_FOCUS_TIMEOUT_MS) {
                     action.fetchSemanticsNode().config
                         .getOrNull(SemanticsProperties.Focused) == true
                 }

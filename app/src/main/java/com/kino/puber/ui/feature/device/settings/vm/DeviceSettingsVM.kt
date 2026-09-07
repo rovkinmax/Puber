@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.device.settings.vm
 import com.kino.puber.R
 import com.kino.puber.core.error.ErrorEntity
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.PuberVM
@@ -10,6 +11,7 @@ import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.uikit.model.ApiDomainDialogState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.UIAction
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
 import com.kino.puber.data.repository.PlayerPreferencesRepository
 import com.kino.puber.domain.interactor.api.ApiDomainDetectionResult
@@ -35,6 +37,7 @@ internal class DeviceSettingsVM(
     private val deviceUiSettingsMapper: DeviceUiSettingsMapper,
     private val playerPreferencesRepository: PlayerPreferencesRepository,
     private val navigationPreferencesRepository: NavigationPreferencesRepository,
+    private val bookmarkPreferencesRepository: BookmarkPreferencesRepository,
     private val apiDomainInteractor: ApiDomainInteractor,
     private val appUpdateInteractor: IAppUpdateInteractor,
     override val errorHandler: ErrorHandler,
@@ -82,6 +85,7 @@ internal class DeviceSettingsVM(
                                     playerPreferencesRepository.discardEmbeddedArtworkMetadata,
                                 hagcPlaybackEnabled = playerPreferencesRepository.hagcPlaybackEnabled,
                                 navigationMode = navigationPreferencesRepository.getNavigationMode(),
+                                bookmarkMode = bookmarkPreferencesRepository.mode.value,
                                 showCartoonsTab = contentPreferences.showCartoonsTab,
                                 showAnimeTab = contentPreferences.showAnimeTab,
                                 showAnime = contentPreferences.showAnime,
@@ -114,6 +118,7 @@ internal class DeviceSettingsVM(
                 toggleDiscardEmbeddedArtworkMetadata()
             DeviceSettingsActions.ToggleHagcPlayback -> toggleHagcPlayback()
             is DeviceSettingsActions.ChangeNavigationMode -> onChangeNavigationMode(action.mode)
+            is DeviceSettingsActions.ChangeBookmarkMode -> onChangeBookmarkMode(action.mode)
             DeviceSettingsActions.ToggleCartoonsTab -> toggleCartoonsTab()
             DeviceSettingsActions.ToggleAnimeTab -> toggleAnimeTab()
             DeviceSettingsActions.ToggleShowAnime -> toggleShowAnime()
@@ -136,7 +141,7 @@ internal class DeviceSettingsVM(
                 stateValue.copy(
                     state = currentState.copy(
                         savingOptionId = null,
-                        savingToggleType = null
+                        savingToggleType = null,
                     )
                 )
             )
@@ -309,6 +314,14 @@ internal class DeviceSettingsVM(
         if (currentState.navigationMode == mode) return
         navigationPreferencesRepository.setNavigationMode(mode)
         showMessage(resources.getString(R.string.device_settings_restart_required))
+    }
+
+    private fun onChangeBookmarkMode(mode: BookmarkMode) {
+        val currentState = stateValue.state
+        if (currentState !is DeviceSettingsState.Success) return
+        if (currentState.bookmarkMode == mode) return
+        bookmarkPreferencesRepository.setMode(mode)
+        updateViewState(stateValue.copy(state = currentState.copy(bookmarkMode = mode)))
     }
 
     private fun toggleCartoonsTab() {

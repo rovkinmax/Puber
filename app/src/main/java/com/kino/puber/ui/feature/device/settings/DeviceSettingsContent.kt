@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.kino.puber.BuildConfig
 import com.kino.puber.R
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.ui.navigation.component.LocalRootAnchorFocusRestored
 import com.kino.puber.core.ui.navigation.component.LocalRootAnchorRestorePending
@@ -245,10 +246,35 @@ private fun DeviceSettingsLazyColumn(
         localPreferencesItems(state, onAction)
         skipSegmentsItems(state, onAction)
         navigationModeItems(state, onAction)
-        applicationItems(
-            state = state,
+        bookmarkModeItems(state, onAction)
+        networkItems(
             speedTestLauncherModifier = speedTestLauncherModifier,
             onAction = onAction,
+        )
+        applicationItems(state = state, onAction = onAction)
+    }
+}
+
+private fun LazyListScope.bookmarkModeItems(
+    state: DeviceSettingsState.Success,
+    onAction: (UIAction) -> Unit,
+) {
+    item {
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+    item {
+        Text(
+            text = stringResource(R.string.settings_bookmark_mode),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+    item {
+        BookmarkModeRadioGroup(
+            currentMode = state.bookmarkMode,
+            onModeSelected = { mode ->
+                onAction(DeviceSettingsActions.ChangeBookmarkMode(mode))
+            },
         )
     }
 }
@@ -411,11 +437,20 @@ private fun LazyListScope.navigationModeItems(
     }
 }
 
-private fun LazyListScope.applicationItems(
-    state: DeviceSettingsState.Success,
+private fun LazyListScope.networkItems(
     speedTestLauncherModifier: Modifier,
     onAction: (UIAction) -> Unit,
 ) {
+    item {
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+    item {
+        Text(
+            text = stringResource(R.string.settings_network_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
     item {
         LocalActionItem(
             label = stringResource(R.string.speed_test_launcher),
@@ -423,7 +458,12 @@ private fun LazyListScope.applicationItems(
             onClick = { onAction(DeviceSettingsActions.OpenSpeedTest) },
         )
     }
+}
 
+private fun LazyListScope.applicationItems(
+    state: DeviceSettingsState.Success,
+    onAction: (UIAction) -> Unit,
+) {
     // App updates section
     item {
         Spacer(modifier = Modifier.height(16.dp))
@@ -712,6 +752,63 @@ private fun NavigationModeRadioGroup(
                     color = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.padding(start = 12.dp),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookmarkModeRadioGroup(
+    currentMode: BookmarkMode,
+    onModeSelected: (BookmarkMode) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectableGroup(),
+    ) {
+        BookmarkMode.entries.forEach { mode ->
+            val label = when (mode) {
+                BookmarkMode.Simple -> stringResource(R.string.settings_bookmark_mode_simple)
+                BookmarkMode.Extended -> stringResource(R.string.settings_bookmark_mode_extended)
+            }
+            val description = when (mode) {
+                BookmarkMode.Simple -> stringResource(R.string.settings_bookmark_mode_simple_description)
+                BookmarkMode.Extended -> stringResource(R.string.settings_bookmark_mode_extended_description)
+            }
+            val isSelected = mode == currentMode
+            val interactionSource = remember { MutableInteractionSource() }
+            val isFocused by interactionSource.collectIsFocusedAsState()
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .highlightOnFocus(isFocused)
+                    .selectable(
+                        selected = isSelected,
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = { onModeSelected(mode) },
+                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.RadioButton(
+                    selected = isSelected,
+                    onClick = null,
+                )
+                Column(modifier = Modifier.padding(start = 12.dp)) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
