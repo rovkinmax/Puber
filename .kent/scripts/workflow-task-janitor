@@ -1,9 +1,34 @@
 #!/usr/bin/env python3
+"""Terminal evidence admission under the existing cooperative POSIX lock.
+
+One scoped admission owns the directory and file descriptors through rename,
+retention or deletion. CI names are not an allowlist: canonical validated bytes,
+their digest and an exact logical Task reference in the sealed chain authorize
+each report. Tombstone paths never become logical artifact identities.
+Admission Git probes resolve and bind the selected workspace's own Git directory,
+worktree and index, including linked worktrees. Inherited GIT_* routing, object,
+namespace and config injection are removed; ordinary on-disk Git exclusions
+remain effective. Probes are read-only, with optional locks, hooks, fsmonitor,
+automatic maintenance, replacement objects and lazy fetch disabled.
+Two bounded batched probes revalidate the remaining logical/physical inventory
+at each admission/namespace boundary, so observed index or ignore-policy drift
+blocks further cleanup without rewriting user staging or configuration.
+
+Initial and managed admission require every referenced report. Only a matching
+tombstone with a verified durable sentinel and matching ledger/report marker may
+resume with already-absent reports; that checkpoint cannot distinguish prior
+deletion from unrelated loss. No absent bytes are claimed to have been verified.
+Managed cleanup retains all raw bytes. Primary cleanup removes fix, smoke,
+lexically ordered reports, then the ledger last, fsyncing after each unlink.
+FD/link/byte checks detect cooperative drift, not hostile same-UID stat/unlink
+races: POSIX unlink is not an atomic inode compare-and-swap.
+"""
 from __future__ import annotations
 
 import json
 import fcntl
 import hashlib
+import io
 import os
 from pathlib import Path
 import re
@@ -16,6 +41,12 @@ from urllib.parse import urlparse
 
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 GITHUB_LOOKUP_ATTEMPTS = 3
+CI_REPORT_NAME = re.compile(r"ci-report-([0-9a-f]{64})\.json")
+MAX_RUNTIME_ENTRIES = 256
+MAX_CI_ARTIFACTS = 64
+MAX_CI_ARTIFACT_BYTES = 4 * 1024 * 1024
+MAX_LEDGER_BYTES = 8 * 1024 * 1024
+MAX_LEDGER_RECORDS = 8192
 
 
 def runtime_state_names(task: str) -> tuple[str, str]:
@@ -49,6 +80,8 @@ def run(
     cwd: Path,
     timeout: int = 60,
     check: bool = True,
+    environment: dict[str, str] | None = None,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         args,
@@ -58,6 +91,8 @@ def run(
         stderr=subprocess.PIPE,
         timeout=timeout,
         check=False,
+        env=environment,
+        input=input_text,
     )
     if check and result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "no output"
@@ -331,9 +366,62 @@ def close_descriptors(*descriptors: int) -> None:
         os.close(descriptor)
 
 
-def _read_ledger_records(task_fd: int) -> list[dict[str, object]]:
+def _unique_json_pairs(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON key in runtime evidence")
+        value[key] = item
+    return value
+
+
+def _invalid_json_constant(value):
+    raise ValueError("invalid JSON constant in runtime evidence")
+
+
+def _bounded_file_bytes(descriptor: int, limit: int, *, ledger=False) -> bytes:
+    if os.fstat(descriptor).st_size > limit:
+        raise ValueError("runtime evidence exceeds byte limit")
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    chunks = []
+    size = rows = 0
+    while True:
+        chunk = os.read(descriptor, min(65536, limit - size + 1))
+        if not chunk:
+            break
+        size += len(chunk)
+        rows += chunk.count(b"\n")
+        if size > limit or (ledger and rows > MAX_LEDGER_RECORDS):
+            raise ValueError("runtime evidence exceeds byte or record limit")
+        chunks.append(chunk)
+    raw = b"".join(chunks)
+    if ledger and rows + bool(raw and not raw.endswith(b"\n")) > MAX_LEDGER_RECORDS:
+        raise ValueError("runtime ledger exceeds record limit")
+    return raw
+
+
+def _ledger_records(raw: bytes) -> list[dict[str, object]]:
+    records = []
+    # Keep the existing JSONL formatting/chain semantics, without duplicate keys.
+    for line in io.StringIO(raw.decode("utf-8"), newline=None):
+        if len(records) >= MAX_LEDGER_RECORDS:
+            raise ValueError("runtime ledger exceeds record limit")
+        try:
+            value = json.loads(
+                line, object_pairs_hook=_unique_json_pairs,
+                parse_constant=_invalid_json_constant,
+            )
+        except RecursionError as error:
+            raise ValueError("runtime ledger nesting exceeds limit") from error
+        if not isinstance(value, dict):
+            raise ValueError("ledger record is not an object")
+        records.append(value)
+    return records
+
+
+def _open_evidence_file(task_fd: int, name: str) -> int:
     descriptor = os.open(
-        "evidence-ledger.jsonl",
+        name,
         os.O_RDONLY
         | getattr(os, "O_NONBLOCK", 0)
         | getattr(os, "O_CLOEXEC", 0)
@@ -348,18 +436,234 @@ def _read_ledger_records(task_fd: int) -> list[dict[str, object]]:
             or metadata.st_uid != os.getuid()
             or metadata.st_mode & 0o077
         ):
-            raise ValueError("evidence ledger is unsafe")
-        _revalidate_file_link(task_fd, "evidence-ledger.jsonl", descriptor)
-        with os.fdopen(os.dup(descriptor), "r", encoding="utf-8") as stream:
-            records = []
-            for line in stream:
-                value = json.loads(line)
-                if not isinstance(value, dict):
-                    raise ValueError("ledger record is not an object")
-                records.append(value)
-            return records
+            raise ValueError(f"runtime evidence is unsafe: {name}")
+        _revalidate_file_link(task_fd, name, descriptor)
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _read_ledger_records(task_fd: int) -> list[dict[str, object]]:
+    descriptor = _open_evidence_file(task_fd, "evidence-ledger.jsonl")
+    try:
+        return _ledger_records(
+            _bounded_file_bytes(descriptor, MAX_LEDGER_BYTES, ledger=True)
+        )
     finally:
         os.close(descriptor)
+
+
+def _bounded_inventory(directory_fd: int) -> list[str]:
+    names = []
+    with os.scandir(directory_fd) as entries:
+        for entry in entries:
+            if len(names) >= MAX_RUNTIME_ENTRIES:
+                raise ValueError("runtime directory exceeds entry limit")
+            names.append(entry.name)
+    return sorted(names)
+
+
+def _evidence_git_workspace(workspace: Path) -> tuple[list[str], dict[str, str]]:
+    """Bind local admission probes, without changing other Janitor commands."""
+    environment = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith("GIT_")
+    }
+    environment.update(GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0")
+    prefix = [
+        "git", "--no-replace-objects", "--no-lazy-fetch",
+        "-c", f"core.hooksPath={os.devnull}", "-c", "core.fsmonitor=false",
+        "-c", "maintenance.auto=false", "-c", "gc.auto=0",
+    ]
+    resolved = run(
+        [*prefix, "-C", str(workspace), "rev-parse",
+         "--show-toplevel", "--absolute-git-dir"],
+        cwd=workspace, environment=environment, check=False,
+    )
+    paths = resolved.stdout.splitlines()
+    if (
+        resolved.returncode != 0 or len(paths) != 2
+        or not all(Path(path).is_absolute() for path in paths)
+        or Path(paths[0]).resolve() != workspace.resolve()
+    ):
+        raise ValueError("evidence Git workspace does not match selected workspace")
+    git_directory = Path(paths[1]).resolve()
+    environment["GIT_INDEX_FILE"] = str(git_directory / "index")
+    return [
+        *prefix, f"--git-dir={git_directory}", f"--work-tree={workspace.resolve()}",
+    ], environment
+
+
+class _EvidenceAdmission:
+    """Janitor-local FD ownership; no caller-supplied recovery phase."""
+
+    def __init__(
+        self, workspace, runtime, runtime_fd, state_fd, state_name,
+        task_short_id, reported_marker,
+    ):
+        self.directory = os.dup(state_fd)
+        self.runtime_fd = runtime_fd
+        self.name = state_name
+        self.files = {}
+        self.references = set()
+        self.sentinel = -1
+        self.phase = "initial"
+        self.workspace = workspace
+        self.task_short_id = task_short_id
+        try:
+            entries = _bounded_inventory(self.directory)
+            ledger_fd = _open_evidence_file(self.directory, "evidence-ledger.jsonl")
+            self.files["evidence-ledger.jsonl"] = (ledger_fd, None, None)
+            raw = _bounded_file_bytes(ledger_fd, MAX_LEDGER_BYTES, ledger=True)
+            records = _ledger_records(raw)
+            self.marker = runtime.validate_terminal_chain(
+                records, task_short_id=task_short_id,
+            )
+            self.tombstone = ".evidence-cleanup-" + runtime.canonical_sha256(self.marker)
+            if state_name not in (task_short_id, self.tombstone):
+                raise ValueError("cleanup tombstone name does not match sealed ledger")
+            if reported_marker != self.marker:
+                raise ValueError("cleanup report marker does not match ledger")
+            self.files["evidence-ledger.jsonl"] = (
+                ledger_fd, os.fstat(ledger_fd), raw,
+            )
+            for record in records:
+                artifacts = record.get("artifacts", [])
+                if not isinstance(artifacts, list) or any(
+                    not isinstance(item, str) for item in artifacts
+                ):
+                    raise ValueError("ledger artifacts must be strings")
+                for artifact in artifacts:
+                    name = artifact.rsplit("/", 1)[-1]
+                    if not name.startswith("ci-report-"):
+                        continue
+                    if (
+                        not CI_REPORT_NAME.fullmatch(name)
+                        or artifact != f".kent/runtime/{task_short_id}/{name}"
+                    ):
+                        raise ValueError("CI report reference is not a logical Task artifact")
+                    self.references.add(name)
+                    if len(self.references) > MAX_CI_ARTIFACTS:
+                        raise ValueError("CI report reference count exceeds limit")
+            if state_name == self.tombstone:
+                _, self.sentinel_name = runtime_state_names(task_short_id)
+                try:
+                    self.sentinel = _open_evidence_file(runtime_fd, self.sentinel_name)
+                except FileNotFoundError:
+                    pass
+                else:
+                    if _bounded_file_bytes(self.sentinel, 0):
+                        raise ValueError("terminal sentinel is unsafe")
+                    os.fsync(self.sentinel)
+                    os.fsync(runtime_fd)
+                    _revalidate_file_link(runtime_fd, self.sentinel_name, self.sentinel)
+                    self.phase = "deletion-resume"
+            allowed = {
+                "evidence-ledger.jsonl", "fix-checkpoint.json", "smoke-checkpoint.json",
+            } | self.references
+            unknown = set(entries) - allowed
+            if unknown:
+                raise ValueError(f"unexpected tombstone entries: {sorted(unknown)}")
+            self.git_command, self.git_environment = _evidence_git_workspace(workspace)
+            total = 0
+            for name in entries:
+                if name != "evidence-ledger.jsonl":
+                    descriptor = _open_evidence_file(self.directory, name)
+                    self.files[name] = (descriptor, None, None)
+                    report_bytes = None
+                    if name in self.references:
+                        report_bytes = _bounded_file_bytes(descriptor, runtime.MAX_CI_REPORT_BYTES)
+                        total += len(report_bytes)
+                        if total > MAX_CI_ARTIFACT_BYTES:
+                            raise ValueError("total CI report bytes exceed limit")
+                        report = runtime.validate_ci_report(
+                            runtime.parse_canonical_json(
+                                report_bytes, label="CI artifact",
+                                max_bytes=runtime.MAX_CI_REPORT_BYTES,
+                            )
+                        )
+                        if (
+                            runtime.canonical_bytes(report) != report_bytes
+                            or hashlib.sha256(report_bytes).hexdigest()
+                            != CI_REPORT_NAME.fullmatch(name).group(1)
+                        ):
+                            raise ValueError("CI artifact bytes or filename digest do not match")
+                    self.files[name] = (descriptor, os.fstat(descriptor), report_bytes)
+            if self.phase != "deletion-resume":
+                self.require_complete()
+            self.revalidate()
+        except BaseException:
+            self.close()
+            raise
+
+    def require_complete(self):
+        if self.references - self.files.keys():
+            raise ValueError("referenced CI artifacts are missing")
+
+    def _revalidate_git(self):
+        # Check the complete remaining set twice, not once per remaining file.
+        # Bound input/output paths by the already admitted inventory.
+        paths = sorted(
+            f".kent/runtime/{parent}/{name}"
+            for parent in {self.task_short_id, self.name, self.tombstone}
+            for name in self.files
+        )
+        if not paths:
+            return
+        ignored = run(
+            [*self.git_command, "check-ignore", "-z", "--stdin"],
+            cwd=self.workspace, check=False, environment=self.git_environment,
+            input_text="".join(path + "\0" for path in paths),
+        )
+        tracked = run(
+            [*self.git_command, "--literal-pathspecs", "ls-files", "-z", "--", *paths],
+            cwd=self.workspace, check=False, environment=self.git_environment,
+        )
+        if (
+            ignored.returncode != 0 or not ignored.stdout.endswith("\0")
+            or ignored.stdout.split("\0")[:-1] != paths
+            or tracked.returncode != 0 or tracked.stdout
+        ):
+            raise ValueError("runtime entries are tracked or not ignored in selected workspace")
+
+    def revalidate(self):
+        _revalidate_directory_link(self.runtime_fd, self.name, self.directory)
+        if set(_bounded_inventory(self.directory)) != self.files.keys():
+            raise ValueError("runtime inventory changed after admission")
+        if self.sentinel >= 0:
+            _revalidate_file_link(self.runtime_fd, self.sentinel_name, self.sentinel)
+            _bounded_file_bytes(self.sentinel, 0)
+        for name, (descriptor, saved, raw) in self.files.items():
+            _revalidate_file_link(self.directory, name, descriptor)
+            current = os.fstat(descriptor)
+            if any(
+                getattr(current, key) != getattr(saved, key)
+                for key in ("st_dev", "st_ino", "st_uid", "st_mode", "st_nlink")
+            ):
+                raise ValueError("runtime file identity changed after admission")
+            if raw is not None and _bounded_file_bytes(
+                descriptor, len(raw), ledger=name == "evidence-ledger.jsonl",
+            ) != raw:
+                raise ValueError("runtime evidence bytes changed after admission")
+        self._revalidate_git()
+
+    def unlink(self, name):
+        self.revalidate()
+        if name == "evidence-ledger.jsonl" and set(self.files) != {name}:
+            raise ValueError("evidence ledger must be removed last")
+        os.unlink(name, dir_fd=self.directory)
+        descriptor, _, _ = self.files.pop(name)
+        os.close(descriptor)
+
+    def close(self):
+        for descriptor, _, _ in self.files.values():
+            os.close(descriptor)
+        self.files.clear()
+        if self.sentinel >= 0:
+            os.close(self.sentinel)
+            self.sentinel = -1
+        os.close(self.directory)
 
 
 def _open_stable_lock(runtime_fd: int, name: str) -> tuple[int, bool]:
@@ -381,7 +685,11 @@ def _open_stable_lock(runtime_fd: int, name: str) -> tuple[int, bool]:
         descriptor = os.open(name, flags, 0o600, dir_fd=runtime_fd)
         created = False
     else:
-        os.fsync(runtime_fd)
+        try:
+            os.fsync(runtime_fd)
+        except BaseException:
+            os.close(descriptor)
+            raise
         created = True
     metadata = os.fstat(descriptor)
     if (
@@ -402,6 +710,12 @@ def _cleanup_marker(runtime, report: str, task_short_id: str) -> dict[str, objec
     return marker
 
 
+def _declares_terminal_evidence(report: str | None) -> bool:
+    return isinstance(report, str) and any(
+        line.startswith("TERMINAL_EVIDENCE_V1 ") for line in report.splitlines()
+    )
+
+
 def _validate_retained_tombstone(
     workspace: Path,
     runtime,
@@ -409,60 +723,20 @@ def _validate_retained_tombstone(
     tombstone_name: str,
     task_short_id: str,
     reported_marker: dict[str, object],
-) -> dict[str, object]:
-    records = _read_ledger_records(tombstone_fd)
-    marker = runtime.validate_terminal_chain(
-        records,
-        task_short_id=task_short_id,
+    runtime_fd: int,
+) -> _EvidenceAdmission:
+    admission = _EvidenceAdmission(
+        workspace, runtime, runtime_fd, tombstone_fd, tombstone_name,
+        task_short_id, reported_marker,
     )
-    expected_name = ".evidence-cleanup-{}".format(
-        runtime.canonical_sha256(marker)
-    )
-    if tombstone_name != expected_name:
-        raise ValueError("cleanup tombstone name does not match sealed ledger")
-    if reported_marker != marker:
-        raise ValueError("cleanup report marker does not match ledger")
-    allowed = {
-        "evidence-ledger.jsonl",
-        "fix-checkpoint.json",
-        "smoke-checkpoint.json",
-    }
-    entries = os.listdir(tombstone_fd)
-    unknown = sorted(set(entries) - allowed)
-    if unknown:
-        raise ValueError(f"unexpected tombstone entries: {unknown}")
-    for name in entries:
-        metadata = os.stat(
-            name,
-            dir_fd=tombstone_fd,
-            follow_symlinks=False,
-        )
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_nlink != 1
-            or metadata.st_uid != os.getuid()
-            or metadata.st_mode & 0o077
-        ):
-            raise ValueError(f"unsafe tombstone entry: {name}")
-        relative = f".kent/runtime/{tombstone_name}/{name}"
-        if (
-            run(
-                ["git", "check-ignore", "-q", "--", relative],
-                cwd=workspace,
-                check=False,
-            ).returncode
-            != 0
-            or run(
-                ["git", "ls-files", "--error-unmatch", "--", relative],
-                cwd=workspace,
-                check=False,
-            ).returncode
-            == 0
-        ):
-            raise ValueError(
-                f"runtime entry is tracked or not ignored: {relative}"
-            )
-    return marker
+    try:
+        # A managed worktree never enters raw-file deletion recovery.
+        admission.require_complete()
+        admission.phase = "managed-retained"
+        return admission
+    except BaseException:
+        admission.close()
+        raise
 
 
 def _remove_v2_runtime_state(
@@ -475,7 +749,11 @@ def _remove_v2_runtime_state(
     lock_name, sentinel_name = runtime_state_names(task_short_id)
     support_module = Path(__file__).with_name("workflow_runtime_contracts.py")
     v2_supported = support_module.is_file() and not support_module.is_symlink()
+    v2_declared = _declares_terminal_evidence(cleanup_report)
+    if v2_declared and not v2_supported:
+        return False, "declared v2 runtime support is missing or unsafe"
     descriptors: list[int] = []
+    admission = None
     try:
         root_fd = os.open(
             workspace,
@@ -490,6 +768,8 @@ def _remove_v2_runtime_state(
         try:
             runtime_fd = open_child_directory(kent_fd, "runtime")
         except FileNotFoundError:
+            if v2_declared:
+                return False, "sealed v2 runtime evidence is missing"
             return None
         descriptors.append(runtime_fd)
         if _phase_hook is not None:
@@ -513,6 +793,7 @@ def _remove_v2_runtime_state(
                 | getattr(os, "O_NOFOLLOW", 0),
                 dir_fd=runtime_fd,
             )
+            descriptors.append(sentinel_fd)
             sentinel_present = True
             sentinel_metadata = os.fstat(sentinel_fd)
             if (
@@ -522,16 +803,13 @@ def _remove_v2_runtime_state(
                 or sentinel_metadata.st_mode & 0o077
                 or sentinel_metadata.st_nlink != 1
             ):
-                os.close(sentinel_fd)
                 return False, "terminal sentinel is unsafe"
             _revalidate_file_link(runtime_fd, sentinel_name, sentinel_fd)
             if os.read(sentinel_fd, 1):
-                os.close(sentinel_fd)
                 return False, "terminal sentinel is unsafe"
             os.fsync(sentinel_fd)
             _revalidate_file_link(runtime_fd, sentinel_name, sentinel_fd)
             os.fsync(runtime_fd)
-            os.close(sentinel_fd)
         except FileNotFoundError:
             pass
         tombstones = sorted(
@@ -566,6 +844,8 @@ def _remove_v2_runtime_state(
             is_sealed = False
             ledger_error = None
         if not (sentinel_present or tombstones or is_sealed or active_present):
+            if v2_declared:
+                return False, "sealed v2 runtime evidence is missing"
             os.unlink(lock_name, dir_fd=runtime_fd)
             os.fsync(runtime_fd)
             return None
@@ -619,16 +899,16 @@ def _remove_v2_runtime_state(
         if len(tombstones) > 1:
             return False, "multiple cleanup tombstones exist"
         if active_present and not sentinel_present:
-            marker = runtime.validate_terminal_chain(
-                records,
-                task_short_id=task_short_id,
+            admission = _EvidenceAdmission(
+                workspace, runtime, runtime_fd, task_fd, task_short_id,
+                task_short_id, reported_marker,
             )
-            if reported_marker != marker:
-                return False, "cleanup report marker does not match ledger"
-            marker_name = ".evidence-cleanup-{}".format(
-                runtime.canonical_sha256(marker)
-            )
-            tombstone_name = marker_name
+            tombstone_name = admission.tombstone
+            if _phase_hook is not None:
+                _phase_hook("after_evidence_admission")
+            _revalidate_directory_link(root_fd, ".kent", kent_fd)
+            _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+            admission.revalidate()
             os.rename(
                 task_short_id,
                 tombstone_name,
@@ -646,6 +926,7 @@ def _remove_v2_runtime_state(
                 )
                 os.fsync(runtime_fd)
                 raise
+            admission.name = tombstone_name
             renamed_tombstone_fd = open_child_directory(
                 runtime_fd, tombstone_name
             )
@@ -657,6 +938,7 @@ def _remove_v2_runtime_state(
                     tombstone_name,
                     renamed_tombstone_fd,
                 )
+                admission.revalidate()
             finally:
                 os.close(renamed_tombstone_fd)
             os.close(task_fd)
@@ -690,9 +972,16 @@ def _remove_v2_runtime_state(
         descriptors.append(tombstone_fd)
         _revalidate_directory_link(runtime_fd, tombstone_name, tombstone_fd)
         try:
-            records = _read_ledger_records(tombstone_fd)
+            if admission is None:
+                admission = _EvidenceAdmission(
+                    workspace, runtime, runtime_fd, tombstone_fd, tombstone_name,
+                    task_short_id, reported_marker,
+                )
+                if _phase_hook is not None:
+                    _phase_hook("after_evidence_admission")
+            admission.revalidate()
         except FileNotFoundError:
-            if sentinel_present and not os.listdir(tombstone_fd):
+            if sentinel_present and not _bounded_inventory(tombstone_fd):
                 expected_empty = ".evidence-cleanup-{}".format(
                     runtime.canonical_sha256(reported_marker)
                 )
@@ -702,24 +991,21 @@ def _remove_v2_runtime_state(
                         "empty cleanup tombstone does not match "
                         "cleanup report marker",
                     )
+                if _phase_hook is not None:
+                    _phase_hook("before_tombstone_removal")
+                _revalidate_directory_link(root_fd, ".kent", kent_fd)
+                _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+                _revalidate_directory_link(runtime_fd, tombstone_name, tombstone_fd)
+                if _bounded_inventory(tombstone_fd):
+                    return False, "empty cleanup tombstone changed"
                 os.close(tombstone_fd)
                 descriptors.remove(tombstone_fd)
                 os.rmdir(tombstone_name, dir_fd=runtime_fd)
                 os.fsync(runtime_fd)
                 return True, "removed empty terminal cleanup tombstone"
             raise
-        marker = runtime.validate_terminal_chain(
-            records,
-            task_short_id=task_short_id,
-        )
-        expected_tombstone = ".evidence-cleanup-{}".format(
-            runtime.canonical_sha256(marker)
-        )
-        if tombstone_name != expected_tombstone:
-            return False, "cleanup tombstone name does not match sealed ledger"
-        if reported_marker != marker:
-            return False, "cleanup report marker does not match ledger"
         if not sentinel_present:
+            admission.revalidate()
             sentinel_fd = os.open(
                 sentinel_name,
                 os.O_WRONLY
@@ -747,6 +1033,7 @@ def _remove_v2_runtime_state(
             | getattr(os, "O_NOFOLLOW", 0),
             dir_fd=runtime_fd,
         )
+        descriptors.append(sentinel_fd)
         sentinel_metadata = os.fstat(sentinel_fd)
         if (
             not stat.S_ISREG(sentinel_metadata.st_mode)
@@ -754,66 +1041,39 @@ def _remove_v2_runtime_state(
             or sentinel_metadata.st_mode & 0o077
             or sentinel_metadata.st_nlink != 1
         ):
-            os.close(sentinel_fd)
             return False, "terminal sentinel disappeared or is unsafe"
         _revalidate_file_link(runtime_fd, sentinel_name, sentinel_fd)
         if os.read(sentinel_fd, 1):
-            os.close(sentinel_fd)
             return False, "terminal sentinel disappeared or is unsafe"
-        os.close(sentinel_fd)
-        entries = os.listdir(tombstone_fd)
-        allowed = {
-            "evidence-ledger.jsonl",
-            "fix-checkpoint.json",
-            "smoke-checkpoint.json",
-        }
-        unknown = sorted(set(entries) - allowed)
-        if unknown:
-            return False, f"unexpected tombstone entries: {unknown}"
-        for name in entries:
-            metadata = os.stat(
-                name,
-                dir_fd=tombstone_fd,
-                follow_symlinks=False,
+        if admission.sentinel < 0:
+            admission.sentinel = os.dup(sentinel_fd)
+            admission.sentinel_name = sentinel_name
+        order = ["fix-checkpoint.json", "smoke-checkpoint.json"]
+        order += sorted(admission.references & admission.files.keys())
+        order += ["evidence-ledger.jsonl"]
+        for name in order:
+            if name not in admission.files:
+                continue
+            phase = (
+                "ci_report" if CI_REPORT_NAME.fullmatch(name)
+                else "ledger" if name == "evidence-ledger.jsonl"
+                else name.removesuffix(".json").replace("-", "_")
             )
-            if (
-                not stat.S_ISREG(metadata.st_mode)
-                or metadata.st_nlink != 1
-                or metadata.st_uid != os.getuid()
-                or metadata.st_mode & 0o077
-            ):
-                return False, f"unsafe tombstone entry: {name}"
-            relative = f".kent/runtime/{tombstone_name}/{name}"
-            if (
-                run(
-                    ["git", "check-ignore", "-q", "--", relative],
-                    cwd=workspace,
-                    check=False,
-                ).returncode
-                != 0
-                or run(
-                    ["git", "ls-files", "--error-unmatch", "--", relative],
-                    cwd=workspace,
-                    check=False,
-                ).returncode
-                == 0
-            ):
-                return False, f"runtime entry is tracked or not ignored: {relative}"
-        for name in ("fix-checkpoint.json", "smoke-checkpoint.json"):
-            if name in entries:
-                os.unlink(name, dir_fd=tombstone_fd)
-                os.fsync(tombstone_fd)
-                if _phase_hook is not None:
-                    _phase_hook(
-                        "after_fix_checkpoint_unlink_fsync"
-                        if name == "fix-checkpoint.json"
-                        else "after_smoke_checkpoint_unlink_fsync"
-                    )
-        if "evidence-ledger.jsonl" in entries:
-            os.unlink("evidence-ledger.jsonl", dir_fd=tombstone_fd)
-            os.fsync(tombstone_fd)
             if _phase_hook is not None:
-                _phase_hook("after_ledger_unlink_fsync")
+                _phase_hook(f"before_{phase}_unlink")
+            _revalidate_directory_link(root_fd, ".kent", kent_fd)
+            _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+            admission.unlink(name)
+            if _phase_hook is not None:
+                _phase_hook(f"after_{phase}_unlink_before_fsync")
+            os.fsync(admission.directory)
+            if _phase_hook is not None:
+                _phase_hook(f"after_{phase}_unlink_fsync")
+        if _phase_hook is not None:
+            _phase_hook("before_tombstone_removal")
+        _revalidate_directory_link(root_fd, ".kent", kent_fd)
+        _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+        admission.revalidate()
         os.close(tombstone_fd)
         descriptors.remove(tombstone_fd)
         os.rmdir(tombstone_name, dir_fd=runtime_fd)
@@ -824,6 +1084,8 @@ def _remove_v2_runtime_state(
     except (NotADirectoryError, OSError, ValueError, json.JSONDecodeError) as error:
         return False, str(error)
     finally:
+        if admission is not None:
+            admission.close()
         close_descriptors(*descriptors)
 
 
@@ -837,11 +1099,15 @@ def _prepare_v2_managed_runtime_state(
     """Seal and retain v2 raw evidence until Kent removes a worktree."""
 
     sibling = Path(__file__).with_name("workflow_runtime_contracts.py")
+    v2_declared = _declares_terminal_evidence(cleanup_report)
     if sibling.is_symlink() or not sibling.is_file():
+        if v2_declared:
+            return False, "declared v2 runtime support is missing or unsafe"
         return None
     runtime = runtime_contracts()
     lock_name, sentinel_name = runtime_state_names(task_short_id)
     descriptors: list[int] = []
+    admission = None
     try:
         root_fd = os.open(
             workspace,
@@ -856,6 +1122,8 @@ def _prepare_v2_managed_runtime_state(
         try:
             runtime_fd = open_child_directory(kent_fd, "runtime")
         except FileNotFoundError:
+            if v2_declared:
+                return False, "sealed v2 runtime evidence is missing"
             return None
         descriptors.append(runtime_fd)
         if _phase_hook is not None:
@@ -879,6 +1147,7 @@ def _prepare_v2_managed_runtime_state(
                 | getattr(os, "O_NOFOLLOW", 0),
                 dir_fd=runtime_fd,
             )
+            descriptors.append(sentinel_fd)
             metadata = os.fstat(sentinel_fd)
             sentinel_present = (
                 stat.S_ISREG(metadata.st_mode)
@@ -891,7 +1160,6 @@ def _prepare_v2_managed_runtime_state(
                 sentinel_present = not os.read(sentinel_fd, 1)
                 os.fsync(sentinel_fd)
                 os.fsync(runtime_fd)
-            os.close(sentinel_fd)
             if not sentinel_present:
                 return False, "terminal sentinel is unsafe"
         except FileNotFoundError:
@@ -927,6 +1195,8 @@ def _prepare_v2_managed_runtime_state(
             ):
                 return False, "active runtime is not a sealed v2 ledger"
         if task_fd < 0 and not tombstone_name and not sentinel_present:
+            if v2_declared:
+                return False, "sealed v2 runtime evidence is missing"
             return None
         try:
             reported_marker = _cleanup_marker(
@@ -940,19 +1210,18 @@ def _prepare_v2_managed_runtime_state(
             if _phase_hook is not None:
                 _phase_hook("after_task_fd_before_link_revalidation")
             _revalidate_directory_link(runtime_fd, task_short_id, task_fd)
-            records = _read_ledger_records(task_fd)
-            marker = runtime.validate_terminal_chain(
-                records,
-                task_short_id=task_short_id,
+            admission = _validate_retained_tombstone(
+                workspace, runtime, task_fd, task_short_id,
+                task_short_id, reported_marker, runtime_fd,
             )
-            reported = runtime.validate_cleanup_report(cleanup_report)
-            if reported != marker or reported_marker != marker:
-                return False, "cleanup report marker does not match ledger"
-            expected_name = ".evidence-cleanup-{}".format(
-                runtime.canonical_sha256(marker)
-            )
+            expected_name = admission.tombstone
             if tombstone_name and tombstone_name != expected_name:
                 return False, "cleanup tombstone name does not match ledger"
+            if _phase_hook is not None:
+                _phase_hook("after_evidence_admission")
+            _revalidate_directory_link(root_fd, ".kent", kent_fd)
+            _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+            admission.revalidate()
             os.rename(
                 task_short_id,
                 expected_name,
@@ -970,6 +1239,7 @@ def _prepare_v2_managed_runtime_state(
                 )
                 os.fsync(runtime_fd)
                 raise
+            admission.name = expected_name
             renamed_tombstone_fd = open_child_directory(runtime_fd, expected_name)
             try:
                 if _phase_hook is not None:
@@ -979,6 +1249,7 @@ def _prepare_v2_managed_runtime_state(
                     expected_name,
                     renamed_tombstone_fd,
                 )
+                admission.revalidate()
             finally:
                 os.close(renamed_tombstone_fd)
             os.close(task_fd)
@@ -995,18 +1266,18 @@ def _prepare_v2_managed_runtime_state(
         tombstone_fd = open_child_directory(runtime_fd, tombstone_name)
         descriptors.append(tombstone_fd)
         _revalidate_directory_link(runtime_fd, tombstone_name, tombstone_fd)
-        _validate_retained_tombstone(
-            workspace,
-            runtime,
-            tombstone_fd,
-            tombstone_name,
-            task_short_id,
-            reported_marker,
-        )
+        if admission is None:
+            admission = _validate_retained_tombstone(
+                workspace, runtime, tombstone_fd, tombstone_name,
+                task_short_id, reported_marker, runtime_fd,
+            )
+            if _phase_hook is not None:
+                _phase_hook("after_evidence_admission")
+        admission.revalidate()
         if not sentinel_present:
             sentinel_fd = os.open(
                 sentinel_name,
-                os.O_WRONLY
+                os.O_RDWR
                 | os.O_CREAT
                 | os.O_EXCL
                 | getattr(os, "O_CLOEXEC", 0)
@@ -1020,12 +1291,20 @@ def _prepare_v2_managed_runtime_state(
                 if _phase_hook is not None:
                     _phase_hook("after_terminal_sentinel_create")
                 _revalidate_file_link(runtime_fd, sentinel_name, sentinel_fd)
+                if admission.sentinel < 0:
+                    admission.sentinel = os.dup(sentinel_fd)
+                    admission.sentinel_name = sentinel_name
             finally:
                 os.close(sentinel_fd)
+        _revalidate_directory_link(root_fd, ".kent", kent_fd)
+        _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+        admission.revalidate()
         return True, "sealed evidence retained for managed worktree deletion"
     except (FileNotFoundError, NotADirectoryError, OSError, ValueError) as error:
         return False, str(error)
     finally:
+        if admission is not None:
+            admission.close()
         close_descriptors(*descriptors)
 
 

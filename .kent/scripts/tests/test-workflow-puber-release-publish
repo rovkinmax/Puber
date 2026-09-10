@@ -14,10 +14,13 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
-KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
+KIT = Path("/Users/rovkinmax/dev/llm-staf/kent-engineering-kit")
 helper_spec = importlib.util.spec_from_loader("publish_runtime_test", SourceFileLoader("publish_runtime_test", str(ROOT / ".kent/scripts/workflow-puber-release-intent")))
 helper = importlib.util.module_from_spec(helper_spec); assert helper_spec and helper_spec.loader; helper_spec.loader.exec_module(helper)
 SCRIPT_PATHS = [
+    ".kent/workflow-profile.toml",
+    ".kent/scripts/workflow_runtime_contracts.py",
+    ".kent/scripts/workflow-prepare-github-ci",
     ".kent/scripts/workflow-puber-release-intent",
     ".kent/scripts/workflow-puber-release-publish",
     ".kent/scripts/workflow-wait-github-release",
@@ -31,9 +34,12 @@ SCRIPT_PATHS = [
 def sh(args, cwd, **kwargs):
     return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
 
-def materialize(root: Path, bare: Path) -> tuple[Path, str, str, str]:
+def materialize(root: Path, bare: Path, *, linked: bool = False) -> tuple[Path, str, str, str]:
     work = root / "work"
-    sh(["git", "clone", "--quiet", str(ROOT), str(work)], root)
+    primary = root / "primary" if linked else work
+    sh(["git", "clone", "--quiet", str(ROOT), str(primary)], root)
+    if linked:
+        sh(["git", "worktree", "add", "--quiet", "-b", "fixture-controller", str(work), "HEAD"], primary)
     manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text(encoding="utf-8"))
     manifest_paths = set(SCRIPT_PATHS) | set(manifest["additional_paths"])
     for external in manifest["external_roots"]:
@@ -44,6 +50,12 @@ def materialize(root: Path, bare: Path) -> tuple[Path, str, str, str]:
         target = work / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
+    for external in manifest["external_roots"]:
+        if external["kind"] == "source-sha256":
+            relative, digest = external["key"].split("=", 1)
+            assert helper.sha256_bytes((work / relative).read_bytes()) == digest, relative
+        elif external["kind"] == "builder-sha256":
+            assert helper.sha256_bytes((work / ".kent/workflows/builders/puber_release.py").read_bytes()) == external["key"]
     sh(["git", "config", "user.email", "test@example.invalid"], work)
     sh(["git", "config", "user.name", "Puber Test"], work)
     sh(["git", "add", "."], work)
@@ -66,6 +78,45 @@ def materialize(root: Path, bare: Path) -> tuple[Path, str, str, str]:
     sh(["git", "push", "--quiet", "-u", "origin", "HEAD:master"], work)
     return work, base, target, str(bare)
 
+def rebased_target(work: Path, base: str, head: str) -> str:
+    """A real rebase over unrelated mainline work, leaving the controller on H."""
+    branch = sh(["git", "branch", "--show-current"], work).stdout.strip()
+    sh(["git", "checkout", "--quiet", "-b", "fixture-mainline", base], work)
+    (work / "docs/rebased-mainline-fixture.txt").write_text("Unrelated mainline source\n")
+    sh(["git", "add", "docs/rebased-mainline-fixture.txt"], work)
+    sh(["git", "commit", "--quiet", "-m", "unrelated mainline change"], work)
+    mainline = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
+    sh(["git", "checkout", "--quiet", "-b", "fixture-merged", head], work)
+    sh(["git", "rebase", "--onto", mainline, base], work)
+    merged = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
+    sh(["git", "checkout", "--quiet", branch], work)
+    assert merged != head and sh(["git", "rev-parse", "HEAD"], work).stdout.strip() == head
+    return merged
+
+def target_with_changes(work: Path, target: str, changes: dict[str, bytes | None]) -> str:
+    """Commit real target-only Git blobs without altering H or its index."""
+    manifest_path = ".kent/workflows/puber-release.manifest.json"
+    manifest = json.loads(sh(["git", "show", target + ":" + manifest_path], work).stdout)
+    for external in manifest["external_roots"]:
+        if external["kind"] == "source-sha256":
+            path = external["key"].split("=", 1)[0]
+            if path in changes and changes[path] is not None:
+                external["key"] = path + "=" + helper.sha256_bytes(changes[path])
+    changes = {**changes, manifest_path: (json.dumps(manifest, indent=2) + "\n").encode()}
+    with tempfile.TemporaryDirectory() as temporary:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(temporary) / "index")}
+        sh(["git", "read-tree", target], work, env=env)
+        for path, raw in changes.items():
+            if raw is None:
+                sh(["git", "update-index", "--force-remove", "--", path], work, env=env)
+            else:
+                blob = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=work,
+                                      input=raw, capture_output=True, check=True).stdout.decode().strip()
+                mode = sh(["git", "ls-tree", target, "--", path], work).stdout.split(" ", 1)[0] or "100644"
+                sh(["git", "update-index", "--add", "--cacheinfo", mode, blob, path], work, env=env)
+        tree = sh(["git", "write-tree"], work, env=env).stdout.strip()
+        return sh(["git", "commit-tree", tree, "-p", target, "-m", "target-only drift fixture"], work).stdout.strip()
+
 def write_fake_bins(root: Path, task: dict, target: str, bare: str, log: Path) -> tuple[Path, Path]:
     fake = root / "fake"; fake.mkdir()
     task_path = fake / "task.json"; task_path.write_text(json.dumps(task), encoding="utf-8")
@@ -79,9 +130,15 @@ args=sys.argv[1:]
 with open(os.environ["PUBER_GH_LOG"], "a", encoding="utf-8") as f: f.write(json.dumps(args)+"\\n")
 if args[0] != "api": sys.exit(2)
 endpoint=args[1]
+if endpoint == "repos/rovkinmax/Puber":
+ print(json.dumps({"full_name":"rovkinmax/Puber","default_branch":"master","allow_merge_commit":True,"allow_squash_merge":False,"allow_rebase_merge":True})); sys.exit(0)
+if endpoint.endswith("/rules/branches/master"):
+ print(json.dumps([{"type":"required_linear_history"}])); sys.exit(0)
+if endpoint.endswith("/branches/master/protection"):
+ print("404",file=sys.stderr); sys.exit(1)
 target=os.environ["PUBER_TARGET"]
 if endpoint.endswith("/git/ref/heads/master"):
- print(json.dumps({"ref":"refs/heads/master","node_id":"master","url":"https://api.github.com/ref","object":{"type":"commit","sha":target}})); sys.exit(0)
+ print(json.dumps({"ref":"refs/heads/master","node_id":"master","url":"https://api.github.com/ref","object":{"type":"commit","sha":os.environ.get("PUBER_MASTER", target)}})); sys.exit(0)
 if "/pulls/" in endpoint:
  print(json.dumps({"html_url":"https://github.com/rovkinmax/Puber/pull/7","state":"closed","merged":True,"merged_at":"2026-08-25T00:00:00Z","base":{"ref":"master","sha":os.environ["PUBER_PR_BASE"],"repo":{"full_name":"rovkinmax/Puber"}},"head":{"ref":"release/99.0.0","sha":os.environ["PUBER_PR_HEAD"],"repo":{"full_name":"rovkinmax/Puber"}},"merge_commit_sha":target})); sys.exit(0)
 if "/git/ref/tags/" in endpoint:
@@ -244,12 +301,12 @@ class Revision90StageRunner:
 
     def _validate_static_contracts(self) -> None:
         if (
-            self.graph["workflow"]["version"] != 90
+            self.graph["workflow"]["version"] != 88
             or self.graph["workflow"]["source_revision"] != 90
             or self.graph["workflow"]["schema_version"] != 4
-            or len(self.graph["nodes"]) != 17
-            or len(self.graph["transition_groups"]) != 46
-            or len(self.graph["edges"]) != 46
+            or len(self.graph["nodes"]) != 18
+            or len(self.graph["transition_groups"]) != 51
+            or len(self.graph["edges"]) != 51
         ):
             raise StageContractError("release graph identity or topology drifted")
         remote = sh(["git", "remote", "get-url", "origin"], self.work).stdout.strip()
@@ -279,13 +336,21 @@ class Revision90StageRunner:
             source = "\n".join(
                 self._bound_source(relative) for relative in contract["sources"]
             )
-            prompt = self.edges[incoming]["prompt_template"]
+            prompt = self.edges[incoming].get("prompt_template", "")
             combined = f"{prompt}\n{source}"
             for fragment in contract["fragments"]:
                 if fragment not in combined:
                     raise StageContractError(
                         f"{stage} required repository contract drifted: {fragment}"
                     )
+        profile_edge = self.edges["profile_generation_passed"]
+        if (
+            profile_edge.get("context_mode") != "new_session"
+            or profile_edge.get("context_source") != {"kind": "immediate_source"}
+        ):
+            raise StageContractError(
+                "profile_generation_passed must start a fresh session from the immediate source"
+            )
 
     def _admit(self, stage: str, incoming: str, carrier: dict) -> None:
         contract = self.STAGE_CONTRACTS[stage]
@@ -294,7 +359,7 @@ class Revision90StageRunner:
         required = self._fields(incoming)
         if set(carrier) != set(required) or len(carrier) != len(required):
             raise StageContractError(f"{stage} incoming carrier drifted")
-        rendered = self.edges[incoming]["prompt_template"]
+        rendered = self.edges[incoming].get("prompt_template", "")
         for key in required:
             rendered = rendered.replace(f"{{{{.Params.{key}}}}}", str(carrier[key]))
         if "{{.Params." in rendered:
@@ -805,11 +870,12 @@ class Revision90StageRunner:
             return self._emit(
                 "ship_pr_ci_watch",
                 {
+                    **{key: carrier[key] for key in self._fields("ship_pr_ci_watch") if key in carrier},
                     "pr_url": pr_url,
                     "branch_name": carrier["release_branch"],
-                    "workspace_path": carrier["workspace_path"],
-                    "release_version": carrier["release_version"],
-                    "release_tag": carrier["release_tag"],
+                    "merge_strategy": "rebase",
+                    "pr_head_oid": pr["headRefOid"],
+                    "pr_base_oid": sh(["git", "--git-dir", str(self.bare), "rev-parse", "refs/heads/master"], self.work).stdout.strip(),
                 },
             )
 
@@ -819,20 +885,23 @@ class Revision90StageRunner:
         stage = "prepare"
         incoming = "release_intent_passed"
         carrier = initial
-        while stage != "ci_watch":
+        while stage != "ci_prepare":
             transition, carrier = self.execute(stage, incoming, carrier)
             stage = self._target_node(transition)
             incoming = transition
         return carrier
 
-def test_clean_master_to_exactly_one_release_pr() -> None:
+def test_clean_master_to_exactly_one_release_pr(continuation=None) -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        work = (root / "release-work").resolve()
+        work = (root / "primary/.kent/worktrees/release-work").resolve()
         bare = root / "origin.git"
         control = root / "control"
         control.mkdir()
-        sh(["git", "clone", "--quiet", str(ROOT), str(work)], root)
+        primary = root / "primary"
+        sh(["git", "clone", "--quiet", str(ROOT), str(primary)], root)
+        work.parent.mkdir(parents=True, exist_ok=True)
+        sh(["git", "worktree", "add", "--quiet", "-b", "fixture-initial", str(work), "HEAD"], primary)
         manifest = json.loads(
             (ROOT / ".kent/workflows/puber-release.manifest.json").read_text(
                 encoding="utf-8"
@@ -850,6 +919,14 @@ def test_clean_master_to_exactly_one_release_pr() -> None:
             target_path = work / relative
             target_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target_path)
+
+        # Admit the real frozen source before replacing only external fixture tools.
+        for external in manifest["external_roots"]:
+            if external["kind"] == "source-sha256":
+                relative, digest = external["key"].split("=", 1)
+                assert helper.sha256_bytes((work / relative).read_bytes()) == digest, relative
+            elif external["kind"] == "builder-sha256":
+                assert helper.sha256_bytes((work / ".kent/workflows/builders/puber_release.py").read_bytes()) == external["key"]
 
         adapter_log = control / "adapter.jsonl"
         adapter = work / ".kent/adapters/mobile/emulator-resource-lock.sh"
@@ -937,10 +1014,14 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
                 external.get("kind") == "source-sha256"
                 and "=" in external.get("key", "")
             ):
-                relative, _digest = external["key"].split("=", 1)
-                external["key"] = (
-                    f"{relative}={helper.sha256_bytes((work / relative).read_bytes())}"
-                )
+                relative, expected_digest = external["key"].split("=", 1)
+                actual_digest = helper.sha256_bytes((work / relative).read_bytes())
+                if relative in {"tools/agentw", "tools/generate-baseline-profile.sh", ".kent/adapters/mobile/emulator-resource-lock.sh"}:
+                    external["key"] = f"{relative}={actual_digest}"
+                else:
+                    assert actual_digest == expected_digest, relative
+            elif external.get("kind") == "builder-sha256":
+                assert helper.sha256_bytes((work / ".kent/workflows/builders/puber_release.py").read_bytes()) == external["key"]
         fixture_manifest_path.write_text(
             json.dumps(fixture_manifest, indent=2) + "\n",
             encoding="utf-8",
@@ -975,7 +1056,7 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
             "current_nodes": [{"node_id": profile_node["id"]}],
             "current_scripts": [
                 {
-                    "path": ".kent/scripts/workflow-puber-release-profile-generation",
+                    "path": str(work.resolve() / ".kent/scripts/workflow-puber-release-profile-generation"),
                     "current_node": {"node_id": profile_node["id"]},
                 }
             ],
@@ -994,7 +1075,7 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
             },
             "workflow": {
                 "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-                "version": 90,
+                "version": 88,
                 "name": "Puber Release",
             },
             "worktree_path": str(work),
@@ -1130,9 +1211,13 @@ sys.exit(2)
         ]
         assert first_stage_log == expected_stages
         assert second_stage_log == expected_stages
-        assert first_result == second_result
+        assert {key: value for key, value in first_result.items() if key != "verification_summary"} == {key: value for key, value in second_result.items() if key != "verification_summary"}
+        assert first_result["verification_summary"] == "./tools/agentw :app:compileProdReleaseArtProfile passed; ./tools/agentw :app:assembleProdRelease passed"
+        assert second_result["verification_summary"] == "reused closed compileProdReleaseArtProfile and assembleProdRelease evidence"
         assert first_result["pr_url"] == "https://github.com/rovkinmax/Puber/pull/7"
         assert first_head == second_head == state["prs"][0]["headRefOid"]
+        assert first_head != base_oid
+        assert task["execution_target"]["commit_oid"] == base_oid
         assert first_history == "1"
         assert sh(
             ["git", "rev-list", "--count", f"{base_oid}..{second_head}"], work
@@ -1251,19 +1336,14 @@ sys.exit(2)
             sh(["git", "status", "--porcelain=v1", "--untracked-files=all"], work).stdout
             == ""
         )
-with tempfile.TemporaryDirectory() as directory:
-    root = Path(directory); bare = root / "origin.git"
-    work, base_oid, target, bare_path = materialize(root, bare)
-    graph = json.loads((work / ".kent/workflows/puber-release.json").read_text())
-    publish_node = next(n for n in graph["nodes"] if n["key"] == "publish")
-    task_id = "task-12345678-1234-4234-8234-123456789abc"
-    task = {
-        "actions": [], "attention_count": 0, "body": "release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n",
-        "current_nodes": [{"node_id": publish_node["id"]}], "current_scripts": [{"path": ".kent/scripts/workflow-puber-release-publish", "current_node": {"node_id": publish_node["id"]}}],
-        "execution_target": {"commit_oid": target}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
-        "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 90, "name": "Puber Release"}, "worktree_path": str(work),
-    }
+        if continuation is not None:
+            assert task["execution_target"]["commit_oid"] == base_oid != first_head
+            continuation({"root": root, "work": work, "base_oid": base_oid, "head": first_head,
+                "bare_path": str(bare), "task": task, "task_path": task_path,
+                "carrier": first_result, "checkpoint": checkpoint, "stages": expected_stages})
+            assert task["execution_target"]["commit_oid"] == base_oid
+
+def fixture_checkpoint(work: Path, base_oid: str, target: str, task_id: str) -> dict:
     profile_path = "app/src/main/generated/baselineProfiles/baseline-prof.txt"
     startup_path = "app/src/main/generated/baselineProfiles/startup-prof.txt"
     profile_report_value = {
@@ -1350,216 +1430,284 @@ with tempfile.TemporaryDirectory() as directory:
             startup_path: preparation_value["startup_profile_sha256"],
         },
     }
-    checkpoint_path = work / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
-    checkpoint_path.parent.mkdir(parents=True)
-    checkpoint_path.write_text(helper.canonical_json(checkpoint) + "\n", encoding="utf-8")
-    checkpoint_path.chmod(0o600)
-    log = root / "gh.log"; kent, gh = write_fake_bins(root, task, target, bare_path, log)
-    payload = {"_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "merge_watch_pr_merged"}, "workspace_path": str(work), "operation_id": "a"*64, "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "branch_name": "release/99.0.0", "merge_strategy": "auto", "pr_head_oid": target, "pr_base_oid": base_oid}
-    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(fake_task := root / "fake-task.json"), "PUBER_GH_LOG": str(log), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": target, "PUBER_PR_BASE": base_oid}
-    fake_task.write_text(json.dumps(task), encoding="utf-8")
-    payload["commentary"] = "private-transport-commentary"
-    os.environ.update({key: env[key] for key in ("KENT_ENGINEERING_KIT_ROOT", "PUBER_KENT_BIN", "PUBER_GH_BIN", "PUBER_GH_LOG", "PUBER_TARGET", "PUBER_BARE")})
-    result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-    assert result.returncode == 0, result.stderr
-    output = json.loads(result.stdout)
-    assert output["transition"] == "monitor_release", (result.stdout, result.stderr)
-    report = json.loads(output["publication_report"])
-    assert report["schema"] == "puber_publication_report_v1" and report["unresolved"] is True
-    assert output["publication_report_digest"] == __import__("hashlib").sha256(json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    assert output["release_run"] == '{"schema":"puber_release_run_v1","state":"not_selected"}'
-    assert sh(["git", "--git-dir", bare_path, "rev-parse", "refs/tags/v99.0.0"], work).stdout.strip() == target
-    assert not (ROOT / ".git/refs/tags/v99.0.0").exists()
-    assert "api" in log.read_text(encoding="utf-8") and "git/ref/heads/master" in log.read_text(encoding="utf-8")
-    retry = {
-        "commentary": "private-retry-commentary",
-        "_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "publish_needs_user_action"},
-        "blocker_reason": "retry",
-        "workspace_path": payload["workspace_path"],
-        "operation_id": payload["operation_id"],
-        "pr_url": payload["pr_url"],
-        "branch_name": payload["branch_name"],
-        "merge_strategy": payload["merge_strategy"],
-        "pr_head_oid": payload["pr_head_oid"],
-        "pr_base_oid": payload["pr_base_oid"],
-        "release_version": output["release_version"],
-        "release_tag": output["release_tag"],
-        "target_commit": output["target_commit"],
-        "release_notes_path": output["release_notes_path"],
-        "publication_report": output["publication_report"],
-        "publication_report_digest": output["publication_report_digest"],
-        "release_run": output["release_run"],
-    }
-    retry_result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-    assert retry_result.returncode == 0, retry_result.stderr
-    retry_output = json.loads(retry_result.stdout)
-    assert "private-retry-commentary" not in retry_result.stdout + retry_result.stderr
-    assert "private-transport-commentary" not in result.stdout + result.stderr
-    for transport_checkpoint_path in (work / ".kent/runtime").rglob("*.json"):
-        assert "private-transport-commentary" not in transport_checkpoint_path.read_text()
-        assert "private-retry-commentary" not in transport_checkpoint_path.read_text()
-    assert retry_output["transition"] == "monitor_release"
-    retry_report = json.loads(retry_output["publication_report"])
-    assert retry_report["operation_digest"] != report["operation_digest"]
-    assert retry_report["previous_operation_digest"] == report["operation_digest"]
-    assert retry_output["tag_push_status"] == "already_present_exact"
-    wrong = sh(["git", "rev-parse", f"{target}^"], work).stdout.strip()
-    sh(["git", "tag", "v100.0.0", wrong], work)
-    try:
-        helper.publish_tag(work, "v100.0.0", target)
-    except helper.ContractError:
-        pass
-    else:
-        raise AssertionError("local conflicting tag was accepted")
-    sh(["git", "update-ref", "refs/tags/v100.0.1", wrong], Path(bare_path))
-    try:
-        helper.publish_tag(work, "v100.0.1", target)
-    except helper.ContractError:
-        pass
-    else:
-        raise AssertionError("remote conflicting tag was accepted")
-    notes_path = work / report["notes_report"]["path"]
-    notes_path.write_text("conflict\n", encoding="utf-8")
-    try:
-        helper.parse_notes_report(report["notes_report"], work, "PUB-99", expected_tag="v99.0.0", expected_target=target)
-    except helper.ContractError:
-        pass
-    else:
-        raise AssertionError("conflicting canonical notes were accepted")
+    return checkpoint
 
-    local_only = "v99.0.2"
-    sh(["git", "tag", local_only, target], work)
-    assert helper.publish_tag(work, local_only, target) == "local_tag_pushed"
-    assert sh(["git", "--git-dir", bare_path, "rev-parse", f"refs/tags/{local_only}"], work).stdout.strip() == target
-
-    lost_ack = "v99.0.3"
-    git_wrapper = root / "git"
-    real_git = shutil.which("git")
-    assert real_git
-    git_wrapper.write_text(f"#!/bin/sh\nif test \"$1\" = push; then '{real_git}' \"$@\"; exit 1; fi\nexec '{real_git}' \"$@\"\n", encoding="utf-8")
-    git_wrapper.chmod(0o755)
-    original_path = os.environ["PATH"]
-    os.environ["PATH"] = f"{root}:{original_path}"
-    lost_ack_status = helper.publish_tag(work, lost_ack, target)
-    assert lost_ack_status == "push_ack_recovered", lost_ack_status
-    os.environ["PATH"] = original_path
-
-    strict_cases = [
-        ("prepared_published", {"tag_phase": "prepared", "tag_status": "created_and_pushed", "unresolved": True}),
-        ("prepared_resolved", {"tag_phase": "prepared", "tag_status": "prepared", "unresolved": False}),
-        ("published_prepared", {"tag_phase": "tag_published", "tag_status": "prepared", "unresolved": True}),
-        ("published_unknown", {"tag_phase": "tag_published", "tag_status": "unknown", "unresolved": True}),
-    ]
-    for label, changes in strict_cases:
-        candidate = dict(report)
-        candidate.update(changes)
-        encoded = helper.canonical_json(candidate)
+def test_publication(rebased: bool) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory); bare = root / "origin.git"
+        work, base_oid, target, bare_path = materialize(root, bare)
+        graph = json.loads((work / ".kent/workflows/puber-release.json").read_text())
+        publish_node = next(n for n in graph["nodes"] if n["key"] == "publish")
+        task_id = "task-12345678-1234-4234-8234-123456789abc"
+        task = {
+            "actions": [], "attention_count": 0, "body": "release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n",
+            "current_nodes": [{"node_id": publish_node["id"]}], "current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-publish"), "current_node": {"node_id": publish_node["id"]}}],
+            "execution_target": {"commit_oid": base_oid}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
+            "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
+            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"}, "worktree_path": str(work),
+        }
+        checkpoint = fixture_checkpoint(work, base_oid, target, task_id)
+        profile_path = "app/src/main/generated/baselineProfiles/baseline-prof.txt"
+        startup_path = "app/src/main/generated/baselineProfiles/startup-prof.txt"
+        preparation_value = json.loads(checkpoint["release_preparation_report"])
+        checkpoint_path = work / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+        checkpoint_path.parent.mkdir(parents=True)
+        checkpoint_path.write_text(helper.canonical_json(checkpoint) + "\n", encoding="utf-8")
+        checkpoint_path.chmod(0o600)
+        log = root / "gh.log"; kent, gh = write_fake_bins(root, task, target, bare_path, log)
+        payload = {"_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "merge_watch_pr_merged"}, "workspace_path": str(work), "operation_id": "a"*64, "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "branch_name": "release/99.0.0", "merge_strategy": "rebase", "pr_head_oid": target, "pr_base_oid": base_oid}
+        env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(fake_task := root / "fake-task.json"), "PUBER_GH_LOG": str(log), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": target, "PUBER_PR_BASE": base_oid}
+        fake_task.write_text(json.dumps(task), encoding="utf-8")
+        head = target
+        if rebased:
+            target = rebased_target(work, base_oid, head)
+            env["PUBER_TARGET"] = target
+            # The external merged master observation is backed by the real T object.
+            sh(["git", "push", "--quiet", "origin", target + ":refs/heads/fixture-merged"], work)
+            sh(["git", "--git-dir", bare_path, "update-ref", "refs/heads/master", target], work)
+        if rebased:
+            workflow_path = ".github/workflows/release.yml"
+            workflow = sh(["git", "show", target + ":" + workflow_path], work).stdout.encode()
+            app_source = sh(["git", "show", target + ":app/build.gradle.kts"], work).stdout.encode()
+            spec_path = ".kent/workflows/specs/puber-release.toml"
+            spec_source = sh(["git", "show", target + ":" + spec_path], work).stdout.encode()
+            targets = {
+                "missing_object": "e" * 40,
+                "wrong_version": target_with_changes(work, target, {"app/build.gradle.kts": app_source.replace(b"99.0.0", b"99.0.1")}),
+                "profile_drift": target_with_changes(work, target, {profile_path: b"changed profile\n"}),
+                "startup_drift": target_with_changes(work, target, {startup_path: b"changed startup\n"}),
+                "signing_source": target_with_changes(work, target, {workflow_path: workflow.replace(b"contents: write", b"contents: read", 1)}),
+                "production_input": target_with_changes(work, target, {"app/keystore.properties": b"storePassword=fixture\n"}),
+                "effect_source": target_with_changes(work, target, {workflow_path: workflow.replace(b"assembleProdRelease", b"assembleDevDebug")}),
+                "missing_source": target_with_changes(work, target, {workflow_path: None}),
+                "extra_job": target_with_changes(work, target, {workflow_path: workflow + b"\n  extra:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo unexpected\n"}),
+                "weaker_policy": target_with_changes(work, target, {workflow_path: workflow.replace(b'    steps:', b'    if: false\n    steps:', 1)}),
+                "signing_key": target_with_changes(work, target, {"app/debug.jks": b"not the pinned signing key"}),
+                "signing_code": target_with_changes(work, target, {"app/build.gradle.kts": app_source + b"\n// unauthorized signing source delta\n"}),
+            }
+            before_refs = sh(["git", "show-ref"], work).stdout
+            for label, rejected_target in targets.items():
+                before_calls = len(log.read_text().splitlines()) if log.exists() else 0
+                failed = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")],
+                    cwd=work, input=json.dumps(payload), text=True, capture_output=True,
+                    env={**env, "PUBER_TARGET": rejected_target})
+                assert failed.returncode == 0, (label, failed.stderr)
+                rejected = json.loads(failed.stdout)
+                assert rejected["transition"] == "publish_needs_user_action", (label, rejected)
+                assert sh(["git", "show-ref"], work).stdout == before_refs, label
+                calls = [json.loads(line) for line in log.read_text().splitlines()[before_calls:]]
+                assert not any("/git/ref/tags/" in str(call) for call in calls), label
+                print("H!=T zero-tag/fetch negative:", label, rejected["blocker_reason"])
+            assert sh(["git", "rev-parse", "HEAD"], work).stdout.strip() == head
+        if rebased:
+            moved = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work,
+                input=json.dumps(payload), text=True, capture_output=True, env={**env, "PUBER_MASTER": "d" * 40})
+            assert moved.returncode == 0 and json.loads(moved.stdout)["transition"] == "publish_needs_user_action"
+            assert "current remote master" in json.loads(moved.stdout)["blocker_reason"]
+        payload["commentary"] = "private-transport-commentary"
+        os.environ.update({key: env[key] for key in ("KENT_ENGINEERING_KIT_ROOT", "PUBER_KENT_BIN", "PUBER_GH_BIN", "PUBER_GH_LOG", "PUBER_TARGET", "PUBER_BARE")})
+        result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        assert result.returncode == 0, result.stderr
+        output = json.loads(result.stdout)
+        assert output["transition"] == "monitor_release", (result.stdout, result.stderr)
+        report = json.loads(output["publication_report"])
+        assert report["schema"] == "puber_publication_report_v1" and report["unresolved"] is True
+        assert output["publication_report_digest"] == __import__("hashlib").sha256(json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        assert output["release_run"] == '{"schema":"puber_release_run_v1","state":"not_selected"}'
+        assert sh(["git", "--git-dir", bare_path, "rev-parse", "refs/tags/v99.0.0"], work).stdout.strip() == target
+        assert not (ROOT / ".git/refs/tags/v99.0.0").exists()
+        assert "api" in log.read_text(encoding="utf-8") and "git/ref/heads/master" in log.read_text(encoding="utf-8")
+        retry = {
+            "commentary": "private-retry-commentary",
+            "_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "publish_needs_user_action"},
+            "blocker_reason": "retry",
+            "workspace_path": payload["workspace_path"],
+            "operation_id": payload["operation_id"],
+            "pr_url": payload["pr_url"],
+            "branch_name": payload["branch_name"],
+            "merge_strategy": payload["merge_strategy"],
+            "pr_head_oid": payload["pr_head_oid"],
+            "pr_base_oid": payload["pr_base_oid"],
+            "release_version": output["release_version"],
+            "release_tag": output["release_tag"],
+            "target_commit": output["target_commit"],
+            "release_notes_path": output["release_notes_path"],
+            "publication_report": output["publication_report"],
+            "publication_report_digest": output["publication_report_digest"],
+            "release_run": output["release_run"],
+        }
+        retry_result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        assert retry_result.returncode == 0, retry_result.stderr
+        retry_output = json.loads(retry_result.stdout)
+        assert "private-retry-commentary" not in retry_result.stdout + retry_result.stderr
+        assert "private-transport-commentary" not in result.stdout + result.stderr
+        for transport_checkpoint_path in (work / ".kent/runtime").rglob("*.json"):
+            assert "private-transport-commentary" not in transport_checkpoint_path.read_text()
+            assert "private-retry-commentary" not in transport_checkpoint_path.read_text()
+        assert retry_output["transition"] == "monitor_release"
+        retry_report = json.loads(retry_output["publication_report"])
+        assert retry_report["operation_digest"] != report["operation_digest"]
+        assert retry_report["previous_operation_digest"] == report["operation_digest"]
+        assert retry_output["tag_push_status"] == "already_present_exact"
+        wrong = sh(["git", "rev-parse", f"{target}^"], work).stdout.strip()
+        sh(["git", "tag", "v100.0.0", wrong], work)
         try:
-            helper.parse_publication_report(encoded, __import__("hashlib").sha256(encoded.encode()).hexdigest(), expected_tag="v99.0.0", expected_target=target, task_short_id="PUB-99", root=work)
+            helper.publish_tag(work, "v100.0.0", target)
         except helper.ContractError:
             pass
         else:
-            raise AssertionError(label)
-
-    def refs() -> tuple[str, str]:
-        local = sh(["git", "show-ref", "--tags"], work).stdout
-        remote = sh(["git", "--git-dir", bare_path, "show-ref", "--tags"], work).stdout
-        return local, remote
-
-    def rejected_gate(label: str, *, task_changes=None, payload_changes=None, gate_env=None) -> None:
-        before = refs()
-        if task_changes:
-            changed_task = json.loads(fake_task.read_text(encoding="utf-8"))
-            changed_task.update(task_changes)
-            fake_task.write_text(json.dumps(changed_task), encoding="utf-8")
-        bad = dict(payload)
-        if payload_changes:
-            bad.update(payload_changes)
-        run_env = gate_env or env
-        result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(bad), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=run_env)
-        if result.returncode == 0:
-            assert json.loads(result.stdout)["transition"] == "publish_needs_user_action", label
+            raise AssertionError("local conflicting tag was accepted")
+        sh(["git", "update-ref", "refs/tags/v100.0.1", wrong], Path(bare_path))
+        try:
+            helper.publish_tag(work, "v100.0.1", target)
+        except helper.ContractError:
+            pass
         else:
-            assert result.stdout == "" and "error" in result.stderr, label
-        assert refs() == before, label
-        fake_task.write_text(json.dumps(task), encoding="utf-8")
+            raise AssertionError("remote conflicting tag was accepted")
+        notes_path = work / report["notes_report"]["path"]
+        notes_path.write_text("conflict\n", encoding="utf-8")
+        try:
+            helper.parse_notes_report(report["notes_report"], work, "PUB-99", expected_tag="v99.0.0", expected_target=target)
+        except helper.ContractError:
+            pass
+        else:
+            raise AssertionError("conflicting canonical notes were accepted")
 
-    rejected_gate("task_id", task_changes={"summary": {**task["summary"], "id": "task-00000000-0000-4000-8000-000000000000"}})
-    rejected_gate("workflow_revision", task_changes={"workflow": {**task["workflow"], "version": 87}})
-    rejected_gate("current_script", task_changes={"current_scripts": [{"path": ".kent/scripts/workflow-wait-github-release", "current_node": {"node_id": publish_node["id"]}}]})
-    rejected_gate("execution_commit", task_changes={"execution_target": {"commit_oid": "f" * 40}})
-    rejected_gate("worktree_path", task_changes={"worktree_path": str(root / "foreign")})
-    rejected_gate("pr_identity", payload_changes={"pr_head_oid": "d" * 40})
-    rejected_gate("transition", payload_changes={"_kent": {**payload["_kent"], "transition_branch_key": "not-a-real-edge"}})
-    source = work / ".kent/scripts/workflow-puber-release-intent"
-    original_source = source.read_bytes()
-    source.write_bytes(original_source + b"\n")
-    rejected_gate("source_drift")
-    source.write_bytes(original_source)
-    bad_kit = root / "bad-kit"; bad_kit.mkdir()
-    bad_env = {**env, "KENT_ENGINEERING_KIT_ROOT": str(bad_kit)}
-    before = refs()
-    bad_result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=bad_env)
-    assert bad_result.returncode == 0 and json.loads(bad_result.stdout)["transition"] == "publish_needs_user_action" and refs() == before
+        local_only = "v99.0.2"
+        sh(["git", "tag", local_only, target], work)
+        assert helper.publish_tag(work, local_only, target) == "local_tag_pushed"
+        assert sh(["git", "--git-dir", bare_path, "rev-parse", f"refs/tags/{local_only}"], work).stdout.strip() == target
 
-    unrelated = work / "docs/unrelated-publish-fixture.txt"
-    unrelated.write_text("must not be published\n", encoding="utf-8")
-    sh(["git", "add", str(unrelated.relative_to(work))], work)
-    sh(["git", "commit", "--quiet", "-m", "test unrelated release path"], work)
-    unrelated_head = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
-    sh(["git", "push", "--quiet", "origin", "HEAD:master"], work)
-    unrelated_preparation = {
-        **preparation_value,
-        "release_head_oid": unrelated_head,
-    }
-    unrelated_preparation_report = helper.canonical_json(unrelated_preparation)
-    unrelated_preparation_digest = helper.sha256_bytes(unrelated_preparation_report.encode())
-    unrelated_checkpoint = {
-        **checkpoint,
-        "release_head_oid": unrelated_head,
-        "release_preparation_report": unrelated_preparation_report,
-        "release_preparation_report_digest": unrelated_preparation_digest,
-    }
-    checkpoint_path.write_text(helper.canonical_json(unrelated_checkpoint) + "\n", encoding="utf-8")
-    checkpoint_path.chmod(0o600)
-    unrelated_task = {
-        **task,
-        "execution_target": {"commit_oid": unrelated_head},
-    }
-    fake_task.write_text(json.dumps(unrelated_task), encoding="utf-8")
-    unrelated_payload = {
-        **payload,
-        "pr_head_oid": unrelated_head,
-    }
-    unrelated_env = {
-        **env,
-        "PUBER_TARGET": unrelated_head,
-        "PUBER_PR_HEAD": unrelated_head,
-    }
-    before_refs = refs()
-    before_notes = notes_path.read_bytes()
-    prior_calls = len(log.read_text(encoding="utf-8").splitlines())
-    unrelated_result = subprocess.run(
-        [str(work / ".kent/scripts/workflow-puber-release-publish")],
-        cwd=work,
-        input=json.dumps(unrelated_payload),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=unrelated_env,
-    )
-    assert unrelated_result.returncode == 0, unrelated_result.stderr
-    unrelated_output = json.loads(unrelated_result.stdout)
-    assert unrelated_output["transition"] == "publish_needs_user_action"
-    assert "release diff" in unrelated_output["blocker_reason"]
-    assert refs() == before_refs
-    assert notes_path.read_bytes() == before_notes
-    new_calls = [
-        json.loads(line)
-        for line in log.read_text(encoding="utf-8").splitlines()[prior_calls:]
-    ]
-    assert not any("/git/ref/tags/" in call[1] for call in new_calls if len(call) > 1)
-    assert unrelated_output.get("publication_report", "") == ""
+        lost_ack = "v99.0.3"
+        git_wrapper = root / "git"
+        real_git = shutil.which("git")
+        assert real_git
+        git_wrapper.write_text(f"#!/bin/sh\nif test \"$1\" = push; then '{real_git}' \"$@\"; exit 1; fi\nexec '{real_git}' \"$@\"\n", encoding="utf-8")
+        git_wrapper.chmod(0o755)
+        original_path = os.environ["PATH"]
+        os.environ["PATH"] = f"{root}:{original_path}"
+        lost_ack_status = helper.publish_tag(work, lost_ack, target)
+        assert lost_ack_status == "push_ack_recovered", lost_ack_status
+        os.environ["PATH"] = original_path
 
-test_clean_master_to_exactly_one_release_pr()
-print("workflow-puber-release-publish: passed scenarios=happy,retry,local_tag_only,lost_ack,conflicts,strict_phase_status,zero_effect_task_pr_kit_source_transition_diff_gates,clean_master_one_pr_rerun")
+        strict_cases = [
+            ("prepared_published", {"tag_phase": "prepared", "tag_status": "created_and_pushed", "unresolved": True}),
+            ("prepared_resolved", {"tag_phase": "prepared", "tag_status": "prepared", "unresolved": False}),
+            ("published_prepared", {"tag_phase": "tag_published", "tag_status": "prepared", "unresolved": True}),
+            ("published_unknown", {"tag_phase": "tag_published", "tag_status": "unknown", "unresolved": True}),
+        ]
+        for label, changes in strict_cases:
+            candidate = dict(report)
+            candidate.update(changes)
+            encoded = helper.canonical_json(candidate)
+            try:
+                helper.parse_publication_report(encoded, __import__("hashlib").sha256(encoded.encode()).hexdigest(), expected_tag="v99.0.0", expected_target=target, task_short_id="PUB-99", root=work)
+            except helper.ContractError:
+                pass
+            else:
+                raise AssertionError(label)
+
+        def refs() -> tuple[str, str]:
+            local = sh(["git", "show-ref", "--tags"], work).stdout
+            remote = sh(["git", "--git-dir", bare_path, "show-ref", "--tags"], work).stdout
+            return local, remote
+
+        def rejected_gate(label: str, *, task_changes=None, payload_changes=None, gate_env=None) -> None:
+            before = refs()
+            if task_changes:
+                changed_task = json.loads(fake_task.read_text(encoding="utf-8"))
+                changed_task.update(task_changes)
+                fake_task.write_text(json.dumps(changed_task), encoding="utf-8")
+            bad = dict(payload)
+            if payload_changes:
+                bad.update(payload_changes)
+            run_env = gate_env or env
+            result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(bad), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=run_env)
+            if result.returncode == 0:
+                assert json.loads(result.stdout)["transition"] == "publish_needs_user_action", label
+            else:
+                assert result.stdout == "" and "error" in result.stderr, label
+            assert refs() == before, label
+            fake_task.write_text(json.dumps(task), encoding="utf-8")
+
+        rejected_gate("task_id", task_changes={"summary": {**task["summary"], "id": "task-00000000-0000-4000-8000-000000000000"}})
+        for invalid_revision in (87, 89, 90):
+            rejected_gate("workflow_revision", task_changes={"workflow": {**task["workflow"], "version": invalid_revision}})
+        rejected_gate("current_script", task_changes={"current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-wait-github-release"), "current_node": {"node_id": publish_node["id"]}}]})
+        rejected_gate("execution_commit", task_changes={"execution_target": {"commit_oid": "f" * 40}})
+        rejected_gate("worktree_path", task_changes={"worktree_path": str(root / "foreign")})
+        rejected_gate("pr_identity", payload_changes={"pr_head_oid": "d" * 40})
+        rejected_gate("transition", payload_changes={"_kent": {**payload["_kent"], "transition_branch_key": "not-a-real-edge"}})
+        source = work / ".kent/scripts/workflow-puber-release-intent"
+        original_source = source.read_bytes()
+        source.write_bytes(original_source + b"\n")
+        rejected_gate("source_drift")
+        source.write_bytes(original_source)
+        bad_kit = root / "bad-kit"; bad_kit.mkdir()
+        bad_env = {**env, "KENT_ENGINEERING_KIT_ROOT": str(bad_kit)}
+        before = refs()
+        bad_result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=bad_env)
+        assert bad_result.returncode == 2 and bad_result.stdout == "" and "release blob is missing or unsafe" in bad_result.stderr, bad_result.stderr
+        assert refs() == before
+
+        unrelated = work / "docs/unrelated-publish-fixture.txt"
+        unrelated.write_text("must not be published\n", encoding="utf-8")
+        sh(["git", "add", str(unrelated.relative_to(work))], work)
+        sh(["git", "commit", "--quiet", "-m", "test unrelated release path"], work)
+        unrelated_head = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
+        sh(["git", "push", "--quiet", "origin", "HEAD:refs/heads/fixture-unrelated"], work)
+        sh(["git", "--git-dir", bare_path, "update-ref", "refs/heads/master", unrelated_head], work)
+        unrelated_preparation = {
+            **preparation_value,
+            "release_head_oid": unrelated_head,
+        }
+        unrelated_preparation_report = helper.canonical_json(unrelated_preparation)
+        unrelated_preparation_digest = helper.sha256_bytes(unrelated_preparation_report.encode())
+        unrelated_checkpoint = {
+            **checkpoint,
+            "release_head_oid": unrelated_head,
+            "release_preparation_report": unrelated_preparation_report,
+            "release_preparation_report_digest": unrelated_preparation_digest,
+        }
+        checkpoint_path.write_text(helper.canonical_json(unrelated_checkpoint) + "\n", encoding="utf-8")
+        checkpoint_path.chmod(0o600)
+        unrelated_task = dict(task)  # Even a rejected H keeps the genuine initial K.
+        fake_task.write_text(json.dumps(unrelated_task), encoding="utf-8")
+        unrelated_payload = {
+            **payload,
+            "pr_head_oid": unrelated_head,
+        }
+        unrelated_env = {
+            **env,
+            "PUBER_TARGET": unrelated_head,
+            "PUBER_PR_HEAD": unrelated_head,
+        }
+        before_refs = refs()
+        before_notes = notes_path.read_bytes()
+        prior_calls = len(log.read_text(encoding="utf-8").splitlines())
+        unrelated_result = subprocess.run(
+            [str(work / ".kent/scripts/workflow-puber-release-publish")],
+            cwd=work,
+            input=json.dumps(unrelated_payload),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=unrelated_env,
+        )
+        assert unrelated_result.returncode == 2 and unrelated_result.stdout == "", unrelated_result.stderr
+        assert "release diff" in unrelated_result.stderr
+        assert refs() == before_refs
+        assert notes_path.read_bytes() == before_notes
+        new_calls = [
+            json.loads(line)
+            for line in log.read_text(encoding="utf-8").splitlines()[prior_calls:]
+        ]
+        assert not any("/git/ref/tags/" in call[1] for call in new_calls if len(call) > 1)
+        assert unrelated_task["execution_target"]["commit_oid"] == base_oid
+
+if __name__ == "__main__":
+    test_publication(False)
+    test_publication(True)
+
+    test_clean_master_to_exactly_one_release_pr()
+    print("workflow-puber-release-publish: passed scenarios=happy,retry,local_tag_only,lost_ack,conflicts,strict_phase_status,zero_effect_task_pr_kit_source_transition_diff_gates,clean_master_one_pr_rerun")

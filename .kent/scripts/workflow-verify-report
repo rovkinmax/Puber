@@ -1,7 +1,46 @@
 #!/usr/bin/env python3
-"""Run the project verifier and emit a bounded, content-addressed report."""
+"""Run the project verifier and emit a bounded, content-addressed report.
+
+FD-backed script dispatch admits exactly four complete shebang lines:
+#!/bin/sh -> /bin/sh; #!/bin/bash and #!/usr/bin/env bash -> /bin/bash;
+#!/usr/bin/env python3 -> the current absolute sys.executable.
+Known scripts always use that interpreter plus the validated script FD path,
+never env, caller PATH, a script copy or the mutable project pathname.
+Native non-shebang FD dispatch remains separate.
+
+Read at most 257 bytes without moving the FD offset. The first line must end
+with LF within 256 bytes; NUL/CR, unknown forms and extra arguments are unsafe.
+Validate the fixed interpreter's canonical regular, executable, non-group/
+other-writable target, accepting trusted installation symlinks and system
+ownership. Missing interpreters are verification_blocked; unsafe forms or
+targets are verifier_unsafe. Existing stdin, fixed environment, bytecode,
+source FD validation and process/output bounds remain unchanged.
+
+TMPDIR is the canonical pathname of the existing owned private 0700 directory,
+not a process-local FD path. Workspace/log-chain and private directory names
+must match the held FDs after the final prelaunch hook, after child completion
+and before empty-directory cleanup. Caller TMPDIR overrides remain ignored.
+Remove only the validated invocation input entry and empty private directory.
+Retain nonempty contents. run_verification always includes a fixed,
+at-most-512-byte workspace-relative diagnostic in the stderr frame before
+hashing. It may displace the captured output tail but cannot itself cause
+output overflow or turn product PASS into failure. bounded_child preserves
+both raw streams and the child outcome: append the whole notice to stderr
+only when stdout + stderr + notice fits OUTPUT_LIMIT; otherwise omit it,
+without truncation, a partial notice or an additional output channel.
+Namespace drift is log_path_unsafe; unexpected cleanup I/O is failure.
+These sampled checks assume cooperative owned resources, not atomic same-UID
+isolation. No recursive cleanup, storage quota, detached-writer settlement or
+new process-lifecycle guarantee is added.
+
+Actual Linux validation in the existing Ubuntu PR job is required before
+merge/installation; macOS source validation is not Linux runtime acceptance.
+"""
 
 from __future__ import annotations
+
+import sys
+sys.dont_write_bytecode = True
 
 import hashlib
 import errno
@@ -12,11 +51,8 @@ import selectors
 import signal
 import stat
 import subprocess
-import sys
 import time
 from typing import Any
-
-sys.dont_write_bytecode = True
 
 
 INPUT_LIMIT = 1024 * 1024
@@ -275,6 +311,70 @@ def _revalidate_log_chain(
         raise VerificationFailure("log_path_unsafe") from error
 
 
+def _private_tmp_path(
+    workspace: Path,
+    root_fd: int,
+    build_fd: int,
+    workflow_fd: int,
+    tmp_name: str,
+    tmp_fd: int,
+) -> str:
+    """Validate the known private namespace against the invocation's held FDs."""
+    try:
+        root = os.stat(workspace, follow_symlinks=False)
+        _check_directory(root, failure_code="log_path_unsafe")
+        opened_root = os.fstat(root_fd)
+        if (
+            workspace.resolve(strict=True) != workspace
+            or (root.st_dev, root.st_ino)
+            != (opened_root.st_dev, opened_root.st_ino)
+        ):
+            raise VerificationFailure("log_path_unsafe")
+        _revalidate_log_chain(root_fd, build_fd, workflow_fd)
+        _revalidate_directory(
+            workflow_fd, tmp_name, tmp_fd, failure_code="log_path_unsafe",
+        )
+        path = workspace / "build" / "kent-workflow" / tmp_name
+        current = os.stat(path, follow_symlinks=False)
+        opened = os.fstat(tmp_fd)
+        _check_directory(opened, failure_code="log_path_unsafe")
+        if (
+            path.resolve(strict=True) != path
+            or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
+            or stat.S_IMODE(current.st_mode) != 0o700
+            or stat.S_IMODE(opened.st_mode) != 0o700
+        ):
+            raise VerificationFailure("log_path_unsafe")
+        return str(path)
+    except (OSError, RuntimeError) as error:
+        raise VerificationFailure("log_path_unsafe") from error
+
+
+def _cleanup_private_tmp(
+    workspace: Path,
+    root_fd: int,
+    build_fd: int,
+    workflow_fd: int,
+    tmp_name: str,
+    tmp_fd: int,
+) -> bytes:
+    _private_tmp_path(workspace, root_fd, build_fd, workflow_fd, tmp_name, tmp_fd)
+    try:
+        os.rmdir(tmp_name, dir_fd=workflow_fd)
+        os.fsync(workflow_fd)
+    except OSError as error:
+        if error.errno not in {errno.ENOTEMPTY, errno.EEXIST}:
+            raise VerificationFailure("internal_error") from error
+        _private_tmp_path(
+            workspace, root_fd, build_fd, workflow_fd, tmp_name, tmp_fd,
+        )
+        # The locator uses only our generated basename, never child entries.
+        return (
+            f"\nVerifier temporary files retained: build/kent-workflow/{tmp_name}\n"
+        ).encode("utf-8")[:512]
+    return b""
+
+
 def _fd_path(descriptor: int) -> str:
     if not os.path.isdir("/dev/fd"):
         raise VerificationFailure("verifier_unsafe")
@@ -374,7 +474,7 @@ def _git_command() -> str:
     raise VerificationFailure("internal_error")
 
 
-def replacement_environment(tmp_fd: int) -> dict[str, str]:
+def replacement_environment(tmp_path: str) -> dict[str, str]:
     environment = {
         "CI": "1",
         "LANG": "C",
@@ -382,7 +482,7 @@ def replacement_environment(tmp_fd: int) -> dict[str, str]:
         "GIT_TERMINAL_PROMPT": "0",
         "GCM_INTERACTIVE": "never",
         "PYTHONDONTWRITEBYTECODE": "1",
-        "TMPDIR": _fd_path(tmp_fd),
+        "TMPDIR": tmp_path,
     }
     valid: dict[str, str] = {}
     for name in OPTIONAL_ENVIRONMENT:
@@ -413,7 +513,9 @@ def _write_all(descriptor: int, content: bytes) -> None:
         view = view[written:]
 
 
-def _frame(stdout: bytes, stderr: bytes, limit: int) -> tuple[bytes, bool]:
+def _frame(
+    stdout: bytes, stderr: bytes, limit: int, diagnostic: bytes = b"",
+) -> tuple[bytes, bool]:
     def make(out: bytes, err: bytes) -> bytes:
         return (
             b"stdout:"
@@ -426,22 +528,28 @@ def _frame(stdout: bytes, stderr: bytes, limit: int) -> tuple[bytes, bool]:
             + err
         )
 
-    full = make(stdout, stderr)
+    overflow = len(make(stdout, stderr)) > limit
+    # Retention must be visible without turning in-limit product output into
+    # an overflow. Prefer the bounded diagnostic to the captured output tail.
+    diagnostic = diagnostic[:512]
+    while diagnostic and len(make(b"", diagnostic)) > limit:
+        diagnostic = diagnostic[:-1]
+    full = make(stdout, stderr + diagnostic)
     if len(full) <= limit:
-        return full, False
+        return full, overflow
     low, high = 0, len(stdout) + len(stderr)
-    best = b"stdout:0\nstderr:0\n"
+    best = make(b"", diagnostic)
     while low <= high:
         total = (low + high) // 2
         out_length = min(len(stdout), total)
         err_length = min(len(stderr), total - out_length)
-        candidate = make(stdout[:out_length], stderr[:err_length])
+        candidate = make(stdout[:out_length], stderr[:err_length] + diagnostic)
         if len(candidate) <= limit:
             best = candidate
             low = total + 1
         else:
             high = total - 1
-    return best, True
+    return best, overflow
 
 
 def _terminate_group(process: subprocess.Popen[bytes]) -> None:
@@ -459,21 +567,51 @@ def _terminate_group(process: subprocess.Popen[bytes]) -> None:
         process.wait()
 
 
-def _child_command(child_path: str, child_fd: int) -> list[str]:
+def _validated_interpreter(interpreter: str) -> str:
+    if not interpreter or not Path(interpreter).is_absolute():
+        raise VerificationFailure("verifier_unsafe")
     try:
-        sample = os.pread(child_fd, 128, 0)
-    except OSError:
-        sample = b""
-    if os.access(child_path, os.X_OK):
-        return [child_path]
-    if sample.startswith(b"#!") and b"python" in sample.splitlines()[0]:
-        return [sys.executable, child_path]
-    if sample.startswith(b"#!") and any(
-        shell in sample.splitlines()[0]
-        for shell in (b"/sh", b"/bash", b"/zsh")
+        target = Path(interpreter).resolve(strict=True)
+        metadata = os.stat(target, follow_symlinks=False)
+    except FileNotFoundError as error:
+        raise VerificationFailure("verification_blocked") from error
+    except RuntimeError as error:
+        raise VerificationFailure("verifier_unsafe") from error
+    except OSError as error:
+        if error.errno in {errno.EACCES, errno.EPERM, errno.ELOOP, errno.ENOTDIR}:
+            raise VerificationFailure("verifier_unsafe") from error
+        raise
+    # System interpreters need not be owned by the project-script owner or
+    # have one link. Symlink permissions are not target permissions.
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or not metadata.st_mode & 0o111
+        or metadata.st_mode & 0o022
+        or not os.access(target, os.X_OK)
     ):
-        return ["/bin/sh", child_path]
-    return [child_path]
+        raise VerificationFailure("verifier_unsafe")
+    return interpreter
+
+
+def _child_command(child_path: str, child_fd: int) -> list[str]:
+    sample = os.pread(child_fd, 257, 0)
+    if not sample.startswith(b"#!"):
+        return [child_path]
+    end = sample.find(b"\n")
+    if end < 0 or end >= 256:
+        raise VerificationFailure("verifier_unsafe")
+    header = sample[:end]
+    if b"\x00" in header or b"\r" in header:
+        raise VerificationFailure("verifier_unsafe")
+    interpreter = {
+        b"#!/bin/sh": "/bin/sh",
+        b"#!/bin/bash": "/bin/bash",
+        b"#!/usr/bin/env bash": "/bin/bash",
+        b"#!/usr/bin/env python3": sys.executable,
+    }.get(header)
+    if interpreter is None:
+        raise VerificationFailure("verifier_unsafe")
+    return [_validated_interpreter(interpreter), child_path]
 
 
 def _child_descriptor(descriptor: int) -> int:
@@ -493,6 +631,10 @@ def _run_child_fd(
     tmp_fd: int,
     input_payload: bytes,
     *,
+    root_fd: int,
+    build_fd: int,
+    workflow_fd: int,
+    tmp_name: str,
     _phase_hook=None,
 ) -> tuple[int | None, bytes, bytes, str | None]:
     _fd_path(child_fd)
@@ -530,11 +672,14 @@ def _run_child_fd(
                 child_fd,
                 executable=True,
             )
+        tmp_path = _private_tmp_path(
+            workspace, root_fd, build_fd, workflow_fd, tmp_name, tmp_fd,
+        )
         child_exec_fd = _child_descriptor(child_fd)
         tmp_exec_fd = _child_descriptor(tmp_fd)
         child_path = _fd_path(child_exec_fd)
         _fd_path(tmp_exec_fd)
-        environment = replacement_environment(tmp_exec_fd)
+        environment = replacement_environment(tmp_path)
         input_stream = os.fdopen(os.dup(input_fd), "rb")
         try:
             process = subprocess.Popen(
@@ -587,6 +732,9 @@ def _run_child_fd(
                 break
         if failure is None:
             process.wait()
+        _private_tmp_path(
+            workspace, root_fd, build_fd, workflow_fd, tmp_name, tmp_fd,
+        )
         return (
             process.returncode,
             bytes(buffers["stdout"]),
@@ -599,18 +747,26 @@ def _run_child_fd(
         return None, b"", b"", "internal"
     finally:
         try:
+            _private_tmp_path(
+                workspace, root_fd, build_fd, workflow_fd, tmp_name, tmp_fd,
+            )
+            _revalidate_file(
+                tmp_fd, ".verification-input", input_fd,
+                owner_only=True, failure_code="log_path_unsafe",
+            )
             os.unlink(".verification-input", dir_fd=tmp_fd)
-        except OSError:
-            pass
-        try:
-            os.close(input_fd)
-        except OSError:
-            pass
-        for descriptor in (child_exec_fd, tmp_exec_fd):
+        except OSError as error:
+            raise VerificationFailure("internal_error") from error
+        finally:
             try:
-                os.close(descriptor)
+                os.close(input_fd)
             except OSError:
                 pass
+            for descriptor in (child_exec_fd, tmp_exec_fd):
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
 
 
 def bounded_child(
@@ -620,6 +776,7 @@ def bounded_child(
     *,
     _phase_hook=None,
 ) -> tuple[int | None, bytes, bytes, str | None]:
+    workspace = workspace.resolve(strict=True)
     root_fd = os.open(
         workspace,
         os.O_RDONLY
@@ -630,6 +787,8 @@ def bounded_child(
     descriptors = [root_fd]
     tmp_name = ""
     kent_fd = -1
+    tmp_fd = -1
+    cleanup_attempted = False
     try:
         build_fd = _open_directory(root_fd, "build", create=True)
         kent_fd = _open_directory(build_fd, "kent-workflow", create=True)
@@ -657,21 +816,34 @@ def bounded_child(
         _check_file(os.fstat(child_fd), executable=True)
         if _phase_hook is not None:
             _phase_hook("after_log_temp_open_before_child")
-        return _run_child_fd(
+        exit_code, stdout, stderr, failure = _run_child_fd(
             child_fd,
             child_parent_fd,
             executable.name,
             workspace,
             tmp_fd,
             payload,
+            root_fd=root_fd,
+            build_fd=build_fd,
+            workflow_fd=kent_fd,
+            tmp_name=tmp_name,
             _phase_hook=_phase_hook,
         )
+        cleanup_attempted = True
+        diagnostic = _cleanup_private_tmp(
+            workspace, root_fd, build_fd, kent_fd, tmp_name, tmp_fd,
+        )
+        if diagnostic and len(stdout) + len(stderr) + len(diagnostic) <= OUTPUT_LIMIT:
+            stderr += diagnostic
+        return exit_code, stdout, stderr, failure
     finally:
-        if tmp_name and kent_fd >= 0:
+        if tmp_fd >= 0 and not cleanup_attempted:
             try:
-                os.rmdir(tmp_name, dir_fd=kent_fd)
-                os.fsync(kent_fd)
-            except OSError:
+                _cleanup_private_tmp(
+                    workspace, root_fd, build_fd, kent_fd, tmp_name, tmp_fd,
+                )
+            except (VerificationFailure, OSError):
+                # Only reached while another failure is already propagating.
                 pass
         for descriptor in reversed(descriptors):
             try:
@@ -1023,6 +1195,8 @@ def run_verification(payload: dict[str, Any], *, _phase_hook=None) -> dict[str, 
     temporary_name = ""
     workflow_fd = -1
     tmp_name = ""
+    tmp_fd = -1
+    cleanup_attempted = False
     try:
         kent_fd, scripts_fd, child_fd = _open_verifier(root_fd)
         descriptors.extend((kent_fd, scripts_fd, child_fd))
@@ -1075,10 +1249,17 @@ def run_verification(payload: dict[str, Any], *, _phase_hook=None) -> dict[str, 
                 sort_keys=True,
                 separators=(",", ":"),
             ).encode("utf-8"),
+            root_fd=root_fd,
+            build_fd=build_fd,
+            workflow_fd=workflow_fd,
+            tmp_name=tmp_name,
             _phase_hook=_phase_hook,
         )
-        _revalidate_log_chain(root_fd, build_fd, workflow_fd)
-        framed, frame_overflow = _frame(stdout, stderr, OUTPUT_LIMIT)
+        cleanup_attempted = True
+        diagnostic = _cleanup_private_tmp(
+            workspace, root_fd, build_fd, workflow_fd, tmp_name, tmp_fd,
+        )
+        framed, frame_overflow = _frame(stdout, stderr, OUTPUT_LIMIT, diagnostic)
         if failure == "internal":
             raise VerificationFailure("internal_error")
         log_path, log_digest = _install_log(
@@ -1124,11 +1305,13 @@ def run_verification(payload: dict[str, Any], *, _phase_hook=None) -> dict[str, 
                 os.fsync(workflow_fd)
             except (IndexError, OSError):
                 pass
-        if tmp_name and workflow_fd >= 0:
+        if tmp_fd >= 0 and not cleanup_attempted:
             try:
-                os.rmdir(tmp_name, dir_fd=workflow_fd)
-                os.fsync(workflow_fd)
-            except OSError:
+                _cleanup_private_tmp(
+                    workspace, root_fd, build_fd, workflow_fd, tmp_name, tmp_fd,
+                )
+            except (VerificationFailure, OSError):
+                # Preserve the established failure; never clean a substitute.
                 pass
         for descriptor in reversed(descriptors):
             try:

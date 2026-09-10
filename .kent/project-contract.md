@@ -74,14 +74,21 @@ trigger matches the current node and task.
 
 ## S05 Release Control Plane
 
-The non-default `Puber Release` graph is tracked at revision 90 with schema 4.
-Its canonical identity is `10d8adb2-c74c-4ef0-8b5c-311cb5cd0459`; source
-updates preserve that UUID and name. `release_intent_gate`, `ci_watch`,
-`merge_watch`, and `task_janitor` are deterministic script nodes. They emit
-versioned operation carriers and fail closed on missing or stale authority.
+The non-default `Puber Release` source is semantic revision 90 with prepared
+native deployment identity 88 and schema 4. Its CI-tail transport is exactly
+18 nodes/51 transition groups/51 edges; the prior 17/46/46 source remains an
+audit snapshot only. Its canonical identity is
+`10d8adb2-c74c-4ef0-8b5c-311cb5cd0459`; source updates preserve that UUID and
+name. `release_intent_gate`, `ci_prepare`, `ci_watch`, `merge_watch`, and
+`task_janitor` are deterministic script nodes. The three CI nodes use the
+project adapter and fail closed while carrying the flat expected-check packet,
+CI history/cursor, actual PR head/base, concrete `rebase` strategy, and
+explicit `verification_summary`.
 Release preparation is ordered as `prepare -> profile_generation ->
-finalize_release -> compliance`; no release PR, merge, tag, or GitHub Release
-may bypass profile generation and finalization.
+finalize_release -> compliance`; CI is ordered through `ci_prepare ->
+ci_watch -> waiting_pr`, with already-merged recovery entering the existing
+merge watcher. No release PR, merge, tag, or GitHub Release may bypass profile
+generation and finalization.
 
 Release intent, tag publication, GitHub Release watching, and cleanup are
 separate operations. Publication requires an explicit approved transition and
@@ -114,8 +121,18 @@ and fail-closed secret preflight. Only preflight/build receive the three signing
 secrets; upload receives none, and only Release creation gets `GH_TOKEN`.
 Production credentials never enter task/preparation worktrees. Missing or
 ambiguous signing sources cannot fall back to debug. There is no external
-secret-name attestation. Revision 90 retains 17/46/46 topology, UUID, non-default
-status and existing approval gates; it is source-only, with no live rollout or
-restart. Pre-live failure restores all 24 preimages together. After live rollout,
-never restore unsafe revision 89: disable new admissions/tag approvals first,
-then use a separately reviewed safe revision or forward revision 91.
+secret-name attestation. Semantic source revision 90 uses prepared native
+identity 88 and the approved 18/51/51 topology while preserving existing node
+IDs, Publish inputs, and approval gates. It is source-only, with no live
+rollout or restart. The prepared native identity is not evidence that the live
+counter changed; adoption remains separately gated.
+
+## Cleanup Agent boundary
+
+The existing Cleanup node is a normal `delivery-operator` Agent, not a Script.
+Its current native Session is the owner; other idle Task Sessions on H are
+not candidates to select or bulk-move. `.kent/commands/release.md` owns the
+closed helper input and observable-outcome policy. Incoming route hints cannot
+lower publication/resource proof. Same-owner previous_target retries reactivate
+at H; the Agent verifies the seal, leaves its own root, and then hands the
+unchanged carrier to stock Janitor/native deletion admission.

@@ -10,11 +10,20 @@ For a release, validate the profile/preparation checkpoint against the exact
 `release_head_oid` immediately before push and again after push or PR
 create/update. The resulting PR diff must contain the version bump and only
 actually changed generated profiles; never amend or force-push and never
-overwrite unrelated user changes. If the branch head changed, return to
-`prepare` so the full profile pipeline runs again.
+overwrite unrelated user changes. The CI handoff must carry actual
+`pr_head_oid` and `pr_base_oid`, the complete flat release proof, and explicit
+`verification_summary`; `pr_base_oid` must not be replaced with policy P.
+Do not fabricate an initial CI report or packet: `ci_prepare` derives it.
+A changed release head requires `prepare` and the profile/finalization pipeline
+again; changed CI policy goes through `ci_prepare`. Resolve the profile merge
+policy using the published `workflowkit.merge_strategy` resolver and fresh
+GitHub repository capabilities, branch protection and active branch rules.
+Carry only its unique concrete result (currently `rebase`), never infer it
+from admin bypass. The CI adapter independently revalidates that resolution.
 Never merge, tag, publish, dispatch, rerun, or invoke release automation from
-this command. The PR must report the schema-4 S05 checks and any deferred
-full Gradle gate; S10 remains a later serial slice on the same branch.
+this command. The PR must report the schema-4 S05 checks, the concrete resolved `rebase`
+strategy, and any deferred full Gradle gate; S10 remains a later serial slice
+on the same branch.
 
 ## Revision 90 closed safety contract
 
@@ -38,8 +47,7 @@ and fail-closed secret preflight. Only preflight/build receive the three signing
 secrets; upload receives none, and only Release creation gets `GH_TOKEN`.
 Production credentials never enter task/preparation worktrees. Missing or
 ambiguous signing sources cannot fall back to debug. There is no external
-secret-name attestation. Revision 90 retains 17/46/46 topology, UUID, non-default
-status and existing approval gates; it is source-only, with no live rollout or
-restart. Pre-live failure restores all 24 preimages together. After live rollout,
-never restore unsafe revision 89: disable new admissions/tag approvals first,
-then use a separately reviewed safe revision or forward revision 91.
+secret-name attestation. Semantic source revision 90 uses prepared native
+identity 88 and the approved 18/51/51 topology. Preserve all existing IDs,
+Publish inputs, and approval gates; no CI transition creates tag/publication
+authority. This source change has no live rollout or restart.

@@ -1,1233 +1,284 @@
 #!/usr/bin/env python3
+"""R2 real-Agent/outcome guards; only disposable external observations are fake."""
 from __future__ import annotations
-
-import hashlib
-import importlib.util
-import json
-import os
-import sys
-sys.dont_write_bytecode = True
+import copy, hashlib, importlib.util, json, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
-import shutil
-import subprocess
-import tempfile
 from importlib.machinery import SourceFileLoader
-import shlex
+from unittest.mock import patch
+sys.dont_write_bytecode = True
+ROOT=Path(__file__).resolve().parents[3]
+KIT=Path('/Users/rovkinmax/dev/llm-staf/kent-engineering-kit')
+os.environ['KENT_ENGINEERING_KIT_ROOT']=str(KIT)
+A='5db1f81c-55ed-45e8-aa18-602e2b82591b'
+B='07b2d24a-81c8-4b2c-9153-c049226b8938'
+TASK='task-12345678-1234-4234-8234-123456789abc'
 
-ROOT = Path(__file__).resolve().parents[3]
-KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
-cleanup_spec = importlib.util.spec_from_loader("cleanup_carrier_test", SourceFileLoader("cleanup_carrier_test", str(ROOT / ".kent/scripts/workflow-release-cleanup")))
-cleanup_mod = importlib.util.module_from_spec(cleanup_spec)
-assert cleanup_spec and cleanup_spec.loader
-cleanup_spec.loader.exec_module(cleanup_mod)
+def load(path,name):
+    spec=importlib.util.spec_from_loader(name,SourceFileLoader(name,str(path)))
+    module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module); return module
 
+pub=load(ROOT/'.kent/scripts/tests/test-workflow-puber-release-publish','agent_cleanup_fixture')
 
-def sh(args: list[str], cwd: Path, **kwargs: object) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        args,
-        cwd=cwd,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        **kwargs,
-    )
+def sh(argv,cwd,**kw):
+    return subprocess.run(argv,cwd=cwd,text=True,capture_output=True,check=True,**kw)
 
+class Fixture:
+    def __init__(self,base,closed=False,checkpoint=True):
+        self.base=base
+        primary,k,h,bare=pub.materialize(base,base/'origin.git')
+        sh(['git','branch','-m','fixture-source'],primary)
+        self.work=base/'home/.kent/worktrees/PUB-99'; self.work.parent.mkdir(parents=True)
+        sh(['git','worktree','add','--quiet','-b','release/99.0.0',str(self.work),'HEAD'],primary)
+        self.primary=primary.resolve(); self.work=self.work.resolve(); self.k=k; self.h=h
+        self.helper=load(self.work/'.kent/scripts/workflow-puber-release-intent','agent_cleanup_helper')
+        self.graph=json.loads((self.work/'.kent/workflows/puber-release.json').read_text())
+        self.node=next(n['id'] for n in self.graph['nodes'] if n['key']=='cleanup')
+        self.cp=pub.fixture_checkpoint(self.work,k,h,TASK)
+        if checkpoint:self.helper.write_profile_checkpoint(self.work,'PUB-99',self.cp)
+        self.task={'actions':[],'attention_count':0,'body':'release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n',
+            'current_nodes':[{'node_id':self.node,'session_id':A,'effective_assignee':'delivery-operator'}],
+            'current_scripts':[],'execution_target':{'commit_oid':k if checkpoint else h},'label_ids':[],
+            'live_sessions':[{'session_id':A,'session_name':'Cleanup','node_display_name':'Cleanup'}],
+            'project':{},'retained_session_count':6,'source_workspace':{},'status':{'node_ids':[self.node]},
+            'summary':{'id':TASK,'short_id':'PUB-99','project_id':self.helper.PROJECT_ID,'workflow_id':self.helper.WORKFLOW_ID},
+            'workflow':{'workflow_id':self.helper.WORKFLOW_ID,'version':88,'name':'Puber Release'},'worktree_path':str(self.work)}
+        self.task_path=base/'task.json';self.task_path.write_text(json.dumps(self.task))
+        self.world={'prs':[],'releases':[],'runs':[],'artifacts':[],'remote_tag':None,'visibility':True,'error':None,
+            'binding':'H','owner':A,'history':[{'session_id':f'history-{i}','root':str(self.work),'status':'idle'} for i in range(5)]}
+        if closed:self.world['prs']=[self.pr()]
+        self.world_path=base/'world.json';self.save()
+        self.calls=base/'calls.jsonl'
+        self.kent=base/'kent';self.kent.write_text('#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\n'+f"p=Path({str(self.task_path)!r})\n"+"assert sys.argv[1:3] == ['task','show']; print(p.read_text())\n");self.kent.chmod(0o755)
+        self.status=base/'worktree';self.status.write_text('''#!/usr/bin/env python3
+import json,sys
+from pathlib import Path
+'''+f'world=Path({str(self.world_path)!r}); primary={str(self.primary)!r}; work={str(self.work)!r}\n'+'''
+w=json.loads(world.read_text());args=sys.argv[1:]
+assert args[1:3] == ['--session',w['owner']]
+if args[0]=='leave': w['binding']='primary';world.write_text(json.dumps(w));print('{}');sys.exit(0)
+assert args[0]=='status' and args[-1]=='--json'
+active=w['binding']=='H'; root=work if active else primary
+print(json.dumps({'target':{'WorkspaceID':'workspace-fixture','WorkspaceName':'Puber','WorkspaceRoot':primary,'WorkspaceAvailability':'available','Worktree':{'ID':'worktree-fixture','Name':'H','Root':work,'Availability':'available'} if active else None,'CwdRelpath':'.','EffectiveWorkdir':root},'worktree':{'recorded_root':root,'observed_root':root,**({'display_name':'H','recorded_branch_ref':'refs/heads/release/99.0.0'} if active else {})},'problems':[]}))
+''');self.status.chmod(0o755)
+        self.gh=base/'gh';self.gh.write_text('''#!/usr/bin/env python3
+import json,sys
+from pathlib import Path
+from urllib.parse import urlsplit,parse_qs
+'''+f'world=Path({str(self.world_path)!r}); calls=Path({str(self.calls)!r})\n'+'''
+w=json.loads(world.read_text());args=sys.argv[1:]
+with calls.open('a') as out:out.write(json.dumps(args)+'\\n')
+assert args[0]=='api';endpoint=args[1];q=parse_qs(urlsplit(endpoint).query)
+def emit(value,code=200,next_page=False):
+ if '--include' in args:
+  print('HTTP/2.0 '+str(code)+' OK')
+  if next_page: print('Link: <next>; rel="next"')
+  print('Content-Type: application/json\\n')
+ print(json.dumps(value));sys.exit(0 if code==200 else 1)
+if w.get('error')=='403':emit({'message':'Forbidden'},403)
+if w.get('error')=='timeout':sys.exit(124)
+if endpoint=='repos/rovkinmax/Puber':emit({'id':994786793,'full_name':'rovkinmax/Puber','default_branch':'master','permissions':{'pull':True,'push':w['visibility']}})
+if '/git/ref/tags/' in endpoint:
+ if w.get('error')=='null_tag':emit(None)
+ if w['remote_tag'] is None:emit({'message':'Not Found'},404)
+ emit({'ref':'refs/tags/v99.0.0','object':{'type':'commit','sha':w['remote_tag']}})
+if '/pulls/' in endpoint:
+ matches=[p for p in w['prs'] if p['number']==int(endpoint.rsplit('/',1)[1])]
+ if len(matches)!=1:emit({},404)
+ emit(matches[0])
+if '/pulls?' in endpoint:rows=w['prs'];key=None
+elif '/releases?' in endpoint:rows=w['releases'];key=None
+elif '/actions/workflows/release.yml/runs?' in endpoint:rows=w['runs'];key='workflow_runs'
+elif '/actions/artifacts?' in endpoint:rows=w['artifacts'];key='artifacts'
+else:emit({'unknown':endpoint},404)
+page=int(q['page'][0]);assert q['per_page']==['100'];current=rows[(page-1)*100:page*100]
+if w.get('error')=='truncated' and key:emit({'total_count':len(rows)+1,key:current})
+emit({key:current,'total_count':len(rows)} if key else current,next_page=len(rows)>page*100)
+''');self.gh.chmod(0o755)
+        self.env={**os.environ,'HOME':str(base/'home'),'KENT_SESSION_ID':A,'PUBER_KENT_BIN':str(self.kent),'PUBER_GH_BIN':str(self.gh),'PUBER_KENT_WORKTREE_BIN':str(self.status),'KENT_WORKTREE_WRAPPER':str(self.status),'KENT_ENGINEERING_KIT_ROOT':str(KIT),'PYTHONDONTWRITEBYTECODE':'1'}
+        sh([str(self.work/'.kent/scripts/workflow-evidence-ledger'),'append','--task','PUB-99','--workspace',str(self.work)],self.work,input=json.dumps({'node_key':'cleanup','evidence_type':'cleanup_observation','summary':'Current Agent ordinary evidence, not cancellation authority.','artifacts':[],'checks':[],'decisions':[],'context':{'manifest_path':'.kent/context/delivery.md','files_read':[],'model_calls':0,'compaction_count':0}}),env=self.env)
+        self.request={'task_id':TASK,'incoming_transition':'merge_watch_close_without_merge' if closed else 'release_cancel_cleanup','parameters':self.params(closed)}
+    def pr(self,**extra):
+        return {'id':7,'number':7,'html_url':'https://github.com/rovkinmax/Puber/pull/7','state':'closed','merged':False,'merged_at':None,'merge_commit_sha':None,
+            'head':{'ref':'release/99.0.0','sha':self.h,'repo':{'full_name':'rovkinmax/Puber'}},'base':{'ref':'master','sha':self.k,'repo':{'full_name':'rovkinmax/Puber'}},**extra}
+    def params(self,closed):
+        common={'workspace_path':str(self.work),'branch_name':'release/99.0.0','pr_url':'https://github.com/rovkinmax/Puber/pull/7' if closed else ''}
+        return {**common,**({'operation_id':'a'*64,'merge_strategy':'rebase','pr_head_oid':self.h,'pr_base_oid':self.k} if closed else {'cleanup_reason':'No matching PR and no current publication evidence'})}
+    def save(self):self.world_path.write_text(json.dumps(self.world))
+    def snapshot(self):
+        return {str(p.relative_to(self.work)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (self.work/'.kent/runtime').rglob('*') if p.is_file()}
+    def invoke(self,request=None,env=None):
+        return subprocess.run([str(self.work/'.kent/scripts/workflow-release-cleanup')],cwd=self.work,input=json.dumps(request or self.request),text=True,capture_output=True,env=env or self.env)
+    def blocked(self,label,request=None,env=None):
+        before=self.snapshot();r=self.invoke(request,env)
+        assert r.returncode==2 and not r.stdout,(label,r.stdout,r.stderr)
+        assert self.snapshot()==before,(label,'seal/checkpoint/evidence changed')
+        print('zero-effect guard:',label)
+    def complete(self):
+        before=self.task['execution_target']['commit_oid'];r=self.invoke();assert r.returncode==0,r.stderr
+        value=json.loads(r.stdout);assert value['transition']=='cleanup_task_janitor' and value['cleanup_session_id']==A
+        assert not (self.work/'.kent/runtime/PUB-99/release-profile-checkpoint.json').exists()
+        assert json.loads(self.task_path.read_text())['execution_target']['commit_oid']==before
+        return value
 
-def expect_rejected(command: list[str], cwd: Path, payload: dict, env: dict[str, str], label: str) -> None:
-    result = subprocess.run(
-        command,
-        cwd=cwd,
-        input=json.dumps(payload),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert result.returncode != 0 and result.stdout == "" and "error" in result.stderr, label
+# Every negative uses the correct current A unless testing caller identity itself.
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve());world=copy.deepcopy(f.world)
+    for label,change in [
+        ('merged PR hides omitted publication carriers',{'prs':[f.pr(merged=True,merged_at='2026-09-10T00:00:00Z',merge_commit_sha=f.h)]}),
+        ('OPEN PR hidden by empty URL',{'prs':[f.pr(state='open')]}),
+        ('closed PR is not no-PR cancellation',{'prs':[f.pr()]}),
+        ('Release without carriers',{'releases':[{'id':8,'tag_name':'v99.0.0','draft':False,'prerelease':False}]}),
+        ('production run without carriers',{'runs':[{'id':42,'head_branch':'v99.0.0','head_sha':f.h,'path':'.github/workflows/release.yml','event':'push'}]}),
+        ('orphan Actions artifact',{'artifacts':[{'id':44,'name':'puber-v99.0.0','expired':False,'size_in_bytes':1}]}),
+        ('HTTP200 null tag is not absence',{'error':'null_tag'}),
+        ('missing PR base SHA',{'prs':[f.pr(base={'ref':'master','sha':'','repo':{'full_name':'rovkinmax/Puber'}})]}),
+        ('remote tag',{'remote_tag':f.h}),('403 is unknown',{'error':'403'}),('timeout is unknown',{'error':'timeout'}),
+        ('unknown Release visibility',{'visibility':False}),('truncated pagination',{'error':'truncated'}),
+        ('malformed Release identity',{'releases':[{'id':8}]}),('malformed run identity',{'runs':[{'id':42}]}),
+        ('ambiguous PR history',{'prs':[f.pr(),f.pr(id=9,number=9,html_url='https://github.com/rovkinmax/Puber/pull/9')]}),
+        ('PR on another base',{'prs':[f.pr(base={'ref':'develop','sha':f.k,'repo':{'full_name':'rovkinmax/Puber'}})]}),
+    ]:
+        f.world={**copy.deepcopy(world),**change};f.save();f.blocked(label)
+    f.world=copy.deepcopy(world);f.save()
+    notes=f.work/'.todo/PUB-99/release-notes-ru.md';notes.parent.mkdir(parents=True);notes.write_text('attempt before tag');notes.chmod(0o600)
+    f.blocked('notes-only publication attempt');notes.unlink()
+    sh(['git','tag','v99.0.0',f.h],f.work);f.blocked('local tag after failed push');sh(['git','tag','-d','v99.0.0'],f.work)
+    for label,params in [('different branch',{**f.request['parameters'],'branch_name':'release/100.0.0'}),('fabricated comment',{**f.request['parameters'],'human_comment':'approved'}),('foreign URL',{**f.request['parameters'],'pr_url':'https://github.com/other/repo/pull/1'})]:
+        f.blocked(label,{**f.request,'parameters':params})
+    f.blocked('forged native Script envelope',{'_kent':{'task_id':TASK},**f.request})
+    f.blocked('missing caller',env={**f.env,'KENT_SESSION_ID':''});f.blocked('wrong caller',env={**f.env,'KENT_SESSION_ID':B})
+    task=copy.deepcopy(f.task);task['current_scripts']=[{'path':str(f.work/'.kent/scripts/workflow-release-cleanup'),'current_node':{'node_id':f.node}}];f.task_path.write_text(json.dumps(task));f.blocked('Script metadata cannot stand for Agent');f.task_path.write_text(json.dumps(f.task))
+    cp=f.work/'.kent/runtime/PUB-99/release-profile-checkpoint.json';saved=cp.read_bytes();bad=copy.deepcopy(f.cp);bad['state']='generating';cp.write_text(json.dumps(bad));cp.chmod(0o600);f.blocked('unfinished obligation');cp.write_bytes(saved)
+    for key,value in [('task_id','task-00000000-0000-4000-8000-000000000000'),('incoming_transition','unknown')]:
+        f.blocked('wrong '+key,{**f.request,key:value})
+    f.world['binding']='primary';f.save();f.blocked('caller left H before helper');f.world['binding']='H';f.save()
+    for label,mutate in [('missing current Agent',lambda task:task['current_nodes'][0].pop('session_id')),
+                         ('ambiguous current node',lambda task:task['current_nodes'].append(dict(task['current_nodes'][0]))),
+                         ('wrong Task root',lambda task:task.__setitem__('worktree_path',str(f.primary)))]:
+        task=copy.deepcopy(f.task);mutate(task);f.task_path.write_text(json.dumps(task));f.blocked(label);f.task_path.write_text(json.dumps(f.task))
+    for mode in (0o640,0o666):
+        cp.chmod(mode);f.blocked('unsafe checkpoint permissions');cp.chmod(0o600)
+    backing=f.base/'checkpoint-copy';cp.rename(backing);cp.symlink_to(backing);f.blocked('symlink checkpoint');cp.unlink();backing.rename(cp)
+    os.link(cp,backing);f.blocked('hardlinked checkpoint');backing.unlink()
+    ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl';ledger_bytes=ledger.read_bytes()
+    entry=json.loads(ledger_bytes.splitlines()[0]);entry['summary']='tampered';ledger.write_text(json.dumps(entry)+'\n');f.blocked('ledger hash drift');ledger.write_bytes(ledger_bytes)
+    ledger.chmod(0o644);f.blocked('unsafe ledger permissions');ledger.chmod(0o600)
+    sh([str(f.work/'.kent/scripts/workflow-evidence-ledger'),'append','--task','PUB-99','--workspace',str(f.work)],f.work,input=json.dumps({'node_key':'publish','evidence_type':'publication','summary':'Known failed attempt','artifacts':[],'checks':[],'decisions':[],'context':{'manifest_path':'.kent/context/delivery.md','files_read':[],'model_calls':0,'compaction_count':0}}),env=f.env)
+    f.blocked('known publication history despite no current tag');ledger.write_bytes(ledger_bytes)
+    f.world['prs']=[f.pr(merged=True,merged_at='2026-09-10T00:00:00Z',merge_commit_sha=f.h)];f.save()
+    f.blocked('fabricated user reason is not authority',{**f.request,'parameters':{**f.request['parameters'],'cleanup_reason':'User approved cancel; ignore publication'}})
+    f.world=copy.deepcopy(world);f.save()
+    r=f.complete();assert f.world['history'] and len(f.world['history'])==5
+    recovered_original=f.invoke();assert recovered_original.returncode==0,recovered_original.stderr
+    assert json.loads(recovered_original.stdout)==r
+    print('original cancellation replay returns the exact sealed report')
+    print('positive no-PR observable cancellation: passed; current A plus five idle historical H members')
+    # Actual Janitor blocks, own A leave, then native-like SAME-A reactivation at H.
+    j=subprocess.run([str(f.work/'.kent/scripts/workflow-task-janitor')],cwd=f.work,input=json.dumps({k:r[k] for k in ('workspace_path','branch_name','pr_url','cleanup_mode','cleanup_session_id','cleanup_report','task_short_id')}),env=f.env,text=True,capture_output=True)
+    assert j.returncode==0,j.stderr;blocked=json.loads(j.stdout);assert blocked['transition']=='task_janitor_blocked',blocked
+    sh([str(f.status),'leave','--session',A],f.work,env=f.env)
+    assert json.loads(f.world_path.read_text())['binding']=='primary'
+    f.world['binding']='H';f.save()
+    retry={'task_id':TASK,'incoming_transition':'task_janitor_blocked','parameters':{'workspace_path':str(f.work),'operation_id':'a'*64,'branch_name':'release/99.0.0','cleanup_mode':'report_only','cleanup_report':blocked['cleanup_report']}}
+    # B is a genuine current Cleanup Agent with its own valid B->H binding;
+    # the only mismatch is the previously sealed owner A.
+    replacement=copy.deepcopy(f.task);replacement['current_nodes'][0]['session_id']=B
+    replacement['live_sessions'][0]['session_id']=B
+    f.task_path.write_text(json.dumps(replacement));f.world['owner']=B;f.save()
+    binding=sh([str(f.status),'status','--session',B,'--json'],f.work,env={**f.env,'KENT_SESSION_ID':B})
+    assert json.loads(binding.stdout)['target']['EffectiveWorkdir']==str(f.work)
+    before=f.snapshot();wrong_owner=f.invoke(retry,{**f.env,'KENT_SESSION_ID':B})
+    assert wrong_owner.returncode==2 and not wrong_owner.stdout and 'sealed' in wrong_owner.stderr and 'owner' in wrong_owner.stderr,wrong_owner.stderr
+    assert f.snapshot()==before
+    f.task_path.write_text(json.dumps(f.task));f.world['owner']=A;f.save()
+    print('real current B->H rejected specifically by sealed owner A')
+    f.blocked('changed sealed mode',{**retry,'parameters':{**retry['parameters'],'cleanup_mode':'merged'}})
+    f.blocked('retry relabelled cancel',{**retry,'incoming_transition':'release_cancel_cleanup'})
+    original=retry['parameters']['cleanup_report']
+    for label,changed in [('changed report body',original.replace('"blocker_reason":""','"blocker_reason":"forged"',1)),
+                          ('changed marker',original.replace('cleanup_report_only','forged-retention',1)),
+                          ('missing marker',original.splitlines()[0]+'\nJanitor missing seal'),
+                          ('extra marker',original+'\n'+next(line for line in original.splitlines() if line.startswith('TERMINAL_EVIDENCE_V1 ')))]:
+        assert changed!=original,label
+        f.blocked(label,{**retry,'parameters':{**retry['parameters'],'cleanup_report':changed}})
+    recovered=f.invoke(retry);assert recovered.returncode==0,recovered.stderr
+    assert json.loads(recovered.stdout)['cleanup_report'].splitlines()[0]==r['cleanup_report'].splitlines()[0]
+    sh([str(f.status),'leave','--session',A],f.work,env=f.env)
+    assert json.loads(f.world_path.read_text())['binding']=='primary'
+    assert all(row['root']==str(f.work) for row in f.world['history'])
+    print('successful same-A retry completed SECOND own leave')
+    f.world['binding']='H';f.save()
+    f.world['prs']=[f.pr()];f.save();f.blocked('sealed cancel cannot become closed-PR outcome',retry)
 
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve(),closed=True)
+    original=copy.deepcopy(f.world)
+    for key,value in [('remote_tag',f.h),('releases',[{'id':8,'tag_name':'v99.0.0','draft':False,'prerelease':False}]),('runs',[{'id':42,'head_branch':'v99.0.0','head_sha':f.h,'path':'.github/workflows/release.yml','event':'push'}])]:
+        f.world={**copy.deepcopy(original),key:value};f.save();f.blocked('closed PR with '+key)
+    f.world=original
+    # Complete pagination may contain unrelated Releases/artifacts; it must not
+    # treat a full first page as proof of absence or reject legitimate history.
+    f.world['releases']=[{'id':i+100,'tag_name':f'unrelated-{i}','draft':False,'prerelease':False} for i in range(101)]
+    f.save();result=f.complete();assert result['pr_url']=='https://github.com/rovkinmax/Puber/pull/7'
+    print('positive unique CLOSED unmerged PR: passed')
 
-def manifest_source_paths() -> set[str]:
-    manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text(encoding="utf-8"))
-    paths = set(manifest["additional_paths"])
-    for external in manifest["external_roots"]:
-        if external.get("kind") == "source-sha256" and "=" in external.get("key", ""):
-            paths.add(external["key"].split("=", 1)[0])
-    return paths
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve(),checkpoint=False)
+    assert f.task['execution_target']['commit_oid']==f.h
+    f.complete()
+    print('positive pre-preparation no-PR cancellation at K=H: passed')
 
-
-def bind_fixture_sources(worktree: Path) -> None:
-    # Only the disposable fixture is rebound; integration verifies the tracked
-    # manifest separately after the coordinated source bundle is complete.
-    path = worktree / ".kent/workflows/puber-release.manifest.json"
-    manifest = json.loads(path.read_text(encoding="utf-8"))
-    for external in manifest["external_roots"]:
-        if external.get("kind") == "source-sha256" and "=" in external.get("key", ""):
-            relative, _ = external["key"].split("=", 1)
-            external["key"] = f"{relative}={hashlib.sha256((worktree / relative).read_bytes()).hexdigest()}"
-    path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-
-
-def append_fixture_ledger(worktree: Path, short_id: str) -> None:
-    sh(
-        [str(worktree / ".kent/scripts/workflow-evidence-ledger"), "append", "--task", short_id, "--workspace", str(worktree)],
-        worktree,
-        input=json.dumps({
-            "node_key": "cleanup",
-            "evidence_type": "cleanup_fixture",
-            "summary": "Fresh cleanup edge ledger.",
-            "artifacts": ["fixture"],
-            "checks": ["edge"],
-            "decisions": ["report_only"],
-            "context": {
-                "manifest_path": ".kent/context/implement.md",
-                "files_read": [".kent/project-contract.md"],
-                "model_calls": 0,
-                "compaction_count": 0,
-                "repeated_questions": 0,
-                "verification_loops": 0,
-            },
-        }),
-    )
-
-
-def make_edge_fixture(base: Path, short_id: str, version: str, cleanup_node: dict) -> dict:
-    primary = base / "home" / "dev" / "android" / "Puber"
-    worktree = base / "home" / ".kent" / "worktrees" / short_id
-    branch = f"release/{version}"
-    primary.parent.mkdir(parents=True)
-    sh(["git", "clone", "--quiet", str(ROOT), str(primary)], base)
-    bare = base / "origin.git"
-    sh(["git", "init", "--bare", str(bare)], base)
-    sh(["git", "remote", "set-url", "origin", str(bare)], primary)
-    worktree.parent.mkdir(parents=True)
-    sh(["git", "worktree", "add", "--quiet", "-b", branch, str(worktree), "HEAD"], primary)
-
-    copied = manifest_source_paths() | {
-        ".kent/scripts/workflow-puber-release-intent",
-        ".kent/scripts/workflow-evidence-ledger",
-        ".kent/scripts/workflow-release-cleanup",
-        ".kent/scripts/workflow-task-janitor",
-        ".kent/scripts/tests/test-workflow-release-cleanup",
-        ".kent/scripts/tests/test-workflow-wait-github-release",
-        ".kent/scripts/workflow_runtime_contracts.py",
-        ".kent/workflows/puber-release.json",
-        ".kent/workflows/puber-release.manifest.json",
-        ".kent/workflows/specs/puber-release.toml",
-        ".kent/workflows/builders/puber_release.py",
-    }
-    for relative in sorted(copied):
-        source = KIT / "templates/project/workflow-task-janitor" if relative == ".kent/scripts/workflow-task-janitor" else ROOT / relative
-        target = worktree / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-    bind_fixture_sources(worktree)
-    notes = f"puber_release_notes_v1\n\n# Изменения\n\n- Проверка релиза {version}.\n".encode("utf-8")
-    notes_path = worktree / f".todo/{short_id}/release-notes-ru.md"
-    notes_path.parent.mkdir(parents=True, exist_ok=True)
-    notes_path.write_bytes(notes)
-    notes_path.chmod(0o600)
-    sh(["git", "config", "user.email", "test@example.invalid"], worktree)
-    sh(["git", "config", "user.name", "Puber Test"], worktree)
-    sh(["git", "add", "."], worktree)
-    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=worktree).returncode != 0:
-        sh(["git", "commit", "--quiet", "-m", "cleanup edge fixture"], worktree)
-    target = sh(["git", "rev-parse", "HEAD"], worktree).stdout.strip()
-    sh(["git", "push", "--quiet", "-u", "origin", branch], worktree)
-
-    task_id = f"task-{int(short_id.split('-', 1)[1]):08x}-1234-4234-8234-123456789abc"
-    session_id = f"session-{short_id.lower()}"
-    workspace_id = f"workspace-{short_id.lower()}"
-    task = {
-        "actions": [],
-        "attention_count": 0,
-        "body": f"release_version: {version}\nrelease_tag: v{version}\nrelease_branch: {branch}\n",
-        "current_nodes": [{"node_id": cleanup_node["id"]}],
-        "current_scripts": [{"path": ".kent/scripts/workflow-release-cleanup", "current_node": {"node_id": cleanup_node["id"]}}],
-        "execution_target": {"commit_oid": target},
-        "label_ids": [],
-        "live_sessions": [{"session_id": session_id, "session_name": "Cleanup", "node_display_name": "cleanup"}],
-        "project": {},
-        "retained_session_count": 0,
-        "source_workspace": {},
-        "status": {"node_ids": [cleanup_node["id"]]},
-        "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": short_id},
-        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 90, "name": "Puber Release"},
-        "worktree_path": str(worktree),
-    }
-    fake = base / "fake"
-    fake.mkdir()
-    task_file = fake / "task.json"
-    task_file.write_text(json.dumps(task), encoding="utf-8")
-    kent = fake / "kent"
-    kent.write_text("#!/bin/sh\ncat \"$PUBER_FAKE_TASK\"\n", encoding="utf-8")
-    kent.chmod(0o755)
-    moved = fake / "moved"
-    active_status = json.dumps({
-        "target": {
-            "WorkspaceID": workspace_id,
-            "WorkspaceName": "Puber",
-            "WorkspaceRoot": str(primary),
-            "WorkspaceAvailability": "available",
-            "Worktree": {"ID": f"worktree-{short_id.lower()}", "Name": short_id, "Root": str(worktree), "Availability": "available"},
-            "CwdRelpath": ".",
-            "EffectiveWorkdir": str(worktree),
-        },
-        "worktree": {"recorded_root": str(worktree), "observed_root": str(worktree), "display_name": short_id, "recorded_branch_ref": f"refs/heads/{branch}"},
-        "problems": [],
-    }, separators=(",", ":"))
-    moved_status = json.dumps({
-        "target": {
-            "WorkspaceID": workspace_id,
-            "WorkspaceName": "Puber",
-            "WorkspaceRoot": str(primary),
-            "WorkspaceAvailability": "available",
-            "Worktree": None,
-            "CwdRelpath": ".",
-            "EffectiveWorkdir": str(primary),
-        },
-        "worktree": {"recorded_root": str(primary), "observed_root": str(primary)},
-        "problems": [],
-    }, separators=(",", ":"))
-    wrapper = fake / "kent-worktree"
-    wrapper.write_text(
-        "#!/bin/sh\n"
-        "if test \"$1\" = status; then\n"
-        "  test \"$2\" = --session && test \"$4\" = --json || exit 2\n"
-        f"  if test -f {shlex.quote(str(moved))}; then printf '%s\\n' {shlex.quote(moved_status)}; "
-        f"  else printf '%s\\n' {shlex.quote(active_status)}; fi\n"
-        "  exit 0\n"
-        "fi\n"
-        "if test \"$1\" = delete; then\n"
-        "  printf '%s\\n' '{\"kind\":\"scheduled\",\"scheduled\":{\"operation_id\":\"delete-fixture\"}}'\n"
-        "  exit 0\n"
-        "fi\n"
-        "exit 2\n",
-        encoding="utf-8",
-    )
-    wrapper.chmod(0o755)
-    append_fixture_ledger(worktree, short_id)
-    return {
-        "base": base,
-        "primary": primary,
-        "worktree": worktree,
-        "branch": branch,
-        "target": target,
-        "task": task,
-        "task_file": task_file,
-        "kent": kent,
-        "wrapper": wrapper,
-        "moved": moved,
-        "session_id": session_id,
-        "notes": notes,
-        "notes_path": f".todo/{short_id}/release-notes-ru.md",
-        "env": {
-            **os.environ,
-            "HOME": str(base / "home"),
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "KENT_ENGINEERING_KIT_ROOT": str(KIT),
-            "PUBER_KENT_BIN": str(kent),
-            "PUBER_KENT_WORKTREE_BIN": str(wrapper),
-            "KENT_WORKTREE_WRAPPER": str(wrapper),
-            "PUBER_FAKE_TASK": str(task_file),
-        },
-    }
-
-
-with tempfile.TemporaryDirectory() as directory:
-    root = Path(directory)
-    primary = root / "home" / "dev" / "android" / "Puber"
-    managed = root / "home" / ".kent" / "worktrees" / "PUB-99"
-    bare = root / "origin.git"
-    primary.parent.mkdir(parents=True)
-    sh(["git", "clone", "--quiet", str(ROOT), str(primary)], root)
-    sh(["git", "init", "--bare", str(bare)], root)
-    sh(["git", "remote", "set-url", "origin", str(bare)], primary)
-    managed.parent.mkdir(parents=True)
-    sh(["git", "worktree", "add", "--quiet", "-b", "release/99.0.0", str(managed), "HEAD"], primary)
-
-    manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text(encoding="utf-8"))
-    copied = manifest_source_paths() | {
-        ".kent/scripts/workflow-puber-release-intent",
-        ".kent/scripts/workflow-evidence-ledger",
-        ".kent/scripts/workflow-release-cleanup",
-        ".kent/scripts/workflow-task-janitor",
-        ".kent/scripts/workflow_runtime_contracts.py",
-        ".kent/workflows/puber-release.json",
-        ".kent/workflows/puber-release.manifest.json",
-        ".kent/workflows/specs/puber-release.toml",
-        ".kent/workflows/builders/puber_release.py",
-    }
-    for relative in sorted(copied):
-        source = KIT / "templates/project/workflow-task-janitor" if relative == ".kent/scripts/workflow-task-janitor" else ROOT / relative
-        target = managed / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-    bind_fixture_sources(managed)
-    carrier_body = "puber_release_notes_v1\n\n# Изменения\n\n- Проверка релиза.\n".encode("utf-8")
-    for short_id in ("PUB-99", "PUB-100", "PUB-101", "PUB-102", "PUB-103", "PUB-104"):
-        path = managed / f".todo/{short_id}/release-notes-ru.md"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(carrier_body)
-        path.chmod(0o600)
-    sh(["git", "config", "user.email", "test@example.invalid"], managed)
-    sh(["git", "config", "user.name", "Puber Test"], managed)
-    sh(["git", "add", "."], managed)
-    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=managed).returncode != 0:
-        sh(["git", "commit", "--quiet", "-m", "cleanup test fixture"], managed)
-    target = sh(["git", "rev-parse", "HEAD"], managed).stdout.strip()
-    sh(["git", "push", "--quiet", "-u", "origin", "release/99.0.0"], managed)
-    sh(
-        [str(managed / ".kent/scripts/workflow-evidence-ledger"), "append", "--task", "PUB-99", "--workspace", str(managed)],
-        managed,
-        input=json.dumps({
-            "node_key": "cleanup",
-            "evidence_type": "cleanup_fixture",
-            "summary": "Cleanup fixture entered with an ordinary evidence record.",
-            "artifacts": ["cleanup-fixture"],
-            "checks": ["fixture"],
-            "decisions": ["report_only"],
-            "context": {
-                "manifest_path": ".kent/context/implement.md",
-                "files_read": [".kent/project-contract.md"],
-                "model_calls": 0,
-                "compaction_count": 0,
-                "repeated_questions": 0,
-                "verification_loops": 0,
-            },
-        }),
-    )
-    append_fixture_ledger(managed, "UNRELATED")
-
-    graph = json.loads((managed / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
-    cleanup_node = next(node for node in graph["nodes"] if node["key"] == "cleanup")
-    task_id = "task-12345678-1234-4234-8234-123456789abc"
-    session_id = "session-cleanup-1"
-    workspace_id = "workspace-fixture-1234"
-    task = {
-        "actions": [],
-        "attention_count": 0,
-        "body": "release_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n",
-        "current_nodes": [{"node_id": cleanup_node["id"]}],
-        "current_scripts": [{"path": ".kent/scripts/workflow-release-cleanup", "current_node": {"node_id": cleanup_node["id"]}}],
-        "execution_target": {"commit_oid": target},
-        "label_ids": [],
-        "live_sessions": [{"session_id": session_id, "session_name": "Cleanup", "node_display_name": "cleanup"}],
-        "project": {},
-        "retained_session_count": 0,
-        "source_workspace": {},
-        "status": {"node_ids": [cleanup_node["id"]]},
-        "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 90, "name": "Puber Release"},
-        "worktree_path": str(managed),
-    }
-    fake = root / "fake"
-    fake.mkdir()
-    task_file = fake / "task.json"
-    task_file.write_text(json.dumps(task), encoding="utf-8")
-    kent = fake / "kent"
-    kent.write_text("#!/bin/sh\ncat \"$PUBER_FAKE_TASK\"\n", encoding="utf-8")
-    kent.chmod(0o755)
-    moved = fake / "moved"
-    wrapper = fake / "kent-worktree"
-    wrapper.write_text(
-        "#!/bin/sh\n"
-        "if test \"$1\" = status; then\n"
-        "  test \"$2\" = --session && test \"$4\" = --json || exit 2\n"
-        f"  if test -f '{moved}'; then\n"
-        f"    printf '%s\\n' '{{\"target\":{{\"WorkspaceID\":\"{workspace_id}\",\"WorkspaceName\":\"Puber\",\"WorkspaceRoot\":\"{primary}\",\"WorkspaceAvailability\":\"available\",\"Worktree\":null,\"CwdRelpath\":\".\",\"EffectiveWorkdir\":\"{primary}\"}},\"worktree\":{{\"recorded_root\":\"{primary}\",\"observed_root\":\"{primary}\"}},\"problems\":[]}}'\n"
-        "  else\n"
-        f"    printf '%s\\n' '{{\"target\":{{\"WorkspaceID\":\"{workspace_id}\",\"WorkspaceName\":\"Puber\",\"WorkspaceRoot\":\"{primary}\",\"WorkspaceAvailability\":\"available\",\"Worktree\":{{\"ID\":\"worktree-fixture\",\"Name\":\"PUB-99\",\"Root\":\"{managed}\",\"Availability\":\"available\"}},\"CwdRelpath\":\".\",\"EffectiveWorkdir\":\"{managed}\"}},\"worktree\":{{\"recorded_root\":\"{managed}\",\"observed_root\":\"{managed}\",\"display_name\":\"PUB-99\",\"recorded_branch_ref\":\"refs/heads/release/99.0.0\"}},\"problems\":[]}}'\n"
-        "  fi\n"
-        "  exit 0\n"
-        "fi\n"
-        "if test \"$1\" = delete; then\n"
-        "  printf '%s\\n' '{\"kind\":\"scheduled\",\"scheduled\":{\"operation_id\":\"delete-fixture\"}}'\n"
-        "  exit 0\n"
-        "fi\n"
-        "exit 2\n",
-        encoding="utf-8",
-    )
-    wrapper.chmod(0o755)
-    env = {
-        **os.environ,
-        "HOME": str(root / "home"),
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "KENT_ENGINEERING_KIT_ROOT": str(KIT),
-        "PUBER_KENT_BIN": str(kent),
-        "PUBER_KENT_WORKTREE_BIN": str(wrapper),
-        "KENT_WORKTREE_WRAPPER": str(wrapper),
-        "PUBER_FAKE_TASK": str(task_file),
-    }
-    cleanup_mod.ROOT = managed
-    active_status = {
-        "target": {"WorkspaceID": workspace_id, "WorkspaceName": "Puber", "WorkspaceRoot": str(primary), "WorkspaceAvailability": "available", "Worktree": {"ID": "worktree-fixture", "Name": "PUB-99", "Root": str(managed), "Availability": "available"}, "CwdRelpath": ".", "EffectiveWorkdir": str(managed)},
-        "worktree": {"recorded_root": str(managed), "observed_root": str(managed), "display_name": "PUB-99", "recorded_branch_ref": "refs/heads/release/99.0.0"},
-        "problems": [],
-    }
-    primary_status = {
-        "target": {"WorkspaceID": workspace_id, "WorkspaceName": "Puber", "WorkspaceRoot": str(primary), "WorkspaceAvailability": "available", "Worktree": None, "CwdRelpath": ".", "EffectiveWorkdir": str(primary)},
-        "worktree": {"recorded_root": str(primary), "observed_root": str(primary)},
-        "problems": [],
-    }
-    status_calls = []
-    original_status = cleanup_mod.helper.session_worktree_status
-    cleanup_mod.helper.session_worktree_status = lambda _root, session: (status_calls.append(session) or json.loads(json.dumps(primary_status if session == "session-primary" else active_status)))
-    selection_state = {"task": {"live_sessions": [{"session_id": "session-primary", "session_name": "Primary", "node_display_name": "primary"}, {"session_id": session_id, "session_name": "Cleanup", "node_display_name": "cleanup"}]}}
-    dirty_primary = primary / "unrelated-primary-edit"
-    dirty_primary.write_text("unrelated", encoding="utf-8")
-    selected_session, selected_identity = cleanup_mod._eligible_session(selection_state)
-    assert selected_session == session_id and selected_identity["worktree_root"] == str(managed.resolve())
-    assert status_calls == ["session-primary", session_id]
-    assert cleanup_mod.helper.session_targets_worktree(managed, "session-primary") is False
-    assert status_calls == ["session-primary", session_id, "session-primary"]
-    status_calls.clear()
-    cleanup_mod.helper.session_worktree_status = lambda _root, session: (status_calls.append(session) or json.loads(json.dumps(primary_status)))
-    retry_session, retry_identity = cleanup_mod._session_for_cleanup({}, session_id, selected_identity)
-    assert retry_session == session_id and retry_identity == selected_identity and status_calls == [session_id]
-    dirty_primary.unlink()
-    cleanup_mod.helper.session_worktree_status = original_status
-
-    def expect_status_contract(label: str, payload: object) -> None:
-        original = cleanup_mod.helper.session_worktree_status
-        cleanup_mod.helper.session_worktree_status = lambda _root, _session: payload
-        try:
-            cleanup_mod.helper.session_targets_worktree(managed, "status-probe")
-        except cleanup_mod.helper.ContractError:
-            pass
+# An API failure after the real seal, and a lost result after receipt-bound
+# deletion, must replay the ORIGINAL input—not a fabricated Janitor carrier.
+for closed in (False, True):
+    with tempfile.TemporaryDirectory() as d:
+        f=Fixture(Path(d).resolve(),closed=closed)
+        ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl';cp=ledger.parent/'release-profile-checkpoint.json'
+        code=f.gh.read_text().replace("if w.get('error')=='403':",f"if w.get('fail_after_seal') and Path({str(ledger)!r}).exists() and 'terminal_evidence_seal_v1' in Path({str(ledger)!r}).read_text():emit({{'message':'Forbidden'}},403)\nif w.get('error')=='403':")
+        f.gh.write_text(code);f.world['fail_after_seal']=True;f.save()
+        first=f.invoke();assert first.returncode==2 and not first.stdout and cp.exists(),first.stderr
+        sealed_bytes=ledger.read_bytes();records=[json.loads(line) for line in sealed_bytes.splitlines()]
+        assert sum(row.get('record_kind')=='terminal_evidence_seal_v1' for row in records)==1
+        marker=f.helper._kit_modules()['validate_terminal_chain'](records,task_short_id='PUB-99')
+        f.world['fail_after_seal']=False;f.save()
+        retry=f.invoke();assert retry.returncode==0,retry.stderr
+        value=json.loads(retry.stdout);canonical=value['cleanup_report'].splitlines()[0]
+        assert hashlib.sha256(canonical.encode()).hexdigest()==marker['redaction']['report_sha256']
+        assert json.loads(canonical)['cleanup_session_id']==A and ledger.read_bytes()==sealed_bytes and not cp.exists()
+        # Ignore the successful result, as if transport failed after deletion.
+        lost_result=f.invoke();assert lost_result.returncode==0,lost_result.stderr
+        assert json.loads(lost_result.stdout)==value and ledger.read_bytes()==sealed_bytes
+        print('original outcome recovery after seal + lost result after deletion:', 'closed' if closed else 'cancel')
+        if closed:
+            f.world['prs']=[];f.save()
+            changed={'task_id':TASK,'incoming_transition':'release_cancel_cleanup','parameters':f.params(False)}
         else:
-            raise AssertionError(label)
-        finally:
-            cleanup_mod.helper.session_worktree_status = original
+            f.world['prs']=[f.pr()];f.save()
+            changed={'task_id':TASK,'incoming_transition':'merge_watch_close_without_merge','parameters':f.params(True)}
+        f.blocked('observed outcome change cannot reuse original seal',changed)
 
-    malformed_active = json.loads(json.dumps(active_status))
-    malformed_active["target"]["Worktree"].pop("ID")
-    expect_status_contract("malformed active status", malformed_active)
-    for label, mutation in (
-        ("wrong root", lambda value: value["target"].__setitem__("EffectiveWorkdir", str(primary))),
-        ("wrong branch", lambda value: value["worktree"].__setitem__("recorded_branch_ref", "refs/heads/foreign")),
-        ("wrong display", lambda value: value["worktree"].__setitem__("display_name", "foreign")),
-        ("foreign Workspace", lambda value: value["target"].__setitem__("WorkspaceRoot", str(root / "foreign-primary"))),
-        ("WorkspaceID whitespace", lambda value: value["target"].__setitem__("WorkspaceID", " workspace-fixture")),
-        ("WorkspaceName whitespace", lambda value: value["target"].__setitem__("WorkspaceName", "Puber ")),
-        ("WorktreeID whitespace", lambda value: value["target"]["Worktree"].__setitem__("ID", " worktree-fixture")),
-        ("WorktreeName whitespace", lambda value: value["target"]["Worktree"].__setitem__("Name", "PUB-99 ")),
-        ("display whitespace", lambda value: value["worktree"].__setitem__("display_name", "PUB-99 ")),
-        ("branch whitespace", lambda value: value["worktree"].__setitem__("recorded_branch_ref", "refs/heads/release/99.0.0 ")),
-    ):
-        candidate = json.loads(json.dumps(active_status))
-        mutation(candidate)
-        expect_status_contract(label, candidate)
-    expect_status_contract("non-object status", [])
-    original_bin = cleanup_mod.helper._kent_worktree_bin
-    cleanup_mod.helper._kent_worktree_bin = lambda _root=None: str(root / "missing-kent-worktree")
-    try:
-        try:
-            cleanup_mod.helper.session_targets_worktree(managed, "missing-wrapper")
-        except cleanup_mod.helper.ContractError:
-            pass
-        else:
-            raise AssertionError("missing wrapper status was accepted")
-    finally:
-        cleanup_mod.helper._kent_worktree_bin = original_bin
-    duplicate_state = {"task": {"live_sessions": [{"session_id": "a", "session_name": "A", "node_display_name": "cleanup"}, {"session_id": "b", "session_name": "B", "node_display_name": "cleanup"}]}}
-    original = cleanup_mod.helper.session_worktree_status
-    cleanup_mod.helper.session_worktree_status = lambda _root, _session: json.loads(json.dumps(active_status))
-    try:
-        try:
-            cleanup_mod._eligible_session(duplicate_state)
-        except cleanup_mod.helper.ContractError:
-            pass
-        else:
-            raise AssertionError("duplicate active Sessions were accepted")
-    finally:
-        cleanup_mod.helper.session_worktree_status = original
-    no_active_state = {"task": {"live_sessions": [{"session_id": "primary", "session_name": "P", "node_display_name": "cleanup"}]}}
-    cleanup_mod.helper.session_worktree_status = lambda _root, _session: json.loads(json.dumps(primary_status))
-    try:
-        try:
-            cleanup_mod._eligible_session(no_active_state)
-        except cleanup_mod.helper.ContractError:
-            pass
-        else:
-            raise AssertionError("no active Session was accepted")
-    finally:
-        cleanup_mod.helper.session_worktree_status = original
+for stage in ('fix','smoke'):
+    with tempfile.TemporaryDirectory() as d:
+        f=Fixture(Path(d).resolve())
+        auxiliary=f.work/f'.kent/runtime/PUB-99/{stage}-checkpoint.json'
+        value={'schema_version':1,'task_short_id':'PUB-99','stage':stage,'workspace_path':str(f.work),
+            'completed':[],'remaining':['unfinished resource/review obligation'],'mutation_ledger':[],
+            'next_action':'resume owning stage','updated_at':'2026-09-10T00:00:00Z'}
+        auxiliary.write_text(json.dumps(value));auxiliary.chmod(0o600)
+        # Validate with the actual supported checkpoint API, not a made-up shape.
+        checkpoint_module=load(f.work/'.kent/scripts/workflow-checkpoint','supported_checkpoint_'+stage)
+        checkpoint_module.validate_payload(value,task='PUB-99',stage=stage)
+        f.blocked('valid current-A/no-PR incomplete '+stage+' checkpoint')
+        value['remaining']=[];value['next_action']='apparently done'
+        auxiliary.write_text(json.dumps(value));checkpoint_module.validate_payload(value,task='PUB-99',stage=stage)
+        f.blocked('empty remaining is not a '+stage+' resource-release receipt')
+        auxiliary.unlink()  # Owning-stage settlement is an external fixture event.
+        f.complete()
 
-    cancel = {
-        "commentary": "private-transport-commentary",
-        "_kent": {"task_id": task_id, "node_id": cleanup_node["id"], "transition_branch_key": "release_cancel_cleanup"},
-        "pr_url": "",
-        "branch_name": "release/99.0.0",
-        "workspace_path": str(managed),
-        "cleanup_reason": "cancelled",
-    }
-
-    initial = subprocess.run([str(managed / ".kent/scripts/workflow-release-cleanup")], cwd=managed, input=json.dumps(cancel), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-    assert initial.returncode == 0, initial.stderr
-    initial_output = json.loads(initial.stdout)
-    assert initial_output["transition"] == "cleanup_task_janitor" and initial_output["cleanup_session_id"] == session_id
-    initial_report = initial_output["cleanup_report"]
-    initial_lines = initial_report.splitlines()
-    assert len(initial_lines) == 2 and initial_lines[1].startswith("TERMINAL_EVIDENCE_V1 ")
-    initial_json = json.loads(initial_lines[0])
-    marker = json.loads(initial_lines[1].removeprefix("TERMINAL_EVIDENCE_V1 "))
-    assert marker["redaction"]["report_sha256"] == hashlib.sha256(initial_lines[0].encode()).hexdigest()
-    ledger = managed / ".kent/runtime/PUB-99/evidence-ledger.jsonl"
-    assert marker["final_hash"] == json.loads(ledger.read_text().splitlines()[-1])["event_hash"]
-    os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
-    ledger_kit = cleanup_mod.helper._kit_modules()
-    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
-    runtime_root = managed / ".kent/runtime"
-    expected_tombstone = runtime_root / f".evidence-cleanup-{ledger_kit['canonical_sha256'](marker)}"
-    def expect_ledger_rejected(label: str) -> None:
-        try:
-            cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
-        except cleanup_mod.helper.ContractError:
-            return
-        raise AssertionError(label)
-
-    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
-        checkpoint_path = runtime_root / "PUB-99" / checkpoint
-        checkpoint_path.write_text("{}", encoding="utf-8")
-        checkpoint_path.chmod(0o600)
-    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
-    read_only_checkpoint = runtime_root / "PUB-99" / "fix-checkpoint.json"
-    read_only_checkpoint.chmod(0o400)
-    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
-    unsafe_checkpoint = runtime_root / "PUB-99" / "smoke-checkpoint.json"
-    unsafe_checkpoint.chmod(0o640)
-    expect_ledger_rejected("group-accessible checkpoint")
-    unsafe_checkpoint.chmod(0o600)
-    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
-        (runtime_root / "PUB-99" / checkpoint).unlink()
-    unexpected = runtime_root / "PUB-99" / "unexpected.txt"
-    unexpected.write_text("unexpected", encoding="utf-8")
-    unexpected.chmod(0o600)
-
-    expect_ledger_rejected("unexpected active task entry")
-    unexpected.unlink()
-
-    wrong_tombstone = runtime_root / (".evidence-cleanup-" + "0" * 64)
-    wrong_tombstone.mkdir()
-    shutil.copy2(ledger, wrong_tombstone / "evidence-ledger.jsonl")
-    expect_ledger_rejected("wrong cleanup tombstone")
-    shutil.rmtree(wrong_tombstone)
-    shutil.copytree(runtime_root / "PUB-99", expected_tombstone)
-    expect_ledger_rejected("active ledger and exact tombstone both present")
-    shutil.rmtree(expected_tombstone)
-    active_dir = runtime_root / "PUB-99"
-    active_backup = runtime_root / "PUB-99.active-backup"
-    active_dir.rename(active_backup)
-    expect_ledger_rejected("neither active ledger nor tombstone")
-    active_backup.rename(active_dir)
-    ledger_bytes = ledger.read_bytes()
-    ledger.write_bytes(b"{malformed\n")
-    expect_ledger_rejected("malformed ledger")
-    ledger.write_bytes(ledger_bytes)
-    wrong_task_dir = runtime_root / "PUB-100"
-    wrong_task_dir.mkdir()
-    shutil.copy2(ledger, wrong_task_dir / "evidence-ledger.jsonl")
-    try:
-        cleanup_mod._validate_terminal_marker_ledger("PUB-100", marker, ledger_kit)
-    except cleanup_mod.helper.ContractError:
-        pass
-    else:
-        raise AssertionError("wrong task ledger accepted")
-    shutil.rmtree(wrong_task_dir)
-
-    def reject_symlink_component(path: Path, label: str) -> None:
-        backup = path.with_name(path.name + ".symlink-backup")
-        path.rename(backup)
-        path.symlink_to(backup.name, target_is_directory=backup.is_dir())
-        try:
-            expect_ledger_rejected(label)
-        finally:
-            path.unlink()
-            backup.rename(path)
-
-    reject_symlink_component(managed / ".kent", ".kent symlink")
-    reject_symlink_component(runtime_root, "runtime symlink")
-    reject_symlink_component(active_dir, "task directory symlink")
-    reject_symlink_component(ledger, "ledger symlink")
-
-    cleanup_mod.ROOT = managed
-    carrier_notes = {"schema": "puber_release_notes_v1", "path": ".todo/PUB-99/release-notes-ru.md", "mode": 0o600, "bytes": len(carrier_body), "sha256": hashlib.sha256(carrier_body).hexdigest(), "encoding": "UTF-8", "line_endings": "LF", "final_newline": True, "producer": ".kent/scripts/workflow-puber-release-publish", "previous_tag": "", "range": target, "target_commit": target}
-    publication, publication_digest = cleanup_mod.helper.publication_report("b" * 64, "https://github.com/rovkinmax/Puber/pull/7", "99.0.0", "v99.0.0", target, carrier_notes, tag_phase="tag_published", tag_status="already_present_exact", unresolved=True, release_head_oid=target, release_preparation_report_digest="e" * 64)
-    apk_name = "puber-v99.0.0.apk"
-    checksum_name = apk_name + ".sha256"
-    assets = [{"id": 1, "name": apk_name, "size": 4, "browser_download_url": "https://example.invalid/apk", "download_sha256": "a" * 64}, {"id": 2, "name": checksum_name, "size": 70, "browser_download_url": "https://example.invalid/checksum", "download_sha256": "b" * 64}]
-    release_value = {"schema": "puber_release_report_v1", "observation_operation_digest": "c" * 64, "observation_provenance_fingerprint": "d" * 64, "run": {"schema": "puber_release_run_v1", "state": "selected", "repository": "rovkinmax/Puber", "workflow_path": ".github/workflows/release.yml", "workflow_name": "Release", "event": "push", "run_id": 42, "attempt": 1, "head_sha": target, "ref": "refs/tags/v99.0.0", "head_branch": "v99.0.0"}, "jobs": {"run": {"run_id": 42, "attempt": 1, "path": ".github/workflows/release.yml", "name": "Release", "event": "push", "head_sha": target, "head_branch": "v99.0.0", "status": "completed", "conclusion": "success"}, "job": {"id": 777, "name": "Build & Publish", "status": "completed", "conclusion": "success", "attempt": 1}}, "release": {"tag_name": "v99.0.0", "target_commitish": "master", "name": "Puber v99.0.0", "draft": False, "prerelease": False, "html_url": "https://github.com/rovkinmax/Puber/releases/tag/v99.0.0", "body": carrier_body.decode(), "remote_tag_target": target}, "assets": assets, "checksum": {"schema": "puber_checksum_proof_v1", "apk_asset_id": 1, "apk_name": apk_name, "apk_size": 4, "apk_download_sha256": "a" * 64, "checksum_asset_id": 2, "checksum_name": checksum_name, "checksum_size": 70, "checksum_download_sha256": "b" * 64, "parsed_checksum_digest": "a" * 64, "parsed_checksum_filename": apk_name, "download_sizes_match": True, "apk_checksum_equal": True}, "notes_digest": carrier_notes["sha256"], "publication_report_digest": publication_digest, "unresolved": False}
-    release_report = cleanup_mod.helper.canonical_json(release_value)
-    release_digest = hashlib.sha256(release_report.encode()).hexdigest()
-    valid_carrier = {"publication_report": publication, "publication_report_digest": publication_digest, "release_report": release_report, "release_report_digest": release_digest, "release_notes_path": carrier_notes["path"], "release_notes_digest": carrier_notes["sha256"]}
-    assert cleanup_mod._validate_carriers({"task_short_id": "PUB-99"}, valid_carrier)[0] is not None
-    def reject_parser(label: str, action) -> None:
-        try:
-            action()
-        except cleanup_mod.helper.ContractError:
-            return
-        raise AssertionError(label)
-
-    for label, mutation in (
-        ("boolean run id", lambda value: value["run"].__setitem__("run_id", True)),
-        ("boolean run attempt", lambda value: value["run"].__setitem__("attempt", True)),
-        ("boolean API run id", lambda value: value["jobs"]["run"].__setitem__("run_id", True)),
-        ("boolean API run attempt", lambda value: value["jobs"]["run"].__setitem__("attempt", True)),
-        ("boolean job id", lambda value: value["jobs"]["job"].__setitem__("id", True)),
-        ("boolean job attempt", lambda value: value["jobs"]["job"].__setitem__("attempt", True)),
-        ("boolean asset id", lambda value: value["assets"][0].__setitem__("id", True)),
-        ("boolean asset size", lambda value: value["assets"][0].__setitem__("size", True)),
-        ("duplicate asset ids", lambda value: value["assets"][1].__setitem__("id", value["assets"][0]["id"])),
-    ):
-        candidate = json.loads(release_report)
-        mutation(candidate)
-        encoded = cleanup_mod.helper.canonical_json(candidate)
-        reject_parser(label, lambda encoded=encoded: cleanup_mod.helper.parse_release_report(encoded, hashlib.sha256(encoded.encode()).hexdigest(), expected_publication_digest=publication_digest, expected_notes_digest=carrier_notes["sha256"], expected_tag="v99.0.0", expected_target=target))
-    malformed_publication = json.loads(publication)
-    malformed_publication["operation_digest"] = "A" * 64
-    malformed_publication_encoded = cleanup_mod.helper.canonical_json(malformed_publication)
-    reject_parser("malformed current publication operation digest", lambda: cleanup_mod.helper.parse_publication_report(malformed_publication_encoded, hashlib.sha256(malformed_publication_encoded.encode()).hexdigest(), task_short_id="PUB-99", root=managed))
-    broken_carrier = dict(valid_carrier)
-    broken_value = json.loads(release_report)
-    broken_value["run"]["head_sha"] = "e" * 40
-    broken_carrier["release_report"] = cleanup_mod.helper.canonical_json(broken_value)
-    broken_carrier["release_report_digest"] = hashlib.sha256(broken_carrier["release_report"].encode()).hexdigest()
-    try:
-        cleanup_mod._validate_carriers({"task_short_id": "PUB-99"}, broken_carrier)
-    except cleanup_mod.helper.ContractError:
-        pass
-    else:
-        raise AssertionError("cleanup selected-run carrier mismatch accepted")
-
-    def make_carrier(short_id: str, mutation: str | None = None) -> dict:
-        notes = dict(carrier_notes)
-        notes["path"] = f".todo/{short_id}/release-notes-ru.md"
-        publication_value, publication_value_digest = cleanup_mod.helper.publication_report("b" * 64, "https://github.com/rovkinmax/Puber/pull/7", "99.0.0", "v99.0.0", target, notes, tag_phase="tag_published", tag_status="already_present_exact", unresolved=True, release_head_oid=target, release_preparation_report_digest="e" * 64)
-        value = json.loads(release_report)
-        value["publication_report_digest"] = publication_value_digest
-        value["notes_digest"] = notes["sha256"]
-        if mutation:
-            value["run"][mutation] = ("f" * 40 if mutation == "head_sha" else "v99.9.9" if mutation == "head_branch" else "refs/tags/v99.9.9")
-        encoded = cleanup_mod.helper.canonical_json(value)
-        return {"publication_report": publication_value, "publication_report_digest": publication_value_digest, "release_report": encoded, "release_report_digest": hashlib.sha256(encoded.encode()).hexdigest(), "release_notes_path": notes["path"], "release_notes_digest": notes["sha256"], "release_run": value["run"]}
-
-    conflict_seal = subprocess.run(
-        [str(managed / ".kent/scripts/workflow-evidence-ledger"), "seal", "--task", "PUB-99", "--workspace", str(managed)],
-        cwd=managed,
-        input=json.dumps({"schema": "terminal-evidence-seal-request-v1", "operation_report_digests": marker["operation_report_digests"], "redaction": {"status": "passed", "report_sha256": "0" * 64}, "retention_class": "cleanup_report_only"}),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert conflict_seal.returncode != 0 and "conflicts" in conflict_seal.stderr
-
-    first_janitor = subprocess.run(
-        [str(managed / ".kent/scripts/workflow-task-janitor")],
-        cwd=managed,
-        input=json.dumps({"workspace_path": str(managed), "branch_name": "release/99.0.0", "pr_url": "", "cleanup_mode": "report_only", "cleanup_session_id": session_id, "cleanup_report": initial_report, "task_short_id": "PUB-99"}),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert first_janitor.returncode == 0, first_janitor.stderr
-    first_output = json.loads(first_janitor.stdout)
-    assert first_output["transition"] == "task_janitor_blocked"
-    assert "kent worktree leave" in first_output["blocker_reason"]
-    assert first_output["cleanup_report"].splitlines()[:2] == initial_lines
-    assert managed.exists() and (primary / ".git").exists()
-    assert not active_dir.exists() and expected_tombstone.is_dir()
-    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
-    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
-        checkpoint_path = expected_tombstone / checkpoint
-        checkpoint_path.write_text("{}", encoding="utf-8")
-        checkpoint_path.chmod(0o600)
-    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
-    (expected_tombstone / "fix-checkpoint.json").chmod(0o400)
-    cleanup_mod._validate_terminal_marker_ledger("PUB-99", marker, ledger_kit)
-    for checkpoint in ("fix-checkpoint.json", "smoke-checkpoint.json"):
-        (expected_tombstone / checkpoint).unlink()
-    tombstone_backup = expected_tombstone.with_name(expected_tombstone.name + ".backup")
-    expected_tombstone.rename(tombstone_backup)
-    expected_tombstone.symlink_to(tombstone_backup.name, target_is_directory=True)
-    expect_ledger_rejected("tombstone directory symlink")
-    expected_tombstone.unlink()
-    tombstone_backup.rename(expected_tombstone)
-    tombstone_ledger = expected_tombstone / "evidence-ledger.jsonl"
-    tombstone_ledger_backup = expected_tombstone / "evidence-ledger.jsonl.backup"
-    tombstone_ledger.rename(tombstone_ledger_backup)
-    tombstone_ledger.symlink_to(tombstone_ledger_backup.name)
-    expect_ledger_rejected("tombstone ledger symlink")
-    tombstone_ledger.unlink()
-    tombstone_ledger_backup.rename(tombstone_ledger)
-
-    task["live_sessions"] = []
-    task_file.write_text(json.dumps(task), encoding="utf-8")
-    moved.touch()
-    retry = {
-        "commentary": "private-retry-commentary",
-        "_kent": {"task_id": task_id, "node_id": cleanup_node["id"], "transition_branch_key": "task_janitor_blocked"},
-        "workspace_path": str(managed),
-        "operation_id": "a" * 64,
-        "branch_name": "release/99.0.0",
-        "cleanup_mode": "report_only",
-        "cleanup_report": first_output["cleanup_report"],
-    }
-    multiline_report = initial_lines[0] + "\nJanitor first blocker\n  command detail: session still owns worktree\n  status detail: leave required\n" + initial_lines[1]
-    retry["cleanup_report"] = multiline_report
-    retry_result = subprocess.run([str(managed / ".kent/scripts/workflow-release-cleanup")], cwd=managed, input=json.dumps(retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-    assert retry_result.returncode == 0, retry_result.stderr
-    retry_output = json.loads(retry_result.stdout)
-    assert "private-retry-commentary" not in retry_result.stdout + retry_result.stderr
-    assert "private-transport-commentary" not in initial.stdout + initial.stderr
-    for transport_checkpoint_path in (managed / ".kent/runtime").rglob("*.json"):
-        assert "private-transport-commentary" not in transport_checkpoint_path.read_text()
-        assert "private-retry-commentary" not in transport_checkpoint_path.read_text()
-    assert retry_output["cleanup_session_id"] == session_id
-    assert retry_output["cleanup_report"] != first_output["cleanup_report"]
-    retry_lines = retry_output["cleanup_report"].splitlines()
-    assert retry_lines[0] == initial_lines[0] and retry_lines[-1] == initial_lines[1]
-    assert retry_lines[1:-1] == ["Janitor first blocker", "  command detail: session still owns worktree", "  status detail: leave required"]
-    assert json.loads(retry_output["cleanup_report"].splitlines()[0]) == initial_json
-
-    second_janitor = subprocess.run(
-        [str(managed / ".kent/scripts/workflow-task-janitor")],
-        cwd=managed,
-        input=json.dumps({"workspace_path": str(managed), "branch_name": "release/99.0.0", "pr_url": "", "cleanup_mode": "report_only", "cleanup_session_id": session_id, "cleanup_report": retry_output["cleanup_report"], "task_short_id": "PUB-99"}),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert second_janitor.returncode == 0, second_janitor.stderr
-    second_output = json.loads(second_janitor.stdout)
-    assert second_output["transition"] == "task_janitor_blocked"
-    assert "still targets the task worktree" not in second_output.get("blocker_reason", "")
-    assert "scheduled worktree deletion" in second_output["cleanup_report"], (second_output["blocker_reason"], second_output["cleanup_report"].splitlines()[-1])
-
-    third_retry = {**retry, "cleanup_report": second_output["cleanup_report"]}
-    third_result = subprocess.run([str(managed / ".kent/scripts/workflow-release-cleanup")], cwd=managed, input=json.dumps(third_retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-    assert third_result.returncode == 0, third_result.stderr
-    third_output = json.loads(third_result.stdout)
-    third_lines = third_output["cleanup_report"].splitlines()
-    assert third_output["cleanup_session_id"] == session_id
-    assert third_lines[0] == initial_lines[0] and third_lines[-1] == initial_lines[1]
-    assert len(third_lines) > len(retry_output["cleanup_report"].splitlines())
-
-    third_janitor = subprocess.run(
-        [str(managed / ".kent/scripts/workflow-task-janitor")],
-        cwd=managed,
-        input=json.dumps({"workspace_path": str(managed), "branch_name": "release/99.0.0", "pr_url": "", "cleanup_mode": "report_only", "cleanup_session_id": session_id, "cleanup_report": third_output["cleanup_report"], "task_short_id": "PUB-99"}),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert third_janitor.returncode == 0
-    third_janitor_output = json.loads(third_janitor.stdout)
-    assert third_janitor_output["transition"] == "task_janitor_blocked"
-    assert "still targets the task worktree" not in third_janitor_output.get("blocker_reason", "")
-    fourth_retry = {**retry, "cleanup_report": third_janitor_output["cleanup_report"]}
-    fourth_result = subprocess.run([str(managed / ".kent/scripts/workflow-release-cleanup")], cwd=managed, input=json.dumps(fourth_retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-    assert fourth_result.returncode == 0, fourth_result.stderr
-    fourth_output = json.loads(fourth_result.stdout)
-    assert fourth_output["cleanup_report"].splitlines()[-1] == initial_lines[1]
-
-    # Each cleanup edge below gets an independent managed worktree and runtime
-    # ledger.  The Kit intentionally treats a terminal cleanup tombstone as a
-    # workspace-wide conflict, so reusing PUB-99 would not be a valid fixture.
-    with tempfile.TemporaryDirectory(dir=root) as edge_directory:
-        edge = make_edge_fixture(Path(edge_directory), "PUB-100", "100.0.0", cleanup_node)
-        close_payload = {
-            "_kent": {"task_id": edge["task"]["summary"]["id"], "node_id": cleanup_node["id"], "transition_branch_key": "merge_watch_close_without_merge"},
-            "workspace_path": str(edge["worktree"]),
-            "operation_id": "a" * 64,
-            "pr_url": "https://github.com/rovkinmax/Puber/pull/7",
-            "branch_name": edge["branch"],
-            "merge_strategy": "auto",
-            "pr_head_oid": "c" * 40,
-            "pr_base_oid": "b" * 40,
-        }
-        close_result = subprocess.run([str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")], cwd=edge["worktree"], input=json.dumps(close_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
-        assert close_result.returncode == 0, close_result.stderr
-        close_output = json.loads(close_result.stdout)
-        assert close_output["transition"] == "cleanup_task_janitor"
-        close_janitor = subprocess.run([str(edge["worktree"] / ".kent/scripts/workflow-task-janitor")], cwd=edge["worktree"], input=json.dumps({"workspace_path": str(edge["worktree"]), "branch_name": edge["branch"], "pr_url": close_payload["pr_url"], "cleanup_mode": "report_only", "cleanup_session_id": edge["session_id"], "cleanup_report": close_output["cleanup_report"], "task_short_id": "PUB-100"}), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
-        assert close_janitor.returncode == 0, close_janitor.stderr
-        assert json.loads(close_janitor.stdout)["transition"] == "task_janitor_blocked"
-
-    def release_carrier_for(edge: dict) -> dict:
-        version = edge["task"]["body"].split("release_version: ", 1)[1].splitlines()[0]
-        tag = f"v{version}"
-        notes = {
-            "schema": "puber_release_notes_v1",
-            "path": edge["notes_path"],
-            "mode": 0o600,
-            "bytes": len(edge["notes"]),
-            "sha256": hashlib.sha256(edge["notes"]).hexdigest(),
-            "encoding": "UTF-8",
-            "line_endings": "LF",
-            "final_newline": True,
-            "producer": ".kent/scripts/workflow-puber-release-publish",
-            "previous_tag": "",
-            "range": edge["target"],
-            "target_commit": edge["target"],
-        }
-        profile_path = "app/src/main/generated/baselineProfiles/baseline-prof.txt"
-        startup_path = "app/src/main/generated/baselineProfiles/startup-prof.txt"
-        base_oid = sh(["git", "rev-parse", f"{edge['target']}^"], edge["worktree"]).stdout.strip()
-        profile_report_value = {
-            "schema": "puber_profile_report_v1",
-            "operation_id": "a" * 64,
-            "task_short_id": edge["task"]["summary"]["short_id"],
-            "release_type": "minor",
-            "release_version": version,
-            "release_tag": tag,
-            "release_branch": edge["branch"],
-            "release_base_oid": base_oid,
-            "candidate_oid": edge["target"],
-            "tv_serial": "emulator-5554",
-            "command": ".kent/scripts/workflow-puber-release-profile-generation:tools/generate-baseline-profile.sh",
-            "lease_state": "released",
-            "generation_state": "passed",
-            "network_isolation_state": "passed",
-            "elapsed_ms": 1,
-            "baseline_before_sha256": cleanup_mod.helper.git_blob_sha256(edge["worktree"], edge["target"], profile_path),
-            "baseline_after_sha256": cleanup_mod.helper.git_blob_sha256(edge["worktree"], edge["target"], profile_path),
-            "startup_before_sha256": cleanup_mod.helper.git_blob_sha256(edge["worktree"], edge["target"], startup_path),
-            "startup_after_sha256": cleanup_mod.helper.git_blob_sha256(edge["worktree"], edge["target"], startup_path),
-            "changed_profiles": [],
-        }
-        profile_report = cleanup_mod.helper.canonical_json(profile_report_value)
-        profile_digest = hashlib.sha256(profile_report.encode()).hexdigest()
-        preparation_value = {
-            **cleanup_mod.helper.VALIDATION_SIGNING,
-            "schema": "puber_release_preparation_report_v2",
-            "operation_id": "a" * 64,
-            "task_short_id": edge["task"]["summary"]["short_id"],
-            "release_type": "minor",
-            "release_version": version,
-            "release_tag": tag,
-            "release_branch": edge["branch"],
-            "release_base_oid": base_oid,
-            "candidate_oid": edge["target"],
-            "release_head_oid": edge["target"],
-            "profile_report_digest": profile_digest,
-            "compile_command": "./tools/agentw :app:compileProdReleaseArtProfile",
-            "compile_state": "passed",
-            "assemble_command": "./tools/agentw :app:assembleProdRelease",
-            "assemble_state": "passed",
-            "final_changed_paths": ["app/build.gradle.kts"],
-            "version_file_sha256": cleanup_mod.helper.git_blob_sha256(edge["worktree"], edge["target"], "app/build.gradle.kts"),
-            "baseline_profile_sha256": cleanup_mod.helper.git_blob_sha256(edge["worktree"], edge["target"], profile_path),
-            "startup_profile_sha256": cleanup_mod.helper.git_blob_sha256(edge["worktree"], edge["target"], startup_path),
-            "no_profile_diff": True,
-            "elapsed_ms": 1,
-        }
-        for field, replacement in (
-            ("schema", "puber_release_preparation_report_v1"),
-            ("packaging_artifact_publishable", True),
-            ("production_signing_used", True),
-            ("packaging_artifact_signer_certificate_sha256", "0" * 64),
-        ):
-            forged = {**preparation_value, field: replacement}
-            try:
-                cleanup_mod.helper.parse_release_preparation_report(forged, cleanup_mod.helper.digest_json(forged))
-            except cleanup_mod.helper.ContractError:
-                pass
-            else:
-                raise AssertionError("forged preparation signing claim was accepted")
-        preparation_report = cleanup_mod.helper.canonical_json(preparation_value)
-        preparation_digest = hashlib.sha256(preparation_report.encode()).hexdigest()
-        checkpoint = {
-            "schema": "puber_release_profile_checkpoint_v2",
-            "task_id": edge["task"]["summary"]["id"],
-            "task_short_id": edge["task"]["summary"]["short_id"],
-            "operation_id": "a" * 64,
-            "release_branch": edge["branch"],
-            "release_base_oid": base_oid,
-            "candidate_oid": edge["target"],
-            "release_head_oid": edge["target"],
-            "candidate_serials": ["emulator-5554"],
-            "state": "completed",
-            "resource_serial": "emulator-5554",
-            "profile_report": profile_report,
-            "profile_report_digest": profile_digest,
-            "release_preparation_report": preparation_report,
-            "release_preparation_report_digest": preparation_digest,
-            "output_hashes": {profile_path: preparation_value["baseline_profile_sha256"], startup_path: preparation_value["startup_profile_sha256"]},
-        }
-        checkpoint_path = edge["worktree"] / ".kent/runtime" / edge["task"]["summary"]["short_id"] / "release-profile-checkpoint.json"
-        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        checkpoint_path.write_text(cleanup_mod.helper.canonical_json(checkpoint) + "\n", encoding="utf-8")
-        checkpoint_path.chmod(0o600)
-        publication, publication_digest = cleanup_mod.helper.publication_report("b" * 64, "https://github.com/rovkinmax/Puber/pull/7", version, tag, edge["target"], notes, tag_phase="tag_published", tag_status="already_present_exact", unresolved=True, release_head_oid=edge["target"], release_preparation_report_digest=preparation_digest)
-        value = json.loads(release_report)
-        value["publication_report_digest"] = publication_digest
-        value["notes_digest"] = notes["sha256"]
-        value["run"].update({"head_sha": edge["target"], "ref": f"refs/tags/{tag}", "head_branch": tag})
-        value["jobs"]["run"].update({"head_sha": edge["target"], "head_branch": tag})
-        value["release"].update({"tag_name": tag, "name": f"Puber {tag}", "html_url": f"https://github.com/rovkinmax/Puber/releases/tag/{tag}", "remote_tag_target": edge["target"]})
-        for asset in value["assets"]:
-            if asset["name"].endswith(".sha256"):
-                asset["name"] = f"puber-{tag}.apk.sha256"
-            else:
-                asset["name"] = f"puber-{tag}.apk"
-        apk_asset = next(asset for asset in value["assets"] if asset["name"].endswith(".apk"))
-        checksum_asset = next(asset for asset in value["assets"] if asset["name"].endswith(".apk.sha256"))
-        value["checksum"].update({
-            "apk_asset_id": apk_asset["id"],
-            "apk_name": apk_asset["name"],
-            "apk_size": apk_asset["size"],
-            "checksum_asset_id": checksum_asset["id"],
-            "checksum_name": checksum_asset["name"],
-            "checksum_size": checksum_asset["size"],
-            "parsed_checksum_filename": apk_asset["name"],
-        })
-        encoded = cleanup_mod.helper.canonical_json(value)
-        return {
-            "publication_report": publication,
-            "publication_report_digest": publication_digest,
-            "release_report": encoded,
-            "release_report_digest": hashlib.sha256(encoded.encode()).hexdigest(),
-            "release_notes_path": edge["notes_path"],
-            "release_notes_digest": notes["sha256"],
-            "release_run": cleanup_mod.helper.canonical_json(value["run"]),
-            "_value": value,
-        }
-
-    with tempfile.TemporaryDirectory(dir=root) as edge_directory:
-        edge = make_edge_fixture(Path(edge_directory), "PUB-101", "101.0.0", cleanup_node)
-        carrier = release_carrier_for(edge)
-        release_payload = {"_kent": {"task_id": edge["task"]["summary"]["id"], "node_id": cleanup_node["id"], "transition_branch_key": "release_release_published"}, **{key: value for key, value in carrier.items() if not key.startswith("_")}}
-        checkpoint_path = edge["worktree"] / ".kent/runtime/PUB-101/release-profile-checkpoint.json"
-        original_checkpoint = checkpoint_path.read_bytes()
-        original_value = json.loads(original_checkpoint)
-        for label, key, replacement in (
-            ("foreign checkpoint task_id", "task_id", "task-00000000-0000-4000-8000-000000000000"),
-            ("foreign checkpoint task_short_id", "task_short_id", "PUB-999"),
-            ("foreign checkpoint operation_id", "operation_id", "f" * 64),
-            ("foreign checkpoint release_branch", "release_branch", "release/999.0.0"),
-            ("foreign checkpoint release_base_oid", "release_base_oid", "f" * 40),
-            ("foreign checkpoint candidate_oid", "candidate_oid", "e" * 40),
-            ("foreign checkpoint release_head_oid", "release_head_oid", "d" * 40),
-        ):
-            mutated = {**original_value, key: replacement}
-            checkpoint_path.write_text(
-                cleanup_mod.helper.canonical_json(mutated) + "\n",
-                encoding="utf-8",
-            )
-            checkpoint_path.chmod(0o600)
-            before = checkpoint_path.read_bytes()
-            rejected = subprocess.run(
-                [str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")],
-                cwd=edge["worktree"],
-                input=json.dumps(release_payload),
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=edge["env"],
-            )
-            assert rejected.returncode != 0 and rejected.stdout == "", (
-                label,
-                rejected.stderr,
-            )
-            assert checkpoint_path.read_bytes() == before, label
-        checkpoint_path.write_bytes(original_checkpoint)
-        checkpoint_path.chmod(0o600)
-        for component in (edge["worktree"] / ".kent", edge["worktree"] / ".kent/runtime", checkpoint_path.parent):
-            displaced = component.with_name(component.name + "-displaced")
-            component.rename(displaced)
-            component.symlink_to(displaced, target_is_directory=True)
-            try:
-                try:
-                    cleanup_mod.helper.read_profile_checkpoint(edge["worktree"], "PUB-101")
-                except cleanup_mod.helper.ContractError:
-                    pass
-                else:
-                    raise AssertionError("cleanup admitted a substituted checkpoint parent")
-                assert checkpoint_path.read_bytes() == original_checkpoint
-            finally:
-                component.unlink(); displaced.rename(component)
-        # Deterministically lose the acknowledgement after the receipt-matched
-        # unlink. The original incoming edge must recover without a checkpoint,
-        # another seal effect, or another deletion.
-        sealed_ledger = checkpoint_path.parent / "evidence-ledger.jsonl"
-        unsealed_bytes = sealed_ledger.read_bytes()
-        interrupted_cleanup = """
-import runpy
-import sys
-module = runpy.run_path(sys.argv[1], run_name="cleanup_failure_fixture")
-helper = module["helper"]
-delete = helper.delete_profile_checkpoint
-def fail_after_unlink(*args, **kwargs):
-    delete(*args, **kwargs)
-    raise OSError("injected post-unlink fsync/ack failure")
-helper.delete_profile_checkpoint = fail_after_unlink
-raise SystemExit(module["main"]())
-"""
-        failed = subprocess.run(
-            [sys.executable, "-c", interrupted_cleanup, str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")],
-            cwd=edge["worktree"], input=json.dumps(release_payload), text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"],
-        )
-        assert failed.returncode == 2 and failed.stdout == "" and "could not be removed" in failed.stderr, failed.stderr
-        assert not checkpoint_path.exists()
-        sealed_bytes = sealed_ledger.read_bytes()
-        retry_cleanup = """
-import runpy
-import sys
-module = runpy.run_path(sys.argv[1], run_name="cleanup_retry_fixture")
-helper = module["helper"]
-run = helper.run
-def no_seal(argv, *args, **kwargs):
-    assert "seal" not in argv, "retry repeated the seal effect"
-    return run(argv, *args, **kwargs)
-def no_delete(*args, **kwargs):
-    raise AssertionError("retry repeated checkpoint deletion")
-helper.run = no_seal
-helper.delete_profile_checkpoint = no_delete
-raise SystemExit(module["main"]())
-"""
-        retry_command = [sys.executable, "-c", retry_cleanup, str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")]
-
-        def reject_original_retry(label: str, candidate: dict | None = None) -> None:
-            before = sealed_ledger.read_bytes() if sealed_ledger.exists() else None
-            expect_rejected(retry_command, edge["worktree"], candidate or release_payload, edge["env"], label)
-            assert (sealed_ledger.read_bytes() if sealed_ledger.exists() else None) == before, label
-            assert not checkpoint_path.exists(), label
-
-        sealed_ledger.unlink()
-        reject_original_retry("missing checkpoint and missing seal")
-        sealed_ledger.write_bytes(unsealed_bytes)
-        sealed_ledger.chmod(0o600)
-        reject_original_retry("missing checkpoint and unsealed ledger")
-        sealed_ledger.write_bytes(sealed_bytes[:-5] + b"bad\n")
-        reject_original_retry("forged terminal chain")
-        sealed_ledger.write_bytes(sealed_bytes)
-        seal_kit = cleanup_mod.helper._kit_modules()
-        original_marker = seal_kit["validate_terminal_chain"](
-            [json.loads(line) for line in sealed_bytes.splitlines()], task_short_id="PUB-101",
-        )
-        # These are independently valid terminal chains, but none is the seal
-        # for this exact incoming operation/outcome.
-        original_request = {
-            "schema": "terminal-evidence-seal-request-v1",
-            **{key: original_marker[key] for key in ("operation_report_digests", "redaction", "retention_class")},
-        }
-        for label, mutation in (
-            ("stale outcome seal", lambda value: value["redaction"].__setitem__("report_sha256", "0" * 64)),
-            ("stale runtime seal", lambda value: next(item for item in value["operation_report_digests"] if item["kind"] == "runtime_source").__setitem__("sha256", "0" * 64)),
-            ("stale publication seal", lambda value: next(item for item in value["operation_report_digests"] if item["kind"] == "publication").__setitem__("sha256", "0" * 64)),
-            ("stale preparation seal", lambda value: next(item for item in value["operation_report_digests"] if item["kind"] == "merge").__setitem__("sha256", "0" * 64)),
-            ("missing qualification seal", lambda value: value.__setitem__("operation_report_digests", [item for item in value["operation_report_digests"] if item["kind"] != "qualification"])),
-        ):
-            request = json.loads(json.dumps(original_request))
-            mutation(request)
-            sealed_ledger.write_bytes(unsealed_bytes)
-            sh(
-                [str(edge["worktree"] / ".kent/scripts/workflow-evidence-ledger"), "seal", "--task", "PUB-101", "--workspace", str(edge["worktree"])],
-                edge["worktree"], input=json.dumps(request), env=edge["env"],
-            )
-            reject_original_retry(label)
-        sealed_ledger.write_bytes(sealed_bytes)
-        changed_release = json.loads(release_payload["release_report"])
-        changed_release["observation_operation_digest"] = "f" * 64
-        changed_report = cleanup_mod.helper.canonical_json(changed_release)
-        reject_original_retry("different release outcome", {
-            **release_payload, "release_report": changed_report,
-            "release_report_digest": hashlib.sha256(changed_report.encode()).hexdigest(),
-        })
-        original_task_bytes = edge["task_file"].read_bytes()
-        changed_task = json.loads(original_task_bytes)
-        changed_task["live_sessions"][0]["session_id"] = "different-cleanup-session"
-        edge["task_file"].write_text(json.dumps(changed_task), encoding="utf-8")
-        reject_original_retry("different cleanup Session")
-        changed_task = json.loads(original_task_bytes)
-        changed_task["body"] = changed_task["body"].replace("101.0.0", "999.0.0")
-        edge["task_file"].write_text(json.dumps(changed_task), encoding="utf-8")
-        reject_original_retry("different declared release branch/version")
-        changed_task = json.loads(original_task_bytes)
-        changed_task["summary"]["id"] = "task-00000000-0000-4000-8000-000000000000"
-        edge["task_file"].write_text(json.dumps(changed_task), encoding="utf-8")
-        reject_original_retry("different Task identity", {
-            **release_payload,
-            "_kent": {**release_payload["_kent"], "task_id": changed_task["summary"]["id"]},
-        })
-        edge["task_file"].write_bytes(original_task_bytes)
-        # A present, substituted checkpoint must not select sealed recovery.
-        checkpoint_path.write_bytes(original_checkpoint)
-        checkpoint_path.chmod(0o640)
-        before = checkpoint_path.read_bytes()
-        expect_rejected(retry_command, edge["worktree"], release_payload, edge["env"], "unsafe replacement checkpoint")
-        assert checkpoint_path.read_bytes() == before and sealed_ledger.read_bytes() == sealed_bytes
-        checkpoint_path.unlink()
-        release_result = subprocess.run(retry_command, cwd=edge["worktree"], input=json.dumps(release_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
-        assert release_result.returncode == 0, ("original-edge retry after post-unlink failure", release_result.stderr)
-        assert sealed_ledger.read_bytes() == sealed_bytes and not checkpoint_path.exists()
-        repeated = subprocess.run(retry_command, cwd=edge["worktree"], input=json.dumps(release_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
-        assert repeated.returncode == 0 and repeated.stdout == release_result.stdout, repeated.stderr
-        assert sealed_ledger.read_bytes() == sealed_bytes and not checkpoint_path.exists()
-        lost_ack_cleanup = retry_cleanup.replace(
-            'raise SystemExit(module["main"]())',
-            '''
-emit = helper.emit_exact
-def lose_ack(*args, **kwargs):
-    emit(*args, **kwargs)
-    raise helper.ContractError("injected transition acknowledgement loss")
-helper.emit_exact = lose_ack
-raise SystemExit(module["main"]())
-''',
-        )
-        lost_ack = subprocess.run(
-            [sys.executable, "-c", lost_ack_cleanup, str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")],
-            cwd=edge["worktree"], input=json.dumps(release_payload), text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"],
-        )
-        assert lost_ack.returncode == 2 and "acknowledgement loss" in lost_ack.stderr
-        acknowledged = subprocess.run(retry_command, cwd=edge["worktree"], input=json.dumps(release_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
-        assert acknowledged.returncode == 0 and acknowledged.stdout == lost_ack.stdout == release_result.stdout, acknowledged.stderr
-        assert sealed_ledger.read_bytes() == sealed_bytes and not checkpoint_path.exists()
-        assert release_result.returncode == 0, release_result.stderr
-        release_output = json.loads(release_result.stdout)
-        assert release_output["transition"] == "cleanup_task_janitor"
-        assert not checkpoint_path.exists()
-        release_lines = release_output["cleanup_report"].splitlines()
-        release_marker = cleanup_mod.helper._kit_modules()["parse_terminal_marker_line"](release_lines[-1])
-        release_digests = {
-            item["kind"]: item["sha256"]
-            for item in release_marker["operation_report_digests"]
-        }
-        assert set(release_digests) == {"merge", "publication", "qualification", "runtime_source"}
-        assert release_digests["publication"] == carrier["publication_report_digest"]
-        assert release_digests["qualification"] == original_value["profile_report_digest"]
-        assert release_digests["merge"] == original_value["release_preparation_report_digest"]
-        sealed_profile, sealed_preparation = cleanup_mod._sealed_release_digests(
-            release_lines[-1],
-            {"kit": {"parse_terminal_marker_line": lambda _line: release_marker}},
-            publication_digest=carrier["publication_report_digest"],
-            preparation_digest=original_value["release_preparation_report_digest"],
-        )
-        assert sealed_profile == original_value["profile_report_digest"]
-        assert sealed_preparation == original_value["release_preparation_report_digest"]
-        for label, operation_digests in (
-            ("missing qualification digest", [item for item in release_marker["operation_report_digests"] if item["kind"] != "qualification"]),
-            ("unexpected digest kind", [*release_marker["operation_report_digests"], {"kind": "unexpected", "sha256": "f" * 64}]),
-            ("duplicate publication digest", [*release_marker["operation_report_digests"], {"kind": "publication", "sha256": carrier["publication_report_digest"]}]),
-            ("publication digest drift", [{**item, "sha256": "f" * 64} if item["kind"] == "publication" else item for item in release_marker["operation_report_digests"]]),
-            ("preparation digest drift", [{**item, "sha256": "f" * 64} if item["kind"] == "merge" else item for item in release_marker["operation_report_digests"]]),
-            ("malformed qualification digest", [{**item, "sha256": "F" * 64} if item["kind"] == "qualification" else item for item in release_marker["operation_report_digests"]]),
-        ):
-            adversarial_marker = {**release_marker, "operation_report_digests": operation_digests}
-            try:
-                cleanup_mod._sealed_release_digests(
-                    release_lines[-1],
-                    {"kit": {"parse_terminal_marker_line": lambda _line, value=adversarial_marker: value}},
-                    publication_digest=carrier["publication_report_digest"],
-                    preparation_digest=original_value["release_preparation_report_digest"],
-                )
-            except cleanup_mod.helper.ContractError:
-                pass
-            else:
-                raise AssertionError(label)
-        for label, mutation in (
-            ("outer release_run missing", lambda value: value.pop("release_run")),
-            ("outer release_run not selected", lambda value: value.__setitem__("release_run", cleanup_mod.helper.canonical_json(cleanup_mod.helper.NOT_SELECTED_RUN))),
-            ("outer release_run mismatched", lambda value: value.__setitem__("release_run", cleanup_mod.helper.canonical_json({**json.loads(value["release_run"]), "head_sha": "f" * 40}))),
-        ):
-            invalid_payload = dict(release_payload)
-            mutation(invalid_payload)
-            expect_rejected([str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")], edge["worktree"], invalid_payload, edge["env"], label)
-        release_janitor = subprocess.run([str(edge["worktree"] / ".kent/scripts/workflow-task-janitor")], cwd=edge["worktree"], input=json.dumps({"workspace_path": str(edge["worktree"]), "branch_name": edge["branch"], "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "cleanup_mode": "report_only", "cleanup_session_id": edge["session_id"], "cleanup_report": release_output["cleanup_report"], "task_short_id": "PUB-101"}), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
-        assert release_janitor.returncode == 0, release_janitor.stderr
-        release_janitor_output = json.loads(release_janitor.stdout)
-        assert release_janitor_output["transition"] == "task_janitor_blocked"
-        edge["moved"].touch()
-        release_retry_payload = {
-            "_kent": {
-                "task_id": edge["task"]["summary"]["id"],
-                "node_id": cleanup_node["id"],
-                "transition_branch_key": "task_janitor_blocked",
-            },
-            "workspace_path": str(edge["worktree"]),
-            "operation_id": "a" * 64,
-            "branch_name": edge["branch"],
-            "cleanup_mode": "report_only",
-            "cleanup_report": release_janitor_output["cleanup_report"],
-        }
-        release_retry = subprocess.run(
-            [str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")],
-            cwd=edge["worktree"],
-            input=json.dumps(release_retry_payload),
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=edge["env"],
-        )
-        assert release_retry.returncode == 0, release_retry.stderr
-        release_retry_output = json.loads(release_retry.stdout)
-        assert release_retry_output["transition"] == "cleanup_task_janitor"
-        assert release_retry_output["publication_report_digest"] == carrier["publication_report_digest"]
-        assert release_retry_output["release_report_digest"] == carrier["release_report_digest"]
-        assert release_retry_output["cleanup_report"].splitlines()[0] == release_lines[0]
-        assert release_retry_output["cleanup_report"].splitlines()[-1] == release_lines[-1]
-        assert not checkpoint_path.exists()
-
-    boundary_mutations = ("head_sha", "head_branch", "ref", "run_id", "run_attempt", "api_run_id", "api_run_attempt", "job_id", "job_attempt", "asset_id", "asset_size", "duplicate_asset_ids", "publication_operation_digest")
-    for index, mutation in enumerate(boundary_mutations, start=102):
-        with tempfile.TemporaryDirectory(dir=root) as edge_directory:
-            edge = make_edge_fixture(Path(edge_directory), f"PUB-{index}", f"{index}.0.0", cleanup_node)
-            carrier = release_carrier_for(edge)
-            value = json.loads(carrier["release_report"])
-            if mutation in {"head_sha", "head_branch", "ref"}:
-                value["run"][mutation] = "f" * 40 if mutation == "head_sha" else f"v{index}.9.9" if mutation == "head_branch" else f"refs/tags/v{index}.9.9"
-            elif mutation == "run_id":
-                value["run"]["run_id"] = True
-            elif mutation == "run_attempt":
-                value["run"]["attempt"] = True
-            elif mutation == "api_run_id":
-                value["jobs"]["run"]["run_id"] = True
-            elif mutation == "api_run_attempt":
-                value["jobs"]["run"]["attempt"] = True
-            elif mutation == "job_id":
-                value["jobs"]["job"]["id"] = True
-            elif mutation == "job_attempt":
-                value["jobs"]["job"]["attempt"] = True
-            elif mutation == "asset_id":
-                value["assets"][0]["id"] = True
-            elif mutation == "asset_size":
-                value["assets"][0]["size"] = True
-            elif mutation == "duplicate_asset_ids":
-                value["assets"][1]["id"] = value["assets"][0]["id"]
-            elif mutation == "publication_operation_digest":
-                publication_value = json.loads(carrier["publication_report"])
-                publication_value["operation_digest"] = "A" * 64
-                carrier["publication_report"] = cleanup_mod.helper.canonical_json(publication_value)
-                carrier["publication_report_digest"] = hashlib.sha256(carrier["publication_report"].encode()).hexdigest()
-                value["publication_report_digest"] = carrier["publication_report_digest"]
-            invalid_report = cleanup_mod.helper.canonical_json(value)
-            invalid = {**carrier, "release_report": invalid_report, "release_report_digest": hashlib.sha256(invalid_report.encode()).hexdigest(), "release_run": cleanup_mod.helper.canonical_json(value["run"])}
-            invalid_payload = {"_kent": {"task_id": edge["task"]["summary"]["id"], "node_id": cleanup_node["id"], "transition_branch_key": "release_release_published"}, **{key: value for key, value in invalid.items() if not key.startswith("_")}}
-            invalid_result = subprocess.run([str(edge["worktree"] / ".kent/scripts/workflow-release-cleanup")], cwd=edge["worktree"], input=json.dumps(invalid_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=edge["env"])
-            assert invalid_result.returncode != 0 and invalid_result.stdout == "", (f"PUB-{index}", invalid_result.stderr)
-
-    task["summary"]["short_id"] = "PUB-99"
-    task["live_sessions"] = []
-    task_file.write_text(json.dumps(task), encoding="utf-8")
-    moved.touch()
-    tampered = initial_lines[0][:-1] + "0\n" + initial_lines[1] + "\nJanitor tampered"
-    expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": tampered}, env, "tampered canonical line")
-    expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_lines[0] + "\n" + initial_lines[1][:-1] + "0\nJanitor tampered"}, env, "tampered marker")
-    marker_task = json.loads(initial_lines[1].removeprefix("TERMINAL_EVIDENCE_V1 "))
-    marker_task["task_short_id"] = "PUB-100"
-    marker_task_line = "TERMINAL_EVIDENCE_V1 " + json.dumps(marker_task, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_lines[0] + "\n" + marker_task_line + "\nJanitor tampered"}, env, "tampered marker task")
-    marker_hash = json.loads(initial_lines[1].removeprefix("TERMINAL_EVIDENCE_V1 "))
-    marker_hash["final_hash"] = "0" * 64
-    marker_hash_line = "TERMINAL_EVIDENCE_V1 " + json.dumps(marker_hash, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_lines[0] + "\n" + marker_hash_line + "\nJanitor tampered"}, env, "tampered marker hash")
-    expect_rejected([str(managed / ".kent/scripts/workflow-release-cleanup")], managed, {**retry, "cleanup_report": initial_report + "\nTERMINAL_EVIDENCE_V1 extra"}, env, "extra terminal marker")
-
-print("workflow-release-cleanup: passed scenarios=one_read_session_selection,malformed_status_matrix,whitespace_status_rejection,dirty_primary,ledger_checkpoint_matrix,ledger_active_tombstone_safety,cancel_edge,close_without_merge_edge,release_carrier_edge,published_checkpoint_deleted_retry,post_unlink_original_edge_retry,original_edge_seal_adversarial,sealed_release_digest_adversarial,outer_release_run_binding,deep_parser_boundary_matrix,selected_run_head_sha_branch_ref_boundary,janitor_active_block,multiline_repeated_retries,post_leave_block,third_retry_block,marker_adversarial,unrelated_ledger")
+# The API timeout branch is exercised without sleeping or any effectful RPC.
+m=load(ROOT/'.kent/scripts/workflow-release-cleanup','cleanup_api_test')
+with patch.object(m.subprocess,'run',side_effect=subprocess.TimeoutExpired(['gh'],45)):
+    try:m._api('repos/rovkinmax/Puber')
+    except m.helper.ContractError:pass
+    else:raise AssertionError('timeout accepted as absence')
+print('workflow-release-cleanup: current-Agent, R2 observable-outcome matrix, multi-idle history, same-A sealed retry passed')

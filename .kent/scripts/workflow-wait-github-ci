@@ -11,10 +11,13 @@ import signal
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 from typing import Any, Dict, List
 from urllib.parse import urlparse
+
+sys.dont_write_bytecode = True
 
 
 PR_FIELDS = (
@@ -44,7 +47,30 @@ class QueryError(RuntimeError):
 
 
 def workflow_result(transition: str, **values: object) -> None:
+    if "ci_policy_snapshot" in values and values.get("ci_report"):
+        try:
+            archive_terminal_report(values)
+        except (OSError, RuntimeError, ValueError):
+            transition = "ci_watch_failed"
+            previous = runtime_contracts().validate_ci_report(json.loads(values["ci_report"]))
+            latest = previous["attempts"][-1]
+            values["ci_report"] = v2_safe_report(
+                values, reason="report_invalid",
+                pr={"headRefOid": latest["head_oid"], "baseRefOid": latest["base_oid"]},
+            )
     print(json.dumps({"transition": transition, **values}, ensure_ascii=False))
+
+
+def archive_terminal_report(values: Dict[str, Any]) -> None:
+    tool = os.environ.get("KENT_PREPARE_GITHUB_CI_BIN") or str(
+        Path.home() / ".kent/bin/kent-prepare-github-ci"
+    )
+    result = run_gh(
+        tool, Path(values["workspace_path"]), [], timeout=60,
+        input_bytes=json.dumps({**values, "operation": "archive_ci_report"}).encode("utf-8"),
+    )
+    if result.returncode or not isinstance(json.loads(result.stdout).get("ci_report_artifact"), str):
+        raise RuntimeError("ci_report_archive_failed")
 
 
 def require_string(payload: Dict[str, Any], key: str) -> str:
@@ -131,16 +157,24 @@ def run_gh(
     args: List[str],
     *,
     timeout: int,
+    input_bytes: bytes | None = None,
 ) -> subprocess.CompletedProcess:
     command = [gh_bin] + args
-    process = subprocess.Popen(
-        command,
-        cwd=workspace,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-    )
-    process_group_id = os.getpgid(process.pid)
+    with tempfile.TemporaryFile() as input_stream:
+        if input_bytes is not None:
+            if len(input_bytes) > 1024 * 1024:
+                raise ValueError("archive_input_limit")
+            input_stream.write(input_bytes)
+            input_stream.seek(0)
+        process = subprocess.Popen(
+            command,
+            cwd=workspace,
+            stdin=input_stream if input_bytes is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+    process_group_id = process.pid
     selector = selectors.DefaultSelector()
     assert process.stdout is not None
     assert process.stderr is not None
@@ -334,6 +368,18 @@ def read_checks(
     )
 
 
+def observe_source_checks(
+    gh_bin: str, workspace: Path, pr_url: str, *, timeout: int,
+) -> tuple[List[Dict[str, Any]], subprocess.CompletedProcess]:
+    # Aggregate --watch waits for extras too; --required reads branch rules,
+    # not this source-derived mandatory contract. Classify bounded snapshots.
+    observation = run_gh(
+        gh_bin, workspace, ["pr", "checks", pr_url, "--json", CHECK_FIELDS],
+        timeout=timeout,
+    )
+    return parse_array(observation, "gh pr checks"), observation
+
+
 def compact_checks(checks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [
         {
@@ -447,6 +493,54 @@ def runtime_contracts():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def source_contract_values(payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not source_contract_mode(payload):
+        return {}
+    keys = (
+        "expected_ci_checks",
+        "expected_ci_checks_sha256",
+        "runtime_source_envelope_digest",
+        "ci_policy_snapshot",
+        "task_short_id",
+    )
+    return {key: payload[key] for key in keys if key in payload}
+
+
+def source_contract_mode(payload: Dict[str, Any]) -> bool:
+    return "ci_policy_snapshot" in payload
+
+
+def source_policy_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
+    runtime = runtime_contracts()
+    raw = payload.get("ci_policy_snapshot")
+    if not isinstance(raw, str) or not raw:
+        raise ValueError("ci_policy_snapshot is required")
+    value = runtime.parse_canonical_json(
+        raw,
+        label="ci_policy_snapshot",
+        max_bytes=runtime.MAX_EXPECTED_CHECKS_BYTES,
+    )
+    policy = runtime.validate_ci_policy_snapshot(value)
+    raw_expected = payload.get("expected_ci_checks")
+    if not isinstance(raw_expected, str):
+        raise ValueError("expected_ci_checks is required")
+    expected = runtime.validate_expected_ci_checks(
+        runtime.parse_canonical_json(
+            raw_expected,
+            label="expected_ci_checks",
+            max_bytes=runtime.MAX_EXPECTED_CHECKS_BYTES,
+        )
+    )
+    if policy["policy_sha256"] != runtime.ci_policy_projection_sha256(expected):
+        raise ValueError("ci_policy_snapshot does not match expected checks")
+    if (
+        payload.get("expected_ci_checks_sha256") != runtime.expected_ci_checks_sha256(expected)
+        or payload.get("runtime_source_envelope_digest") != expected["runtime_source_envelope_digest"]
+    ):
+        raise ValueError("source CI packet is contradictory")
+    return policy
 
 
 def serialize_pr_feedback_cursor(value: object) -> str:
@@ -878,6 +972,7 @@ def main() -> int:
     v2_mode = not (
         profile_schema3_legacy(workspace) and "ci_report" not in payload
     )
+    source_mode = "ci_policy_snapshot" in payload
     runtime = runtime_contracts() if v2_mode else None
     prevalidation_error: Exception | None = None
     cursor: Dict[str, Any] = {}
@@ -914,6 +1009,8 @@ def main() -> int:
                 if not isinstance(raw_report, str) or not raw_report:
                     raise ValueError("ci_report is invalid")
                 runtime.validate_ci_report(json.loads(raw_report))
+            if source_mode:
+                source_policy_snapshot(payload)
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
             if prevalidation_error is None:
                 prevalidation_error = error
@@ -957,6 +1054,7 @@ def main() -> int:
                 reason=reason,
                 error=prevalidation_error,
             ),
+            **source_contract_values(payload),
             **cursor,
         )
         return 0
@@ -979,33 +1077,68 @@ def main() -> int:
                     merge_report=merge_report(pr),
                 )
                 return 0
+            if source_mode:
+                policy = source_policy_snapshot(payload)
+                expected_head = json.loads(payload["expected_ci_checks"])["project_commit"]
+                if (
+                    str(pr.get("baseRefOid") or "") != policy["target_commit"]
+                    or str(pr.get("headRefOid") or "") != expected_head
+                ):
+                    workflow_result(
+                        "ci_watch_source_changed",
+                        workspace_path=str(workspace),
+                        pr_url=pr_url,
+                        branch_name=branch_name,
+                        merge_strategy=merge_strategy,
+                        ci_report=payload.get("ci_report", ""),
+                        **source_contract_values(payload),
+                        **cursor,
+                    )
+                    return 0
 
-            watch = run_gh(
-                gh_bin,
-                workspace,
-                [
-                    "pr",
-                    "checks",
-                    pr_url,
-                    "--watch",
-                    "--interval",
-                    str(max(1, interval)),
-                ],
-                timeout=query_timeout,
-            )
-            if watch.returncode not in (0, 1, 8):
-                raise QueryError(
-                    "github_query_failed",
-                    exit_code=watch.returncode,
-                    stdout=watch.stdout,
-                    stderr=watch.stderr,
+            if source_mode:
+                checks, watch = observe_source_checks(
+                    gh_bin, workspace, pr_url, timeout=query_timeout,
                 )
-            checks = read_checks(
-                gh_bin,
-                workspace,
-                pr_url,
-                timeout=query_timeout,
-            )
+            else:
+                watch = run_gh(
+                    gh_bin,
+                    workspace,
+                    [
+                        "pr",
+                        "checks",
+                        pr_url,
+                        "--watch",
+                        "--interval",
+                        str(max(1, interval)),
+                    ],
+                    timeout=query_timeout,
+                )
+                if watch.returncode not in (0, 1, 8):
+                    raise QueryError(
+                        "github_query_failed",
+                        exit_code=watch.returncode,
+                        stdout=watch.stdout,
+                        stderr=watch.stderr,
+                    )
+                checks = read_checks(
+                    gh_bin,
+                    workspace,
+                    pr_url,
+                    timeout=query_timeout,
+                )
+            if source_mode:
+                confirmed = read_pr(gh_bin, workspace, pr_url, timeout=query_timeout)
+                if any(confirmed.get(key) != pr.get(key) for key in (
+                    "state", "url", "headRefOid", "baseRefOid", "headRefName", "baseRefName",
+                )):
+                    workflow_result(
+                        "ci_watch_source_changed", workspace_path=str(workspace),
+                        pr_url=pr_url, branch_name=branch_name, merge_strategy=merge_strategy,
+                        ci_report=payload.get("ci_report", ""),
+                        **source_contract_values(payload), **cursor,
+                    )
+                    return 0
             errors = 0
         except (QueryError, RuntimeError, ValueError) as error:
             errors += 1
@@ -1022,6 +1155,7 @@ def main() -> int:
                             reason="github_query_failed",
                             error=error,
                         ),
+                        **source_contract_values(payload),
                         **cursor,
                     )
                     return 0
@@ -1098,6 +1232,7 @@ def main() -> int:
                         branch_name=branch_name,
                         merge_strategy=merge_strategy,
                         ci_report=report,
+                        **source_contract_values(payload),
                         **cursor,
                     )
                     return 0
@@ -1109,7 +1244,11 @@ def main() -> int:
                 pr_url=pr_url,
                 branch_name=branch_name,
                 merge_strategy=merge_strategy,
-                **({"ci_report": report} if report is not None else {}),
+                **(
+                    {"ci_report": report} if report is not None else
+                    {"ci_report": payload.get("ci_report", "")} if source_mode else {}
+                ),
+                **source_contract_values(payload),
                 **cursor,
             )
             return 0

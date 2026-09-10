@@ -99,33 +99,19 @@ else:
     block("compile verifier workspace is invalid")
 
 tmpdir = os.environ.get("TMPDIR", "")
-prefix = "/dev/fd/"
-descriptor_text = tmpdir[len(prefix):] if tmpdir.startswith(prefix) else ""
-if (
-    not descriptor_text
-    or not descriptor_text.isascii()
-    or not descriptor_text.isdigit()
-    or len(descriptor_text) > 10
-):
-    block("compile verifier infrastructure is unavailable")
-
-tmp_descriptor = int(descriptor_text)
-if (
-    tmp_descriptor < 3
-    or tmp_descriptor > 2147483647
-    or str(tmp_descriptor) != descriptor_text
-):
-    block("compile verifier infrastructure is unavailable")
-
 try:
-    tmp_metadata = os.fstat(tmp_descriptor)
-except (OSError, OverflowError):
+    tmp_path = Path(tmpdir)
+    tmp_metadata = tmp_path.lstat()
+    canonical_tmp_path = tmp_path.resolve(strict=True)
+except (OSError, RuntimeError, ValueError):
     block("compile verifier infrastructure is unavailable")
 
 if (
-    not stat.S_ISDIR(tmp_metadata.st_mode)
+    not tmp_path.is_absolute()
+    or canonical_tmp_path != tmp_path
+    or not stat.S_ISDIR(tmp_metadata.st_mode)
     or tmp_metadata.st_uid != os.getuid()
-    or tmp_metadata.st_mode & 0o077
+    or stat.S_IMODE(tmp_metadata.st_mode) != 0o700
 ):
     block("compile verifier infrastructure is unavailable")
 
@@ -144,32 +130,7 @@ if (
 ):
     block("compile verifier infrastructure is unavailable")
 
-gradle_tmp = current / "build" / "kent-workflow" / "gradle-tmp"
-for directory in (
-    current / "build",
-    current / "build" / "kent-workflow",
-    gradle_tmp,
-):
-    try:
-        directory.mkdir(mode=0o700)
-    except FileExistsError:
-        pass
-    except OSError:
-        block("compile verifier infrastructure is unavailable")
-    try:
-        directory_metadata = directory.lstat()
-    except OSError:
-        block("compile verifier infrastructure is unavailable")
-    if (
-        not stat.S_ISDIR(directory_metadata.st_mode)
-        or directory_metadata.st_uid != os.getuid()
-        or directory_metadata.st_mode & 0o022
-        or directory == gradle_tmp and directory_metadata.st_mode & 0o077
-    ):
-        block("compile verifier infrastructure is unavailable")
-
 gradle_environment = dict(os.environ)
-gradle_environment["TMPDIR"] = str(gradle_tmp)
 
 try:
     result = subprocess.run(

@@ -83,6 +83,7 @@ VERIFICATION_REPORT_SCHEMA = "workflow-verification-report-v2"
 PR_CURSOR_SCHEMA = "github-pr-feedback-cursor-v1"
 EXPECTED_CHECKS_SCHEMA = "github-ci-expected-checks-v1"
 CI_REPORT_SCHEMA = "github-ci-report-v2"
+CI_POLICY_SNAPSHOT_SCHEMA = "github-ci-policy-snapshot-v1"
 
 
 @dataclass(frozen=True)
@@ -2733,6 +2734,72 @@ def expected_ci_checks_sha256(value: Mapping[str, Any]) -> str:
     return canonical_sha256(validate_expected_ci_checks(value))
 
 
+def ci_policy_projection_sha256(
+    expected: Mapping[str, Any],
+    source_projection: Any | None = None,
+) -> str:
+    """Digest only the target-source policy that controls blocking checks."""
+    normalized = validate_expected_ci_checks(expected)
+    projection = {
+        "checks": [
+            {
+                "workflow_name": item["workflow_name"],
+                "check_name": item["check_name"],
+                "allow_skipped": item["allow_skipped"],
+            }
+            for item in normalized["checks"]
+        ]
+    }
+    if source_projection is not None:
+        projection["source_projection"] = source_projection
+    return canonical_sha256(projection)
+
+
+def make_ci_policy_snapshot(
+    target_commit: str,
+    expected: Mapping[str, Any],
+    source_projection: Any | None = None,
+) -> dict[str, Any]:
+    target_commit = _commit(target_commit, "policy target_commit")
+    return {
+        "schema": CI_POLICY_SNAPSHOT_SCHEMA,
+        "target_commit": target_commit,
+        "policy_sha256": ci_policy_projection_sha256(expected),
+        "source_policy_sha256": canonical_sha256(
+            source_projection if source_projection is not None else {}
+        ),
+    }
+
+
+def validate_ci_policy_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
+    data = _closed(
+        value,
+        {"schema", "target_commit", "policy_sha256", "source_policy_sha256"},
+        "CI policy snapshot",
+    )
+    if set(data) != {
+        "schema",
+        "target_commit",
+        "policy_sha256",
+        "source_policy_sha256",
+    }:
+        raise RuntimeContractError("CI policy snapshot has missing fields")
+    if data["schema"] != CI_POLICY_SNAPSHOT_SCHEMA:
+        raise RuntimeContractError("unsupported CI policy snapshot schema")
+    target_commit = _commit(data["target_commit"], "policy.target_commit")
+    policy_sha256 = _digest(data["policy_sha256"], "policy.policy_sha256")
+    source_policy_sha256 = _digest(
+        data["source_policy_sha256"],
+        "policy.source_policy_sha256",
+    )
+    return {
+        "schema": CI_POLICY_SNAPSHOT_SCHEMA,
+        "target_commit": target_commit,
+        "policy_sha256": policy_sha256,
+        "source_policy_sha256": source_policy_sha256,
+    }
+
+
 def _observed_check_sort_key(value: Mapping[str, Any]) -> tuple[str, ...]:
     return (
         value["workflow_name"],
@@ -3664,6 +3731,7 @@ def validate_ci_report_history(
 
 __all__ = [
     "CI_REPORT_SCHEMA",
+    "CI_POLICY_SNAPSHOT_SCHEMA",
     "CiAttemptSizeLimit",
     "ExpectedCiClassification",
     "EXPECTED_CHECKS_SCHEMA",
@@ -3688,6 +3756,7 @@ __all__ = [
     "canonical_bytes",
     "canonical_json_bytes",
     "canonical_sha256",
+    "ci_policy_projection_sha256",
     "capture_runtime_source_envelope",
     "capture_runtime_authority_binding",
     "capture_runtime_execution_context",
@@ -3703,6 +3772,7 @@ __all__ = [
     "make_observation_hard_limit_attempt",
     "make_observation_limit_attempt",
     "make_pr_feedback_cursor",
+    "make_ci_policy_snapshot",
     "make_report_invalid_attempt",
     "parse_runtime_external_captures",
     "parse_canonical_json",
@@ -3716,6 +3786,7 @@ __all__ = [
     "validate_captured_runtime_source_envelope",
     "validate_cleanup_report",
     "validate_expected_ci_checks",
+    "validate_ci_policy_snapshot",
     "validate_pr_feedback_cursor",
     "validate_pr_feedback_item",
     "validate_runtime_source_envelope",

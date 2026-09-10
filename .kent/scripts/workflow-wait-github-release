@@ -56,6 +56,7 @@ def main() -> int:
         return 2
     try:
         publication, run = _report_carriers(payload, state)
+        helper.revalidate_publication_target(ROOT, state, publication)
         if run == helper.NOT_SELECTED_RUN:
             run = helper.discover_release_run(ROOT, payload["release_tag"], payload["target_commit"])
             payload["release_run"] = helper.canonical_json(run)
@@ -74,6 +75,7 @@ def main() -> int:
         notes_bytes = (ROOT / notes["path"]).read_bytes()
         body = release.get("body", "")
         if body != notes_bytes.decode("utf-8"):
+            helper.revalidate_publication_target(ROOT, state, publication)
             edited = helper.gh(ROOT, ["release", "edit", payload["release_tag"], "--notes-file", "-"], input_text=notes_bytes.decode("utf-8"))
             if edited.returncode:
                 release = helper.read_release(ROOT, payload["release_tag"], payload["target_commit"])

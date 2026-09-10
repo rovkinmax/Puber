@@ -2,10 +2,10 @@
 from pathlib import Path
 import hashlib, subprocess
 ROOT=Path(__file__).resolve().parents[3]
-KIT=Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
-COMMIT="93420b9537bbaf4d673d63305e872945e0693e83"
+KIT=Path("/Users/rovkinmax/dev/llm-staf/kent-engineering-kit")
+COMMIT="9363fa48f9f21d2742a41841ab97b18cc4c4e521"
 assert KIT.is_dir() and subprocess.run(["git","rev-parse","HEAD"],cwd=KIT,text=True,capture_output=True).stdout.strip()==COMMIT
-pairs=[(".kent/scripts/workflow_runtime_contracts.py","workflowkit/runtime.py"),(".kent/scripts/workflow-evidence-ledger","templates/project/workflow-evidence-ledger"),(".kent/scripts/workflow-task-janitor","templates/project/workflow-task-janitor"),(".kent/scripts/workflow-wait-github-pr","templates/project/workflow-wait-github-pr"),(".kent/scripts/workflow-wait-github-ci","templates/project/workflow-wait-github-ci")]
+pairs=[(".kent/scripts/workflow-prepare-github-ci","templates/project/workflow-prepare-github-ci"),(".kent/scripts/workflow_runtime_contracts.py","workflowkit/runtime.py"),(".kent/scripts/workflow-evidence-ledger","templates/project/workflow-evidence-ledger"),(".kent/scripts/workflow-task-janitor","templates/project/workflow-task-janitor"),(".kent/scripts/workflow-wait-github-pr","templates/project/workflow-wait-github-pr"),(".kent/scripts/workflow-wait-github-ci","templates/project/workflow-wait-github-ci")]
 for target,source in pairs: assert hashlib.sha256((ROOT/target).read_bytes()).digest()==hashlib.sha256((KIT/source).read_bytes()).digest(), target
 expected_verify=subprocess.run(
     [
@@ -41,3 +41,19 @@ assert hashlib.sha256((ROOT / "app/debug.jks").read_bytes()).hexdigest() == pins
 certificate = subprocess.run(["keytool", "-exportcert", "-keystore", str(ROOT / "app/debug.jks"), "-storepass", "android", "-alias", "androiddebugkey"], capture_output=True, check=True).stdout
 assert hashlib.sha256(certificate).hexdigest() == pins["validation_signer_certificate_sha256"]
 print("runtime-v2-validation-key-closure: passed")
+
+assert subprocess.run(["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=KIT, text=True, capture_output=True, check=True).stdout == ""
+assert pins is not None
+runtime = runpy.run_path(str(ROOT / ".kent/scripts/workflow-puber-release-intent"))
+assert runtime["WORKFLOW_REVISION"] == 88 and runtime["SOURCE_REVISION"] == 90
+portable = json.loads((ROOT / ".kent/workflows/specs/puber-engineering-delivery-v21.json").read_text())
+assert len(portable["nodes"]) == 31 and len(portable["edges"]) == 89
+assert len({(edge["source"], edge["transition"]) for edge in portable["edges"]}) == 87
+print("prepared-native88-source90-delivery21: passed")
+
+actual_source = subprocess.run([str(KIT / "scripts/generate-workflow"), "--project", str(ROOT), "--kind", "delivery", "--version", "21"], capture_output=True, text=True, check=True).stdout
+assert actual_source == (ROOT / ".kent/workflows/specs/puber-engineering-delivery-v21.json").read_text()
+assert 'prepare_ci = ".kent/scripts/workflow-prepare-github-ci"' in profile
+assert 'prepare_ci = "1.0.0"' in profile
+assert subprocess.run(["git", "diff", "--exit-code", "--", ".kent/workflows/puber-engineering-delivery-v20.json", ".kent/scripts/workflow-compile-report", ".kent/scripts/workflow-evidence-ledger"], cwd=ROOT).returncode == 0
+print("actual-default-generator21-and-frozen-baselines: passed")

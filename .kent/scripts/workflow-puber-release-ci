@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""Flat Puber Release carrier over the unchanged shared CI/PR commands."""
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from typing import Any, Mapping
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[2]
+_spec = importlib.util.spec_from_loader("puber_release_ci_helper", SourceFileLoader(
+    "puber_release_ci_helper", str(ROOT / ".kent/scripts/workflow-puber-release-intent")))
+helper = importlib.util.module_from_spec(_spec)
+assert _spec and _spec.loader
+_spec.loader.exec_module(helper)
+CI_FIELDS = ("expected_ci_checks", "expected_ci_checks_sha256", "runtime_source_envelope_digest",
+             "ci_policy_snapshot", "ci_report", "pr_feedback_cursor")
+SHARED_INPUTS = ("workspace_path", "pr_url", "branch_name", "merge_strategy", "task_short_id",
+                 "pr_head_oid", "pr_base_oid", *CI_FIELDS)
+SHARED_PATHS = {"ci_prepare": "workflow-prepare-github-ci", "ci_watch": "workflow-wait-github-ci",
+                "merge_watch": "workflow-wait-github-pr"}
+
+
+def _read_actual_pr(payload: Mapping[str, Any]) -> dict:
+    kit = helper._kit_modules()
+    pr = kit["read_pull_request"](ROOT, helper.canonical_pr_url(payload["pr_url"]))
+    if (pr.get("url") != payload["pr_url"] or pr.get("headRefName") != payload["branch_name"]
+            or pr.get("baseRefName") != "master" or pr.get("state") not in {"OPEN", "MERGED", "CLOSED"}
+            or any(not helper.SHA1.fullmatch(str(pr.get(key, ""))) for key in ("headRefOid", "baseRefOid"))):
+        raise helper.ContractError("actual PR identity is incomplete or drifted")
+    return pr
+
+
+def _run_shared(operation: str, payload: Mapping[str, Any]) -> dict:
+    selected = {key: payload[key] for key in SHARED_INPUTS if key in payload}
+    # PR observation's source contract binds policy P; retain actual PR base
+    # separately in the outer release carrier and never rewrite the policy DTO.
+    if operation == "merge_watch":
+        selected["pr_base_oid"] = json.loads(selected["ci_policy_snapshot"])["target_commit"]
+    result = helper.run([str(ROOT / ".kent/scripts" / SHARED_PATHS[operation])], cwd=ROOT,
+        env=helper.child_env(), input_text=helper.canonical_json(selected), check=False)
+    if result.returncode:
+        raise helper.ContractError("shared CI command failed; inspect its scoped diagnostic")
+    return helper._json_one(result.stdout.encode())
+
+
+def _checkpoint(payload: dict, state: dict) -> None:
+    expected = {key: payload[key] for key in ("operation_id", "release_branch", "release_base_oid",
+        "candidate_oid", "release_head_oid", "release_type", "release_version", "release_tag")}
+    expected.update(task_id=state["task_id"], task_short_id=state["task_short_id"])
+    if payload["task_short_id"] != state["task_short_id"] or payload["release_head_oid"] != state["controller_commit"]:
+        raise helper.ContractError("release CI identity differs from the admitted controller H")
+    checkpoint = helper.read_profile_checkpoint(ROOT, state["task_short_id"], expected=expected)
+    if checkpoint["state"] != "completed" or any(checkpoint[key] != payload[key] for key in (
+            "profile_report", "profile_report_digest", "release_preparation_report", "release_preparation_report_digest")):
+        raise helper.ContractError("release CI proof differs from the completed checkpoint")
+    helper.require_string(payload["verification_summary"], "verification_summary")
+
+
+def _packet(value: dict) -> None:
+    kit = helper._kit_modules()
+    expected = kit["validate_expected_ci_checks"](kit["parse_canonical_json"](
+        value["expected_ci_checks"], label="expected CI checks", max_bytes=64 * 1024))
+    policy = kit["validate_ci_policy_snapshot"](kit["parse_canonical_json"](
+        value["ci_policy_snapshot"], label="CI policy", max_bytes=64 * 1024))
+    if (value["expected_ci_checks_sha256"] != kit["expected_ci_checks_sha256"](expected)
+            or value["runtime_source_envelope_digest"] != expected["runtime_source_envelope_digest"]
+            or expected["project_commit"] != value["release_head_oid"]
+            or expected["repository"] != helper.REPOSITORY
+            or policy["policy_sha256"] != kit["ci_policy_projection_sha256"](expected)
+            or {(row["workflow_name"], row["check_name"], row["allow_skipped"]) for row in expected["checks"]}
+                != {("PR Checks", name, False) for name in ("Build", "Detekt", "Unit Tests")}):
+        raise helper.ContractError("release CI packet is not the exact mandatory H contract")
+    if value.get("ci_report"):
+        kit["validate_ci_report"](kit["parse_canonical_json"](value["ci_report"], label="CI report", max_bytes=kit["MAX_CI_REPORT_BYTES"]))
+
+
+def transport(operation: str, payload: dict, state: dict) -> dict:
+    result = dict(payload)
+    try:
+        _checkpoint(payload, state)
+        result["merge_strategy"] = helper.resolve_merge_strategy(ROOT, state, payload)
+        before = _read_actual_pr(payload)
+        result.update(pr_head_oid=before["headRefOid"], pr_base_oid=before["baseRefOid"])
+        if before["headRefOid"] != payload["release_head_oid"]:
+            raise helper.ContractError("release PR head changed; preparation proof must be rebuilt")
+        if before["state"] == "MERGED":
+            # Reuse the existing genuine merged-PR proof, without acquiring T.
+            merged = helper.pr_state(ROOT, payload["pr_url"])
+            if merged["headRefOid"] != before["headRefOid"] or merged["baseRefOid"] != before["baseRefOid"]:
+                raise helper.ContractError("merged PR readback drifted")
+            result.update({key: result.get(key, "uninitialized" if key == "pr_feedback_cursor" else "") for key in CI_FIELDS})
+            result["transition"] = {"ci_prepare": "ci_prepare_already_merged", "ci_watch": "ci_watch_pr_merged", "merge_watch": "merge_watch_pr_merged"}[operation]
+            if operation == "merge_watch":
+                result["commentary"] = (f"Подтвердите публикацию Puber {payload['release_version']}: "
+                    f"тег {payload['release_tag']} строго на merged T={merged['mergeCommit']['oid']}. "
+                    "Контроллер и checkpoint остаются H; Publish повторно проверит current master и исходники T.")
+            return result
+        if before["state"] == "CLOSED":
+            raise helper.ContractError("release PR closed without merge; explicit disposition is required")
+        shared = _run_shared(operation, result)
+        transition = shared.pop("transition", "")
+        if operation == "ci_prepare" and transition == "ci_prepare_ready_initial":
+            result.pop("ci_report", None)  # The shared preparer archived the previous cycle.
+        result.update({key: value for key, value in shared.items() if key in SHARED_INPUTS})
+        after = _read_actual_pr(payload)
+        if after != before:
+            raise helper.ContractError("PR observation changed during CI transport; reprepare the cycle")
+        result.update(pr_head_oid=after["headRefOid"], pr_base_oid=after["baseRefOid"])
+        transitions = {
+            "ci_prepare": {"ci_prepare_ready_initial", "ci_prepare_ready_retry", "ci_prepare_failed", "ci_prepare_pr_merged"},
+            "ci_watch": {"ci_watch_passed", "ci_watch_failed", "ci_watch_source_changed", "ci_watch_pr_merged"},
+            "merge_watch": {"merge_watch_still_waiting", "merge_watch_state_changed", "merge_watch_pr_merged"},
+        }
+        if transition not in transitions[operation]:
+            raise helper.ContractError("shared CI transition is not an admitted outcome")
+        if transition in {"ci_prepare_failed", "ci_prepare_pr_merged", "ci_watch_pr_merged", "merge_watch_pr_merged"}:
+            raise helper.ContractError("shared CI state changed; re-read through the normal retry")
+        result["transition"] = "ci_watch_state_changed" if transition == "ci_watch_source_changed" else transition
+        if transition != "ci_watch_source_changed":
+            _packet(result)
+        if transition not in {"ci_prepare_ready_initial", "ci_watch_passed", "ci_prepare_ready_retry"}:
+            result.setdefault("ci_report", "")
+        return result
+    except (ValueError, RuntimeError, OSError, KeyError) as error:
+        result["transition"] = {"ci_prepare": "ci_prepare_needs_user_action", "ci_watch": "ci_watch_needs_user_action", "merge_watch": "merge_watch_needs_user_action"}[operation]
+        result["blocker_reason"] = str(error)
+        for key in CI_FIELDS:
+            result.setdefault(key, "uninitialized" if key == "pr_feedback_cursor" else "")
+        return result
+
+
+def main() -> int:
+    try:
+        payload = helper.read_zero_argument()
+        metadata = payload.get("_kent")
+        if not isinstance(metadata, dict):
+            raise helper.ContractError("native CI envelope is required")
+        graph = json.loads((ROOT / ".kent/workflows/puber-release.json").read_text())
+        operation = next((node["key"] for node in graph["nodes"] if node["id"] == metadata.get("node_id")), None)
+        if operation not in SHARED_PATHS:
+            raise helper.ContractError("native CI node is not admitted")
+        business, state, _edge = helper.validate_envelope(payload, ROOT, operation)
+        result = transport(operation, business, state)
+        edges = [edge for edge in graph["edges"] if edge["key"] == result["transition"]]
+        if len(edges) != 1:
+            raise helper.ContractError("CI output edge is ambiguous")
+        edge = edges[0]
+        target = next(node["key"] for node in graph["nodes"] if node["id"] == edge["target_node_id"])
+        helper.emit_exact(ROOT, result["transition"], target,
+            {field["key"]: result[field["key"]] for field in edge["parameters"]}, commentary=result.get("commentary"))
+        return 0
+    except (ValueError, RuntimeError, OSError, KeyError) as error:
+        print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

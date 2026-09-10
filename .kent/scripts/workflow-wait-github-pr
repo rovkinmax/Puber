@@ -14,6 +14,8 @@ import time
 import tomllib
 from urllib.parse import urlparse
 
+sys.dont_write_bytecode = True
+
 
 MAX_QUERY_OUTPUT_BYTES = 4 * 1024 * 1024
 MAX_FEEDBACK_BODY_BYTES = 64 * 1024
@@ -131,6 +133,64 @@ def profile_schema3_legacy(workspace: Path) -> bool:
         return False
     schema = value.get("schema_version") if isinstance(value, dict) else None
     return type(schema) is int and schema == 3
+
+
+def source_contract_mode(payload: dict[str, object]) -> bool:
+    return "ci_policy_snapshot" in payload
+
+
+def source_contract_values(payload: dict[str, object]) -> dict[str, object]:
+    if not source_contract_mode(payload):
+        return {}
+    keys = (
+        "expected_ci_checks",
+        "expected_ci_checks_sha256",
+        "runtime_source_envelope_digest",
+        "ci_policy_snapshot",
+        "ci_report",
+        "task_short_id",
+    )
+    return {key: payload[key] for key in keys if key in payload}
+
+
+def validate_source_contract(payload: dict[str, object], runtime: object) -> set[tuple[str, str]]:
+    raw_expected = payload.get("expected_ci_checks")
+    if not isinstance(raw_expected, str):
+        raise ValueError("expected_ci_checks is required")
+    expected = runtime.parse_canonical_json(
+        raw_expected,
+        label="expected_ci_checks",
+        max_bytes=runtime.MAX_EXPECTED_CHECKS_BYTES,
+    )
+    expected = runtime.validate_expected_ci_checks(expected)
+    supplied = payload.get("expected_ci_checks_sha256")
+    if supplied != runtime.expected_ci_checks_sha256(expected):
+        raise ValueError("expected_ci_checks_sha256 is invalid")
+    snapshot = payload.get("ci_policy_snapshot")
+    if not isinstance(snapshot, str):
+        raise ValueError("ci_policy_snapshot is required")
+    policy = runtime.parse_canonical_json(
+        snapshot,
+        label="ci_policy_snapshot",
+        max_bytes=runtime.MAX_EXPECTED_CHECKS_BYTES,
+    )
+    policy = runtime.validate_ci_policy_snapshot(policy)
+    if policy["policy_sha256"] != runtime.ci_policy_projection_sha256(expected):
+        raise ValueError("ci_policy_snapshot does not match expected checks")
+    envelope = payload.get("runtime_source_envelope_digest")
+    if envelope != expected["runtime_source_envelope_digest"]:
+        raise ValueError("runtime_source_envelope_digest is invalid")
+    repository = str(payload["pr_url"]).split("/pull/")[0].removeprefix("https://github.com/")
+    if (
+        expected["repository"] != repository
+        or expected["project_commit"] != payload["pr_head_oid"]
+        or policy["target_commit"] != payload["pr_base_oid"]
+    ):
+        raise ValueError("source CI packet identity is contradictory")
+    return {
+        (item["workflow_name"], item["check_name"])
+        for item in expected["checks"]
+    }
 
 
 def runtime_contracts():
@@ -337,6 +397,7 @@ def _run_query(
     workspace: Path,
     *,
     timeout: int,
+    accepted_exit_codes: tuple[int, ...] = (0,),
 ) -> tuple[bytes, bytes, int]:
     process = subprocess.Popen(
         command,
@@ -431,7 +492,7 @@ def _run_query(
             stdout=stdout,
             stderr=stderr,
         )
-    if process.returncode != 0:
+    if process.returncode not in accepted_exit_codes:
         raise QueryError(
             "github_query_failed",
             exit_code=process.returncode,
@@ -866,13 +927,20 @@ def feedback_checks(state: dict[str, object]) -> list[dict[str, object]]:
             bucket = "skipping"
         else:
             bucket = "pending"
+        workflow_value = (
+            item.get("workflow")
+            or item.get("workflow_name")
+            or ""
+        )
+        if isinstance(workflow_value, dict):
+            workflow_value = (
+                workflow_value.get("name")
+                or workflow_value.get("workflowName")
+                or ""
+            )
         rows.append(
             {
-                "workflow_name": str(
-                    item.get("workflow")
-                    or item.get("workflow_name")
-                    or ""
-                ),
+                "workflow_name": str(workflow_value),
                 "check_name": str(
                     item.get("name")
                     or item.get("context")
@@ -929,6 +997,27 @@ def read_state(
     if not isinstance(payload, dict):
         raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
     return payload
+
+
+def read_source_checks(workspace: Path, pr_url: str, gh_bin: str, *, timeout: int) -> list[dict[str, object]]:
+    stdout, stderr, exit_code = _run_query(
+        [gh_bin, "pr", "checks", pr_url, "--json", "name,workflow,bucket,state,link"],
+        workspace, timeout=timeout, accepted_exit_codes=(0, 1, 8),
+    )
+    values = _json_output(stdout, label="GitHub PR checks", stderr=stderr)
+    if not isinstance(values, list) or len(values) > 1000:
+        raise ValueError("feedback_hard_limit")
+    identities = set()
+    for item in values:
+        if not isinstance(item, dict) or not all(
+            isinstance(item.get(key), str) for key in ("name", "workflow", "bucket", "state")
+        ):
+            raise ValueError("malformed_feedback_check")
+        identity = (item["workflow"], item["name"])
+        if identity in identities:
+            raise ValueError("ambiguous_feedback_check")
+        identities.add(identity)
+    return values
 
 
 def _safe_error(error: Exception) -> dict[str, object]:
@@ -1002,11 +1091,18 @@ def main() -> int:
     v2_mode = not (
         profile_schema3_legacy(workspace) and "ci_report" not in raw
     )
+    source_mode = source_contract_mode(raw)
     prevalidation_error: Exception | None = None
     cursor: dict[str, object] = {}
+    mandatory_checks: set[tuple[str, str]] | None = None
     if v2_mode:
         try:
             cursor = cursor_values(raw)
+            if source_mode:
+                mandatory_checks = validate_source_contract(
+                    raw,
+                    runtime_contracts(),
+                )
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
             prevalidation_error = error
     else:
@@ -1055,6 +1151,7 @@ def main() -> int:
                 feedback_error=prevalidation_error,
             ),
             pr_feedback_cursor="uninitialized",
+            **source_contract_values(raw),
         )
         return 0
     gh_bin = resolve_gh_bin()
@@ -1070,6 +1167,16 @@ def main() -> int:
                 gh_bin,
                 timeout=query_timeout,
             )
+            if mandatory_checks is not None and state.get("state") == "OPEN":
+                # The PR rollup does not include workflow identity. Use the
+                # actual checks endpoint, then reject a head/base race.
+                checks = read_source_checks(workspace, pr_url, gh_bin, timeout=query_timeout)
+                confirmed = read_state(workspace, pr_url, gh_bin, timeout=query_timeout)
+                if any(confirmed.get(key) != state.get(key) for key in (
+                    "state", "url", "headRefOid", "baseRefOid", "headRefName", "baseRefName",
+                )):
+                    raise ValueError("pull_request_identity_changed")
+                state["statusCheckRollup"] = checks
             consecutive_errors = 0
         except (QueryError, RuntimeError, ValueError) as error:
             consecutive_errors += 1
@@ -1096,6 +1203,7 @@ def main() -> int:
                     branch_name=branch_name,
                     merge_strategy=merge_strategy,
                     pr_report=report,
+                    **source_contract_values(raw),
                     **cursor,
                 )
                 return 0
@@ -1152,6 +1260,20 @@ def main() -> int:
                     else "pull_request_feedback_invalid"
                 )
         checks = state.get("statusCheckRollup")
+        required_checks_reason = ""
+        if mandatory_checks is not None:
+            normalized_checks = feedback_checks(state)
+            observed = {
+                (item["workflow_name"], item["check_name"]): item
+                for item in normalized_checks
+            }
+            if any(
+                identity not in observed
+                or observed[identity]["bucket"] != "pass"
+                or observed[identity]["state"] != "SUCCESS"
+                for identity in mandatory_checks
+            ):
+                required_checks_reason = "required_checks_not_green"
         failed_checks = []
         if isinstance(checks, list):
             for check in checks:
@@ -1164,8 +1286,22 @@ def main() -> int:
                     or ""
                 ).upper()
                 if check_state in FAILED_CHECK_STATES:
+                    identity = (
+                        str(
+                            check.get("workflow")
+                            or check.get("workflow_name")
+                            or ""
+                        ),
+                        str(
+                            check.get("name")
+                            or check.get("context")
+                            or ""
+                        ),
+                    )
+                    if mandatory_checks is not None and identity not in mandatory_checks:
+                        continue
                     failed_checks.append(
-                        str(check.get("name") or check.get("context") or "unknown")
+                        identity[1] or "unknown"
                     )
 
         if state_name == "MERGED":
@@ -1186,6 +1322,7 @@ def main() -> int:
                     ensure_ascii=False,
                     sort_keys=True,
                 ),
+                **source_contract_values(raw),
                 **cursor,
             )
             return 0
@@ -1201,6 +1338,8 @@ def main() -> int:
             reason = "changes_requested"
         elif failed_checks:
             reason = "checks_failed"
+        elif required_checks_reason:
+            reason = required_checks_reason
         elif merge_state == "DIRTY":
             reason = "merge_conflict"
         elif state_name not in {"OPEN", ""}:
@@ -1220,6 +1359,7 @@ def main() -> int:
                     reason,
                     feedback_error=feedback_error,
                 ),
+                **source_contract_values(raw),
                 **cursor,
             )
             return 0
@@ -1233,6 +1373,7 @@ def main() -> int:
                 merge_strategy=merge_strategy,
                 pr_head_oid=initial_head,
                 pr_base_oid=initial_base,
+                **source_contract_values(raw),
                 **cursor,
             )
             return 0

@@ -173,11 +173,11 @@ Before making a workflow default for the project:
 ## S05 source contract
 
 The graph preserves UUID `10d8adb2-c74c-4ef0-8b5c-311cb5cd0459`, name
-`Puber Release`, non-default identity, and revision 90 counts of 17 nodes,
-46 transition groups, and 46 edges. Release preparation is an ordered
+`Puber Release`, non-default identity, and source revision 90 counts of 18 nodes,
+51 transition groups, and 51 edges. Release preparation is an ordered
 profile-generation and finalization pipeline before compliance and PR shipping.
-The five deterministic nodes are
-`release_intent_gate`, `profile_generation`, `ci_watch`, `merge_watch`, and
+The six deterministic pre-publication/cleanup transport nodes are
+`release_intent_gate`, `profile_generation`, `ci_prepare`, `ci_watch`, `merge_watch`, and
 `task_janitor`.
 
 ## Revision 90 closed safety contract
@@ -202,8 +202,37 @@ and fail-closed secret preflight. Only preflight/build receive the three signing
 secrets; upload receives none, and only Release creation gets `GH_TOKEN`.
 Production credentials never enter task/preparation worktrees. Missing or
 ambiguous signing sources cannot fall back to debug. There is no external
-secret-name attestation. Revision 90 retains 17/46/46 topology, UUID, non-default
-status and existing approval gates; it is source-only, with no live rollout or
-restart. Pre-live failure restores all 24 preimages together. After live rollout,
-never restore unsafe revision 89: disable new admissions/tag approvals first,
-then use a separately reviewed safe revision or forward revision 91.
+secret-name attestation. Source revision 90 now has 18 nodes, 51 transition groups and 51 edges,
+with unchanged UUID, non-default status and publication approval keys. The
+prepared native identity is 88, conditional on a separately verified live
+87 -> 88 rollout; source revision 90 is not a native Task version. Source
+changes neither apply a live workflow nor restart existing Sessions. Rollback
+requires a separately approved inverse source change preserving evidence.
+
+## Prepared portable Delivery v21
+
+`.kent/workflows/specs/puber-engineering-delivery-v21.json` is generated source
+from published Kit9363: 31 nodes, 87 transition groups and 89 edges. It is not
+an applied native graph. The v20 native audit snapshot remains frozen and the
+live default remains separately owned by Kent. Prepare CI is a managed shared
+command; the Release graph uses a project adapter to preserve its flat release
+identity and actual PR head/base through preparation, CI and merge observation.
+
+The native Task lock stays K; exact existing preparation evidence admits the
+current publication controller/checkpoint H without changing that lock. The approved tag and GitHub
+production run are T; `.kent/commands/release.md` owns the precise qualification
+and missing-object prerequisites. Legacy `workflow-compile-report` is a known
+inactive baseline follow-up, left unchanged and uninvoked.
+
+## Cleanup Agent / stock Janitor
+
+Cleanup keeps UUID `16a1dcd7-2737-45e9-88ba-93ebc8430b89` as a
+`delivery-operator` Agent with shell-command completion. Its three initial
+entries use new_session/immediate_source; task_janitor_blocked uses
+continue_session/previous_target, preserving the same sealed caller while
+native Starter rebinds it to H. Historical Session enumeration is not an owner
+selection mechanism. The deterministic helper applies the independent
+observable-outcome policy in `.kent/commands/release.md`; other Scripts retain
+their actual closed native Script contracts. Source counts remain 18/51/51,
+source revision90 and prepared native88 remain distinct, and no live graph is
+applied by these files.

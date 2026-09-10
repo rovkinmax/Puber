@@ -39,18 +39,21 @@ BASE_NODE_IDS = {
 }
 NEW_NODES = {
     "release_intent_gate": ("0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e", ".kent/scripts/workflow-puber-release-intent"),
-    "ci_watch": ("598063c6-2cef-51ec-a613-043e5b6335db", ".kent/scripts/workflow-wait-github-ci"),
-    "merge_watch": ("44390763-8581-53aa-8700-e912a67aaca4", ".kent/scripts/workflow-wait-github-pr"),
+    "ci_watch": ("598063c6-2cef-51ec-a613-043e5b6335db", ".kent/scripts/workflow-puber-release-ci"),
+    "merge_watch": ("44390763-8581-53aa-8700-e912a67aaca4", ".kent/scripts/workflow-puber-release-ci"),
     "task_janitor": ("dfbd8b53-4c7c-56e7-bcd0-631389648090", ".kent/scripts/workflow-task-janitor"),
     "profile_generation": ("f7d7db5c-7ae1-5d95-8d50-90c9b6dc4f72", ".kent/scripts/workflow-puber-release-profile-generation"),
+    "ci_prepare": ("162aafa2-89b3-518f-9a24-f2d9c6310bbf", ".kent/scripts/workflow-puber-release-ci"),
 }
 AGENT_NODES = {
+    "cleanup": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
     "finalize_release": "b7ee7a42-7f1f-5e5b-a4e9-3a9c8c8a1f90",
 }
 SCRIPT_NODES = {
     "publish": ".kent/scripts/workflow-puber-release-publish",
     "monitor": ".kent/scripts/workflow-wait-github-release",
-    "cleanup": ".kent/scripts/workflow-release-cleanup",
+    "ci_watch": ".kent/scripts/workflow-puber-release-ci",
+    "merge_watch": ".kent/scripts/workflow-puber-release-ci",
 }
 SCRIPT_NODES["profile_generation"] = NEW_NODES["profile_generation"][1]
 RELEASE_IDENTITY_PARAMETERS = (
@@ -63,6 +66,19 @@ RELEASE_PROOF_PARAMETERS = (
     "release_preparation_report_digest", "verification_summary",
 )
 REVISIONED_RELEASE_CARRIER = RELEASE_IDENTITY_PARAMETERS + RELEASE_PROOF_PARAMETERS
+CI_EXPECTED_PARAMETERS = (
+    "expected_ci_checks", "expected_ci_checks_sha256",
+    "runtime_source_envelope_digest", "ci_policy_snapshot",
+)
+CI_STATE_PARAMETERS = ("ci_report", "pr_feedback_cursor")
+PR_FACT_PARAMETERS = (
+    "pr_url", "branch_name", "merge_strategy", "pr_head_oid", "pr_base_oid",
+)
+RELEASE_CI_INITIAL = REVISIONED_RELEASE_CARRIER + PR_FACT_PARAMETERS
+RELEASE_CI_READY_INITIAL = REVISIONED_RELEASE_CARRIER + PR_FACT_PARAMETERS + CI_EXPECTED_PARAMETERS + ("pr_feedback_cursor",)
+RELEASE_CI_READY_RETRY = RELEASE_CI_READY_INITIAL + ("ci_report",)
+RELEASE_CI_FULL = RELEASE_CI_READY_RETRY
+RELEASE_CI_MERGE = RELEASE_CI_FULL
 SCRIPT_EDGE_PARAMETERS = {
     "start_release_intent_gate": ("release_intent_gate", ()),
     "release_intent_passed": (
@@ -117,6 +133,23 @@ SCRIPT_EDGE_PARAMETERS = {
             "profile_report_digest", "blocker_reason",
         ),
     ),
+    "ship_pr_ci_watch": ("ci_prepare", RELEASE_CI_INITIAL),
+    "ci_waiting_pr": ("ci_prepare", RELEASE_CI_FULL),
+    "ci_watch_passed": ("waiting_pr", RELEASE_CI_FULL),
+    "ci_watch_failed": ("ci_monitor", RELEASE_CI_FULL),
+    "ci_watch_state_changed": ("ci_prepare", RELEASE_CI_FULL),
+    "ci_watch_needs_user_action": ("ci_prepare", RELEASE_CI_FULL + ("blocker_reason",)),
+    "ci_watch_pr_merged": ("merge_watch", RELEASE_CI_MERGE),
+    "ci_prepare_ready_initial": ("ci_watch", RELEASE_CI_READY_INITIAL),
+    "ci_prepare_ready_retry": ("ci_watch", RELEASE_CI_READY_RETRY),
+    "ci_prepare_needs_user_action": ("ci_prepare", RELEASE_CI_FULL + ("blocker_reason",)),
+    "ci_prepare_already_merged": ("merge_watch", RELEASE_CI_MERGE),
+    "waiting_pr_ci_recheck": ("ci_prepare", RELEASE_CI_FULL),
+    "waiting_pr_merge_watch": ("merge_watch", RELEASE_CI_FULL),
+    "waiting_pr_needs_user_action": ("waiting_pr", RELEASE_CI_FULL + ("waiting_reason",)),
+    "merge_watch_still_waiting": ("merge_watch", RELEASE_CI_FULL),
+    "merge_watch_state_changed": ("waiting_pr", RELEASE_CI_FULL),
+    "merge_watch_needs_user_action": ("merge_watch", RELEASE_CI_FULL + ("blocker_reason",)),
     "compliance_ship_pr": (
         "ship_pr",
         (
@@ -273,7 +306,14 @@ PARAMETER_DESCRIPTIONS = {
     "tag_push_status": "Result of local/remote tag creation and push.",
     "target_commit": "Master commit targeted by the release tag.",
     "task_short_id": "Stable human-readable task identity.",
-    "verification_summary": "Commands run and their pass/fail results.",
+    "verification_summary": "Explicit verification summary for this transition; it is not part of the profile checkpoint.",
+    "expected_ci_checks": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
+    "expected_ci_checks_sha256": "SHA-256 digest of expected_ci_checks.",
+    "runtime_source_envelope_digest": "Digest of the immutable selected-head runtime source envelope.",
+    "ci_policy_snapshot": "Flat canonical policy snapshot for the current CI cycle.",
+    "pr_feedback_cursor": "Validated pull-request feedback cursor.",
+    "pr_head_oid": "Actual pull-request head commit observed for this CI cycle.",
+    "pr_base_oid": "Actual pull-request base commit observed for this CI cycle; never policy P.",
     "waiting_reason": "Why the PR cannot advance yet and the exact user or external action needed.",
     "workspace_path": "Path to the task workspace or worktree relevant to this workflow transition.",
 }
@@ -402,7 +442,7 @@ def check_graph(path: Path) -> list[str]:
         "id": WORKFLOW_ID,
         "name": WORKFLOW_NAME,
         "description": workflow.get("description"),
-        "version": 90,
+        "version": 88,
         "execution_target_policy": {"mode": "head"},
         "schema_version": 4,
         "default": False,
@@ -412,8 +452,8 @@ def check_graph(path: Path) -> list[str]:
     nodes = source.get("nodes", [])
     groups = source.get("transition_groups", [])
     edges = source.get("edges", [])
-    if (len(nodes), len(groups), len(edges)) != (17, 46, 46):
-        errors.append("graph counts must be exactly 17 nodes, 46 groups, 46 edges")
+    if (len(nodes), len(groups), len(edges)) != (18, 51, 51):
+        errors.append("graph counts must be exactly 18 nodes, 51 groups, 51 edges")
     by_key = {node.get("key"): node for node in nodes}
     if set(by_key) != EXPECTED_NODES:
         errors.append("graph node keys differ from the closed revision-90 set")
@@ -429,7 +469,7 @@ def check_graph(path: Path) -> list[str]:
         if (
             node.get("id") != node_id
             or node.get("kind") != "agent"
-            or node.get("subagent_role") != "release-manager"
+            or node.get("subagent_role") != ("delivery-operator" if key == "cleanup" else "release-manager")
             or node.get("completion_mode") != "shell_command"
         ):
             errors.append(f"new agent node drifted: {key}")
@@ -439,6 +479,24 @@ def check_graph(path: Path) -> list[str]:
             errors.append(f"publication node is not the required script: {key}")
         if "subagent_role" in node or "completion_mode" in node:
             errors.append(f"script node retains agent-only fields: {key}")
+    for edge in edges:
+        target = next((node for node in nodes if node.get("id") == edge.get("target_node_id")), {})
+        if target.get("kind") == "script" and (
+            any(key in edge for key in ("prompt_template", "assignee_selection", "thinking_selection"))
+            or edge.get("context_mode") != "new_session"
+            or edge.get("context_source") != {"kind": "immediate_source"}
+        ):
+            errors.append(f"Script edge retains Agent prompt or stale context: {edge.get('key')}")
+    completed_profile = next((edge for edge in edges if edge.get("key") == "profile_generation_passed"), {})
+    if completed_profile.get("context_mode") != "new_session" or completed_profile.get("context_source") != {"kind": "immediate_source"}:
+        errors.append("Script profile_generation cannot provide an Agent continuation Session")
+    for edge in edges:
+        if edge.get("target_node_id") == BASE_NODE_IDS["cleanup"]:
+            retry = edge.get("key") == "task_janitor_blocked"
+            if (edge.get("context_mode") != ("continue_session" if retry else "new_session")
+                    or edge.get("context_source") != {"kind": "previous_target" if retry else "immediate_source"}
+                    or not edge.get("prompt_template")):
+                errors.append("Cleanup Agent context/prompt is not exact")
     publish_id = BASE_NODE_IDS["publish"]
     incoming = [edge for edge in edges if edge.get("target_node_id") == publish_id]
     if not incoming or any(edge.get("requires_approval") is not True for edge in incoming):

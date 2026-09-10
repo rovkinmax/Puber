@@ -11,18 +11,22 @@ sys.dont_write_bytecode = True
 for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
     os.environ.pop(_name, None)
 ROOT = Path(__file__).resolve().parents[2]
-KIT_COMMIT = "93420b9537bbaf4d673d63305e872945e0693e83"
+KIT_COMMIT = "9363fa48f9f21d2742a41841ab97b18cc4c4e521"
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
-WORKFLOW_REVISION = 90
+# Prepared native identity; valid only after an independently gated live 87 -> 88 rollout.
+WORKFLOW_REVISION = 88
+SOURCE_REVISION = 90
 REPOSITORY = "rovkinmax/Puber"
 SCRIPT_PATHS = {
+    "ci_prepare": ".kent/scripts/workflow-puber-release-ci",
+    "ci_watch": ".kent/scripts/workflow-puber-release-ci",
+    "merge_watch": ".kent/scripts/workflow-puber-release-ci",
     "release_intent_gate": ".kent/scripts/workflow-puber-release-intent",
     "profile_generation": ".kent/scripts/workflow-puber-release-profile-generation",
     "publish": ".kent/scripts/workflow-puber-release-publish",
     "monitor": ".kent/scripts/workflow-wait-github-release",
-    "cleanup": ".kent/scripts/workflow-release-cleanup",
 }
 TASK_ROOT_KEYS = {"actions","attention_count","body","current_nodes","current_scripts","execution_target","label_ids","live_sessions","project","retained_session_count","source_workspace","status","summary","workflow","worktree_path"}
 KENT_KEYS = {"task_id","node_id","transition_branch_key"}
@@ -363,16 +367,7 @@ def task_show(root: Path, task_id: str) -> dict[str, Any]:
         raise ContractError("Kent task show failed")
     return _json_one(result.stdout.encode("utf-8"))
 
-def validate_task(
-    root: Path,
-    task_id: str,
-    node_key: str,
-    task: dict[str, Any] | None = None,
-    *,
-    allowed_notes_path: str | None = None,
-    allowed_checkout_head: str | None = None,
-    profile_recovery_admission: Callable[[dict[str, Any]], None] | None = None,
-) -> dict[str, Any]:
+def _task_identity(root: Path, task_id: str, node_key: str, task: dict[str, Any] | None = None) -> tuple[dict, str]:
     if not TASK_ID.fullmatch(task_id):
         raise ContractError("_kent.task_id is invalid")
     task = task if task is not None else task_show(root, task_id)
@@ -387,30 +382,48 @@ def validate_task(
     if workflow.get("workflow_id") != WORKFLOW_ID or workflow.get("version") != WORKFLOW_REVISION or workflow.get("name", WORKFLOW_NAME) != WORKFLOW_NAME:
         raise ContractError("Kent workflow identity or revision drifted")
     if status.get("node_ids") != [node_id]:
-        raise ContractError("Kent current node is not the selected Script")
-    nodes, scripts = task.get("current_nodes"), task.get("current_scripts")
-    if not isinstance(nodes, list) or len(nodes) != 1 or nodes[0].get("node_id") != node_id:
+        raise ContractError("Kent current node is not the selected node")
+    nodes = task.get("current_nodes")
+    if not isinstance(nodes, list) or len(nodes) != 1 or not isinstance(nodes[0], dict) or nodes[0].get("node_id") != node_id:
         raise ContractError("Kent current node state is ambiguous")
-    if not isinstance(scripts, list) or len(scripts) != 1 or scripts[0].get("path") != SCRIPT_PATHS[node_key] or scripts[0].get("current_node", {}).get("node_id") != node_id:
-        raise ContractError("Kent current Script path or node drifted")
+    return task, node_id
+
+def _task_checkout(root: Path, task_id: str, node_key: str, task: dict, node_id: str, *,
+                   allowed_notes_path=None, allowed_checkout_head=None,
+                   profile_recovery_admission=None, cleanup_recovery_admission=None) -> dict:
+    summary, execution = task["summary"], task["execution_target"]
     worktree = require_string(task.get("worktree_path"), "worktree_path")
     if Path(worktree).expanduser().resolve() != root:
         raise ContractError("Kent task worktree is not the selected repository root")
     commit = require_string(execution.get("commit_oid"), "execution_target.commit_oid")
     current_head = git(root, "rev-parse", "HEAD")
-    if (
-        not SHA1.fullmatch(commit)
-        or (
-            current_head != commit
-            and (
-                not isinstance(allowed_checkout_head, str)
-                or not SHA1.fullmatch(allowed_checkout_head)
-                or current_head != allowed_checkout_head
-            )
-        )
-    ):
+    if not SHA1.fullmatch(commit):
         raise ContractError("selected checkout is not the exact Task execution commit")
-    validated = {"task": task, "task_id": task_id, "task_short_id": _safe_task_short_id(summary.get("short_id")), "node_id": node_id, "commit": commit}
+    # K is the immutable native lock. H is the currently executing controller
+    # source, admitted below by preparation evidence, not a rewritten Task.
+    validated = {"task": task, "task_id": task_id, "task_short_id": _safe_task_short_id(summary.get("short_id")), "node_id": node_id, "commit": commit, "controller_commit": current_head}
+    if current_head != commit and current_head != allowed_checkout_head:
+        if node_key not in {"ci_prepare", "ci_watch", "merge_watch", "publish", "monitor", "cleanup"}:
+            raise ContractError("selected checkout is not the exact Task execution commit")
+        checkpoint = read_profile_checkpoint(root, validated["task_short_id"], expected={
+            "task_id": task_id, "task_short_id": validated["task_short_id"],
+            "release_base_oid": commit, "release_head_oid": current_head,
+        }, missing_ok=node_key == "cleanup")
+        if checkpoint is None:
+            if node_key != "cleanup" or cleanup_recovery_admission is None:
+                raise ContractError("prepared controller checkpoint is missing")
+            # Only Cleanup can recover after receipt-bound checkpoint deletion,
+            # and only through its existing exact terminal report/ledger checks.
+            cleanup_recovery_admission(validated)
+        else:
+            values = declarations(task.get("body"))
+            version = values.get("release_version")
+            version, tag = safe_version_tag(version, values.get("release_tag") or f"v{version}")
+            validate_preparation_proof(root, {
+                "operation_id": checkpoint["operation_id"],
+                "branch_name": checkpoint["release_branch"],
+                "release_base_oid": commit, "candidate_oid": checkpoint["candidate_oid"],
+            }, validated, version, tag, current_head)
     status = git(root, "status", "--porcelain=v1", "--untracked-files=all")
     if status:
         allowed = validate_notes_path(root, allowed_notes_path, task_short_id=_safe_task_short_id(summary.get("short_id")), require_exists=False) if allowed_notes_path else None
@@ -423,6 +436,39 @@ def validate_task(
             profile_recovery_admission(validated)
     return validated
 
+def validate_task(root: Path, task_id: str, node_key: str, task: dict[str, Any] | None = None, *,
+                  allowed_notes_path=None, allowed_checkout_head=None,
+                  profile_recovery_admission=None, cleanup_recovery_admission=None) -> dict:
+    task, node_id = _task_identity(root, task_id, node_key, task)
+    scripts = task.get("current_scripts")
+    if (node_key not in SCRIPT_PATHS or not isinstance(scripts, list) or len(scripts) != 1
+            or not isinstance(scripts[0], dict) or scripts[0].get("path") != str(root / SCRIPT_PATHS[node_key])
+            or scripts[0].get("current_node", {}).get("node_id") != node_id):
+        raise ContractError("Kent current Script path or node drifted")
+    return _task_checkout(root, task_id, node_key, task, node_id,
+        allowed_notes_path=allowed_notes_path, allowed_checkout_head=allowed_checkout_head,
+        profile_recovery_admission=profile_recovery_admission, cleanup_recovery_admission=cleanup_recovery_admission)
+
+
+def validate_cleanup_agent(root: Path, task_id: str, caller: str, *, allowed_notes_path=None,
+                           cleanup_recovery_admission=None) -> dict:
+    caller = _status_string(caller, "Cleanup Agent caller")
+    if caller in {".", ".."} or any(c.isspace() or c in "/\\" for c in caller):
+        raise ContractError("Cleanup Agent caller is not path-safe")
+    task, node_id = _task_identity(root, task_id, "cleanup")
+    node = task["current_nodes"][0]
+    if task.get("current_scripts") != [] or node.get("session_id") != caller:
+        raise ContractError("caller is not the actual current Cleanup Agent")
+    graph = json.loads((root / ".kent/workflows/puber-release.json").read_text())
+    configured = next(n for n in graph["nodes"] if n["id"] == node_id)
+    if configured.get("kind") != "agent" or configured.get("subagent_role") != "delivery-operator":
+        raise ContractError("Cleanup is not the configured Agent")
+    identity = session_identity(root, caller)
+    state = _task_checkout(root, task_id, "cleanup", task, node_id,
+        allowed_notes_path=allowed_notes_path, cleanup_recovery_admission=cleanup_recovery_admission)
+    state.update(caller_session_id=caller, caller_identity=identity)
+    return state
+
 def validate_envelope(
     payload: Mapping[str, Any],
     root: Path,
@@ -431,6 +477,7 @@ def validate_envelope(
     task: dict[str, Any] | None = None,
     allowed_checkout_head: str | None = None,
     profile_recovery_admission: Callable[[dict[str, Any]], None] | None = None,
+    cleanup_recovery_admission: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if not isinstance(payload, Mapping):
         raise ContractError("Script input must be one object")
@@ -468,6 +515,7 @@ def validate_envelope(
             allowed_notes_path=allowed_notes,
             allowed_checkout_head=allowed_checkout_head,
             profile_recovery_admission=profile_recovery_admission,
+            cleanup_recovery_admission=cleanup_recovery_admission,
         ),
         edge,
     )
@@ -492,12 +540,17 @@ def output_edge(root: Path, transition: str, target_node: str) -> dict[str, Any]
         raise ContractError(f"output transition is not an exact graph edge: {transition}")
     return matches[0]
 
-def emit_exact(root: Path, transition: str, target_node: str, fields: Mapping[str, Any]) -> None:
+def emit_exact(root: Path, transition: str, target_node: str, fields: Mapping[str, Any], *, commentary: str | None = None) -> None:
     edge = output_edge(root, transition, target_node)
     expected = {item.get("key") for item in edge.get("parameters", [])}
     if set(fields) != expected:
         raise ContractError(f"output fields do not exactly match graph edge {transition}")
-    print(json.dumps({"transition": transition, **dict(fields)}, ensure_ascii=False, sort_keys=True))
+    output = {"transition": transition, **dict(fields)}
+    if commentary is not None:
+        if not isinstance(commentary, str) or len(commentary.encode("utf-8")) > 8192:
+            raise ContractError("native approval commentary is invalid")
+        output["commentary"] = commentary
+    print(json.dumps(output, ensure_ascii=False, sort_keys=True))
 
 def _kit_modules() -> dict[str, Any]:
     configured = os.environ.get("KENT_ENGINEERING_KIT_ROOT", "")
@@ -509,110 +562,46 @@ def _kit_modules() -> dict[str, Any]:
     sys.path.insert(0, str(kit_root))
     importlib.invalidate_caches()
     workflowkit = importlib.import_module("workflowkit")
-    for name in ("workflowkit", "workflowkit.release", "workflowkit.runtime"):
+    for name in ("workflowkit", "workflowkit.release", "workflowkit.runtime", "workflowkit.revision", "workflowkit.ci_contract", "workflowkit.merge_strategy"):
         path = Path(importlib.import_module(name).__file__).resolve()
         if kit_root not in path.parents:
             raise ContractError("Kit import escaped the selected root")
     runtime = importlib.import_module("workflowkit.runtime")
     result = {name: getattr(workflowkit, name) for name in ("ProjectProfile","ReleaseSpec","NormalizedGitHubWorkflowSourceV1","preflight_project_revision","capture_runtime_execution_context","capture_runtime_authority_binding","validate_operation_jobs","canonicalize_publication_operation")}
     result.update({name: getattr(runtime, name) for name in ("validate_terminal_seal_request","validate_terminal_marker","parse_terminal_marker_line","terminal_marker_line","validate_cleanup_report","validate_terminal_chain","canonical_sha256")})
+    result.update({name: getattr(runtime, name) for name in ("validate_ci_report", "parse_canonical_json", "MAX_CI_REPORT_BYTES")})
+    revision = importlib.import_module("workflowkit.revision")
+    result.update({name: getattr(revision, name) for name in ("read_blob_bytes", "tree_mode", "collect_runtime_external_captures", "run_git")})
+    ci = importlib.import_module("workflowkit.ci_contract")
+    result.update({name: getattr(ci, name) for name in ("normalize_github_workflow", "read_pull_request")})
+    result["resolve_github_merge_strategy"] = importlib.import_module("workflowkit.merge_strategy").resolve_github_merge_strategy
+    result.update({name: getattr(runtime, name) for name in ("validate_expected_ci_checks", "expected_ci_checks_sha256", "validate_ci_policy_snapshot", "ci_policy_projection_sha256")})
     return result
 
 def _external_captures(root: Path, profile: Any, selected: Any) -> list[tuple[str, str, bytes]]:
-    captures = []
-    for external in selected.external_roots:
-        if external.kind == "builder-sha256":
-            path, digest = root / profile.release.builder_path, external.key
-        elif external.kind == "source-sha256" and "=" in external.key:
-            relative, digest = external.key.split("=", 1)
-            path = root / relative
-        else:
-            raise ContractError("runtime external root descriptor is unsupported")
-        raw = path.read_bytes()
-        if sha256_bytes(raw) != digest:
-            raise ContractError(f"runtime external source drifted: {external.kind}:{external.key}")
-        captures.append((external.kind, external.key, raw))
-    return captures
+    return list(_kit_modules()["collect_runtime_external_captures"](root, selected))
 
-def _ruby_yaml(path: Path) -> dict[str, Any]:
-    script = 'require "yaml"; require "json"; value=YAML.safe_load(File.read(ARGV.fetch(0)), aliases: false); value["on"]=value.delete(true) if value.is_a?(Hash)&&value.key?(true); puts JSON.generate(value)'
-    result = subprocess.run(["ruby", "-e", script, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    if result.returncode:
-        raise ContractError(f"workflow source cannot be parsed: {path}")
-    value = json.loads(result.stdout)
-    if not isinstance(value, dict):
-        raise ContractError(f"workflow source is not an object: {path}")
-    return value
+def _revision_blob(root: Path, kit: dict[str, Any], revision: str, path: str) -> bytes:
+    if kit["tree_mode"](root, revision, path) not in {"100644", "100755"}:
+        raise ContractError(f"selected source is not a regular Git blob: {path}")
+    return kit["read_blob_bytes"](root, revision, path, label="release source")
 
-def _secret_refs(value: Any) -> list[str]:
-    found: set[str] = set()
-    pattern = re.compile(r"(?:\$\{\{\s*)?secrets\.([A-Za-z_][A-Za-z0-9_-]*)(?:\s*\}\})?")
-    def visit(item: Any) -> None:
-        if isinstance(item, str):
-            found.update(match.group(1) for match in pattern.finditer(item))
-        elif isinstance(item, dict):
-            for key, nested in item.items():
-                visit(key); visit(nested)
-        elif isinstance(item, list):
-            for nested in item:
-                visit(nested)
-    visit(value)
-    return sorted(found)
+def _normalized_workflow(root: Path, path: str, *, revision: str | None = None) -> dict[str, Any]:
+    kit = _kit_modules()
+    # Source-only builder checks inspect their explicitly supplied source root;
+    # runtime callers always pass the immutable H or T revision below.
+    raw = _revision_blob(root, kit, revision, path) if revision is not None else (root / path).read_bytes()
+    observed = kit["normalize_github_workflow"](raw, path)
+    # The shared normalizer exposes one convenience alias outside the source DTO.
+    return {key: value for key, value in observed.items() if key != "workflow_name"}
 
-def _normalized_workflow(root: Path, path: str) -> dict[str, Any]:
-    raw = _ruby_yaml(root / path)
-    events_raw = raw.get("on", {})
-    if isinstance(events_raw, dict):
-        event_items = events_raw.items()
-    elif isinstance(events_raw, list):
-        event_items = ((name, {}) for name in events_raw)
-    else:
-        event_items = ((str(events_raw), {}),)
-    events = []
-    for name, config in event_items:
-        config = config if isinstance(config, dict) else {}
-        inputs = config.get("inputs", {}) or {}
-        dispatch_inputs = []
-        for input_name, input_value in sorted(inputs.items()) if isinstance(inputs, dict) else []:
-            input_value = input_value if isinstance(input_value, dict) else {}
-            item = {"name": input_name, "type": input_value.get("type", "string"), "required": bool(input_value.get("required", False)), "default_present": "default" in input_value}
-            if "default" in input_value:
-                item["default"] = input_value["default"]
-            dispatch_inputs.append(item)
-        events.append({"name": name, "branches": config.get("branches", []) or [], "branches_ignore": config.get("branches-ignore", []) or [], "tags": config.get("tags", []) or [], "tags_ignore": config.get("tags-ignore", []) or [], "paths": config.get("paths", []) or [], "paths_ignore": config.get("paths-ignore", []) or [], "types": sorted(config.get("types", []) or []), "dispatch_inputs": dispatch_inputs})
-    workflow_env = raw.get("env", {}) or {}
-    workflow_permissions = raw.get("permissions", {}) or {}
-    defaults = (raw.get("defaults", {}) or {}).get("run", {}) or {}
-    jobs = []
-    raw_jobs = raw.get("jobs")
-    if not isinstance(raw_jobs, dict):
-        raise ContractError(f"workflow source has no jobs: {path}")
-    for job_key, raw_job in raw_jobs.items():
-        job = raw_job if isinstance(raw_job, dict) else {}
-        job_env = {**workflow_env, **(job.get("env", {}) or {})}
-        permissions = job.get("permissions", workflow_permissions) or {}
-        job_defaults = {**defaults, **((job.get("defaults", {}) or {}).get("run", {}) or {})}
-        steps = []
-        checkout_persist_credentials = False
-        for raw_step in job.get("steps", []) or []:
-            if not isinstance(raw_step, dict):
-                raise ContractError(f"workflow step is not an object: {path}:{job_key}")
-            uses = raw_step.get("uses", "")
-            with_values = raw_step.get("with", {}) or {}
-            if uses.startswith("actions/checkout@"):
-                checkout_persist_credentials = with_values.get("persist-credentials", True)
-            step_env = raw_step.get("env", {}) or {}
-            steps.append({"kind": "uses" if uses else "run", "name": raw_step.get("name", ""), "condition": raw_step.get("if", ""), "continue_on_error": bool(raw_step.get("continue-on-error", False)), "uses": uses, "with": with_values, "run": raw_step.get("run", ""), "effective_shell": job_defaults.get("shell", ""), "effective_working_directory": job_defaults.get("working-directory", ""), "effective_environment": step_env, "secret_refs": _secret_refs({"condition": raw_step.get("if", ""), "uses": uses, "with": with_values, "run": raw_step.get("run", ""), "effective_environment": step_env})})
-        needs = job.get("needs", [])
-        jobs.append({"job_key": job_key, "job_display_name": job.get("name", job_key), "needs": [needs] if isinstance(needs, str) else needs, "matrix": (job.get("strategy", {}) or {}).get("matrix", {}) or {}, "condition": job.get("if", ""), "continue_on_error": bool(job.get("continue-on-error", False)), "runs_on": job.get("runs-on", ""), "runner_environment_asserted": any(step.get("run", "").strip() == 'test "${RUNNER_ENVIRONMENT:-github-hosted}" = github-hosted' for step in steps), "effective_permissions": permissions, "effective_defaults_run": {"shell": job_defaults.get("shell", ""), "working_directory": job_defaults.get("working-directory", "")}, "github_environment": job.get("environment", ""), "services": job.get("services", {}) or {}, "container": job.get("container"), "checkout_persist_credentials": bool(checkout_persist_credentials), "secret_refs": _secret_refs({"condition": job.get("if", ""), "env": job_env, "steps": steps}), "effective_environment": job_env, "steps": steps})
-    return {"schema": "normalized_github_workflow_source_v1", "workflow_path": path, "workflow_display_name": raw.get("name", ""), "events": events, "permissions": workflow_permissions, "environment": workflow_env, "defaults_run": {"shell": defaults.get("shell", ""), "working_directory": defaults.get("working-directory", "")}, "jobs": jobs}
-
-def _normalized_sources(root: Path, kit: dict[str, Any], spec: Any) -> list[Any]:
+def _normalized_sources(root: Path, kit: dict[str, Any], spec: Any, *, revision: str | None = None) -> list[Any]:
     paths = sorted({row["workflow_path"] for table in (spec.required_jobs_v1, spec.qualification_jobs_v1, spec.effect_jobs_v1) for row in table.jobs})
-    return [kit["NormalizedGitHubWorkflowSourceV1"].from_dict(_normalized_workflow(root, path)) for path in paths]
+    return [kit["NormalizedGitHubWorkflowSourceV1"].from_dict(_normalized_workflow(root, path, revision=revision)) for path in paths]
 
-def _load_release_spec(root: Path, kit: dict[str, Any], profile: Any) -> Any:
-    raw = tomllib.loads((root / profile.release.spec_path).read_text(encoding="utf-8"))
+def _load_release_spec(root: Path, kit: dict[str, Any], profile: Any, *, revision: str | None = None) -> Any:
+    revision = revision or git(root, "rev-parse", "HEAD")
+    raw = tomllib.loads(_revision_blob(root, kit, revision, profile.release.spec_path).decode("utf-8"))
     empty_container = {"image": "", "environment": {}, "ports": [], "options": ""}
     for table_name in ("required_jobs_v1", "qualification_jobs_v1", "effect_jobs_v1"):
         table = raw.get(table_name)
@@ -621,17 +610,27 @@ def _load_release_spec(root: Path, kit: dict[str, Any], profile: Any) -> Any:
                 row["container"] = None
     return kit["ReleaseSpec"].from_dict(raw, profile=profile)
 
-def attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, kind: str | None = None, run_tuple: Mapping[str, Any] | None = None, project_fields: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def attest(root: Path, state: dict[str, Any], node_key: str, branch: str, **kwargs: Any) -> dict[str, Any]:
+    try:
+        return _attest(root, state, node_key, branch, **kwargs)
+    except (ValueError, OSError, RuntimeError) as error:
+        raise ContractError(f"release runtime admission failed: {error}") from error
+
+def _attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, kind: str | None = None, run_tuple: Mapping[str, Any] | None = None, project_fields: Mapping[str, Any] | None = None) -> dict[str, Any]:
     kit = _kit_modules()
-    revision = kit["preflight_project_revision"](root, state["commit"])
+    controller = state.get("controller_commit", state["commit"])
+    selected_commit = run_tuple["head_sha"] if run_tuple is not None else controller
+    revision = kit["preflight_project_revision"](root, selected_commit)
     selected = revision.selected_runtime_source_inputs
-    if selected is None or selected.project_commit != state["commit"]:
+    if selected is None or selected.project_commit != selected_commit:
         raise ContractError("selected sealed RuntimeSourceInputs are missing or stale")
-    profile = kit["ProjectProfile"].from_toml(root, (root / ".kent/workflow-profile.toml").read_text(encoding="utf-8"), source=".kent/workflow-profile.toml", check_files=False)
-    spec = _load_release_spec(root, kit, profile)
+    profile = kit["ProjectProfile"].from_toml(root, _revision_blob(root, kit, selected_commit, ".kent/workflow-profile.toml").decode("utf-8"), source=".kent/workflow-profile.toml", check_files=False)
+    # T supplies observations, never a weaker policy for observing itself.
+    policy_profile = kit["ProjectProfile"].from_toml(root, _revision_blob(root, kit, controller, ".kent/workflow-profile.toml").decode("utf-8"), check_files=False)
+    spec = _load_release_spec(root, kit, policy_profile, revision=controller)
     captures = _external_captures(root, profile, selected)
     if run_tuple is None:
-        execution = {"kind":"kent_transition","task_id":state["task_id"],"task_short_id":state["task_short_id"],"workflow_id":WORKFLOW_ID,"workflow_revision":WORKFLOW_REVISION,"project_id":PROJECT_ID,"project_commit":state["commit"],"authority_transition":branch}
+        execution = {"kind":"kent_transition","task_id":state["task_id"],"task_short_id":state["task_short_id"],"workflow_id":WORKFLOW_ID,"workflow_revision":WORKFLOW_REVISION,"project_id":PROJECT_ID,"project_commit":controller,"authority_transition":branch}
         authority = {"kind":"kent_transition","task_short_id":state["task_short_id"],"workflow_id":WORKFLOW_ID,"workflow_revision":WORKFLOW_REVISION,"project_id":PROJECT_ID,"approval_authority":"publish-release","authority_transition":branch}
     else:
         execution = {"kind":"github_run", **dict(run_tuple)}
@@ -646,10 +645,168 @@ def attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, kin
         variant = next((item for item in spec.operation_variants if item.key == variant_key), None)
         if variant is None:
             raise ContractError(f"missing ReleaseSpec operation variant: {variant_key}")
-        jobs = kit["validate_operation_jobs"](variant, _normalized_sources(root, kit, spec), required=spec.required_jobs_v1, qualification=spec.qualification_jobs_v1, effect=spec.effect_jobs_v1)
+        jobs = kit["validate_operation_jobs"](variant, _normalized_sources(root, kit, spec, revision=selected_commit), required=spec.required_jobs_v1, qualification=spec.qualification_jobs_v1, effect=spec.effect_jobs_v1)
         operation = {"schema_version":1,"variant_key":variant_key,"operation_kind":variant.operation_kind,"repository":"rovkinmax/Puber","runtime_source_envelope_digest":binding.runtime_source_envelope_digest,"operation_jobs_manifest_digest":jobs.operation_jobs_manifest_digest,"authority":authority,"project_fields":dict(project_fields or {})}
         canonicalized = kit["canonicalize_publication_operation"](operation, variant, jobs, spec=spec, runtime_execution_context=context, runtime_authority_binding=binding)
     return {"kit":kit,"profile":profile,"spec":spec,"selected":selected,"context":context,"binding":binding,"operation":canonicalized}
+
+def resolve_merge_strategy(root: Path, state: dict, payload: dict) -> str:
+    kit = _kit_modules()
+    profile = kit["ProjectProfile"].from_toml(root,
+        _revision_blob(root, kit, state.get("controller_commit", state["commit"]), ".kent/workflow-profile.toml").decode(), check_files=False)
+    repository = gh_api(root, f"repos/{REPOSITORY}")
+    rules_response = gh(root, ["api", f"repos/{REPOSITORY}/rules/branches/master"])
+    if rules_response.returncode:
+        raise ContractError("active branch rules are unavailable")
+    rules = _json_one(b'{"rules":' + rules_response.stdout.encode("utf-8") + b'}')["rules"]
+    protection = gh_api(root, f"repos/{REPOSITORY}/branches/master/protection", allow_404=True)
+    if (not isinstance(repository, dict) or repository.get("full_name") != REPOSITORY
+            or repository.get("default_branch") != "master" or not isinstance(rules, list)
+            or any(not isinstance(rule, dict) for rule in rules)
+            or protection is not None and not isinstance(protection, dict)):
+        raise ContractError("merge rules readback is incomplete")
+    resolution = kit["resolve_github_merge_strategy"](profile.pr_merge_strategy(), {
+        "repository": repository, "branch_protection": protection,
+        "rulesets": [{"enforcement": "active", "rules": rules}],
+    })
+    if resolution.outcome != "resolved" or resolution.strategy != payload["merge_strategy"]:
+        raise ContractError("merge strategy does not match the current unique rules resolution")
+    return resolution.strategy
+
+
+def qualify_merged_target(root: Path, state: dict[str, Any], target: str, preparation: Mapping[str, Any]) -> None:
+    """Recompute immutable T qualification under H policy; never acquire objects."""
+    try:
+        kit = _kit_modules()
+        head = state.get("controller_commit", state["commit"])
+        if not SHA1.fullmatch(target) or git(root, "rev-parse", "HEAD") != head:
+            raise ContractError("publication controller differs from the admitted current source H")
+        if preparation["release_head_oid"] != head:
+            raise ContractError("preparation proof is not bound to controller H")
+        for commit in dict.fromkeys((head, target)):
+            selected = kit["preflight_project_revision"](root, commit).selected_runtime_source_inputs
+            if selected is None or selected.project_commit != commit:
+                raise ContractError("release target source closure is missing or stale")
+            # These are actual Git captures, never target declarations as observations.
+            kit["collect_runtime_external_captures"](root, selected)
+        profile_raw = _revision_blob(root, kit, head, ".kent/workflow-profile.toml")
+        profile = kit["ProjectProfile"].from_toml(root, profile_raw.decode("utf-8"), check_files=False)
+        spec = _load_release_spec(root, kit, profile, revision=head)
+        for path, expected in {
+            "app/build.gradle.kts": preparation["version_file_sha256"],
+            "app/src/main/generated/baselineProfiles/baseline-prof.txt": preparation["baseline_profile_sha256"],
+            "app/src/main/generated/baselineProfiles/startup-prof.txt": preparation["startup_profile_sha256"],
+        }.items():
+            if sha256_bytes(_revision_blob(root, kit, target, path)) != expected:
+                raise ContractError(f"merged target blob does not match preparation proof: {path}")
+        # The owning signing contract pins the prepared app source and tracked
+        # validation key, and forbids committed production signing inputs. It
+        # does not freeze arbitrary Gradle configuration or buildSrc trees.
+        if sha256_bytes(_revision_blob(root, kit, target, "app/debug.jks")) != VALIDATION_SIGNING["validation_signing_sha256"]:
+            raise ContractError("target tracked validation signing key drifted")
+        for path in ("app/keystore.properties", "app/release.jks"):
+            if kit["run_git"](root, "ls-tree", target, "--", path).stdout.strip():
+                raise ContractError("target contains a forbidden production signing input")
+        variant = next(item for item in spec.operation_variants if item.key == "publish_after_merge")
+        target_sources = _normalized_sources(root, kit, spec, revision=target)
+        kit["validate_operation_jobs"](variant, target_sources, required=spec.required_jobs_v1,
+                                       qualification=spec.qualification_jobs_v1, effect=spec.effect_jobs_v1)
+        for path in sorted({row["workflow_path"] for row in spec.effect_jobs_v1.jobs}):
+            allowed = _normalized_workflow(root, path, revision=head)
+            actual = _normalized_workflow(root, path, revision=target)
+            allowed_keys = {row["job_key"] for row in spec.effect_jobs_v1.jobs if row["workflow_path"] == path}
+            if {job["job_key"] for job in allowed["jobs"]} != allowed_keys or actual != allowed:
+                raise ContractError("target production workflow differs from full authorized H policy")
+    except (ValueError, OSError, RuntimeError) as error:
+        raise ContractError(f"merged target qualification failed: {error}") from error
+
+def revalidate_publication_target(root: Path, state: dict[str, Any], publication: Mapping[str, Any]) -> None:
+    """Monitor retains the H checkpoint; master may advance after publication."""
+    checkpoint = read_profile_checkpoint(root, state["task_short_id"], expected={
+        "task_id": state["task_id"], "task_short_id": state["task_short_id"],
+        "release_head_oid": publication["release_head_oid"],
+    })
+    preparation = validate_preparation_proof(root, {
+        "operation_id": checkpoint["operation_id"], "branch_name": checkpoint["release_branch"],
+        "release_base_oid": checkpoint["release_base_oid"], "candidate_oid": checkpoint["candidate_oid"],
+    }, state, publication["release_version"], publication["release_tag"], publication["release_head_oid"])
+    if digest_json(preparation) != publication["release_preparation_report_digest"]:
+        raise ContractError("publication preparation digest differs from H checkpoint")
+    qualify_merged_target(root, state, publication["target_commit"], preparation)
+
+def validate_preparation_proof(root: Path, payload: dict, state: dict, version: str, tag: str, pr_head_oid: str) -> dict:
+    expected = {
+        "task_id": state["task_id"], "task_short_id": state["task_short_id"],
+        "operation_id": payload.get("operation_id", ""),
+        "release_type": declarations(state["task"].get("body")).get("release_type", "minor"),
+        "release_version": version, "release_tag": tag,
+        "release_branch": payload.get("branch_name", f"release/{version}"),
+    }
+    for key in ("release_base_oid", "candidate_oid"):
+        if payload.get(key):
+            expected[key] = payload[key]
+    checkpoint = read_profile_checkpoint(root, state["task_short_id"], expected=expected)
+    for key in ("release_base_oid", "candidate_oid"):
+        if key in expected and checkpoint[key] != expected[key]:
+            raise ContractError(f"profile checkpoint {key} drifted")
+        expected[key] = checkpoint[key]
+    if checkpoint["state"] != "completed" or checkpoint["release_head_oid"] != pr_head_oid:
+        raise ContractError("release preparation checkpoint is not complete or PR head-bound")
+    profile = parse_profile_report(
+        checkpoint["profile_report"], checkpoint["profile_report_digest"], expected=expected
+    )
+    preparation = parse_release_preparation_report(
+        checkpoint["release_preparation_report"],
+        checkpoint["release_preparation_report_digest"],
+        expected=expected,
+    )
+    if preparation["release_head_oid"] != pr_head_oid or preparation["profile_report_digest"] != checkpoint["profile_report_digest"]:
+        raise ContractError("release preparation proof is not bound to the exact PR head")
+    validate_release_diff(
+        root,
+        checkpoint["release_base_oid"],
+        pr_head_oid,
+        profile,
+        preparation,
+    )
+    expected_blobs = {
+        "app/build.gradle.kts": preparation["version_file_sha256"],
+        "app/src/main/generated/baselineProfiles/baseline-prof.txt": preparation["baseline_profile_sha256"],
+        "app/src/main/generated/baselineProfiles/startup-prof.txt": preparation["startup_profile_sha256"],
+    }
+    profile_hashes = {
+        "app/src/main/generated/baselineProfiles/baseline-prof.txt": (
+            profile["baseline_before_sha256"],
+            profile["baseline_after_sha256"],
+        ),
+        "app/src/main/generated/baselineProfiles/startup-prof.txt": (
+            profile["startup_before_sha256"],
+            profile["startup_after_sha256"],
+        ),
+    }
+    actual_changed_profiles = {
+        path for path, (before_hash, after_hash) in profile_hashes.items()
+        if before_hash != after_hash
+    }
+    if set(profile["changed_profiles"]) != actual_changed_profiles:
+        raise ContractError("profile report contains a synthetic or omitted changed-profile entry")
+    if any(
+        git_blob_sha256(root, checkpoint["release_base_oid"], path) != before_hash
+        for path, (before_hash, _after_hash) in profile_hashes.items()
+    ):
+        raise ContractError("release-base profile blob does not match the profile report")
+    if any(
+        expected_blobs[path] != after_hash
+        for path, (_before_hash, after_hash) in profile_hashes.items()
+    ):
+        raise ContractError("profile and preparation report blob hashes disagree")
+    allowed = {"app/build.gradle.kts", *actual_changed_profiles}
+    if set(preparation["final_changed_paths"]) != allowed:
+        raise ContractError("release preparation changed path set is not exact")
+    for path in expected_blobs:
+        if git_blob_sha256(root, pr_head_oid, path) != expected_blobs[path]:
+            raise ContractError(f"PR head blob does not match preparation proof: {path}")
+    return preparation
 
 def declarations(body: Any) -> dict[str, str]:
     values = {}
@@ -1076,10 +1233,10 @@ def validate_profile_checkpoint(value, *, expected=None):
 def git_blob_sha256(root: Path, revision: str, relative: str) -> str:
     if not SHA1.fullmatch(revision) or relative not in {"app/build.gradle.kts", "app/src/main/generated/baselineProfiles/baseline-prof.txt", "app/src/main/generated/baselineProfiles/startup-prof.txt"}:
         raise ContractError("release blob request is outside the closed allowlist")
-    result = run_bytes(["git", "show", f"{revision}:{relative}"], cwd=root, check=False)
-    if result.returncode != 0:
-        raise ContractError(f"release blob is missing: {relative}")
-    return sha256_bytes(result.stdout)
+    try:
+        return sha256_bytes(_revision_blob(root, _kit_modules(), revision, relative))
+    except (ValueError, OSError, RuntimeError) as error:
+        raise ContractError(f"release blob is missing or unsafe: {relative}") from error
 
 def release_diff_paths(root: Path, base_oid: str, head_oid: str) -> list[str]:
     if not SHA1.fullmatch(base_oid) or not SHA1.fullmatch(head_oid):

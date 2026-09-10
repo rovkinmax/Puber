@@ -67,8 +67,16 @@ and fail-closed secret preflight. Only preflight/build receive the three signing
 secrets; upload receives none, and only Release creation gets `GH_TOKEN`.
 Production credentials never enter task/preparation worktrees. Missing or
 ambiguous signing sources cannot fall back to debug. There is no external
-secret-name attestation. Revision 90 retains 17/46/46 topology, UUID, non-default
-status and existing approval gates; it is source-only, with no live rollout or
-restart. Pre-live failure restores all 24 preimages together. After live rollout,
-never restore unsafe revision 89: disable new admissions/tag approvals first,
-then use a separately reviewed safe revision or forward revision 91.
+secret-name attestation. Source revision 90 now has 18 nodes, 51 transition groups and 51 edges,
+with unchanged UUID, non-default status and publication approval keys. The
+prepared native identity is 88, conditional on a separately verified live
+87 -> 88 rollout; source revision 90 is not a native Task version. Source
+changes neither apply a live workflow nor restart existing Sessions. Rollback
+requires a separately approved inverse source change preserving evidence.
+
+CI readiness uses `ci_prepare` before shared observation. Preserve the explicit
+`verification_summary` alongside the flat revisioned carrier; it is not a
+checkpoint field. Current policy resolves through the existing rules resolver,
+not an agent-selected merge strategy. Publish/Monitor leave the Task and H-owned
+checkpoint unchanged while independently qualifying target T under H policy;
+follow the prerequisites in `.kent/commands/release.md` before every effect.
