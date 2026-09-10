@@ -3,24 +3,23 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
 import stat
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
-KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
-COMMIT = "93420b9537bbaf4d673d63305e872945e0693e83"
+KIT = Path("/Users/rovkinmax/dev/llm-staf/kent-engineering-kit")
+COMMIT = "9363fa48f9f21d2742a41841ab97b18cc4c4e521"
 VERIFY = ROOT / ".kent/scripts/workflow-verify-report"
 RUNTIME = ROOT / ".kent/scripts/workflow_runtime_contracts.py"
 CHILD = ROOT / ".kent/scripts/workflow-compile-verify"
 COMPILE_REPORT = ROOT / ".kent/scripts/workflow-compile-report"
 MANIFEST = ROOT / ".kent/workflows/puber-release.manifest.json"
 EXPECTED_VERIFY_SHA256 = (
-    "cf2da0d2e55858b3298922c4e40bb97cb3e5787ff9940fcd91dde684a1f8dfa6"
+    "fb9a886537873d90ea1a763d9e96999ab8797bd77b28869594a3227a60b80217"
 )
 EXPECTED_CHILD_SHA256 = (
-    "8e7478d9576be6b536bd30d7320b2e060674a6e1e8cb02c014c73db42fb047f2"
+    "bc342644325925eae39bfbbe489d1be1681f46b4e434cceceac5bb399b5b005c"
 )
 TASK = ":app:compileDevDebugKotlin"
 BLOCKED_STDOUT = b'{"transition":"blocked"}\n'
@@ -132,15 +131,20 @@ def fake_command(
         "import json\n"
         "import os\n"
         "from pathlib import Path\n"
+        "import stat\n"
         "import signal\n"
         "import sys\n"
         "import time\n"
         "assert sys.stdin.buffer.read() == b''\n"
         "assert 'private-transport-commentary' not in json.dumps(dict(os.environ))\n"
         f"{descriptor_check}"
-        f"expected_tmp = Path({str(marker.parent.resolve() / 'build/kent-workflow/gradle-tmp')!r})\n"
+        f"expected_tmp_parent = Path({str(marker.parent.resolve() / 'build/kent-workflow')!r})\n"
         "actual_tmp = Path(os.environ.get('TMPDIR', ''))\n"
-        "tmp_ok = actual_tmp == expected_tmp and actual_tmp.is_dir()\n"
+        "tmp_ok = (actual_tmp.is_dir()\n"
+        "          and stat.S_IMODE(actual_tmp.stat().st_mode) == 0o700\n"
+        "          and ((actual_tmp.parent == expected_tmp_parent\n"
+        "               and actual_tmp.name.startswith('.verify-tmp-'))\n"
+        f"               or actual_tmp == Path({str((marker.parent / 'admission').resolve())!r})))\n"
         "sentinel = actual_tmp / 'fake-gradle-sentinel'\n"
         "if tmp_ok:\n"
         "    sentinel.write_text('sentinel', encoding='utf-8')\n"
@@ -168,6 +172,37 @@ def fake_command(
     write_executable(path, source.encode())
 
 
+def grandchild_command(path: Path, marker: Path) -> None:
+    exec_code = (
+        "import json\n"
+        "import os\n"
+        "from pathlib import Path\n"
+        "import stat\n"
+        "tmp = Path(os.environ['TMPDIR'])\n"
+        f"payload = {{'tmp': str(tmp), "
+        "'mode': stat.S_IMODE(tmp.stat().st_mode), "
+        "'payload': (tmp / 'grandchild' / 'payload').read_text(encoding='utf-8')}\n"
+        f"Path({str(marker)!r}).write_text(json.dumps(payload), encoding='utf-8')\n"
+        "print('grandchild stdout')\n"
+    )
+    source = (
+        "#!/usr/bin/python3\n"
+        "import os\n"
+        "import subprocess\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "assert sys.stdin.buffer.read() == b''\n"
+        "tmp = Path(os.environ['TMPDIR'])\n"
+        "nested = tmp / 'grandchild'\n"
+        "nested.mkdir()\n"
+        "(nested / 'payload').write_text('grandchild', encoding='utf-8')\n"
+        f"exec_code = {exec_code!r}\n"
+        "subprocess.run([sys.executable, '-c', exec_code], close_fds=True, check=True)\n"
+        "os.execv(sys.executable, [sys.executable, '-c', exec_code])\n"
+    )
+    write_executable(path, source.encode())
+
+
 def parse_wrapper_result(
     root: Path,
     result: subprocess.CompletedProcess[str],
@@ -184,6 +219,17 @@ def parse_wrapper_result(
     if framed:
         assert sha256(framed) == report["log_sha256"]
     return carrier, report, framed
+
+
+def assert_same_invocation(actual: dict[str, object], expected: dict[str, object]) -> None:
+    assert {
+        key: value for key, value in actual.items() if key != "tmpdir"
+    } == {
+        key: value for key, value in expected.items() if key != "tmpdir"
+    }
+    actual_tmp = Path(actual["tmpdir"])
+    assert actual_tmp.parent == Path(expected["tmpdir"]).parent
+    assert actual_tmp.name.startswith(".verify-tmp-")
 
 
 def run_wrapper(
@@ -291,7 +337,7 @@ assert_safe_interpreter(Path("/usr/bin/python3"))
 parent_environment = dict(os.environ)
 parent_environment.pop("PYTHONDONTWRITEBYTECODE", None)
 baseline_report = git("show", "HEAD:.kent/scripts/workflow-compile-report").stdout
-baseline_child = git("show", "HEAD:.kent/scripts/workflow-compile-verify").stdout
+assert COMPILE_REPORT.read_bytes() == baseline_report
 
 with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
     scratch = Path(temporary)
@@ -357,51 +403,6 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
         "PYTHONDONTWRITEBYTECODE": "1",
     }
 
-    legacy_root = scratch / "legacy"
-    initialize_repository(legacy_root)
-    scripts = legacy_root / ".kent/scripts"
-    scripts.mkdir(parents=True)
-    write_executable(scripts / "workflow-compile-report", COMPILE_REPORT.read_bytes())
-    write_executable(scripts / "workflow-compile-verify", CHILD.read_bytes())
-    baseline_root = scratch / "baseline"
-    (baseline_root / ".kent/scripts").mkdir(parents=True)
-    write_executable(
-        baseline_root / ".kent/scripts/workflow-compile-report",
-        baseline_report,
-    )
-    write_executable(
-        baseline_root / ".kent/scripts/workflow-compile-verify",
-        baseline_child,
-    )
-    baseline_result = subprocess.run(
-        [str(baseline_root / ".kent/scripts/workflow-compile-report")],
-        cwd=baseline_root,
-        input=b"{}",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=parent_environment,
-        check=False,
-    )
-    current_result = subprocess.run(
-        [str(legacy_root / ".kent/scripts/workflow-compile-report")],
-        cwd=legacy_root,
-        input=b"{}",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=parent_environment,
-        check=False,
-    )
-    assert (
-        baseline_result.returncode,
-        baseline_result.stdout,
-        baseline_result.stderr,
-    ) == (1, b"", b"")
-    assert (
-        current_result.returncode,
-        current_result.stdout,
-        current_result.stderr,
-    ) == (1, b"", INVALID_INPUT)
-
     for git_shape, relative_command in (
         ("worktree", Path("tools/agentw")),
         ("primary", Path("gradlew")),
@@ -443,9 +444,9 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
             assert invocation["argv"] == [TASK]
             assert invocation["cwd"] == str(fixture.resolve())
             assert invocation["tmp_ok"] is True
-            assert invocation["tmpdir"] == str(
-                fixture.resolve() / "build/kent-workflow/gradle-tmp"
-            )
+            invocation_tmp = Path(invocation["tmpdir"])
+            assert invocation_tmp.parent == fixture.resolve() / "build/kent-workflow"
+            assert invocation_tmp.name.startswith(".verify-tmp-")
             assert invocation["pythonpath"] is None
             assert invocation["pythonhome"] is None
             assert invocation["env_hook"] is None
@@ -468,7 +469,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
                     actual_carrier, actual_report, actual_framed,
                 )
                 assert actual_report["code"] == expected_code
-                assert json.loads(marker.read_text()) == invocation
+                assert_same_invocation(json.loads(marker.read_text()), invocation)
                 assert b"private-transport-commentary" not in actual_framed
 
             marker.unlink()
@@ -480,7 +481,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
             )
             assert runtime_report["code"] == expected_code
             assert runtime_report["exit_code"] == 0
-            assert json.loads(marker.read_text()) == invocation
+            assert_same_invocation(json.loads(marker.read_text()), invocation)
             assert b"fake stdout" in runtime_framed
             assert b"fake stderr" in runtime_framed
             for value in runtime_metadata().values():
@@ -495,7 +496,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
             )
             assert omitted_report["code"] == expected_code
             assert omitted_report["exit_code"] == 0
-            assert json.loads(marker.read_text()) == invocation
+            assert_same_invocation(json.loads(marker.read_text()), invocation)
             assert b"fake stdout" in omitted_framed
             assert b"fake stderr" in omitted_framed
             for value in runtime_metadata(branch=False).values():
@@ -516,7 +517,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
         result = direct_child(
             direct_root,
             valid_payload(direct_root),
-            tmpdir=f"/dev/fd/{descriptor}",
+            tmpdir=str(admission.resolve()),
             descriptor=descriptor,
         )
     finally:
@@ -535,6 +536,32 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
     assert not poison_marker.exists()
     marker.unlink()
 
+    grandchild_marker = direct_root / "grandchild-marker"
+    grandchild_command(direct_root / "gradlew", grandchild_marker)
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        result = direct_child(
+            direct_root,
+            valid_payload(direct_root),
+            tmpdir=str(admission.resolve()),
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert result.returncode == 0
+    assert result.stdout == b'{"transition":"passed"}\n'
+    grandchild = json.loads(grandchild_marker.read_text())
+    assert grandchild == {
+        "mode": 0o700,
+        "payload": "grandchild",
+        "tmp": str(admission.resolve()),
+    }
+    assert (admission / "grandchild" / "payload").read_text() == "grandchild"
+    grandchild_marker.unlink()
+    (admission.resolve() / "grandchild" / "payload").unlink()
+    (admission.resolve() / "grandchild").rmdir()
+
+    fake_command(direct_root / "gradlew", marker, admission_fd=None, output_bytes=8)
     deep = b"{" + b'"x":{' * 2000 + b"}" * 2001
     oversized = b'{"workspace_path":"' + b"a" * (1024 * 1024) + b'"}'
     invalid_inputs = (
@@ -572,10 +599,16 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
     )
     runtime_payload = json.dumps({**business, "_kent": runtime_metadata()}).encode()
     admission, descriptor = open_admission_directory(direct_root)
+    fake_command(
+        direct_root / "gradlew",
+        marker,
+        admission_fd=descriptor,
+        output_bytes=8,
+    )
     try:
         runtime_result = direct_child(
             direct_root, runtime_payload,
-            tmpdir=f"/dev/fd/{descriptor}", descriptor=descriptor,
+            tmpdir=str(admission.resolve()), descriptor=descriptor,
         )
     finally:
         os.close(descriptor)
@@ -585,10 +618,16 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
     marker.unlink()
     omitted_payload = json.dumps({**business, "_kent": omitted_metadata}).encode()
     admission, descriptor = open_admission_directory(direct_root)
+    fake_command(
+        direct_root / "gradlew",
+        marker,
+        admission_fd=descriptor,
+        output_bytes=8,
+    )
     try:
         omitted_result = direct_child(
             direct_root, omitted_payload,
-            tmpdir=f"/dev/fd/{descriptor}", descriptor=descriptor,
+            tmpdir=str(admission.resolve()), descriptor=descriptor,
         )
     finally:
         os.close(descriptor)
@@ -640,7 +679,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
                     "review_context": "focused",
                 }
             ).encode(),
-            tmpdir=f"/dev/fd/{descriptor}",
+            tmpdir=str(admission.resolve()),
             descriptor=descriptor,
         )
     finally:
@@ -653,7 +692,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
     unsafe_admission.mkdir(mode=0o755)
     unsafe_admission.chmod(0o755)
     unsafe_descriptor = os.open(unsafe_admission, os.O_RDONLY | os.O_DIRECTORY)
-    descriptor_cases.append((f"/dev/fd/{unsafe_descriptor}", unsafe_descriptor))
+    descriptor_cases.append((str(unsafe_admission), unsafe_descriptor))
     descriptor_cases.extend(
         (
             ("", None),
@@ -686,7 +725,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
         result = direct_child(
             direct_root,
             valid_payload(direct_root),
-            tmpdir=f"/dev/fd/{descriptor}",
+            tmpdir=str(admission.resolve()),
             descriptor=descriptor,
         )
     finally:
@@ -701,7 +740,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
         result = direct_child(
             direct_root,
             valid_payload(direct_root),
-            tmpdir=f"/dev/fd/{descriptor}",
+            tmpdir=str(admission.resolve()),
             descriptor=descriptor,
         )
     finally:
@@ -718,7 +757,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
         result = direct_child(
             direct_root,
             valid_payload(direct_root),
-            tmpdir=f"/dev/fd/{descriptor}",
+            tmpdir=str(admission.resolve()),
             descriptor=descriptor,
         )
     finally:
@@ -729,15 +768,13 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
     )
     command.chmod(0o700)
 
-    gradle_tmp = direct_root / "build/kent-workflow/gradle-tmp"
-    shutil.rmtree(direct_root / "build")
-    (direct_root / "build").symlink_to(scratch)
     admission, descriptor = open_admission_directory(direct_root)
+    admission.chmod(0o755)
     try:
         result = direct_child(
             direct_root,
             valid_payload(direct_root),
-            tmpdir=f"/dev/fd/{descriptor}",
+            tmpdir=str(admission.resolve()),
             descriptor=descriptor,
         )
     finally:
@@ -746,15 +783,21 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
         BLOCKED_STDOUT,
         INFRASTRUCTURE_UNAVAILABLE,
     )
-    (direct_root / "build").unlink()
-    gradle_tmp.mkdir(parents=True, mode=0o700)
-    gradle_tmp.chmod(0o755)
-    admission, descriptor = open_admission_directory(direct_root)
+    admission.chmod(0o700)
+    admission.rename(direct_root / "admission-moved")
+    (direct_root / "admission").symlink_to(
+        direct_root / "admission-moved",
+        target_is_directory=True,
+    )
+    descriptor = os.open(
+        direct_root / "admission-moved",
+        os.O_RDONLY | os.O_DIRECTORY,
+    )
     try:
         result = direct_child(
             direct_root,
             valid_payload(direct_root),
-            tmpdir=f"/dev/fd/{descriptor}",
+            tmpdir=str(direct_root / "admission"),
             descriptor=descriptor,
         )
     finally:
@@ -763,7 +806,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
         BLOCKED_STDOUT,
         INFRASTRUCTURE_UNAVAILABLE,
     )
-    gradle_tmp.chmod(0o700)
+    (direct_root / "admission").unlink()
 
     command.write_bytes(b"not an executable format\n")
     command.chmod(0o700)
@@ -772,7 +815,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
         result = direct_child(
             direct_root,
             valid_payload(direct_root),
-            tmpdir=f"/dev/fd/{descriptor}",
+            tmpdir=str(admission.resolve()),
             descriptor=descriptor,
         )
     finally:
@@ -789,7 +832,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
         result = direct_child(
             direct_root,
             valid_payload(direct_root),
-            tmpdir=f"/dev/fd/{descriptor}",
+            tmpdir=str(admission.resolve()),
             descriptor=descriptor,
         )
     finally:

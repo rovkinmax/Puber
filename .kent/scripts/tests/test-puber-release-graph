@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import copy, json, subprocess, tempfile
+import copy, json, subprocess, tempfile, sys
+sys.dont_write_bytecode = True
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 GRAPH = ROOT / ".kent/workflows/puber-release.json"
@@ -10,9 +11,9 @@ def run(value):
         path=Path(d)/"graph.json"; path.write_text(json.dumps(value))
         return subprocess.run(["python3",str(ROOT/".kent/workflows/builders/puber_release.py"),"--check",str(path)],cwd=ROOT,text=True,capture_output=True)
 source=json.loads(GRAPH.read_text())
-assert source["workflow"]["version"] == 90, "checked-in graph is still revision 89"
+assert source["workflow"]["version"] == 88, "checked-in graph is still revision 89"
 assert source["workflow"]["source_revision"] == 90, "source revision 90 is absent"
-assert (len(source["nodes"]), len(source["transition_groups"]), len(source["edges"])) == (17, 46, 46), "profile/finalization topology is absent"
+assert (len(source["nodes"]), len(source["transition_groups"]), len(source["edges"])) == (18, 51, 51), "profile/finalization topology is absent"
 by_key = {node["key"]: node for node in source["nodes"]}
 assert by_key["profile_generation"]["kind"] == "script"
 assert by_key["profile_generation"]["script_path"] == ".kent/scripts/workflow-puber-release-profile-generation"
@@ -24,6 +25,8 @@ def edge(key):
     return matches[0]
 assert edge("prepare_profile_generation")["target_node_id"] == by_key["profile_generation"]["id"]
 assert edge("profile_generation_passed")["target_node_id"] == by_key["finalize_release"]["id"]
+assert edge("profile_generation_passed")["context_mode"] == "new_session"
+assert edge("profile_generation_passed")["context_source"] == {"kind": "immediate_source"}
 assert edge("finalize_release_done")["target_node_id"] == by_key["compliance"]["id"]
 for forbidden in ("prepare_compliance", "profile_generation_compliance", "profile_generation_ship_pr"):
     assert not any(item["key"] == forbidden for item in source["edges"])
@@ -177,9 +180,246 @@ bad=copy.deepcopy(source); next(
     if item["edge_id"] == edge("prepare_profile_generation")["id"]
 )["required_provision_fields"][0]["name"] = "version_bump_commit"
 assert run(bad).returncode != 0
+bad = copy.deepcopy(source)
+next(e for e in bad["edges"] if e["key"] == "profile_generation_passed")["context_mode"] = "compact_and_continue_session"
+assert run(bad).returncode != 0
 print("puber-release-graph: passed")
 
 assert builder["check_signing_contract"]() == []
 bad = copy.deepcopy(source)
 next(e for e in bad["edges"] if e["key"] == "profile_generation_passed")["prompt_template"] = "Finalize without signing proof"
 assert run(bad).returncode != 0
+
+# Real project adapter -> shared producer/watchers. Only GitHub/Kent and the
+# subprocess execution boundary are fake; source reads, DTOs and ledger are real.
+import contextlib
+import importlib.util
+import io
+import os
+import runpy
+from importlib.machinery import SourceFileLoader
+from unittest.mock import patch
+
+KIT = Path('/Users/rovkinmax/dev/llm-staf/kent-engineering-kit')
+os.environ['KENT_ENGINEERING_KIT_ROOT'] = str(KIT)
+
+def load(path, name):
+    spec = importlib.util.spec_from_loader(name, SourceFileLoader(name, str(path)))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+fixture = load(ROOT / '.kent/scripts/tests/test-workflow-puber-release-publish', 'ci_release_fixture')
+fixture.helper._kit_modules()
+from workflowkit import ci_contract, runtime
+
+for key in ('ci_prepare', 'ci_watch', 'merge_watch'):
+    assert by_key[key]['script_path'] == '.kent/scripts/workflow-puber-release-ci'
+assert len(edge('merge_watch_pr_merged')['parameters']) == 7
+assert 'ci_report' not in [p['key'] for p in edge('ci_prepare_ready_initial')['parameters']]
+for key in ('waiting_pr_merge_watch', 'merge_watch_still_waiting', 'merge_watch_state_changed'):
+    assert {'verification_summary', 'ci_report', 'pr_feedback_cursor', 'release_head_oid'} <= {p['key'] for p in edge(key)['parameters']}
+
+with tempfile.TemporaryDirectory() as directory:
+    base = Path(directory)
+    work, policy, head, bare = fixture.materialize(base, base / 'origin.git')
+    adapter = load(work / '.kent/scripts/workflow-puber-release-ci', 'actual_ci_adapter')
+    helper = adapter.helper
+    task_id = 'task-12345678-1234-4234-8234-123456789abc'
+    checkpoint = fixture.fixture_checkpoint(work, policy, head, task_id)
+    helper.write_profile_checkpoint(work, 'PUB-99', checkpoint)
+    preparation = json.loads(checkpoint['release_preparation_report'])
+    carrier = {key: preparation[key] for key in revisioned_carrier if key in preparation}
+    carrier.update({key: checkpoint[key] for key in ('profile_report','profile_report_digest','release_preparation_report','release_preparation_report_digest')})
+    carrier.update(workspace_path=str(work), task_short_id='PUB-99', verification_summary='Actual fixture packaging evidence',
+        pr_url='https://github.com/rovkinmax/Puber/pull/7', branch_name='release/99.0.0', merge_strategy='rebase', pr_head_oid=head, pr_base_oid=policy)
+    actual_pr = dict(url=carrier['pr_url'], headRefOid=head, baseRefOid=policy, headRefName=carrier['branch_name'],
+        baseRefName='master', state='OPEN', mergedAt=None, mergeCommit=None)
+    methods = dict(full_name='rovkinmax/Puber', default_branch='master', allow_merge_commit=True, allow_squash_merge=False, allow_rebase_merge=True)
+    rules = [{'type':'required_linear_history'}]
+    checks = [dict(workflow='PR Checks',name=name,bucket='pass',state='SUCCESS',link='https://github.com/rovkinmax/Puber/actions/runs/1') for name in ('Build','Detekt','Unit Tests')]
+    task = {key: [] for key in ('actions','current_nodes','current_scripts','label_ids','live_sessions')}
+    task.update(attention_count=0, retained_session_count=0, project={}, source_workspace={}, worktree_path=str(work),
+        body='release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n',
+        execution_target={'commit_oid':policy}, status={},
+        summary={'id':task_id,'short_id':'PUB-99','project_id':helper.PROJECT_ID,'workflow_id':helper.WORKFLOW_ID},
+        workflow={'workflow_id':helper.WORKFLOW_ID,'version':88,'name':'Puber Release'})
+    original_run = helper.run
+    executions = []
+    def github_command(_root, args, **kwargs):
+        assert args[0] == 'api'
+        endpoint = args[1]
+        if endpoint == 'repos/rovkinmax/Puber': value = dict(methods)
+        elif endpoint.endswith('/rules/branches/master'): value = list(rules)
+        elif endpoint.endswith('/protection'): return subprocess.CompletedProcess(args, 1, '', '404')
+        elif endpoint.endswith('/pulls/7'):
+            value = {'html_url':actual_pr['url'],'state':'closed','merged':True,'merged_at':actual_pr['mergedAt'],
+                'head':{'ref':actual_pr['headRefName'],'sha':actual_pr['headRefOid'],'repo':{'full_name':'rovkinmax/Puber'}},
+                'base':{'ref':'master','sha':actual_pr['baseRefOid'],'repo':{'full_name':'rovkinmax/Puber'}},
+                'merge_commit_sha':actual_pr['mergeCommit']['oid']}
+        else: raise AssertionError(endpoint)
+        return subprocess.CompletedProcess(args, 0, json.dumps(value), '')
+
+    def shared_process(command, *, input_text, **kwargs):
+        path = Path(command[0]); payload = json.loads(input_text)
+        assert set(payload) <= set(adapter.SHARED_INPUTS)
+        executions.append(path.name)
+        if path.name == 'workflow-prepare-github-ci':
+            try:
+                result = ci_contract.prepare_ci_payload(payload, gh_bin='/fixture/gh')
+            except ci_contract.CiContractError:
+                result = ci_contract.preparation_failure(payload)
+            return subprocess.CompletedProcess(command, 0, json.dumps(result), '')
+        shared = load(path, 'actual_shared_' + path.name.replace('-', '_'))
+        def gh(_bin, _workspace, args, **kw):
+            if 'input_bytes' in kw:
+                request = json.loads(kw['input_bytes'])
+                assert request['operation'] == 'archive_ci_report'
+                artifact = ci_contract.archive_ci_report(work, 'PUB-99', json.loads(request['ci_report']))
+                return subprocess.CompletedProcess(args, 0, json.dumps({'ci_report_artifact':artifact}).encode(), b'')
+            raise AssertionError(args)
+        output = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch.object(shared, 'resolve_gh_bin', return_value='/fixture/gh'))
+            if path.name == 'workflow-wait-github-ci':
+                stack.enter_context(patch.object(shared, 'read_pr', side_effect=lambda *a, **k: dict(actual_pr)))
+                stack.enter_context(patch.object(shared, 'observe_source_checks', side_effect=lambda *a, **k: (copy.deepcopy(checks), subprocess.CompletedProcess([],0,b'',b''))))
+                stack.enter_context(patch.object(shared, 'run_gh', side_effect=gh))
+            else:
+                stack.enter_context(patch.object(shared, 'read_state', side_effect=lambda *a, **k: {**actual_pr,'reviewDecision':'APPROVED','mergeStateStatus':'CLEAN','statusCheckRollup':[]}))
+                stack.enter_context(patch.object(shared, 'read_source_checks', side_effect=lambda *a, **k: copy.deepcopy(checks)))
+                stack.enter_context(patch.object(shared, 'read_feedback', return_value=[]))
+            stack.enter_context(patch.object(sys, 'stdin', io.StringIO(input_text)))
+            stack.enter_context(contextlib.redirect_stdout(output))
+            code = shared.main()
+        return subprocess.CompletedProcess(command, code, output.getvalue(), '')
+
+    def invoke(operation, incoming, values):
+        node = by_key[operation]['id']
+        task.update(current_nodes=[{'node_id':node}],current_scripts=[{'path':str(work.resolve() / '.kent/scripts/workflow-puber-release-ci'),'current_node':{'node_id':node}}],status={'node_ids':[node]})
+        fields = {field['key']:values[field['key']] for field in edge(incoming)['parameters']}
+        payload = {**fields,'commentary':('' if incoming == 'ship_pr_ci_watch' else 'Rendered native commentary'),'_kent':{'task_id':task_id,'node_id':node,'transition_branch_key':incoming}}
+        output = io.StringIO()
+        with patch.object(sys,'stdin',io.BytesIO(helper.canonical_bytes(payload))) as stream, contextlib.redirect_stdout(output):
+            # The real helper expects stdin.buffer; use a text wrapper just as a Script process.
+            with patch.object(sys,'stdin',io.TextIOWrapper(stream,encoding='utf-8')):
+                code = adapter.main()
+        assert code == 0, output.getvalue()
+        result = json.loads(output.getvalue())
+        assert set(result) - {'transition','commentary'} == {field['key'] for field in edge(result['transition'])['parameters']}
+        assert task['execution_target']['commit_oid'] == policy
+        return result
+
+    test_env = {f'KENT_{kind}_WATCH_{key}':value for kind in ('CI','PR') for key,value in (
+        ('TEST_MODE','1'),('MAX_ERRORS','1'),('MAX_POLLS','1'),('INTERVAL_SECONDS','0'))}
+    with patch.dict(os.environ,test_env), patch.object(helper,'task_show',return_value=task), \
+         patch.object(helper,'gh',side_effect=github_command), patch.object(helper,'run',side_effect=shared_process), \
+         patch.object(ci_contract,'read_pull_request',side_effect=lambda *a,**k:dict(actual_pr)):
+        # Do not intercept local Git commands; helper.run owns both Git and Script execution.
+        def effects(command, **kwargs):
+            return shared_process(command,**kwargs) if Path(command[0]).name in adapter.SHARED_PATHS.values() else original_run(command,**kwargs)
+        helper.run.side_effect = effects
+        initial = invoke('ci_prepare','ship_pr_ci_watch',carrier)
+        assert initial['transition'] == 'ci_prepare_ready_initial', initial
+        admitted = helper.validate_task(work.resolve(), task_id, 'ci_prepare', task)
+        assert admitted['commit'] == policy and admitted['controller_commit'] == head
+        assert admitted['task']['execution_target']['commit_oid'] == policy
+        task_without_tag = {**task, 'body': task['body'].replace('release_tag: v99.0.0\n', '')}
+        assert helper.validate_task(work.resolve(), task_id, 'ci_prepare', task_without_tag)['controller_commit'] == head
+        attested = helper.attest(work.resolve(), admitted, 'ci_prepare', 'ship_pr_ci_watch')
+        assert attested['selected'].project_commit == head
+        assert attested['context'].project_commit == head and admitted['commit'] != head
+        checkpoint_path = work / '.kent/runtime/PUB-99/release-profile-checkpoint.json'
+        saved = checkpoint_path.read_bytes()
+        for label, altered in (
+            ('foreign lock', {**checkpoint, 'release_base_oid': 'f' * 40}),
+            ('foreign head', {**checkpoint, 'release_head_oid': policy}),
+            ('missing preparation', {**checkpoint, 'release_preparation_report': '', 'release_preparation_report_digest': ''}),
+        ):
+            checkpoint_path.write_bytes(helper.canonical_bytes(altered) + b'\n')
+            try:
+                helper.validate_task(work.resolve(), task_id, 'ci_prepare', task)
+            except helper.ContractError:
+                pass
+            else:
+                raise AssertionError('K/H admission accepted ' + label)
+            checkpoint_path.write_bytes(saved)
+        assert task['execution_target']['commit_oid'] == policy
+
+        assert 'ci_report' not in initial and initial['verification_summary'] == carrier['verification_summary']
+        passed = invoke('ci_watch','ci_prepare_ready_initial',initial)
+        assert passed['transition'] == 'ci_watch_passed', passed
+        report = runtime.validate_ci_report(json.loads(passed['ci_report']))
+        assert report['attempts'][-1]['head_oid'] == head
+        retry = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
+        assert retry['transition'] == 'ci_prepare_ready_retry' and retry['ci_report'] == passed['ci_report'], retry
+        for label, altered in (
+            ('failed',[{**row,'bucket':'fail','state':'FAILURE'} if row['name']=='Build' else row for row in checks]),
+            ('missing',[row for row in checks if row['name']!='Build']),
+            ('skipped',[{**row,'bucket':'skipping','state':'SKIPPED'} if row['name']=='Build' else row for row in checks]),
+        ):
+            original = checks[:]; checks[:] = altered
+            observed = invoke('ci_watch','ci_prepare_ready_initial',initial)
+            assert observed['transition'] == 'ci_watch_failed', (label,observed)
+            runtime.validate_ci_report(json.loads(observed['ci_report']))
+            checks[:] = original
+        checks.append(dict(workflow='Other',name='Extra',bucket='pass',state='SUCCESS',link='https://github.com/rovkinmax/Puber/actions/runs/2'))
+        extra = invoke('ci_watch','ci_prepare_ready_initial',initial)
+        assert extra['transition'] == 'ci_watch_passed', extra
+        assert json.loads(extra['ci_report'])['attempts'][-1]['unexpected_check_count'] == 1
+        checks.pop()
+        waiting = invoke('merge_watch','waiting_pr_merge_watch',passed)
+        assert waiting['transition'] in {'merge_watch_state_changed','merge_watch_still_waiting'}, waiting
+        if waiting['transition'] == 'merge_watch_state_changed':
+            assert waiting['pr_feedback_cursor'] != 'uninitialized'
+            waiting = invoke('merge_watch','waiting_pr_merge_watch',waiting)
+        assert waiting['transition'] == 'merge_watch_still_waiting', waiting
+        # P advances without an effective required-policy change: retain history.
+        advanced = fixture.target_with_changes(work, policy, {'docs/ci-policy-fixture.txt':b'new mainline\n'})
+        actual_pr['baseRefOid'] = advanced
+        changed = invoke('ci_watch','ci_prepare_ready_retry',retry)
+        assert changed['transition'] == 'ci_watch_state_changed', changed
+        reprepared = invoke('ci_prepare','ci_watch_state_changed',changed)
+        assert reprepared['transition'] == 'ci_prepare_ready_retry', reprepared
+        assert json.loads(reprepared['ci_policy_snapshot'])['target_commit'] == advanced
+        assert reprepared['ci_report'] == changed['ci_report']
+        # A changed H cannot borrow the old preparation checkpoint or go green.
+        actual_pr['headRefOid'] = advanced
+        bad_head = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
+        assert bad_head['transition'] == 'ci_prepare_needs_user_action', bad_head
+        actual_pr['headRefOid'] = head
+        # Production requires new preparation for H changes. Independently execute the
+        # actual shared new-H cycle and verify its omitted report is not synthesized.
+        newer_head = fixture.target_with_changes(work, head, {'docs/new-ci-head.txt':b'new H source\n'})
+        actual_pr['headRefOid'] = newer_head
+        fresh_cycle = ci_contract.prepare_ci_payload(reprepared, gh_bin='/fixture/gh')
+        assert fresh_cycle['transition'] == 'ci_prepare_ready_initial' and 'ci_report' not in fresh_cycle
+        assert json.loads(fresh_cycle['expected_ci_checks'])['project_commit'] == newer_head
+        actual_pr['headRefOid'] = head
+        methods['allow_squash_merge'] = True
+        ambiguous = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
+        assert ambiguous['transition'] == 'ci_prepare_needs_user_action', ambiguous
+        methods['allow_squash_merge'] = False
+        # A genuinely merged PR has actual base B distinct from prior policy P.
+        target = fixture.rebased_target(work, policy, head)
+        actual_pr.update(state='MERGED',mergedAt='2026-09-08T12:00:00Z',mergeCommit={'oid':target},baseRefOid=policy)
+        recovered = invoke('ci_prepare','waiting_pr_ci_recheck',reprepared)
+        assert recovered['transition'] == 'ci_prepare_already_merged', recovered
+        published = invoke('merge_watch','ci_prepare_already_merged',recovered)
+        assert published['transition'] == 'merge_watch_pr_merged', published
+        assert published['pr_base_oid'] == policy != advanced
+        assert len(set(published)-{'transition','commentary'}) == 7
+        assert all(value in published['commentary'] for value in ('99.0.0','v99.0.0',target))
+        files = list((work/'.kent/runtime/PUB-99').glob('ci-report-*.json'))
+        assert files and all(runtime.validate_ci_report(json.loads(path.read_bytes())) for path in files)
+        assert {'workflow-prepare-github-ci','workflow-wait-github-ci','workflow-wait-github-pr'} <= set(executions)
+print('puber-ci-real-producer-watch-pr-carrier: passed')
+
+assert by_key["cleanup"]["kind"] == "agent" and by_key["cleanup"]["subagent_role"] == "delivery-operator"
+assert "script_path" not in by_key["cleanup"]
+for key in ("release_release_published", "release_cancel_cleanup", "merge_watch_close_without_merge", "task_janitor_blocked"):
+    target = edge(key)
+    assert target["context_mode"] == ("continue_session" if key == "task_janitor_blocked" else "new_session")
+    assert target["context_source"] == {"kind": "previous_target" if key == "task_janitor_blocked" else "immediate_source"}
+    assert "KENT_SESSION_ID" in target["prompt_template"] and "observable outcome" in target["prompt_template"]
+print("cleanup-agent-native-context: passed")

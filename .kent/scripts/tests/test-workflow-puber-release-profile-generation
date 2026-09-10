@@ -408,7 +408,7 @@ class MainFixture:
                 "actions": [], "attention_count": 0, "body": "",
                 "current_nodes": [{"node_id": node_id}],
                 "current_scripts": [{
-                    "path": module.helper.SCRIPT_PATHS["profile_generation"],
+                    "path": str(self.root / module.helper.SCRIPT_PATHS["profile_generation"]),
                     "current_node": {"node_id": node_id},
                 }],
                 "execution_target": {"commit_oid": self.candidate_oid},
@@ -783,7 +783,7 @@ def test_real_admission_clean_interruption_and_generic_dirty_guard() -> None:
             fixture.task["status"]["node_ids"] = [node_id]
             fixture.task["current_nodes"] = [{"node_id": node_id}]
             fixture.task["current_scripts"] = [{
-                "path": module.helper.SCRIPT_PATHS[node],
+                "path": str(fixture.root / module.helper.SCRIPT_PATHS[node]),
                 "current_node": {"node_id": node_id},
             }]
             kwargs = {} if node == "profile_generation" else {

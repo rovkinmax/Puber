@@ -24,6 +24,7 @@ kit_managed_commands = [
   "janitor",
   "wait_pr",
   "wait_ci",
+  "prepare_ci",
 ]
 
 [command_versions]
@@ -33,6 +34,7 @@ evidence = "2.0.0"
 janitor = "2.0.0"
 wait_pr = "2.0.0"
 wait_ci = "2.0.0"
+prepare_ci = "1.0.0"
 
 [release]
 topology_kind = "puber-release"
@@ -77,6 +79,7 @@ plan_contract_accept = ".kent/scripts/workflow-plan-contract-accept"
 plan_contract_continue = ".kent/scripts/workflow-plan-contract-continue"
 plan_contract_verify = ".kent/scripts/workflow-plan-contract-verify"
 plan_contract_fix_continue = ".kent/scripts/workflow-plan-contract-fix-continue"
+prepare_ci = ".kent/scripts/workflow-prepare-github-ci"
 wait_ci = ".kent/scripts/workflow-wait-github-ci"
 wait_pr = ".kent/scripts/workflow-wait-github-pr"
 janitor = ".kent/scripts/workflow-task-janitor"

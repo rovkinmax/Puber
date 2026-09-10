@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+tool="${KENT_PREPARE_GITHUB_CI_BIN:-${HOME}/.kent/bin/kent-prepare-github-ci}"
+if [[ ! -x "$tool" ]]; then
+  echo "workflow-prepare-github-ci: first-party CLI is not executable: $tool" >&2
+  exit 1
+fi
+exec "$tool"

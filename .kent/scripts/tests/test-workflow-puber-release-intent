@@ -15,7 +15,7 @@ import shutil
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
-KIT = Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/s02a-kit-profile")
+KIT = Path("/Users/rovkinmax/dev/llm-staf/kent-engineering-kit")
 result = subprocess.run([str(ROOT / ".kent/scripts/workflow-puber-release-intent")], cwd=ROOT, input="{}", text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 assert result.returncode != 0 and "error" in result.stderr
 
@@ -285,6 +285,9 @@ with tempfile.TemporaryDirectory() as directory:
     source_roots = {item["key"].split("=", 1)[0] for item in manifest["external_roots"] if item["kind"] == "source-sha256"}
     for relative in sorted(set(manifest["additional_paths"]) | source_roots | {
         ".kent/scripts/workflow-puber-release-intent",
+        ".kent/workflow-profile.toml",
+        ".kent/scripts/workflow_runtime_contracts.py",
+        ".kent/scripts/workflow-prepare-github-ci",
         ".kent/workflows/puber-release.json",
         ".kent/workflows/puber-release.manifest.json",
         ".kent/workflows/specs/puber-release.toml",
@@ -303,32 +306,12 @@ with tempfile.TemporaryDirectory() as directory:
     fixture_manifest = json.loads(
         (work / ".kent/workflows/puber-release.manifest.json").read_text()
     )
-    updated_roots = []
     for external in fixture_manifest["external_roots"]:
-        if external.get("kind") == "source-sha256" and "=" in external.get("key", ""):
-            relative, _ = external["key"].split("=", 1)
-            if relative in {
-                ".kent/scripts/tests/test-puber-release-graph",
-                ".kent/scripts/workflow-puber-release-intent",
-                ".kent/scripts/tests/test-workflow-puber-release-intent",
-                ".kent/scripts/tests/test-puber-release-graph",
-                ".kent/scripts/tests/test-workflow-puber-release-profile-generation",
-                ".kent/scripts/tests/test-workflow-puber-release-publish",
-                ".kent/scripts/tests/test-workflow-release-cleanup",
-                ".kent/commands/compliance-review.md",
-                ".kent/commands/ship-pr.md",
-                ".kent/scripts/workflow-puber-release-publish",
-                ".kent/scripts/workflow-task-janitor",
-                ".kent/scripts/workflow-wait-github-ci",
-                ".kent/scripts/workflow-wait-github-pr",
-            }:
-                digest = hashlib.sha256((work / relative).read_bytes()).hexdigest()
-                external["key"] = f"{relative}={digest}"
-        updated_roots.append(external)
-    fixture_manifest["external_roots"] = updated_roots
-    (work / ".kent/workflows/puber-release.manifest.json").write_text(
-        json.dumps(fixture_manifest, indent=2) + "\n"
-    )
+        if external["kind"] == "source-sha256":
+            relative, digest = external["key"].split("=", 1)
+            assert hashlib.sha256((work / relative).read_bytes()).hexdigest() == digest, relative
+        elif external["kind"] == "builder-sha256":
+            assert hashlib.sha256((work / ".kent/workflows/builders/puber_release.py").read_bytes()).hexdigest() == external["key"]
     subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=work, check=True)
     subprocess.run(["git", "config", "user.name", "Puber Test"], cwd=work, check=True)
     subprocess.run(["git", "add", "."], cwd=work, check=True)
@@ -342,12 +325,12 @@ with tempfile.TemporaryDirectory() as directory:
         "actions": [], "attention_count": 0,
         "body": "release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n",
         "current_nodes": [{"node_id": node["id"]}],
-        "current_scripts": [{"path": ".kent/scripts/workflow-puber-release-intent", "current_node": {"node_id": node["id"]}}],
+        "current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-intent"), "current_node": {"node_id": node["id"]}}],
         "execution_target": {"commit_oid": target_commit}, "label_ids": [], "live_sessions": [],
         "project": {}, "retained_session_count": 0, "source_workspace": {},
         "status": {"node_ids": [node["id"]]},
         "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 90, "name": "Puber Release"},
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"},
         "worktree_path": str(work),
     }
     fake = root / "fake"; fake.mkdir()
@@ -432,7 +415,7 @@ with tempfile.TemporaryDirectory() as directory:
     rejected_case("project", task_changes={"summary": {**task["summary"], "project_id": "foreign-project"}})
     rejected_case("workflow_revision", task_changes={"workflow": {**task["workflow"], "version": 87}})
     rejected_case("current_node", task_changes={"status": {"node_ids": ["foreign-node"]}})
-    rejected_case("current_script", task_changes={"current_scripts": [{"path": ".kent/scripts/workflow-puber-release-publish", "current_node": {"node_id": node["id"]}}]})
+    rejected_case("current_script", task_changes={"current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-publish"), "current_node": {"node_id": node["id"]}}]})
     rejected_case("execution_commit", task_changes={"execution_target": {"commit_oid": "f" * 40}})
     rejected_case("worktree", task_changes={"worktree_path": str(root / "foreign")})
     rejected_case("source_drift", source_drift=True)
