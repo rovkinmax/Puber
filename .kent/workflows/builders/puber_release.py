@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import sys
 import tomllib
+import uuid
 from typing import Any
 
 sys.dont_write_bytecode = True
@@ -38,16 +39,16 @@ BASE_NODE_IDS = {
     "done": "7dfc3956-53ec-4307-ae59-daf1a3dd1151",
 }
 NEW_NODES = {
-    "release_intent_gate": ("0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e", ".kent/scripts/workflow-puber-release-intent"),
-    "ci_watch": ("598063c6-2cef-51ec-a613-043e5b6335db", ".kent/scripts/workflow-puber-release-ci"),
-    "merge_watch": ("44390763-8581-53aa-8700-e912a67aaca4", ".kent/scripts/workflow-puber-release-ci"),
-    "task_janitor": ("dfbd8b53-4c7c-56e7-bcd0-631389648090", ".kent/scripts/workflow-task-janitor"),
-    "profile_generation": ("f7d7db5c-7ae1-5d95-8d50-90c9b6dc4f72", ".kent/scripts/workflow-puber-release-profile-generation"),
-    "ci_prepare": ("162aafa2-89b3-518f-9a24-f2d9c6310bbf", ".kent/scripts/workflow-puber-release-ci"),
+    "release_intent_gate": ("c05c1572-67d9-482f-bdde-a604cb1b18da", ".kent/scripts/workflow-puber-release-intent"),
+    "ci_watch": ("963719ec-c35c-4ea1-8284-b5ebd6d13a51", ".kent/scripts/workflow-puber-release-ci"),
+    "merge_watch": ("4a7e6011-a895-491b-b664-08c2c1f19f59", ".kent/scripts/workflow-puber-release-ci"),
+    "task_janitor": ("adc08bfa-776d-4e3b-a28a-5f2f943ecc7e", ".kent/scripts/workflow-task-janitor"),
+    "profile_generation": ("43dafeaf-1408-483c-a524-a7c36a86278d", ".kent/scripts/workflow-puber-release-profile-generation"),
+    "ci_prepare": ("710f8559-0913-4dd9-8fb5-ea68c25c9d9c", ".kent/scripts/workflow-puber-release-ci"),
 }
 AGENT_NODES = {
     "cleanup": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
-    "finalize_release": "b7ee7a42-7f1f-5e5b-a4e9-3a9c8c8a1f90",
+    "finalize_release": "c7abb728-575e-44f9-a997-b978c7213dfe",
 }
 SCRIPT_NODES = {
     "publish": ".kent/scripts/workflow-puber-release-publish",
@@ -434,6 +435,9 @@ def expected_derived_wiring(source: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+CI_AGENT_ENTRY_PROMPTS = {'ci_watch_passed': 'Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}', 'ci_watch_failed': 'Inspect the release PR CI failure in {{.Params.ci_report}} using read-only GitHub observations. Read AGENTS.md, .kent/project-contract.md, and .kent/commands/release.md.\n\nPreserve the complete flat release/CI carrier, explicit verification summary, and feedback cursor. Do not edit source, push commits, merge, publish, or rerun CI. If a task-scoped code repair is required, return the evidence through ci_fix so the existing prepare -> profile_generation -> finalize_release -> compliance path revalidates the changed candidate. If a fresh CI check is appropriate without a code repair, use ci_waiting_pr through the existing CI preparer. For missing access or an unresolved external blocker, use ci_monitor_needs_user_action with blocker_reason. Do not infer passing CI from missing or stale checks.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}'}
+
+
 def check_graph(path: Path) -> list[str]:
     source = load_object(path)
     errors: list[str] = []
@@ -454,6 +458,34 @@ def check_graph(path: Path) -> list[str]:
     edges = source.get("edges", [])
     if (len(nodes), len(groups), len(edges)) != (18, 51, 51):
         errors.append("graph counts must be exactly 18 nodes, 51 groups, 51 edges")
+    for entity in [workflow, *nodes, *groups, *edges]:
+        entity_id = entity.get("id")
+        try:
+            parsed_id = uuid.UUID(entity_id) if isinstance(entity_id, str) else None
+        except ValueError:
+            parsed_id = None
+        if parsed_id is None or parsed_id.version != 4 or str(parsed_id) != entity_id:
+            errors.append("graph entity IDs must be canonical UUIDv4")
+    if "graph entity IDs must be canonical UUIDv4" in errors:
+        return errors
+    field_descriptions: dict[tuple[str, str], str] = {}
+    group_sources = {group.get("id"): group.get("source_node_id") for group in groups}
+    for edge in edges:
+        if edge.get("key") == "release_intent_passed" and (
+            edge.get("context_mode") != "new_session"
+            or edge.get("context_source") != {"kind": "immediate_source"}
+        ):
+            errors.append("release intent Script must start a new prepare Agent")
+        for parameter in edge.get("parameters", []):
+            identity = (group_sources.get(edge.get("transition_group_id")), parameter.get("key"))
+            description = parameter.get("description", "").strip()
+            previous = field_descriptions.setdefault(identity, description)
+            if previous != description:
+                errors.append("source node provision descriptions must agree")
+    for edge in edges:
+        key = edge.get("key")
+        if key in CI_AGENT_ENTRY_PROMPTS and edge.get("prompt_template") != CI_AGENT_ENTRY_PROMPTS[key]:
+            errors.append("CI Agent entry prompt must match the approved read-only handoff")
     by_key = {node.get("key"): node for node in nodes}
     if set(by_key) != EXPECTED_NODES:
         errors.append("graph node keys differ from the closed revision-90 set")
