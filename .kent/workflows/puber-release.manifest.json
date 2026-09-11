@@ -35,7 +35,7 @@
   "external_roots": [
     {
       "kind": "builder-sha256",
-      "key": "cb23ce74aeacb180e421fba5e71fecacda5445c6b222e9bdb83ec419742d0877",
+      "key": "0523bd0573ff22c4399eb9e4791573969d722da99bd3f65ab9beec34fedbdbf2",
       "runtime_digest_required": true
     },
     {
@@ -80,7 +80,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-puber-release-graph=bc91bff62338db8da9d0a653a5f6f91ecb792faf187244ddb3f9d306d8e2081e",
+      "key": ".kent/scripts/tests/test-puber-release-graph=f4f89b805f729274fe3542596490821c892bf16f0893b64bd75434c57df618be",
       "runtime_digest_required": true
     },
     {

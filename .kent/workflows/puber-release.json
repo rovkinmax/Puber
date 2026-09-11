@@ -31,7 +31,7 @@
       "completion_mode": "shell_command"
     },
     {
-      "id": "f7d7db5c-7ae1-5d95-8d50-90c9b6dc4f72",
+      "id": "43dafeaf-1408-483c-a524-a7c36a86278d",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "profile_generation",
       "kind": "script",
@@ -40,7 +40,7 @@
       "script_path": ".kent/scripts/workflow-puber-release-profile-generation"
     },
     {
-      "id": "b7ee7a42-7f1f-5e5b-a4e9-3a9c8c8a1f90",
+      "id": "c7abb728-575e-44f9-a997-b978c7213dfe",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "finalize_release",
       "kind": "agent",
@@ -134,7 +134,7 @@
       "group_id": null
     },
     {
-      "id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "release_intent_gate",
       "kind": "script",
@@ -143,7 +143,7 @@
       "script_path": ".kent/scripts/workflow-puber-release-intent"
     },
     {
-      "id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "id": "963719ec-c35c-4ea1-8284-b5ebd6d13a51",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "ci_watch",
       "kind": "script",
@@ -152,7 +152,7 @@
       "script_path": ".kent/scripts/workflow-puber-release-ci"
     },
     {
-      "id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "merge_watch",
       "kind": "script",
@@ -161,7 +161,7 @@
       "script_path": ".kent/scripts/workflow-puber-release-ci"
     },
     {
-      "id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "id": "adc08bfa-776d-4e3b-a28a-5f2f943ecc7e",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "task_janitor",
       "kind": "script",
@@ -170,7 +170,7 @@
       "script_path": ".kent/scripts/workflow-task-janitor"
     },
     {
-      "id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "key": "ci_prepare",
       "kind": "script",
@@ -197,33 +197,33 @@
       "description": "Release branch is prepared; generate and validate profiles before finalization."
     },
     {
-      "id": "f2b2f6d8-8f2e-5e2f-8fa1-5d1e4f1e7b01",
+      "id": "dccd7a56-5558-46bf-abd1-c7ff3f2e60a0",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "f7d7db5c-7ae1-5d95-8d50-90c9b6dc4f72",
+      "source_node_id": "43dafeaf-1408-483c-a524-a7c36a86278d",
       "transition_id": "profile_generation_passed",
       "display_name": "Profile Generation Passed",
       "description": "Profiles passed mock-backed generation and validation."
     },
     {
-      "id": "bb9b6dd4-1f0b-5de0-8527-3cc2b4b7f902",
+      "id": "c569e3d3-f3f4-4c84-8776-fdb93c66a6d8",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "f7d7db5c-7ae1-5d95-8d50-90c9b6dc4f72",
+      "source_node_id": "43dafeaf-1408-483c-a524-a7c36a86278d",
       "transition_id": "profile_generation_needs_user_action",
       "display_name": "Profile Generation Needs User Action",
       "description": "Profile generation is blocked until the external resource or input is repaired."
     },
     {
-      "id": "d5ce4d4e-1a87-5e90-9d38-16a2b2f9c603",
+      "id": "eab58482-24b2-4c17-abd1-3f25f56f338e",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "b7ee7a42-7f1f-5e5b-a4e9-3a9c8c8a1f90",
+      "source_node_id": "c7abb728-575e-44f9-a997-b978c7213dfe",
       "transition_id": "finalize_release_done",
       "display_name": "Finalize Release Done",
       "description": "Release preparation was finalized and is ready for compliance review."
     },
     {
-      "id": "e6df5e5f-2b98-5fa1-ae49-27b3c3a0d704",
+      "id": "3069ee63-dd3d-4bc6-8e0c-385611c67b2d",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "b7ee7a42-7f1f-5e5b-a4e9-3a9c8c8a1f90",
+      "source_node_id": "c7abb728-575e-44f9-a997-b978c7213dfe",
       "transition_id": "finalize_release_needs_user_action",
       "display_name": "Finalize Release Needs User Action",
       "description": "Release finalization is blocked until the external issue is repaired."
@@ -389,199 +389,199 @@
       "description": "Latest user comment explicitly cancels this task or declares it not planned; finish without treating it as a recoverable blocker."
     },
     {
-      "id": "c62f90e8-22af-5ae9-a700-af16fd7358bc",
+      "id": "883d0503-9c1d-4ad7-b071-dbb43259db51",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "source_node_id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
       "transition_id": "release_intent_passed",
       "display_name": "Release Intent Passed",
       "description": "Release Intent Passed."
     },
     {
-      "id": "868c0add-053e-5207-a223-55d90fab1967",
+      "id": "159b7858-6c56-4ec6-97df-92980b5a12e2",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "source_node_id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
       "transition_id": "release_intent_blocked",
       "display_name": "Release Intent Blocked",
       "description": "Release Intent Blocked."
     },
     {
-      "id": "8f760870-6c60-5782-bde0-fdb39184d229",
+      "id": "a7abd14e-6594-4d59-b442-922548043fe0",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "source_node_id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
       "transition_id": "release_intent_needs_user_action",
       "display_name": "Release Intent Needs User Action",
       "description": "Release Intent Needs User Action."
     },
     {
-      "id": "97b53af4-ba4c-51bf-8277-ffc412bc2413",
+      "id": "d952aa60-6c01-44ad-b21b-ff0457b567c2",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "source_node_id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
       "transition_id": "release_intent_invalid",
       "display_name": "Release Intent Invalid",
       "description": "Release Intent Invalid."
     },
     {
-      "id": "a8acd841-4f94-5689-85bd-b68845441053",
+      "id": "a3a209d9-627c-4692-aef6-1571c37a0eb4",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "source_node_id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
       "transition_id": "release_intent_cancelled",
       "display_name": "Release Intent Cancelled",
       "description": "Release Intent Cancelled."
     },
     {
-      "id": "d2d704cb-777f-5575-a30b-99bc2b79a231",
+      "id": "c5b601f3-e2d0-4550-9f98-c02cec22ff5d",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "source_node_id": "963719ec-c35c-4ea1-8284-b5ebd6d13a51",
       "transition_id": "ci_watch_passed",
       "display_name": "Ci Watch Passed",
       "description": "Ci Watch Passed."
     },
     {
-      "id": "8307b1c5-a70d-5de5-967c-ba09930cfed7",
+      "id": "894ef008-475a-43bf-82ea-2c33aa02c66a",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "source_node_id": "963719ec-c35c-4ea1-8284-b5ebd6d13a51",
       "transition_id": "ci_watch_failed",
       "display_name": "Ci Watch Failed",
       "description": "Ci Watch Failed."
     },
     {
-      "id": "89f3a1c3-c27b-5d7c-90cf-d01c63e25656",
+      "id": "216b8775-175a-4016-b36b-79a897904851",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "source_node_id": "963719ec-c35c-4ea1-8284-b5ebd6d13a51",
       "transition_id": "ci_watch_pr_merged",
       "display_name": "Ci Watch Pr Merged",
       "description": "Ci Watch Pr Merged."
     },
     {
-      "id": "48078a7f-4468-58bd-89a1-c2d3596f411f",
+      "id": "d6347dd0-bc52-4428-a8f3-854265a0fb00",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "source_node_id": "963719ec-c35c-4ea1-8284-b5ebd6d13a51",
       "transition_id": "ci_watch_state_changed",
       "display_name": "Ci Watch State Changed",
       "description": "Ci Watch State Changed."
     },
     {
-      "id": "0dc7245c-861e-5bd1-84d1-178ad8f112c1",
+      "id": "13ccaf62-a1bb-42d7-8236-7fe07600c069",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "source_node_id": "963719ec-c35c-4ea1-8284-b5ebd6d13a51",
       "transition_id": "ci_watch_needs_user_action",
       "display_name": "Ci Watch Needs User Action",
       "description": "Ci Watch Needs User Action."
     },
     {
-      "id": "d816cb37-3add-5ba3-95c6-05970dc0dc76",
+      "id": "f301a5d7-d690-41cd-9a6e-0a4771663afa",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "source_node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "transition_id": "merge_watch_still_waiting",
       "display_name": "Merge Watch Still Waiting",
       "description": "Merge Watch Still Waiting."
     },
     {
-      "id": "db9b1cf5-b781-57b4-bb72-988675226302",
+      "id": "5be27904-9a19-4549-b52d-75c63ed2c361",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "source_node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "transition_id": "merge_watch_state_changed",
       "display_name": "Merge Watch State Changed",
       "description": "Merge Watch State Changed."
     },
     {
-      "id": "a1ae74af-1802-595d-abe2-272994d2158f",
+      "id": "d0a11892-60f0-4e77-a5ad-a9815e4aa54a",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "source_node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "transition_id": "merge_watch_pr_merged",
       "display_name": "Merge Watch Pr Merged",
       "description": "Merge Watch Pr Merged."
     },
     {
-      "id": "78b2ae6e-cbf9-52fc-ac3f-91eed445d84c",
+      "id": "5d0ce3a9-7f2d-49ca-a4a2-1da23daef289",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "source_node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "transition_id": "merge_watch_needs_user_action",
       "display_name": "Merge Watch Needs User Action",
       "description": "Merge Watch Needs User Action."
     },
     {
-      "id": "c5f27c70-3161-5dfb-ba45-f0d3edf261a7",
+      "id": "124b0e8a-97ea-4c6e-bc40-6255ce450e14",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "source_node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "transition_id": "merge_watch_close_without_merge",
       "display_name": "Merge Watch Close Without Merge",
       "description": "Merge Watch Close Without Merge."
     },
     {
-      "id": "c8a74e5b-3cde-5c85-9174-14d9f1a6a6ee",
+      "id": "0750de8f-934a-495d-b856-f24b57cee286",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "source_node_id": "adc08bfa-776d-4e3b-a28a-5f2f943ecc7e",
       "transition_id": "task_janitor_done",
       "display_name": "Task Janitor Done",
       "description": "Task Janitor Done."
     },
     {
-      "id": "0797ca3b-9175-5c92-9651-1cfb6c023f5e",
+      "id": "8de6be9b-fb11-455d-b350-9e3b5c1c8e52",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "source_node_id": "adc08bfa-776d-4e3b-a28a-5f2f943ecc7e",
       "transition_id": "task_janitor_blocked",
       "display_name": "Task Janitor Blocked",
       "description": "Task Janitor Blocked."
     },
     {
-      "id": "c53be4e6-1737-56d1-9225-6bab7e95e602",
+      "id": "3f8fb6c4-75f8-4928-a7fa-43ce202dd6c7",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "source_node_id": "adc08bfa-776d-4e3b-a28a-5f2f943ecc7e",
       "transition_id": "task_janitor_needs_user_action",
       "display_name": "Task Janitor Needs User Action",
       "description": "Task Janitor Needs User Action."
     },
     {
-      "id": "11847159-cb8d-502c-9032-02d32383addb",
+      "id": "b6863f07-9df4-475e-819a-7c0745e32ca1",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "source_node_id": "adc08bfa-776d-4e3b-a28a-5f2f943ecc7e",
       "transition_id": "task_janitor_retry",
       "display_name": "Task Janitor Retry",
       "description": "Task Janitor Retry."
     },
     {
-      "id": "c5ac02b3-81c3-542b-909a-23f52804f111",
+      "id": "37c39d2e-164a-498d-a804-4616d13c624d",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "source_node_id": "adc08bfa-776d-4e3b-a28a-5f2f943ecc7e",
       "transition_id": "task_janitor_preserved",
       "display_name": "Task Janitor Preserved",
       "description": "Task Janitor Preserved."
     },
     {
-      "id": "838f291e-5636-572c-9b8d-57ac6e73a9cf",
+      "id": "c1e79824-0f6e-4461-a804-02c6300c9b54",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "source_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "transition_id": "ci_prepare_ready_initial",
       "display_name": "Ci Prepare Ready Initial",
       "description": "The initial source-derived CI packet is ready; watch the exact actual PR head and base."
     },
     {
-      "id": "a4274290-4b7e-5876-b59d-3f6a431f60ed",
+      "id": "35e2ac54-7046-425d-a115-8b5d6e040dbd",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "source_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "transition_id": "ci_prepare_ready_retry",
       "display_name": "Ci Prepare Ready Retry",
       "description": "The unchanged or recomputed CI cycle is ready for another deterministic observation."
     },
     {
-      "id": "9e82c40d-ceb5-53d0-aeac-66c72d9805eb",
+      "id": "0177ee96-9510-48a2-abad-01e516301aae",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "source_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "transition_id": "ci_prepare_needs_user_action",
       "display_name": "Ci Prepare Needs User Action",
       "description": "CI preparation is blocked by missing or contradictory external evidence; approval only retries this preparation."
     },
     {
-      "id": "4752a12a-d684-551d-8b78-b8bbdf206707",
+      "id": "c3effbb7-f116-4dcd-a0bf-4f863431c23d",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "source_node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "source_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "transition_id": "ci_prepare_already_merged",
       "display_name": "Ci Prepare Already Merged",
       "description": "Preparation observed an already merged PR; continue through the existing merge watcher and Publish approval."
     },
     {
-      "id": "c387ce58-9464-5ce8-b535-1044c468c7fc",
+      "id": "16e1e678-d586-452f-99b5-629c62ea4c93",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
       "transition_id": "waiting_pr_ci_recheck",
@@ -595,7 +595,7 @@
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "0986cf0c-3ef2-40dd-a811-a3217844bdf4",
       "key": "start_release_intent_gate",
-      "target_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "target_node_id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -608,7 +608,7 @@
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "d9f9403a-bff0-42f0-8073-a9338e94e09f",
       "key": "prepare_profile_generation",
-      "target_node_id": "f7d7db5c-7ae1-5d95-8d50-90c9b6dc4f72",
+      "target_node_id": "43dafeaf-1408-483c-a524-a7c36a86278d",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -905,7 +905,7 @@
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "9ff7e6f2-968b-4407-ad27-da6a475a4be6",
       "key": "ship_pr_ci_watch",
-      "target_node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "target_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1041,7 +1041,7 @@
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "eb11a35c-408f-4fc8-8b3e-9d5b1f0d6234",
       "key": "ci_waiting_pr",
-      "target_node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "target_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1202,17 +1202,17 @@
         },
         {
           "key": "operation_id",
-          "description": "Stable release operation identity.",
+          "description": "Puber Release CI carrier field: operation_id.",
           "purpose": "ordinary"
         },
         {
           "key": "task_short_id",
-          "description": "Stable human-readable task identity.",
+          "description": "Puber Release CI carrier field: task_short_id.",
           "purpose": "ordinary"
         },
         {
           "key": "release_type",
-          "description": "Version bump type: minor by default, patch or major only when explicitly requested.",
+          "description": "Puber Release CI carrier field: release_type.",
           "purpose": "ordinary"
         },
         {
@@ -1227,47 +1227,47 @@
         },
         {
           "key": "release_branch",
-          "description": "Exact release branch resolved from the release version.",
+          "description": "Puber Release CI carrier field: release_branch.",
           "purpose": "ordinary"
         },
         {
           "key": "release_base_oid",
-          "description": "Immutable release source commit.",
+          "description": "Puber Release CI carrier field: release_base_oid.",
           "purpose": "ordinary"
         },
         {
           "key": "candidate_oid",
-          "description": "Exact release candidate commit before profile generation.",
+          "description": "Puber Release CI carrier field: candidate_oid.",
           "purpose": "ordinary"
         },
         {
           "key": "release_head_oid",
-          "description": "Exact finalized release branch head.",
+          "description": "Puber Release CI carrier field: release_head_oid.",
           "purpose": "ordinary"
         },
         {
           "key": "profile_report",
-          "description": "Closed profile-generation report.",
+          "description": "Puber Release CI carrier field: profile_report.",
           "purpose": "ordinary"
         },
         {
           "key": "profile_report_digest",
-          "description": "SHA-256 digest of the closed profile-generation report.",
+          "description": "Puber Release CI carrier field: profile_report_digest.",
           "purpose": "ordinary"
         },
         {
           "key": "release_preparation_report",
-          "description": "Closed release-preparation report.",
+          "description": "Puber Release CI carrier field: release_preparation_report.",
           "purpose": "ordinary"
         },
         {
           "key": "release_preparation_report_digest",
-          "description": "SHA-256 digest of the closed release-preparation report.",
+          "description": "Puber Release CI carrier field: release_preparation_report_digest.",
           "purpose": "ordinary"
         },
         {
           "key": "verification_summary",
-          "description": "Commands run and their pass/fail results.",
+          "description": "Explicit verification summary for this transition; not part of the profile checkpoint.",
           "purpose": "ordinary"
         },
         {
@@ -1387,7 +1387,7 @@
         },
         {
           "key": "pr_url",
-          "description": "Immutable S05 carrier field: pr_url.",
+          "description": "URL of the created, updated, or monitored pull request.",
           "purpose": "ordinary"
         },
         {
@@ -1412,22 +1412,22 @@
         },
         {
           "key": "release_version",
-          "description": "Immutable S05 carrier field: release_version.",
+          "description": "Release version prepared by this workflow.",
           "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Immutable S05 carrier field: release_tag.",
+          "description": "Release tag to create or publish after PR merge.",
           "purpose": "ordinary"
         },
         {
           "key": "target_commit",
-          "description": "Immutable S05 carrier field: target_commit.",
+          "description": "Master commit targeted by the release tag.",
           "purpose": "ordinary"
         },
         {
           "key": "release_notes_path",
-          "description": "Immutable S05 carrier field: release_notes_path.",
+          "description": "Task-local path to the prepared non-empty Russian release notes file.",
           "purpose": "ordinary"
         },
         {
@@ -1442,7 +1442,7 @@
         },
         {
           "key": "release_run",
-          "description": "Pinned release run carrier, or explicit not-selected state.",
+          "description": "Immutable S05 carrier field: release_run.",
           "purpose": "ordinary"
         }
       ]
@@ -1581,7 +1581,7 @@
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "0c461a27-a313-464d-b3a6-f2ba22ed60ed",
       "key": "cleanup_task_janitor",
-      "target_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "target_node_id": "adc08bfa-776d-4e3b-a28a-5f2f943ecc7e",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -1677,17 +1677,17 @@
         },
         {
           "key": "operation_id",
-          "description": "Stable release operation identity.",
+          "description": "Puber Release CI carrier field: operation_id.",
           "purpose": "ordinary"
         },
         {
           "key": "task_short_id",
-          "description": "Stable human-readable task identity.",
+          "description": "Puber Release CI carrier field: task_short_id.",
           "purpose": "ordinary"
         },
         {
           "key": "release_type",
-          "description": "Version bump type: minor by default, patch or major only when explicitly requested.",
+          "description": "Puber Release CI carrier field: release_type.",
           "purpose": "ordinary"
         },
         {
@@ -1702,47 +1702,47 @@
         },
         {
           "key": "release_branch",
-          "description": "Exact release branch resolved from the release version.",
+          "description": "Puber Release CI carrier field: release_branch.",
           "purpose": "ordinary"
         },
         {
           "key": "release_base_oid",
-          "description": "Immutable release source commit.",
+          "description": "Puber Release CI carrier field: release_base_oid.",
           "purpose": "ordinary"
         },
         {
           "key": "candidate_oid",
-          "description": "Exact release candidate commit before profile generation.",
+          "description": "Puber Release CI carrier field: candidate_oid.",
           "purpose": "ordinary"
         },
         {
           "key": "release_head_oid",
-          "description": "Exact finalized release branch head.",
+          "description": "Puber Release CI carrier field: release_head_oid.",
           "purpose": "ordinary"
         },
         {
           "key": "profile_report",
-          "description": "Closed profile-generation report.",
+          "description": "Puber Release CI carrier field: profile_report.",
           "purpose": "ordinary"
         },
         {
           "key": "profile_report_digest",
-          "description": "SHA-256 digest of the closed profile-generation report.",
+          "description": "Puber Release CI carrier field: profile_report_digest.",
           "purpose": "ordinary"
         },
         {
           "key": "release_preparation_report",
-          "description": "Closed release-preparation report.",
+          "description": "Puber Release CI carrier field: release_preparation_report.",
           "purpose": "ordinary"
         },
         {
           "key": "release_preparation_report_digest",
-          "description": "SHA-256 digest of the closed release-preparation report.",
+          "description": "Puber Release CI carrier field: release_preparation_report_digest.",
           "purpose": "ordinary"
         },
         {
           "key": "verification_summary",
-          "description": "Commands run and their pass/fail results.",
+          "description": "Explicit verification summary for this transition; not part of the profile checkpoint.",
           "purpose": "ordinary"
         },
         {
@@ -1757,7 +1757,7 @@
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "0173072c-5be0-41f7-8596-a8010a81e0b6",
       "key": "waiting_pr_merge_watch",
-      "target_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "target_node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -2142,13 +2142,13 @@
       ]
     },
     {
-      "id": "2e877228-6c17-58bb-8bb3-1edca7769167",
+      "id": "641f3ab9-150c-4a32-bb24-f4af008e3f76",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "c62f90e8-22af-5ae9-a700-af16fd7358bc",
+      "transition_group_id": "883d0503-9c1d-4ad7-b071-dbb43259db51",
       "key": "release_intent_passed",
       "target_node_id": "4f98b2c1-ef8c-4323-8040-b9a40e939910",
       "requires_approval": false,
-      "context_mode": "compact_and_continue_session",
+      "context_mode": "new_session",
       "parameters": [
         {
           "key": "workspace_path",
@@ -2181,14 +2181,17 @@
           "purpose": "ordinary"
         }
       ],
-      "prompt_template": "Prepare the exact release candidate branch for profile generation.\n\nRead the current release source and verify origin/master has not moved. Create or safely reuse {{.Params.release_branch}} at the exact release base without creating a release commit or PR. Return the release identity, release_base_oid, and candidate_oid through prepare_profile_generation only. If the source, branch, or required external input is unsafe, use needs_user_action with blocker_reason."
+      "prompt_template": "Prepare the exact release candidate branch for profile generation.\n\nRead the current release source and verify origin/master has not moved. Create or safely reuse {{.Params.release_branch}} at the exact release base without creating a release commit or PR. Return the release identity, release_base_oid, and candidate_oid through prepare_profile_generation only. If the source, branch, or required external input is unsafe, use needs_user_action with blocker_reason.",
+      "context_source": {
+        "kind": "immediate_source"
+      }
     },
     {
-      "id": "f567096a-aae6-5dda-b38a-6003097ca401",
+      "id": "716a5679-33a9-4b75-88c9-e95787e06361",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "868c0add-053e-5207-a223-55d90fab1967",
+      "transition_group_id": "159b7858-6c56-4ec6-97df-92980b5a12e2",
       "key": "release_intent_blocked",
-      "target_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "target_node_id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
       "requires_approval": false,
       "context_mode": "new_session",
       "parameters": [
@@ -2228,11 +2231,11 @@
       }
     },
     {
-      "id": "fe0b548d-e26c-5ae9-9041-2c34f10c7747",
+      "id": "03154bc1-f6a8-4d33-8c30-54ad5c41d6a9",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "8f760870-6c60-5782-bde0-fdb39184d229",
+      "transition_group_id": "a7abd14e-6594-4d59-b442-922548043fe0",
       "key": "release_intent_needs_user_action",
-      "target_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "target_node_id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
       "requires_approval": true,
       "context_mode": "new_session",
       "parameters": [
@@ -2272,11 +2275,11 @@
       }
     },
     {
-      "id": "171dd520-6c41-576a-bd4f-d983b9a250b4",
+      "id": "61702195-69a2-4a0b-a1b9-2cf09c9a2d6d",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "97b53af4-ba4c-51bf-8277-ffc412bc2413",
+      "transition_group_id": "d952aa60-6c01-44ad-b21b-ff0457b567c2",
       "key": "release_intent_invalid",
-      "target_node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+      "target_node_id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
       "requires_approval": false,
       "context_mode": "new_session",
       "parameters": [
@@ -2316,9 +2319,9 @@
       }
     },
     {
-      "id": "31a0d095-e8fd-5612-a71b-29943b15236e",
+      "id": "20ca1622-3e36-40f5-a569-a53fb0a4cc4c",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "a8acd841-4f94-5689-85bd-b68845441053",
+      "transition_group_id": "a3a209d9-627c-4692-aef6-1571c37a0eb4",
       "key": "release_intent_cancelled",
       "target_node_id": "dd3e4e97-a974-4e6a-bafe-da1d891bb5ce",
       "requires_approval": true,
@@ -2352,9 +2355,9 @@
       ]
     },
     {
-      "id": "1a6e3320-15b8-52d3-8ef2-815d28d2e103",
+      "id": "4a96d33b-92d8-4b18-8640-17c73af97a4f",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "d2d704cb-777f-5575-a30b-99bc2b79a231",
+      "transition_group_id": "c5b601f3-e2d0-4550-9f98-c02cec22ff5d",
       "key": "ci_watch_passed",
       "target_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
       "requires_approval": false,
@@ -2490,12 +2493,13 @@
           "description": "Canonical CI report including mandatory and extra checks.",
           "purpose": "ordinary"
         }
-      ]
+      ],
+      "prompt_template": "Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}"
     },
     {
-      "id": "0af286ab-0947-5d5e-bafc-ef50e36b1bdb",
+      "id": "e07d2297-6b2c-489b-8e5c-1bb878d667a7",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "8307b1c5-a70d-5de5-967c-ba09930cfed7",
+      "transition_group_id": "894ef008-475a-43bf-82ea-2c33aa02c66a",
       "key": "ci_watch_failed",
       "target_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
       "requires_approval": false,
@@ -2513,67 +2517,67 @@
         },
         {
           "key": "task_short_id",
-          "description": "Stable human-readable task identity.",
+          "description": "Puber Release CI carrier field: task_short_id.",
           "purpose": "ordinary"
         },
         {
           "key": "release_type",
-          "description": "Version bump type: minor by default, patch or major only when explicitly requested.",
+          "description": "Puber Release CI carrier field: release_type.",
           "purpose": "ordinary"
         },
         {
           "key": "release_version",
-          "description": "Release version prepared by this workflow.",
+          "description": "Puber Release CI carrier field: release_version.",
           "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Release tag to create or publish after PR merge.",
+          "description": "Puber Release CI carrier field: release_tag.",
           "purpose": "ordinary"
         },
         {
           "key": "release_branch",
-          "description": "Exact release branch resolved from the release version.",
+          "description": "Puber Release CI carrier field: release_branch.",
           "purpose": "ordinary"
         },
         {
           "key": "release_base_oid",
-          "description": "Immutable release source commit.",
+          "description": "Puber Release CI carrier field: release_base_oid.",
           "purpose": "ordinary"
         },
         {
           "key": "candidate_oid",
-          "description": "Exact release candidate commit before profile generation.",
+          "description": "Puber Release CI carrier field: candidate_oid.",
           "purpose": "ordinary"
         },
         {
           "key": "release_head_oid",
-          "description": "Exact finalized release branch head.",
+          "description": "Puber Release CI carrier field: release_head_oid.",
           "purpose": "ordinary"
         },
         {
           "key": "profile_report",
-          "description": "Closed profile-generation report.",
+          "description": "Puber Release CI carrier field: profile_report.",
           "purpose": "ordinary"
         },
         {
           "key": "profile_report_digest",
-          "description": "SHA-256 digest of the closed profile-generation report.",
+          "description": "Puber Release CI carrier field: profile_report_digest.",
           "purpose": "ordinary"
         },
         {
           "key": "release_preparation_report",
-          "description": "Closed release-preparation report.",
+          "description": "Puber Release CI carrier field: release_preparation_report.",
           "purpose": "ordinary"
         },
         {
           "key": "release_preparation_report_digest",
-          "description": "SHA-256 digest of the closed release-preparation report.",
+          "description": "Puber Release CI carrier field: release_preparation_report_digest.",
           "purpose": "ordinary"
         },
         {
           "key": "verification_summary",
-          "description": "Explicit verification summary for this transition; it is not part of the profile checkpoint.",
+          "description": "Explicit verification summary for this transition; not part of the profile checkpoint.",
           "purpose": "ordinary"
         },
         {
@@ -2628,17 +2632,18 @@
         },
         {
           "key": "ci_report",
-          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "description": "Canonical CI report including mandatory and extra checks.",
           "purpose": "ordinary"
         }
-      ]
+      ],
+      "prompt_template": "Inspect the release PR CI failure in {{.Params.ci_report}} using read-only GitHub observations. Read AGENTS.md, .kent/project-contract.md, and .kent/commands/release.md.\n\nPreserve the complete flat release/CI carrier, explicit verification summary, and feedback cursor. Do not edit source, push commits, merge, publish, or rerun CI. If a task-scoped code repair is required, return the evidence through ci_fix so the existing prepare -> profile_generation -> finalize_release -> compliance path revalidates the changed candidate. If a fresh CI check is appropriate without a code repair, use ci_waiting_pr through the existing CI preparer. For missing access or an unresolved external blocker, use ci_monitor_needs_user_action with blocker_reason. Do not infer passing CI from missing or stale checks.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}"
     },
     {
-      "id": "63994e8e-0c64-5d53-8ef6-49502140d376",
+      "id": "80633937-6e1d-4c24-b3f7-de854065e0be",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "89f3a1c3-c27b-5d7c-90cf-d01c63e25656",
+      "transition_group_id": "216b8775-175a-4016-b36b-79a897904851",
       "key": "ci_watch_pr_merged",
-      "target_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "target_node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "requires_approval": false,
       "context_mode": "new_session",
       "parameters": [
@@ -2778,11 +2783,11 @@
       }
     },
     {
-      "id": "f1538be9-2e6f-5101-a81a-2d9cd44770ac",
+      "id": "8bb75068-e62b-4a53-b6ea-27e8f485d07a",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "48078a7f-4468-58bd-89a1-c2d3596f411f",
+      "transition_group_id": "d6347dd0-bc52-4428-a8f3-854265a0fb00",
       "key": "ci_watch_state_changed",
-      "target_node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "target_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "requires_approval": false,
       "context_mode": "new_session",
       "parameters": [
@@ -2922,11 +2927,11 @@
       }
     },
     {
-      "id": "f9a5a1a0-6f6c-5080-bb97-4768e5632e2d",
+      "id": "d21c544d-6079-4a95-91a6-5346b3e083f2",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "0dc7245c-861e-5bd1-84d1-178ad8f112c1",
+      "transition_group_id": "13ccaf62-a1bb-42d7-8236-7fe07600c069",
       "key": "ci_watch_needs_user_action",
-      "target_node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "target_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "requires_approval": true,
       "context_mode": "new_session",
       "parameters": [
@@ -3071,11 +3076,11 @@
       }
     },
     {
-      "id": "7266a1be-77ac-5fa1-b67b-649a37b8b427",
+      "id": "ff95529a-6477-450a-830b-691c4fa9d51c",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "d816cb37-3add-5ba3-95c6-05970dc0dc76",
+      "transition_group_id": "f301a5d7-d690-41cd-9a6e-0a4771663afa",
       "key": "merge_watch_still_waiting",
-      "target_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "target_node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "requires_approval": false,
       "context_mode": "new_session",
       "parameters": [
@@ -3215,9 +3220,9 @@
       }
     },
     {
-      "id": "0b59a861-42d3-5023-b483-da3e95c77ef9",
+      "id": "8aae5d11-8359-4450-b5f8-47c69c8e15a5",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "db9b1cf5-b781-57b4-bb72-988675226302",
+      "transition_group_id": "5be27904-9a19-4549-b52d-75c63ed2c361",
       "key": "merge_watch_state_changed",
       "target_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
       "requires_approval": false,
@@ -3357,9 +3362,9 @@
       "prompt_template": "Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}"
     },
     {
-      "id": "1a301e9e-9b57-5353-8a9f-b9ff356a8f8e",
+      "id": "a6e42669-837f-43f1-a8f0-5c9d99d70c39",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "a1ae74af-1802-595d-abe2-272994d2158f",
+      "transition_group_id": "d0a11892-60f0-4e77-a5ad-a9815e4aa54a",
       "key": "merge_watch_pr_merged",
       "target_node_id": "7ab29a1a-9ab5-40c4-ae91-1c6f47c12941",
       "requires_approval": true,
@@ -3406,11 +3411,11 @@
       }
     },
     {
-      "id": "b083e744-5e67-5f7c-a407-193b7917f13c",
+      "id": "58556ebb-de2c-453b-a0ad-8077ca56474e",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "78b2ae6e-cbf9-52fc-ac3f-91eed445d84c",
+      "transition_group_id": "5d0ce3a9-7f2d-49ca-a4a2-1da23daef289",
       "key": "merge_watch_needs_user_action",
-      "target_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "target_node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "requires_approval": true,
       "context_mode": "new_session",
       "parameters": [
@@ -3555,9 +3560,9 @@
       }
     },
     {
-      "id": "7bf41c49-f537-578e-a081-b0b7e7ee4dab",
+      "id": "bc32ba92-6501-42ed-a10d-94936c73373f",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "c5f27c70-3161-5dfb-ba45-f0d3edf261a7",
+      "transition_group_id": "124b0e8a-97ea-4c6e-bc40-6255ce450e14",
       "key": "merge_watch_close_without_merge",
       "target_node_id": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
       "requires_approval": true,
@@ -3605,9 +3610,9 @@
       "prompt_template": "Own Puber Cleanup as the real current Agent, Task {{.TaskId}}. Read AGENTS.md, .kent/project-contract.md and .kent/commands/release.md.\n\nEnsure an ordinary bounded Task evidence entry exists via the existing workflow-evidence-ledger command; it is observation, not route authority.\n\nRun .kent/scripts/workflow-release-cleanup from the actual Task H root with ONE closed JSON object: task_id={{.TaskId}}, incoming_transition=merge_watch_close_without_merge, parameters containing exactly the fields below. Keep KENT_SESSION_ID inherited from your own Kent tool environment; never invent a caller ID or _kent Script envelope. The helper independently derives observable outcome; this route hint cannot bypass publication, resource or sealed-report proof.\n\nOther idle historical Task Sessions on H are normal; never enumerate/select/leave them as cleanup owners.\n\nOn helper failure preserve resources and report the precise blocker; do not complete to Janitor. On success retain its exact flat output, close only your own background/tool processes, use the supported worktree leave for YOUR Session, and verify your current target is the primary workspace. Then use the normal Agent workflow completion to cleanup_task_janitor with the helper output fields unchanged. Do not call the seal helper again from primary. Stock Janitor/native Delete owns other idle Session retargeting and active/background admission; no bulk leave/delete, publication, fetch or new Session.\n\nIncoming parameters (data, not shell code):\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}"
     },
     {
-      "id": "ece2bd8b-3446-56a8-9da3-e3a789815c12",
+      "id": "be16bf42-1fbb-4b31-9955-ac1b59ac1551",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "c8a74e5b-3cde-5c85-9174-14d9f1a6a6ee",
+      "transition_group_id": "0750de8f-934a-495d-b856-f24b57cee286",
       "key": "task_janitor_done",
       "target_node_id": "7dfc3956-53ec-4307-ae59-daf1a3dd1151",
       "requires_approval": false,
@@ -3641,9 +3646,9 @@
       ]
     },
     {
-      "id": "494f7c12-23b2-529d-b8da-fd7bbd3eca14",
+      "id": "69e2fed3-a66f-4df8-afe4-0ab67c8cd9f0",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "0797ca3b-9175-5c92-9651-1cfb6c023f5e",
+      "transition_group_id": "8de6be9b-fb11-455d-b350-9e3b5c1c8e52",
       "key": "task_janitor_blocked",
       "target_node_id": "16a1dcd7-2737-45e9-88ba-93ebc8430b89",
       "requires_approval": false,
@@ -3681,11 +3686,11 @@
       "prompt_template": "Own Puber Cleanup as the real current Agent, Task {{.TaskId}}. Read AGENTS.md, .kent/project-contract.md and .kent/commands/release.md.\n\nEnsure an ordinary bounded Task evidence entry exists via the existing workflow-evidence-ledger command; it is observation, not route authority.\n\nRun .kent/scripts/workflow-release-cleanup from the actual Task H root with ONE closed JSON object: task_id={{.TaskId}}, incoming_transition=task_janitor_blocked, parameters containing exactly the fields below. Keep KENT_SESSION_ID inherited from your own Kent tool environment; never invent a caller ID or _kent Script envelope. The helper independently derives observable outcome; this route hint cannot bypass publication, resource or sealed-report proof.\n\nNative continuation rebinds this SAME Cleanup Session to H. Require your caller ID to equal the sealed owner; do not adopt a replacement or reconstruct a deleted checkpoint.\n\nOn helper failure preserve resources and report the precise blocker; do not complete to Janitor. On success retain its exact flat output, close only your own background/tool processes, use the supported worktree leave for YOUR Session, and verify your current target is the primary workspace. Then use the normal Agent workflow completion to cleanup_task_janitor with the helper output fields unchanged. Do not call the seal helper again from primary. Stock Janitor/native Delete owns other idle Session retargeting and active/background admission; no bulk leave/delete, publication, fetch or new Session.\n\nIncoming parameters (data, not shell code):\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\nbranch_name: {{.Params.branch_name}}\ncleanup_mode: {{.Params.cleanup_mode}}\ncleanup_report: {{.Params.cleanup_report}}"
     },
     {
-      "id": "a775abcd-af8d-5199-b8a4-8fb9ddbc4164",
+      "id": "1e0764af-50b7-44a7-9513-66683a981304",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "c53be4e6-1737-56d1-9225-6bab7e95e602",
+      "transition_group_id": "3f8fb6c4-75f8-4928-a7fa-43ce202dd6c7",
       "key": "task_janitor_needs_user_action",
-      "target_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "target_node_id": "adc08bfa-776d-4e3b-a28a-5f2f943ecc7e",
       "requires_approval": true,
       "context_mode": "new_session",
       "parameters": [
@@ -3720,11 +3725,11 @@
       }
     },
     {
-      "id": "e052b00a-4e46-55b4-b168-af6cd138baa4",
+      "id": "175c45cc-0a5f-4a5e-abb9-6c9eda851531",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "11847159-cb8d-502c-9032-02d32383addb",
+      "transition_group_id": "b6863f07-9df4-475e-819a-7c0745e32ca1",
       "key": "task_janitor_retry",
-      "target_node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+      "target_node_id": "adc08bfa-776d-4e3b-a28a-5f2f943ecc7e",
       "requires_approval": false,
       "context_mode": "new_session",
       "parameters": [
@@ -3759,9 +3764,9 @@
       }
     },
     {
-      "id": "c8028f79-f3e7-57da-bb6c-1b6984b2a5ca",
+      "id": "f252992e-0577-4f10-b4e9-4a7360e09d5c",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "c5ac02b3-81c3-542b-909a-23f52804f111",
+      "transition_group_id": "37c39d2e-164a-498d-a804-4616d13c624d",
       "key": "task_janitor_preserved",
       "target_node_id": "7dfc3956-53ec-4307-ae59-daf1a3dd1151",
       "requires_approval": false,
@@ -3803,10 +3808,10 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "id": "1a4c3d9e-6f20-5a8a-b4d1-8e7f2c6a9015",
-      "transition_group_id": "f2b2f6d8-8f2e-5e2f-8fa1-5d1e4f1e7b01",
+      "id": "41519e2c-44c5-4f0d-a3ca-1b8956554d56",
+      "transition_group_id": "dccd7a56-5558-46bf-abd1-c7ff3f2e60a0",
       "key": "profile_generation_passed",
-      "target_node_id": "b7ee7a42-7f1f-5e5b-a4e9-3a9c8c8a1f90",
+      "target_node_id": "c7abb728-575e-44f9-a997-b978c7213dfe",
       "prompt_template": "Finalize the release after the closed profile-generation report passed. Read the exact profile carrier, validate production packaging, apply or reuse the version bump, and create or reuse an additive release preparation commit. Complete with finalize_release_done and provide the full release identity, release_head_oid, both reports and digests, and verification_summary; use needs_user_action with blocker_reason if unsafe or blocked.\nRevision 90 safety: follow the closed signing/checkpoint contract in .kent/commands/release.md. Require puber_release_preparation_report_v2, puber_release_profile_checkpoint_v2, explicit debug_validation and non-publishable validation APK proof; use only the shared descriptor-relative checkpoint store. No production credentials in preparation; discard validation APK outputs on every exit.\n",
       "parameters": [
         {
@@ -3873,10 +3878,10 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "id": "2b5d4e0f-7a31-5b9c-c6e2-9f8a3d7b0126",
-      "transition_group_id": "bb9b6dd4-1f0b-5de0-8527-3cc2b4b7f902",
+      "id": "1cf2a7f7-0791-4ce8-92a3-7ec6b00620b5",
+      "transition_group_id": "c569e3d3-f3f4-4c84-8776-fdb93c66a6d8",
       "key": "profile_generation_needs_user_action",
-      "target_node_id": "f7d7db5c-7ae1-5d95-8d50-90c9b6dc4f72",
+      "target_node_id": "43dafeaf-1408-483c-a524-a7c36a86278d",
       "parameters": [
         {
           "key": "workspace_path",
@@ -3939,8 +3944,8 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "id": "3c6e5f1a-8b42-5cad-d7f3-a0b9e4c81237",
-      "transition_group_id": "d5ce4d4e-1a87-5e90-9d38-16a2b2f9c603",
+      "id": "abcae6e7-d5a6-48a4-830b-9450eae82847",
+      "transition_group_id": "eab58482-24b2-4c17-abd1-3f25f56f338e",
       "key": "finalize_release_done",
       "target_node_id": "e7444395-765d-422b-890e-5b2dd69f52e4",
       "prompt_template": "Run mandatory Puber Compliance Review for the finalized release preparation. Verify the report digests, exact release head, and version/profile-only diff before allowing PR shipping. Do not edit files.\nRevision 90 safety: follow the closed signing/checkpoint contract in .kent/commands/release.md. Require puber_release_preparation_report_v2, puber_release_profile_checkpoint_v2, explicit debug_validation and non-publishable validation APK proof; use only the shared descriptor-relative checkpoint store. No production credentials in preparation; discard validation APK outputs on every exit.\n",
@@ -4031,10 +4036,10 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "id": "4d7f6a2b-9c53-5dbe-e8a4-b1c0f9253468",
-      "transition_group_id": "e6df5e5f-2b98-5fa1-ae49-27b3c3a0d704",
+      "id": "8e2c3db0-bae7-4c53-8596-400f7e6ef8b0",
+      "transition_group_id": "3069ee63-dd3d-4bc6-8e0c-385611c67b2d",
       "key": "finalize_release_needs_user_action",
-      "target_node_id": "b7ee7a42-7f1f-5e5b-a4e9-3a9c8c8a1f90",
+      "target_node_id": "c7abb728-575e-44f9-a997-b978c7213dfe",
       "prompt_template": "Resume release finalization after the reported blocker was resolved. Revalidate profile evidence and the exact candidate, then rerun packaging and diff checks. Approval permits a re-check only; do not bypass profile or packaging gates.\nRevision 90 safety: follow the closed signing/checkpoint contract in .kent/commands/release.md. Require puber_release_preparation_report_v2, puber_release_profile_checkpoint_v2, explicit debug_validation and non-publishable validation APK proof; use only the shared descriptor-relative checkpoint store. No production credentials in preparation; discard validation APK outputs on every exit.\n",
       "parameters": [
         {
@@ -4100,11 +4105,11 @@
       ]
     },
     {
-      "id": "68c2e4d2-b253-5b28-95f2-d9de52d4af69",
+      "id": "7be2b4c4-ab65-4a7f-a755-3b4b836a8a52",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "838f291e-5636-572c-9b8d-57ac6e73a9cf",
+      "transition_group_id": "c1e79824-0f6e-4461-a804-02c6300c9b54",
       "key": "ci_prepare_ready_initial",
-      "target_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "target_node_id": "963719ec-c35c-4ea1-8284-b5ebd6d13a51",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -4239,11 +4244,11 @@
       ]
     },
     {
-      "id": "211ae1b6-e0ea-527d-9b34-2d4910c2d293",
+      "id": "d600021c-3dd1-4a61-b90b-7996d4800ff1",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "a4274290-4b7e-5876-b59d-3f6a431f60ed",
+      "transition_group_id": "35e2ac54-7046-425d-a115-8b5d6e040dbd",
       "key": "ci_prepare_ready_retry",
-      "target_node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+      "target_node_id": "963719ec-c35c-4ea1-8284-b5ebd6d13a51",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -4383,11 +4388,11 @@
       ]
     },
     {
-      "id": "6a62c37f-a2c7-51b6-a1a7-2791b3fc68a6",
+      "id": "ab102014-e277-469d-bf60-8677ea7a7891",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "9e82c40d-ceb5-53d0-aeac-66c72d9805eb",
+      "transition_group_id": "0177ee96-9510-48a2-abad-01e516301aae",
       "key": "ci_prepare_needs_user_action",
-      "target_node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "target_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "requires_approval": true,
       "context_mode": "new_session",
       "context_source": {
@@ -4532,11 +4537,11 @@
       ]
     },
     {
-      "id": "79e73545-747f-5d79-8b8a-3bd0cfb1e118",
+      "id": "183bc336-1950-41af-87d5-721c1d80f8ad",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "4752a12a-d684-551d-8b78-b8bbdf206707",
+      "transition_group_id": "c3effbb7-f116-4dcd-a0bf-4f863431c23d",
       "key": "ci_prepare_already_merged",
-      "target_node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+      "target_node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -4676,11 +4681,11 @@
       ]
     },
     {
-      "id": "df180a55-54f4-5e03-b11c-d2c0f97cb623",
+      "id": "b636fe04-66fe-4dd2-af12-b4a5550eb92b",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "c387ce58-9464-5ce8-b535-1044c468c7fc",
+      "transition_group_id": "16e1e678-d586-452f-99b5-629c62ea4c93",
       "key": "waiting_pr_ci_recheck",
-      "target_node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+      "target_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "requires_approval": false,
       "context_mode": "new_session",
       "context_source": {
@@ -4689,92 +4694,92 @@
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Puber Release CI carrier field: workspace_path.",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
           "purpose": "ordinary"
         },
         {
           "key": "operation_id",
-          "description": "Puber Release CI carrier field: operation_id.",
+          "description": "Stable release operation identity.",
           "purpose": "ordinary"
         },
         {
           "key": "task_short_id",
-          "description": "Puber Release CI carrier field: task_short_id.",
+          "description": "Stable human-readable task identity.",
           "purpose": "ordinary"
         },
         {
           "key": "release_type",
-          "description": "Puber Release CI carrier field: release_type.",
+          "description": "Version bump type: minor by default, patch or major only when explicitly requested.",
           "purpose": "ordinary"
         },
         {
           "key": "release_version",
-          "description": "Puber Release CI carrier field: release_version.",
+          "description": "Release version prepared by this workflow.",
           "purpose": "ordinary"
         },
         {
           "key": "release_tag",
-          "description": "Puber Release CI carrier field: release_tag.",
+          "description": "Release tag to create or publish after PR merge.",
           "purpose": "ordinary"
         },
         {
           "key": "release_branch",
-          "description": "Puber Release CI carrier field: release_branch.",
+          "description": "Exact release branch resolved from the release version.",
           "purpose": "ordinary"
         },
         {
           "key": "release_base_oid",
-          "description": "Puber Release CI carrier field: release_base_oid.",
+          "description": "Immutable release source commit.",
           "purpose": "ordinary"
         },
         {
           "key": "candidate_oid",
-          "description": "Puber Release CI carrier field: candidate_oid.",
+          "description": "Exact release candidate commit before profile generation.",
           "purpose": "ordinary"
         },
         {
           "key": "release_head_oid",
-          "description": "Puber Release CI carrier field: release_head_oid.",
+          "description": "Exact finalized release branch head.",
           "purpose": "ordinary"
         },
         {
           "key": "profile_report",
-          "description": "Puber Release CI carrier field: profile_report.",
+          "description": "Closed profile-generation report.",
           "purpose": "ordinary"
         },
         {
           "key": "profile_report_digest",
-          "description": "Puber Release CI carrier field: profile_report_digest.",
+          "description": "SHA-256 digest of the closed profile-generation report.",
           "purpose": "ordinary"
         },
         {
           "key": "release_preparation_report",
-          "description": "Puber Release CI carrier field: release_preparation_report.",
+          "description": "Closed release-preparation report.",
           "purpose": "ordinary"
         },
         {
           "key": "release_preparation_report_digest",
-          "description": "Puber Release CI carrier field: release_preparation_report_digest.",
+          "description": "SHA-256 digest of the closed release-preparation report.",
           "purpose": "ordinary"
         },
         {
           "key": "verification_summary",
-          "description": "Explicit verification summary for this transition; not part of the profile checkpoint.",
+          "description": "Explicit verification summary for this transition; it is not part of the profile checkpoint.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_url",
-          "description": "Puber Release CI carrier field: pr_url.",
+          "description": "URL of the created, updated, or monitored pull request.",
           "purpose": "ordinary"
         },
         {
           "key": "branch_name",
-          "description": "Puber Release CI carrier field: branch_name.",
+          "description": "Name of the task or release branch associated with the pull request.",
           "purpose": "ordinary"
         },
         {
           "key": "merge_strategy",
-          "description": "Concrete strategy resolved from repository rules; currently rebase.",
+          "description": "Resolved merge strategy.",
           "purpose": "ordinary"
         },
         {
@@ -4814,7 +4819,7 @@
         },
         {
           "key": "ci_report",
-          "description": "Canonical CI report including mandatory and extra checks.",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
           "purpose": "ordinary"
         }
       ]
@@ -4875,7 +4880,7 @@
         ]
       },
       {
-        "node_id": "f7d7db5c-7ae1-5d95-8d50-90c9b6dc4f72",
+        "node_id": "43dafeaf-1408-483c-a524-a7c36a86278d",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -4928,7 +4933,7 @@
         ]
       },
       {
-        "node_id": "b7ee7a42-7f1f-5e5b-a4e9-3a9c8c8a1f90",
+        "node_id": "c7abb728-575e-44f9-a997-b978c7213dfe",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -5594,7 +5599,7 @@
         "node_id": "7dfc3956-53ec-4307-ae59-daf1a3dd1151"
       },
       {
-        "node_id": "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e",
+        "node_id": "c05c1572-67d9-482f-bdde-a604cb1b18da",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -5627,7 +5632,7 @@
         ]
       },
       {
-        "node_id": "598063c6-2cef-51ec-a613-043e5b6335db",
+        "node_id": "963719ec-c35c-4ea1-8284-b5ebd6d13a51",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -5740,7 +5745,7 @@
         ]
       },
       {
-        "node_id": "44390763-8581-53aa-8700-e912a67aaca4",
+        "node_id": "4a7e6011-a895-491b-b664-08c2c1f19f59",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -5853,7 +5858,7 @@
         ]
       },
       {
-        "node_id": "dfbd8b53-4c7c-56e7-bcd0-631389648090",
+        "node_id": "adc08bfa-776d-4e3b-a28a-5f2f943ecc7e",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -5878,7 +5883,7 @@
         ]
       },
       {
-        "node_id": "162aafa2-89b3-518f-9a24-f2d9c6310bbf",
+        "node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
         "possible_provision_fields": [
           {
             "name": "workspace_path",
@@ -6037,7 +6042,7 @@
         ]
       },
       {
-        "transition_group_id": "f2b2f6d8-8f2e-5e2f-8fa1-5d1e4f1e7b01",
+        "transition_group_id": "dccd7a56-5558-46bf-abd1-c7ff3f2e60a0",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -6086,7 +6091,7 @@
         ]
       },
       {
-        "transition_group_id": "bb9b6dd4-1f0b-5de0-8527-3cc2b4b7f902",
+        "transition_group_id": "c569e3d3-f3f4-4c84-8776-fdb93c66a6d8",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -6131,7 +6136,7 @@
         ]
       },
       {
-        "transition_group_id": "d5ce4d4e-1a87-5e90-9d38-16a2b2f9c603",
+        "transition_group_id": "eab58482-24b2-4c17-abd1-3f25f56f338e",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -6196,7 +6201,7 @@
         ]
       },
       {
-        "transition_group_id": "e6df5e5f-2b98-5fa1-ae49-27b3c3a0d704",
+        "transition_group_id": "3069ee63-dd3d-4bc6-8e0c-385611c67b2d",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -6616,15 +6621,15 @@
           },
           {
             "name": "operation_id",
-            "description": "Stable release operation identity."
+            "description": "Puber Release CI carrier field: operation_id."
           },
           {
             "name": "task_short_id",
-            "description": "Stable human-readable task identity."
+            "description": "Puber Release CI carrier field: task_short_id."
           },
           {
             "name": "release_type",
-            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+            "description": "Puber Release CI carrier field: release_type."
           },
           {
             "name": "release_version",
@@ -6636,39 +6641,39 @@
           },
           {
             "name": "release_branch",
-            "description": "Exact release branch resolved from the release version."
+            "description": "Puber Release CI carrier field: release_branch."
           },
           {
             "name": "release_base_oid",
-            "description": "Immutable release source commit."
+            "description": "Puber Release CI carrier field: release_base_oid."
           },
           {
             "name": "candidate_oid",
-            "description": "Exact release candidate commit before profile generation."
+            "description": "Puber Release CI carrier field: candidate_oid."
           },
           {
             "name": "release_head_oid",
-            "description": "Exact finalized release branch head."
+            "description": "Puber Release CI carrier field: release_head_oid."
           },
           {
             "name": "profile_report",
-            "description": "Closed profile-generation report."
+            "description": "Puber Release CI carrier field: profile_report."
           },
           {
             "name": "profile_report_digest",
-            "description": "SHA-256 digest of the closed profile-generation report."
+            "description": "Puber Release CI carrier field: profile_report_digest."
           },
           {
             "name": "release_preparation_report",
-            "description": "Closed release-preparation report."
+            "description": "Puber Release CI carrier field: release_preparation_report."
           },
           {
             "name": "release_preparation_report_digest",
-            "description": "SHA-256 digest of the closed release-preparation report."
+            "description": "Puber Release CI carrier field: release_preparation_report_digest."
           },
           {
             "name": "verification_summary",
-            "description": "Commands run and their pass/fail results."
+            "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
           },
           {
             "name": "ci_report",
@@ -6743,7 +6748,7 @@
           },
           {
             "name": "pr_url",
-            "description": "Immutable S05 carrier field: pr_url."
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
             "name": "branch_name",
@@ -6763,19 +6768,19 @@
           },
           {
             "name": "release_version",
-            "description": "Immutable S05 carrier field: release_version."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Immutable S05 carrier field: release_tag."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Immutable S05 carrier field: target_commit."
+            "description": "Master commit targeted by the release tag."
           },
           {
             "name": "release_notes_path",
-            "description": "Immutable S05 carrier field: release_notes_path."
+            "description": "Task-local path to the prepared non-empty Russian release notes file."
           },
           {
             "name": "publication_report",
@@ -6787,7 +6792,7 @@
           },
           {
             "name": "release_run",
-            "description": "Pinned release run carrier, or explicit not-selected state."
+            "description": "Immutable S05 carrier field: release_run."
           }
         ]
       },
@@ -6947,15 +6952,15 @@
           },
           {
             "name": "operation_id",
-            "description": "Stable release operation identity."
+            "description": "Puber Release CI carrier field: operation_id."
           },
           {
             "name": "task_short_id",
-            "description": "Stable human-readable task identity."
+            "description": "Puber Release CI carrier field: task_short_id."
           },
           {
             "name": "release_type",
-            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+            "description": "Puber Release CI carrier field: release_type."
           },
           {
             "name": "release_version",
@@ -6967,39 +6972,39 @@
           },
           {
             "name": "release_branch",
-            "description": "Exact release branch resolved from the release version."
+            "description": "Puber Release CI carrier field: release_branch."
           },
           {
             "name": "release_base_oid",
-            "description": "Immutable release source commit."
+            "description": "Puber Release CI carrier field: release_base_oid."
           },
           {
             "name": "candidate_oid",
-            "description": "Exact release candidate commit before profile generation."
+            "description": "Puber Release CI carrier field: candidate_oid."
           },
           {
             "name": "release_head_oid",
-            "description": "Exact finalized release branch head."
+            "description": "Puber Release CI carrier field: release_head_oid."
           },
           {
             "name": "profile_report",
-            "description": "Closed profile-generation report."
+            "description": "Puber Release CI carrier field: profile_report."
           },
           {
             "name": "profile_report_digest",
-            "description": "SHA-256 digest of the closed profile-generation report."
+            "description": "Puber Release CI carrier field: profile_report_digest."
           },
           {
             "name": "release_preparation_report",
-            "description": "Closed release-preparation report."
+            "description": "Puber Release CI carrier field: release_preparation_report."
           },
           {
             "name": "release_preparation_report_digest",
-            "description": "SHA-256 digest of the closed release-preparation report."
+            "description": "Puber Release CI carrier field: release_preparation_report_digest."
           },
           {
             "name": "verification_summary",
-            "description": "Commands run and their pass/fail results."
+            "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
           },
           {
             "name": "blocker_reason",
@@ -7281,7 +7286,7 @@
         ]
       },
       {
-        "transition_group_id": "c62f90e8-22af-5ae9-a700-af16fd7358bc",
+        "transition_group_id": "883d0503-9c1d-4ad7-b071-dbb43259db51",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -7310,7 +7315,7 @@
         ]
       },
       {
-        "transition_group_id": "868c0add-053e-5207-a223-55d90fab1967",
+        "transition_group_id": "159b7858-6c56-4ec6-97df-92980b5a12e2",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -7339,7 +7344,7 @@
         ]
       },
       {
-        "transition_group_id": "8f760870-6c60-5782-bde0-fdb39184d229",
+        "transition_group_id": "a7abd14e-6594-4d59-b442-922548043fe0",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -7368,7 +7373,7 @@
         ]
       },
       {
-        "transition_group_id": "97b53af4-ba4c-51bf-8277-ffc412bc2413",
+        "transition_group_id": "d952aa60-6c01-44ad-b21b-ff0457b567c2",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -7397,7 +7402,7 @@
         ]
       },
       {
-        "transition_group_id": "a8acd841-4f94-5689-85bd-b68845441053",
+        "transition_group_id": "a3a209d9-627c-4692-aef6-1571c37a0eb4",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -7422,7 +7427,7 @@
         ]
       },
       {
-        "transition_group_id": "d2d704cb-777f-5575-a30b-99bc2b79a231",
+        "transition_group_id": "c5b601f3-e2d0-4550-9f98-c02cec22ff5d",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -7531,116 +7536,7 @@
         ]
       },
       {
-        "transition_group_id": "8307b1c5-a70d-5de5-967c-ba09930cfed7",
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Repository or managed-worktree root."
-          },
-          {
-            "name": "operation_id",
-            "description": "Stable operation identity."
-          },
-          {
-            "name": "task_short_id",
-            "description": "Stable human-readable task identity."
-          },
-          {
-            "name": "release_type",
-            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
-          },
-          {
-            "name": "release_version",
-            "description": "Release version prepared by this workflow."
-          },
-          {
-            "name": "release_tag",
-            "description": "Release tag to create or publish after PR merge."
-          },
-          {
-            "name": "release_branch",
-            "description": "Exact release branch resolved from the release version."
-          },
-          {
-            "name": "release_base_oid",
-            "description": "Immutable release source commit."
-          },
-          {
-            "name": "candidate_oid",
-            "description": "Exact release candidate commit before profile generation."
-          },
-          {
-            "name": "release_head_oid",
-            "description": "Exact finalized release branch head."
-          },
-          {
-            "name": "profile_report",
-            "description": "Closed profile-generation report."
-          },
-          {
-            "name": "profile_report_digest",
-            "description": "SHA-256 digest of the closed profile-generation report."
-          },
-          {
-            "name": "release_preparation_report",
-            "description": "Closed release-preparation report."
-          },
-          {
-            "name": "release_preparation_report_digest",
-            "description": "SHA-256 digest of the closed release-preparation report."
-          },
-          {
-            "name": "verification_summary",
-            "description": "Explicit verification summary for this transition; it is not part of the profile checkpoint."
-          },
-          {
-            "name": "pr_url",
-            "description": "Canonical pull request URL."
-          },
-          {
-            "name": "branch_name",
-            "description": "Exact task branch."
-          },
-          {
-            "name": "merge_strategy",
-            "description": "Resolved merge strategy."
-          },
-          {
-            "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
-          },
-          {
-            "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
-          },
-          {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
-          }
-        ]
-      },
-      {
-        "transition_group_id": "89f3a1c3-c27b-5d7c-90cf-d01c63e25656",
+        "transition_group_id": "894ef008-475a-43bf-82ea-2c33aa02c66a",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -7749,7 +7645,7 @@
         ]
       },
       {
-        "transition_group_id": "48078a7f-4468-58bd-89a1-c2d3596f411f",
+        "transition_group_id": "216b8775-175a-4016-b36b-79a897904851",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -7858,7 +7754,116 @@
         ]
       },
       {
-        "transition_group_id": "0dc7245c-861e-5bd1-84d1-178ad8f112c1",
+        "transition_group_id": "d6347dd0-bc52-4428-a8f3-854265a0fb00",
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Repository or managed-worktree root."
+          },
+          {
+            "name": "operation_id",
+            "description": "Stable operation identity."
+          },
+          {
+            "name": "task_short_id",
+            "description": "Puber Release CI carrier field: task_short_id."
+          },
+          {
+            "name": "release_type",
+            "description": "Puber Release CI carrier field: release_type."
+          },
+          {
+            "name": "release_version",
+            "description": "Puber Release CI carrier field: release_version."
+          },
+          {
+            "name": "release_tag",
+            "description": "Puber Release CI carrier field: release_tag."
+          },
+          {
+            "name": "release_branch",
+            "description": "Puber Release CI carrier field: release_branch."
+          },
+          {
+            "name": "release_base_oid",
+            "description": "Puber Release CI carrier field: release_base_oid."
+          },
+          {
+            "name": "candidate_oid",
+            "description": "Puber Release CI carrier field: candidate_oid."
+          },
+          {
+            "name": "release_head_oid",
+            "description": "Puber Release CI carrier field: release_head_oid."
+          },
+          {
+            "name": "profile_report",
+            "description": "Puber Release CI carrier field: profile_report."
+          },
+          {
+            "name": "profile_report_digest",
+            "description": "Puber Release CI carrier field: profile_report_digest."
+          },
+          {
+            "name": "release_preparation_report",
+            "description": "Puber Release CI carrier field: release_preparation_report."
+          },
+          {
+            "name": "release_preparation_report_digest",
+            "description": "Puber Release CI carrier field: release_preparation_report_digest."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
+          },
+          {
+            "name": "pr_url",
+            "description": "Canonical pull request URL."
+          },
+          {
+            "name": "branch_name",
+            "description": "Exact task branch."
+          },
+          {
+            "name": "merge_strategy",
+            "description": "Resolved merge strategy."
+          },
+          {
+            "name": "pr_head_oid",
+            "description": "Actual pull-request head commit observed for this CI cycle."
+          },
+          {
+            "name": "pr_base_oid",
+            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+          },
+          {
+            "name": "expected_ci_checks",
+            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+          },
+          {
+            "name": "expected_ci_checks_sha256",
+            "description": "SHA-256 digest of expected_ci_checks."
+          },
+          {
+            "name": "runtime_source_envelope_digest",
+            "description": "Digest of the immutable selected-head runtime source envelope."
+          },
+          {
+            "name": "ci_policy_snapshot",
+            "description": "Flat canonical policy snapshot for the current CI cycle."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
+          },
+          {
+            "name": "ci_report",
+            "description": "Canonical CI report including mandatory and extra checks."
+          }
+        ]
+      },
+      {
+        "transition_group_id": "13ccaf62-a1bb-42d7-8236-7fe07600c069",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -7971,7 +7976,7 @@
         ]
       },
       {
-        "transition_group_id": "d816cb37-3add-5ba3-95c6-05970dc0dc76",
+        "transition_group_id": "f301a5d7-d690-41cd-9a6e-0a4771663afa",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8080,7 +8085,7 @@
         ]
       },
       {
-        "transition_group_id": "db9b1cf5-b781-57b4-bb72-988675226302",
+        "transition_group_id": "5be27904-9a19-4549-b52d-75c63ed2c361",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8189,7 +8194,7 @@
         ]
       },
       {
-        "transition_group_id": "a1ae74af-1802-595d-abe2-272994d2158f",
+        "transition_group_id": "d0a11892-60f0-4e77-a5ad-a9815e4aa54a",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8222,7 +8227,7 @@
         ]
       },
       {
-        "transition_group_id": "78b2ae6e-cbf9-52fc-ac3f-91eed445d84c",
+        "transition_group_id": "5d0ce3a9-7f2d-49ca-a4a2-1da23daef289",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8335,7 +8340,7 @@
         ]
       },
       {
-        "transition_group_id": "c5f27c70-3161-5dfb-ba45-f0d3edf261a7",
+        "transition_group_id": "124b0e8a-97ea-4c6e-bc40-6255ce450e14",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8368,7 +8373,7 @@
         ]
       },
       {
-        "transition_group_id": "c8a74e5b-3cde-5c85-9174-14d9f1a6a6ee",
+        "transition_group_id": "0750de8f-934a-495d-b856-f24b57cee286",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8393,7 +8398,7 @@
         ]
       },
       {
-        "transition_group_id": "0797ca3b-9175-5c92-9651-1cfb6c023f5e",
+        "transition_group_id": "8de6be9b-fb11-455d-b350-9e3b5c1c8e52",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8418,7 +8423,7 @@
         ]
       },
       {
-        "transition_group_id": "c53be4e6-1737-56d1-9225-6bab7e95e602",
+        "transition_group_id": "3f8fb6c4-75f8-4928-a7fa-43ce202dd6c7",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8443,7 +8448,7 @@
         ]
       },
       {
-        "transition_group_id": "11847159-cb8d-502c-9032-02d32383addb",
+        "transition_group_id": "b6863f07-9df4-475e-819a-7c0745e32ca1",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8468,7 +8473,7 @@
         ]
       },
       {
-        "transition_group_id": "c5ac02b3-81c3-542b-909a-23f52804f111",
+        "transition_group_id": "37c39d2e-164a-498d-a804-4616d13c624d",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8493,7 +8498,7 @@
         ]
       },
       {
-        "transition_group_id": "838f291e-5636-572c-9b8d-57ac6e73a9cf",
+        "transition_group_id": "c1e79824-0f6e-4461-a804-02c6300c9b54",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8598,7 +8603,7 @@
         ]
       },
       {
-        "transition_group_id": "a4274290-4b7e-5876-b59d-3f6a431f60ed",
+        "transition_group_id": "35e2ac54-7046-425d-a115-8b5d6e040dbd",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8707,7 +8712,7 @@
         ]
       },
       {
-        "transition_group_id": "9e82c40d-ceb5-53d0-aeac-66c72d9805eb",
+        "transition_group_id": "0177ee96-9510-48a2-abad-01e516301aae",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8820,7 +8825,7 @@
         ]
       },
       {
-        "transition_group_id": "4752a12a-d684-551d-8b78-b8bbdf206707",
+        "transition_group_id": "c3effbb7-f116-4dcd-a0bf-4f863431c23d",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -8929,79 +8934,79 @@
         ]
       },
       {
-        "transition_group_id": "c387ce58-9464-5ce8-b535-1044c468c7fc",
+        "transition_group_id": "16e1e678-d586-452f-99b5-629c62ea4c93",
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Puber Release CI carrier field: workspace_path."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "operation_id",
-            "description": "Puber Release CI carrier field: operation_id."
+            "description": "Stable release operation identity."
           },
           {
             "name": "task_short_id",
-            "description": "Puber Release CI carrier field: task_short_id."
+            "description": "Stable human-readable task identity."
           },
           {
             "name": "release_type",
-            "description": "Puber Release CI carrier field: release_type."
+            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
           },
           {
             "name": "release_version",
-            "description": "Puber Release CI carrier field: release_version."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Puber Release CI carrier field: release_tag."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "release_branch",
-            "description": "Puber Release CI carrier field: release_branch."
+            "description": "Exact release branch resolved from the release version."
           },
           {
             "name": "release_base_oid",
-            "description": "Puber Release CI carrier field: release_base_oid."
+            "description": "Immutable release source commit."
           },
           {
             "name": "candidate_oid",
-            "description": "Puber Release CI carrier field: candidate_oid."
+            "description": "Exact release candidate commit before profile generation."
           },
           {
             "name": "release_head_oid",
-            "description": "Puber Release CI carrier field: release_head_oid."
+            "description": "Exact finalized release branch head."
           },
           {
             "name": "profile_report",
-            "description": "Puber Release CI carrier field: profile_report."
+            "description": "Closed profile-generation report."
           },
           {
             "name": "profile_report_digest",
-            "description": "Puber Release CI carrier field: profile_report_digest."
+            "description": "SHA-256 digest of the closed profile-generation report."
           },
           {
             "name": "release_preparation_report",
-            "description": "Puber Release CI carrier field: release_preparation_report."
+            "description": "Closed release-preparation report."
           },
           {
             "name": "release_preparation_report_digest",
-            "description": "Puber Release CI carrier field: release_preparation_report_digest."
+            "description": "SHA-256 digest of the closed release-preparation report."
           },
           {
             "name": "verification_summary",
-            "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
+            "description": "Explicit verification summary for this transition; it is not part of the profile checkpoint."
           },
           {
             "name": "pr_url",
-            "description": "Puber Release CI carrier field: pr_url."
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
             "name": "branch_name",
-            "description": "Puber Release CI carrier field: branch_name."
+            "description": "Name of the task or release branch associated with the pull request."
           },
           {
             "name": "merge_strategy",
-            "description": "Concrete strategy resolved from repository rules; currently rebase."
+            "description": "Resolved merge strategy."
           },
           {
             "name": "pr_head_oid",
@@ -9033,7 +9038,7 @@
           },
           {
             "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           }
         ]
       }
@@ -10089,15 +10094,15 @@
           },
           {
             "name": "operation_id",
-            "description": "Stable release operation identity."
+            "description": "Puber Release CI carrier field: operation_id."
           },
           {
             "name": "task_short_id",
-            "description": "Stable human-readable task identity."
+            "description": "Puber Release CI carrier field: task_short_id."
           },
           {
             "name": "release_type",
-            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+            "description": "Puber Release CI carrier field: release_type."
           },
           {
             "name": "release_version",
@@ -10109,39 +10114,39 @@
           },
           {
             "name": "release_branch",
-            "description": "Exact release branch resolved from the release version."
+            "description": "Puber Release CI carrier field: release_branch."
           },
           {
             "name": "release_base_oid",
-            "description": "Immutable release source commit."
+            "description": "Puber Release CI carrier field: release_base_oid."
           },
           {
             "name": "candidate_oid",
-            "description": "Exact release candidate commit before profile generation."
+            "description": "Puber Release CI carrier field: candidate_oid."
           },
           {
             "name": "release_head_oid",
-            "description": "Exact finalized release branch head."
+            "description": "Puber Release CI carrier field: release_head_oid."
           },
           {
             "name": "profile_report",
-            "description": "Closed profile-generation report."
+            "description": "Puber Release CI carrier field: profile_report."
           },
           {
             "name": "profile_report_digest",
-            "description": "SHA-256 digest of the closed profile-generation report."
+            "description": "Puber Release CI carrier field: profile_report_digest."
           },
           {
             "name": "release_preparation_report",
-            "description": "Closed release-preparation report."
+            "description": "Puber Release CI carrier field: release_preparation_report."
           },
           {
             "name": "release_preparation_report_digest",
-            "description": "SHA-256 digest of the closed release-preparation report."
+            "description": "Puber Release CI carrier field: release_preparation_report_digest."
           },
           {
             "name": "verification_summary",
-            "description": "Commands run and their pass/fail results."
+            "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
           },
           {
             "name": "ci_report",
@@ -10377,7 +10382,7 @@
           },
           {
             "name": "pr_url",
-            "description": "Immutable S05 carrier field: pr_url."
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
             "name": "branch_name",
@@ -10397,19 +10402,19 @@
           },
           {
             "name": "release_version",
-            "description": "Immutable S05 carrier field: release_version."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Immutable S05 carrier field: release_tag."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "target_commit",
-            "description": "Immutable S05 carrier field: target_commit."
+            "description": "Master commit targeted by the release tag."
           },
           {
             "name": "release_notes_path",
-            "description": "Immutable S05 carrier field: release_notes_path."
+            "description": "Task-local path to the prepared non-empty Russian release notes file."
           },
           {
             "name": "publication_report",
@@ -10421,7 +10426,7 @@
           },
           {
             "name": "release_run",
-            "description": "Pinned release run carrier, or explicit not-selected state."
+            "description": "Immutable S05 carrier field: release_run."
           }
         ],
         "assignee_selection_applicability": {
@@ -10874,15 +10879,15 @@
           },
           {
             "name": "operation_id",
-            "description": "Stable release operation identity."
+            "description": "Puber Release CI carrier field: operation_id."
           },
           {
             "name": "task_short_id",
-            "description": "Stable human-readable task identity."
+            "description": "Puber Release CI carrier field: task_short_id."
           },
           {
             "name": "release_type",
-            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
+            "description": "Puber Release CI carrier field: release_type."
           },
           {
             "name": "release_version",
@@ -10894,39 +10899,39 @@
           },
           {
             "name": "release_branch",
-            "description": "Exact release branch resolved from the release version."
+            "description": "Puber Release CI carrier field: release_branch."
           },
           {
             "name": "release_base_oid",
-            "description": "Immutable release source commit."
+            "description": "Puber Release CI carrier field: release_base_oid."
           },
           {
             "name": "candidate_oid",
-            "description": "Exact release candidate commit before profile generation."
+            "description": "Puber Release CI carrier field: candidate_oid."
           },
           {
             "name": "release_head_oid",
-            "description": "Exact finalized release branch head."
+            "description": "Puber Release CI carrier field: release_head_oid."
           },
           {
             "name": "profile_report",
-            "description": "Closed profile-generation report."
+            "description": "Puber Release CI carrier field: profile_report."
           },
           {
             "name": "profile_report_digest",
-            "description": "SHA-256 digest of the closed profile-generation report."
+            "description": "Puber Release CI carrier field: profile_report_digest."
           },
           {
             "name": "release_preparation_report",
-            "description": "Closed release-preparation report."
+            "description": "Puber Release CI carrier field: release_preparation_report."
           },
           {
             "name": "release_preparation_report_digest",
-            "description": "SHA-256 digest of the closed release-preparation report."
+            "description": "Puber Release CI carrier field: release_preparation_report_digest."
           },
           {
             "name": "verification_summary",
-            "description": "Commands run and their pass/fail results."
+            "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
           },
           {
             "name": "blocker_reason",
@@ -11588,7 +11593,7 @@
         }
       },
       {
-        "edge_id": "2e877228-6c17-58bb-8bb3-1edca7769167",
+        "edge_id": "641f3ab9-150c-4a32-bb24-f4af008e3f76",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -11659,7 +11664,7 @@
         }
       },
       {
-        "edge_id": "f567096a-aae6-5dda-b38a-6003097ca401",
+        "edge_id": "716a5679-33a9-4b75-88c9-e95787e06361",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -11730,7 +11735,7 @@
         }
       },
       {
-        "edge_id": "fe0b548d-e26c-5ae9-9041-2c34f10c7747",
+        "edge_id": "03154bc1-f6a8-4d33-8c30-54ad5c41d6a9",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -11801,7 +11806,7 @@
         }
       },
       {
-        "edge_id": "171dd520-6c41-576a-bd4f-d983b9a250b4",
+        "edge_id": "61702195-69a2-4a0b-a1b9-2cf09c9a2d6d",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -11872,7 +11877,7 @@
         }
       },
       {
-        "edge_id": "31a0d095-e8fd-5612-a71b-29943b15236e",
+        "edge_id": "20ca1622-3e36-40f5-a569-a53fb0a4cc4c",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -11934,7 +11939,7 @@
         }
       },
       {
-        "edge_id": "1a6e3320-15b8-52d3-8ef2-815d28d2e103",
+        "edge_id": "4a96d33b-92d8-4b18-8640-17c73af97a4f",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -12185,258 +12190,7 @@
         }
       },
       {
-        "edge_id": "0af286ab-0947-5d5e-bafc-ef50e36b1bdb",
-        "input_bindings": [
-          {
-            "name": "workspace_path",
-            "source": "transition_output",
-            "field": "workspace_path"
-          },
-          {
-            "name": "operation_id",
-            "source": "transition_output",
-            "field": "operation_id"
-          },
-          {
-            "name": "task_short_id",
-            "source": "transition_output",
-            "field": "task_short_id"
-          },
-          {
-            "name": "release_type",
-            "source": "transition_output",
-            "field": "release_type"
-          },
-          {
-            "name": "release_version",
-            "source": "transition_output",
-            "field": "release_version"
-          },
-          {
-            "name": "release_tag",
-            "source": "transition_output",
-            "field": "release_tag"
-          },
-          {
-            "name": "release_branch",
-            "source": "transition_output",
-            "field": "release_branch"
-          },
-          {
-            "name": "release_base_oid",
-            "source": "transition_output",
-            "field": "release_base_oid"
-          },
-          {
-            "name": "candidate_oid",
-            "source": "transition_output",
-            "field": "candidate_oid"
-          },
-          {
-            "name": "release_head_oid",
-            "source": "transition_output",
-            "field": "release_head_oid"
-          },
-          {
-            "name": "profile_report",
-            "source": "transition_output",
-            "field": "profile_report"
-          },
-          {
-            "name": "profile_report_digest",
-            "source": "transition_output",
-            "field": "profile_report_digest"
-          },
-          {
-            "name": "release_preparation_report",
-            "source": "transition_output",
-            "field": "release_preparation_report"
-          },
-          {
-            "name": "release_preparation_report_digest",
-            "source": "transition_output",
-            "field": "release_preparation_report_digest"
-          },
-          {
-            "name": "verification_summary",
-            "source": "transition_output",
-            "field": "verification_summary"
-          },
-          {
-            "name": "pr_url",
-            "source": "transition_output",
-            "field": "pr_url"
-          },
-          {
-            "name": "branch_name",
-            "source": "transition_output",
-            "field": "branch_name"
-          },
-          {
-            "name": "merge_strategy",
-            "source": "transition_output",
-            "field": "merge_strategy"
-          },
-          {
-            "name": "pr_head_oid",
-            "source": "transition_output",
-            "field": "pr_head_oid"
-          },
-          {
-            "name": "pr_base_oid",
-            "source": "transition_output",
-            "field": "pr_base_oid"
-          },
-          {
-            "name": "expected_ci_checks",
-            "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
-          },
-          {
-            "name": "ci_report",
-            "source": "transition_output",
-            "field": "ci_report"
-          }
-        ],
-        "required_provision_fields": [
-          {
-            "name": "workspace_path",
-            "description": "Repository or managed-worktree root."
-          },
-          {
-            "name": "operation_id",
-            "description": "Stable operation identity."
-          },
-          {
-            "name": "task_short_id",
-            "description": "Stable human-readable task identity."
-          },
-          {
-            "name": "release_type",
-            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
-          },
-          {
-            "name": "release_version",
-            "description": "Release version prepared by this workflow."
-          },
-          {
-            "name": "release_tag",
-            "description": "Release tag to create or publish after PR merge."
-          },
-          {
-            "name": "release_branch",
-            "description": "Exact release branch resolved from the release version."
-          },
-          {
-            "name": "release_base_oid",
-            "description": "Immutable release source commit."
-          },
-          {
-            "name": "candidate_oid",
-            "description": "Exact release candidate commit before profile generation."
-          },
-          {
-            "name": "release_head_oid",
-            "description": "Exact finalized release branch head."
-          },
-          {
-            "name": "profile_report",
-            "description": "Closed profile-generation report."
-          },
-          {
-            "name": "profile_report_digest",
-            "description": "SHA-256 digest of the closed profile-generation report."
-          },
-          {
-            "name": "release_preparation_report",
-            "description": "Closed release-preparation report."
-          },
-          {
-            "name": "release_preparation_report_digest",
-            "description": "SHA-256 digest of the closed release-preparation report."
-          },
-          {
-            "name": "verification_summary",
-            "description": "Explicit verification summary for this transition; it is not part of the profile checkpoint."
-          },
-          {
-            "name": "pr_url",
-            "description": "Canonical pull request URL."
-          },
-          {
-            "name": "branch_name",
-            "description": "Exact task branch."
-          },
-          {
-            "name": "merge_strategy",
-            "description": "Resolved merge strategy."
-          },
-          {
-            "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
-          },
-          {
-            "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
-          },
-          {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
-          }
-        ],
-        "assignee_selection_applicability": {
-          "available": true,
-          "parameter_visible": true,
-          "reason": "eligible"
-        },
-        "thinking_selection_applicability": {
-          "available": true,
-          "parameter_visible": true,
-          "reason": "eligible"
-        }
-      },
-      {
-        "edge_id": "63994e8e-0c64-5d53-8ef6-49502140d376",
+        "edge_id": "e07d2297-6b2c-489b-8e5c-1bb878d667a7",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -12687,7 +12441,7 @@
         }
       },
       {
-        "edge_id": "f1538be9-2e6f-5101-a81a-2d9cd44770ac",
+        "edge_id": "80633937-6e1d-4c24-b3f7-de854065e0be",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -12938,7 +12692,258 @@
         }
       },
       {
-        "edge_id": "f9a5a1a0-6f6c-5080-bb97-4768e5632e2d",
+        "edge_id": "8bb75068-e62b-4a53-b6ea-27e8f485d07a",
+        "input_bindings": [
+          {
+            "name": "workspace_path",
+            "source": "transition_output",
+            "field": "workspace_path"
+          },
+          {
+            "name": "operation_id",
+            "source": "transition_output",
+            "field": "operation_id"
+          },
+          {
+            "name": "task_short_id",
+            "source": "transition_output",
+            "field": "task_short_id"
+          },
+          {
+            "name": "release_type",
+            "source": "transition_output",
+            "field": "release_type"
+          },
+          {
+            "name": "release_version",
+            "source": "transition_output",
+            "field": "release_version"
+          },
+          {
+            "name": "release_tag",
+            "source": "transition_output",
+            "field": "release_tag"
+          },
+          {
+            "name": "release_branch",
+            "source": "transition_output",
+            "field": "release_branch"
+          },
+          {
+            "name": "release_base_oid",
+            "source": "transition_output",
+            "field": "release_base_oid"
+          },
+          {
+            "name": "candidate_oid",
+            "source": "transition_output",
+            "field": "candidate_oid"
+          },
+          {
+            "name": "release_head_oid",
+            "source": "transition_output",
+            "field": "release_head_oid"
+          },
+          {
+            "name": "profile_report",
+            "source": "transition_output",
+            "field": "profile_report"
+          },
+          {
+            "name": "profile_report_digest",
+            "source": "transition_output",
+            "field": "profile_report_digest"
+          },
+          {
+            "name": "release_preparation_report",
+            "source": "transition_output",
+            "field": "release_preparation_report"
+          },
+          {
+            "name": "release_preparation_report_digest",
+            "source": "transition_output",
+            "field": "release_preparation_report_digest"
+          },
+          {
+            "name": "verification_summary",
+            "source": "transition_output",
+            "field": "verification_summary"
+          },
+          {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "merge_strategy",
+            "source": "transition_output",
+            "field": "merge_strategy"
+          },
+          {
+            "name": "pr_head_oid",
+            "source": "transition_output",
+            "field": "pr_head_oid"
+          },
+          {
+            "name": "pr_base_oid",
+            "source": "transition_output",
+            "field": "pr_base_oid"
+          },
+          {
+            "name": "expected_ci_checks",
+            "source": "transition_output",
+            "field": "expected_ci_checks"
+          },
+          {
+            "name": "expected_ci_checks_sha256",
+            "source": "transition_output",
+            "field": "expected_ci_checks_sha256"
+          },
+          {
+            "name": "runtime_source_envelope_digest",
+            "source": "transition_output",
+            "field": "runtime_source_envelope_digest"
+          },
+          {
+            "name": "ci_policy_snapshot",
+            "source": "transition_output",
+            "field": "ci_policy_snapshot"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
+          },
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          }
+        ],
+        "required_provision_fields": [
+          {
+            "name": "workspace_path",
+            "description": "Repository or managed-worktree root."
+          },
+          {
+            "name": "operation_id",
+            "description": "Stable operation identity."
+          },
+          {
+            "name": "task_short_id",
+            "description": "Puber Release CI carrier field: task_short_id."
+          },
+          {
+            "name": "release_type",
+            "description": "Puber Release CI carrier field: release_type."
+          },
+          {
+            "name": "release_version",
+            "description": "Puber Release CI carrier field: release_version."
+          },
+          {
+            "name": "release_tag",
+            "description": "Puber Release CI carrier field: release_tag."
+          },
+          {
+            "name": "release_branch",
+            "description": "Puber Release CI carrier field: release_branch."
+          },
+          {
+            "name": "release_base_oid",
+            "description": "Puber Release CI carrier field: release_base_oid."
+          },
+          {
+            "name": "candidate_oid",
+            "description": "Puber Release CI carrier field: candidate_oid."
+          },
+          {
+            "name": "release_head_oid",
+            "description": "Puber Release CI carrier field: release_head_oid."
+          },
+          {
+            "name": "profile_report",
+            "description": "Puber Release CI carrier field: profile_report."
+          },
+          {
+            "name": "profile_report_digest",
+            "description": "Puber Release CI carrier field: profile_report_digest."
+          },
+          {
+            "name": "release_preparation_report",
+            "description": "Puber Release CI carrier field: release_preparation_report."
+          },
+          {
+            "name": "release_preparation_report_digest",
+            "description": "Puber Release CI carrier field: release_preparation_report_digest."
+          },
+          {
+            "name": "verification_summary",
+            "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
+          },
+          {
+            "name": "pr_url",
+            "description": "Canonical pull request URL."
+          },
+          {
+            "name": "branch_name",
+            "description": "Exact task branch."
+          },
+          {
+            "name": "merge_strategy",
+            "description": "Resolved merge strategy."
+          },
+          {
+            "name": "pr_head_oid",
+            "description": "Actual pull-request head commit observed for this CI cycle."
+          },
+          {
+            "name": "pr_base_oid",
+            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+          },
+          {
+            "name": "expected_ci_checks",
+            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+          },
+          {
+            "name": "expected_ci_checks_sha256",
+            "description": "SHA-256 digest of expected_ci_checks."
+          },
+          {
+            "name": "runtime_source_envelope_digest",
+            "description": "Digest of the immutable selected-head runtime source envelope."
+          },
+          {
+            "name": "ci_policy_snapshot",
+            "description": "Flat canonical policy snapshot for the current CI cycle."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
+          },
+          {
+            "name": "ci_report",
+            "description": "Canonical CI report including mandatory and extra checks."
+          }
+        ],
+        "assignee_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        },
+        "thinking_selection_applicability": {
+          "available": true,
+          "parameter_visible": true,
+          "reason": "eligible"
+        }
+      },
+      {
+        "edge_id": "d21c544d-6079-4a95-91a6-5346b3e083f2",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -13198,7 +13203,7 @@
         }
       },
       {
-        "edge_id": "7266a1be-77ac-5fa1-b67b-649a37b8b427",
+        "edge_id": "ff95529a-6477-450a-830b-691c4fa9d51c",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -13449,7 +13454,7 @@
         }
       },
       {
-        "edge_id": "0b59a861-42d3-5023-b483-da3e95c77ef9",
+        "edge_id": "8aae5d11-8359-4450-b5f8-47c69c8e15a5",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -13700,7 +13705,7 @@
         }
       },
       {
-        "edge_id": "1a301e9e-9b57-5353-8a9f-b9ff356a8f8e",
+        "edge_id": "a6e42669-837f-43f1-a8f0-5c9d99d70c39",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -13780,7 +13785,7 @@
         }
       },
       {
-        "edge_id": "b083e744-5e67-5f7c-a407-193b7917f13c",
+        "edge_id": "58556ebb-de2c-453b-a0ad-8077ca56474e",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14040,7 +14045,7 @@
         }
       },
       {
-        "edge_id": "7bf41c49-f537-578e-a081-b0b7e7ee4dab",
+        "edge_id": "bc32ba92-6501-42ed-a10d-94936c73373f",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14120,7 +14125,7 @@
         }
       },
       {
-        "edge_id": "ece2bd8b-3446-56a8-9da3-e3a789815c12",
+        "edge_id": "be16bf42-1fbb-4b31-9955-ac1b59ac1551",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14182,7 +14187,7 @@
         }
       },
       {
-        "edge_id": "494f7c12-23b2-529d-b8da-fd7bbd3eca14",
+        "edge_id": "69e2fed3-a66f-4df8-afe4-0ab67c8cd9f0",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14244,7 +14249,7 @@
         }
       },
       {
-        "edge_id": "a775abcd-af8d-5199-b8a4-8fb9ddbc4164",
+        "edge_id": "1e0764af-50b7-44a7-9513-66683a981304",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14306,7 +14311,7 @@
         }
       },
       {
-        "edge_id": "e052b00a-4e46-55b4-b168-af6cd138baa4",
+        "edge_id": "175c45cc-0a5f-4a5e-abb9-6c9eda851531",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14368,7 +14373,7 @@
         }
       },
       {
-        "edge_id": "c8028f79-f3e7-57da-bb6c-1b6984b2a5ca",
+        "edge_id": "f252992e-0577-4f10-b4e9-4a7360e09d5c",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14430,7 +14435,7 @@
         }
       },
       {
-        "edge_id": "1a4c3d9e-6f20-5a8a-b4d1-8e7f2c6a9015",
+        "edge_id": "41519e2c-44c5-4f0d-a3ca-1b8956554d56",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14546,7 +14551,7 @@
         }
       },
       {
-        "edge_id": "2b5d4e0f-7a31-5b9c-c6e2-9f8a3d7b0126",
+        "edge_id": "1cf2a7f7-0791-4ce8-92a3-7ec6b00620b5",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14653,7 +14658,7 @@
         }
       },
       {
-        "edge_id": "3c6e5f1a-8b42-5cad-d7f3-a0b9e4c81237",
+        "edge_id": "abcae6e7-d5a6-48a4-830b-9450eae82847",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14805,7 +14810,7 @@
         }
       },
       {
-        "edge_id": "4d7f6a2b-9c53-5dbe-e8a4-b1c0f9253468",
+        "edge_id": "8e2c3db0-bae7-4c53-8596-400f7e6ef8b0",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -14930,7 +14935,7 @@
         }
       },
       {
-        "edge_id": "68c2e4d2-b253-5b28-95f2-d9de52d4af69",
+        "edge_id": "7be2b4c4-ab65-4a7f-a755-3b4b836a8a52",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -15172,7 +15177,7 @@
         }
       },
       {
-        "edge_id": "211ae1b6-e0ea-527d-9b34-2d4910c2d293",
+        "edge_id": "d600021c-3dd1-4a61-b90b-7996d4800ff1",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -15423,7 +15428,7 @@
         }
       },
       {
-        "edge_id": "6a62c37f-a2c7-51b6-a1a7-2791b3fc68a6",
+        "edge_id": "ab102014-e277-469d-bf60-8677ea7a7891",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -15683,7 +15688,7 @@
         }
       },
       {
-        "edge_id": "79e73545-747f-5d79-8b8a-3bd0cfb1e118",
+        "edge_id": "183bc336-1950-41af-87d5-721c1d80f8ad",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -15934,7 +15939,7 @@
         }
       },
       {
-        "edge_id": "df180a55-54f4-5e03-b11c-d2c0f97cb623",
+        "edge_id": "b636fe04-66fe-4dd2-af12-b4a5550eb92b",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -16070,75 +16075,75 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Puber Release CI carrier field: workspace_path."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "operation_id",
-            "description": "Puber Release CI carrier field: operation_id."
+            "description": "Stable release operation identity."
           },
           {
             "name": "task_short_id",
-            "description": "Puber Release CI carrier field: task_short_id."
+            "description": "Stable human-readable task identity."
           },
           {
             "name": "release_type",
-            "description": "Puber Release CI carrier field: release_type."
+            "description": "Version bump type: minor by default, patch or major only when explicitly requested."
           },
           {
             "name": "release_version",
-            "description": "Puber Release CI carrier field: release_version."
+            "description": "Release version prepared by this workflow."
           },
           {
             "name": "release_tag",
-            "description": "Puber Release CI carrier field: release_tag."
+            "description": "Release tag to create or publish after PR merge."
           },
           {
             "name": "release_branch",
-            "description": "Puber Release CI carrier field: release_branch."
+            "description": "Exact release branch resolved from the release version."
           },
           {
             "name": "release_base_oid",
-            "description": "Puber Release CI carrier field: release_base_oid."
+            "description": "Immutable release source commit."
           },
           {
             "name": "candidate_oid",
-            "description": "Puber Release CI carrier field: candidate_oid."
+            "description": "Exact release candidate commit before profile generation."
           },
           {
             "name": "release_head_oid",
-            "description": "Puber Release CI carrier field: release_head_oid."
+            "description": "Exact finalized release branch head."
           },
           {
             "name": "profile_report",
-            "description": "Puber Release CI carrier field: profile_report."
+            "description": "Closed profile-generation report."
           },
           {
             "name": "profile_report_digest",
-            "description": "Puber Release CI carrier field: profile_report_digest."
+            "description": "SHA-256 digest of the closed profile-generation report."
           },
           {
             "name": "release_preparation_report",
-            "description": "Puber Release CI carrier field: release_preparation_report."
+            "description": "Closed release-preparation report."
           },
           {
             "name": "release_preparation_report_digest",
-            "description": "Puber Release CI carrier field: release_preparation_report_digest."
+            "description": "SHA-256 digest of the closed release-preparation report."
           },
           {
             "name": "verification_summary",
-            "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
+            "description": "Explicit verification summary for this transition; it is not part of the profile checkpoint."
           },
           {
             "name": "pr_url",
-            "description": "Puber Release CI carrier field: pr_url."
+            "description": "URL of the created, updated, or monitored pull request."
           },
           {
             "name": "branch_name",
-            "description": "Puber Release CI carrier field: branch_name."
+            "description": "Name of the task or release branch associated with the pull request."
           },
           {
             "name": "merge_strategy",
-            "description": "Concrete strategy resolved from repository rules; currently rebase."
+            "description": "Resolved merge strategy."
           },
           {
             "name": "pr_head_oid",
@@ -16170,7 +16175,7 @@
           },
           {
             "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           }
         ],
         "assignee_selection_applicability": {

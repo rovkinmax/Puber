@@ -93,6 +93,37 @@ assert not any(
     for item in source["edges"]
 )
 builder = __import__("runpy").run_path(str(ROOT/".kent/workflows/builders/puber_release.py"))
+for entity_kind in ("workflow", "nodes", "transition_groups", "edges"):
+    invalid_id_graph = copy.deepcopy(source)
+    entity = invalid_id_graph[entity_kind] if entity_kind == "workflow" else invalid_id_graph[entity_kind][0]
+    entity["id"] = "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e"
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "invalid-id.json"
+        path.write_text(json.dumps(invalid_id_graph))
+        assert "graph entity IDs must be canonical UUIDv4" in builder["check_graph"](path)
+assert edge("release_intent_passed")["context_mode"] == "new_session"
+assert edge("release_intent_passed")["context_source"] == {"kind": "immediate_source"}
+for defect in ("description", "continuation"):
+    invalid_graph = copy.deepcopy(source)
+    selected = next(item for item in invalid_graph["edges"] if item["key"] == ("ci_fix" if defect == "description" else "release_intent_passed"))
+    if defect == "description":
+        next(item for item in selected["parameters"] if item["key"] == "operation_id")["description"] = "Conflicting definition."
+        expected_error = "source node provision descriptions must agree"
+    else:
+        selected["context_mode"] = "compact_and_continue_session"
+        expected_error = "release intent Script must start a new prepare Agent"
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "invalid-provision.json"
+        path.write_text(json.dumps(invalid_graph))
+        assert expected_error in builder["check_graph"](path)
+for entry_key, prompt in builder["CI_AGENT_ENTRY_PROMPTS"].items():
+    assert edge(entry_key)["prompt_template"] == prompt
+    invalid_graph = copy.deepcopy(source)
+    next(item for item in invalid_graph["edges"] if item["key"] == entry_key).pop("prompt_template")
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "missing-ci-agent-prompt.json"
+        path.write_text(json.dumps(invalid_graph))
+        assert "CI Agent entry prompt must match the approved read-only handoff" in builder["check_graph"](path)
 def manifest_errors(value):
     with tempfile.TemporaryDirectory() as d:
         path = Path(d) / "manifest.json"
