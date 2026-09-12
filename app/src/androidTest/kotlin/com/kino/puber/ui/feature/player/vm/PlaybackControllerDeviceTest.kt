@@ -15,6 +15,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.kino.puber.data.repository.PlayerPreferencesRepository
+import com.kino.puber.domain.interactor.player.StreamSource
 import com.kino.puber.playertestfixtures.FixtureId
 import com.kino.puber.playertestfixtures.PlayerTestFixtures
 import com.kino.puber.playertestfixtures.network.LoopbackNetworkJournal
@@ -306,14 +307,20 @@ internal class PlaybackControllerDeviceTest : PlayerInstrumentationTestCase() {
         startPositionMs: Long? = null,
     ): PlayerProbe {
         val probe = PlayerProbe()
-        val streamUrl = when (fixture) {
-            FixtureId.ProgressiveMp4 -> loopbackUrl("/media/progressive.mp4")
-            FixtureId.HlsMaster -> loopbackUrl("/media/hls/master.m3u8")
+        val stream = when (fixture) {
+            FixtureId.ProgressiveMp4 -> StreamSource(
+                url = loopbackUrl("/media/progressive.mp4"),
+                isHls = false,
+            )
+            FixtureId.HlsMaster -> StreamSource(
+                url = loopbackUrl("/media/hls/master.m3u8"),
+                isHls = true,
+            )
             else -> error("Unsupported device fixture: $fixture")
         }
         scenario.onActivity {
             controller.prepare(
-                streamUrl = streamUrl,
+                stream = stream,
                 subtitles = null,
                 startPosition = startPositionMs,
                 bufferPreset = BufferPreset.SMALL,

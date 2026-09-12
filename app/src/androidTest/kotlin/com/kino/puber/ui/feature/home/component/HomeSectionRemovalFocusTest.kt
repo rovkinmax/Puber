@@ -248,8 +248,6 @@ internal class HomeSectionRemovalFocusTest {
                         onAction = {},
                         tabRouter = tabRouter,
                         tabAppRouterHolder = tabAppRouterHolder,
-                        onSearchClick = {},
-                        onSettingsClick = {},
                     )
                 }
             }

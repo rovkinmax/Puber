@@ -214,7 +214,7 @@ class PlayerInteractorTest {
             VideoFile(url = VideoUrl(http = "http://video.mp4", hls = "hls://video.m3u8", hls4 = "hls4://video.m3u8")),
         )
         val result = interactor.selectStreamUrl(files, qualityIndex = 0)
-        assertEquals("hls4://video.m3u8", result)
+        assertEquals(StreamSource("hls4://video.m3u8", isHls = true), result)
     }
 
     @Test
@@ -223,7 +223,7 @@ class PlayerInteractorTest {
             VideoFile(url = VideoUrl(http = "http://video.mp4", hls = "hls://video.m3u8", hls4 = null)),
         )
         val result = interactor.selectStreamUrl(files, qualityIndex = 0)
-        assertEquals("hls://video.m3u8", result)
+        assertEquals(StreamSource("hls://video.m3u8", isHls = true), result)
     }
 
     @Test
@@ -232,7 +232,7 @@ class PlayerInteractorTest {
             VideoFile(url = VideoUrl(http = "http://video.mp4", hls = null, hls4 = null)),
         )
         val result = interactor.selectStreamUrl(files, qualityIndex = 0)
-        assertEquals("http://video.mp4", result)
+        assertEquals(StreamSource("http://video.mp4", isHls = false), result)
     }
 
     @Test
@@ -244,7 +244,7 @@ class PlayerInteractorTest {
         )
         // qualityIndex = 1 → first entry after sorting descending by qualityId → 1080p
         val result = interactor.selectStreamUrl(files, qualityIndex = 1)
-        assertEquals("hls://1080p.m3u8", result)
+        assertEquals(StreamSource("hls://1080p.m3u8", isHls = true), result)
     }
 
     @Test
@@ -254,7 +254,7 @@ class PlayerInteractorTest {
             VideoFile(url = VideoUrl(hls = "hls://720p.m3u8"), quality = "720p", qualityId = 3),
         )
         val result = interactor.selectStreamUrl(files, qualityIndex = 2)
-        assertEquals("hls://720p.m3u8", result)
+        assertEquals(StreamSource("hls://720p.m3u8", isHls = true), result)
     }
 
     @Test

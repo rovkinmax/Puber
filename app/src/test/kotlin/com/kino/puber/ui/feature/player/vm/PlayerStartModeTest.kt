@@ -7,6 +7,7 @@ import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.domain.interactor.player.PlayerInteractor
 import com.kino.puber.domain.interactor.player.ResolvedMedia
 import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
+import com.kino.puber.domain.interactor.player.StreamSource
 import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.ScreensImpl
 import com.kino.puber.ui.feature.player.model.BufferPreset
@@ -88,7 +89,7 @@ internal class PlayerStartModeTest {
         every {
             contentStateFactory.build(any(), any(), any(), any(), any(), any())
         } returns contentState
-        every { interactor.selectStreamUrl(any(), any()) } returns "https://test/v.m3u8"
+        every { interactor.selectStreamUrl(any(), any()) } returns StreamSource("https://test/v.m3u8", isHls = true)
         every { interactor.isDebugOverlayEnabled() } returns false
         every { interactor.getSubtitleSize() } returns SubtitleSize.MEDIUM
         every { interactor.getBufferPreset() } returns BufferPreset.AUTO
@@ -120,7 +121,7 @@ internal class PlayerStartModeTest {
         }
         verify {
             playbackController.prepare(
-                streamUrl = "https://test/v.m3u8",
+                stream = StreamSource("https://test/v.m3u8", isHls = true),
                 subtitles = emptyList(),
                 startPosition = 0L,
                 bufferPreset = BufferPreset.AUTO,
@@ -150,7 +151,7 @@ internal class PlayerStartModeTest {
         }
         verify {
             playbackController.prepare(
-                streamUrl = "https://test/v.m3u8",
+                stream = StreamSource("https://test/v.m3u8", isHls = true),
                 subtitles = emptyList(),
                 startPosition = null,
                 bufferPreset = BufferPreset.AUTO,

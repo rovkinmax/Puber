@@ -1,6 +1,7 @@
 package com.kino.puber.ui.feature.player.vm
 
 import com.kino.puber.data.api.models.SubtitleLink
+import com.kino.puber.domain.interactor.player.StreamSource
 
 internal interface PlaybackEnginePort {
     val isPlaying: Boolean
@@ -13,7 +14,7 @@ internal interface PlaybackEnginePort {
     var trackSelectionParameters: Any
 
     fun stop()
-    fun setMediaSource(streamUrl: String, subtitles: List<SubtitleLink>?)
+    fun setMediaSource(stream: StreamSource, subtitles: List<SubtitleLink>?)
     fun restoreTrackSelection()
     fun prepare()
     fun seekTo(positionMs: Long)
@@ -30,7 +31,7 @@ internal interface PlaybackEventSink {
 internal object PlaybackTransitions {
     fun switchStream(
         engine: PlaybackEnginePort,
-        streamUrl: String,
+        stream: StreamSource,
         subtitles: List<SubtitleLink>?,
     ) {
         val savedPosition = engine.currentPosition
@@ -39,7 +40,7 @@ internal object PlaybackTransitions {
         val shouldResume = engine.snapshot().shouldResumeAfterStreamSwitch
 
         engine.stop()
-        engine.setMediaSource(streamUrl, subtitles)
+        engine.setMediaSource(stream, subtitles)
         engine.trackSelectionParameters = savedTrackSelectionParameters
         engine.restoreTrackSelection()
         engine.setPlayWhenReady(shouldResume)
