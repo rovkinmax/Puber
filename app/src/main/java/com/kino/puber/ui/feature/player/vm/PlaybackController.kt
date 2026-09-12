@@ -219,6 +219,8 @@ internal class PlaybackController(
             parameters = buildUponParameters()
                 .setExceedVideoConstraintsIfNecessary(false)
                 .setExceedRendererCapabilitiesIfNecessary(false)
+                // The picker starts at Off; only an explicit or restored choice enables text.
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                 .build()
         }
         this.trackSelector = trackSelector

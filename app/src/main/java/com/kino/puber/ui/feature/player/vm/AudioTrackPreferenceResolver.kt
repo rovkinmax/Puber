@@ -29,10 +29,18 @@ internal class AudioTrackPreferenceResolver {
         preferredPlayerTrackId: String? = null,
         preferredPlayerGroupIndex: Int? = null,
         preferredPlayerTrackIndex: Int? = null,
+        preferredPlayerTrackGroupId: String? = null,
     ): Int {
         val matchers = listOf(
             { subtitleIdentityMatch(tracks, preferredUrl) },
             { subtitleIdentityMatch(tracks, preferredPlayerTrackId) },
+            {
+                tracks.withIndex().filter { (_, track) ->
+                    !preferredPlayerTrackGroupId.isNullOrEmpty() &&
+                        track.playerTrackGroupId == preferredPlayerTrackGroupId &&
+                        track.playerTrackIndex == preferredPlayerTrackIndex
+                }.singleOrNull()?.index ?: NO_MATCH
+            },
             {
                 playerCoordinatesMatch(
                     tracks,
@@ -137,5 +145,5 @@ internal class AudioTrackPreferenceResolver {
 }
 
 private val SubtitleTrackUIState.identities: List<String>
-    get() = listOfNotNull(url, sourceFile, playerTrackUri, playerTrackId)
+    get() = listOfNotNull(url, sourceFile, playerTrackUri, playerTrackId, playerTrackGroupId)
         .filter { it.isNotEmpty() }
