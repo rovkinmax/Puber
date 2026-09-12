@@ -460,6 +460,29 @@ internal class SubtitleTrackMergerTest {
         assertEquals(listOf("Off", "RUS A", "RUS B"), result.map { it.label })
     }
 
+    @Test
+    fun merge_keepsUnmatchedManifestAndSideLoadedTracks_whenLanguageIsMissing() {
+        val playerTracks = listOf(
+            playerTrack(
+                label = "Director commentary",
+                language = "",
+                id = "manifest-commentary",
+                groupIndex = 0,
+                uri = "https://cdn.test/subtitles/commentary.m3u8",
+            ),
+            playerTrack("API one", "", "1:api-one.vtt", 1),
+            playerTrack("API two", "", "2:api-two.vtt", 2),
+        )
+
+        val result = merger.merge(listOf(offTrack()), playerTracks)
+
+        assertEquals(
+            listOf("manifest-commentary", "1:api-one.vtt", "2:api-two.vtt"),
+            result.drop(1).map { it.playerTrackId },
+        )
+        assertEquals(listOf(0, 1, 2), result.drop(1).map { it.playerGroupIndex })
+    }
+
     private fun offTrack() = SubtitleTrackUIState(
         label = "Off",
         language = "",

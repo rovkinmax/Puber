@@ -36,9 +36,45 @@ internal class SubtitleTrackMerger(
     private fun selectTracksByLanguage(
         tracks: List<SubtitleTrackUIState>,
     ): List<SubtitleTrackUIState> = tracks.groupBy(::orderingLanguage).values.flatMap { languageTracks ->
+        if (orderingLanguage(languageTracks.first()).isEmpty()) {
+            return@flatMap selectTracksWithoutLanguage(languageTracks)
+        }
         val (manifestTracks, sideLoadedTracks) = languageTracks.partition { it.isFromManifest }
         if (manifestTracks.size >= sideLoadedTracks.size) manifestTracks else sideLoadedTracks
     }
+
+    /**
+     * Missing language metadata cannot establish that two sources describe the same set of
+     * subtitles. Keep every unknown-language row unless its source identity proves that it
+     * is a side-loaded copy of a manifest rendition.
+     */
+    private fun selectTracksWithoutLanguage(
+        tracks: List<SubtitleTrackUIState>,
+    ): List<SubtitleTrackUIState> {
+        val manifestTracks = tracks.filter { it.isFromManifest }
+        return tracks.filter { track ->
+            track.isFromManifest || manifestTracks.none { manifestTrack ->
+                track.hasSameSourceIdentity(manifestTrack)
+            }
+        }
+    }
+
+    private fun SubtitleTrackUIState.hasSameSourceIdentity(
+        other: SubtitleTrackUIState,
+    ): Boolean {
+        val identities = sourceIdentities()
+        val otherIdentities = other.sourceIdentities()
+        return identities.any { identity ->
+            otherIdentities.any { otherIdentity ->
+                sameSubtitleIdentity(identity, otherIdentity)
+            }
+        }
+    }
+
+    private fun SubtitleTrackUIState.sourceIdentities(): List<String> = listOfNotNull(
+        playerTrackUri,
+        playerTrackId?.withoutMergedSourcePrefix(),
+    ).filter { it.isNotEmpty() }
 
     /**
      * Player order follows the manifest, which is arbitrary from the viewer's side. Group
