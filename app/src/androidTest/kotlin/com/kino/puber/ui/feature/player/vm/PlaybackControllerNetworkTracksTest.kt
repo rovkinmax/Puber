@@ -30,7 +30,13 @@ import com.kino.puber.playertestfixtures.server.QueryMatchMode
 import com.kino.puber.playertestfixtures.server.ResponseOutcome
 import com.kino.puber.playertestfixtures.server.ResponsePlan
 import com.kino.puber.profile.PlayerTestControl
+import com.kino.puber.ui.feature.player.FORCED_SUBTITLE_CUE
+import com.kino.puber.ui.feature.player.FORCED_SUBTITLE_MANIFEST_LABEL
+import com.kino.puber.ui.feature.player.FULL_SUBTITLE_CUE
+import com.kino.puber.ui.feature.player.FULL_SUBTITLE_MANIFEST_LABEL
 import com.kino.puber.ui.feature.player.PlayerInstrumentationTestCase
+import com.kino.puber.ui.feature.player.subtitleVariantMaster
+import com.kino.puber.ui.feature.player.subtitleVariantRoutes
 import com.kino.puber.ui.feature.player.model.AudioTrackUIState
 import com.kino.puber.ui.feature.player.model.BufferPreset
 import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
@@ -62,6 +68,7 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
     private lateinit var controller: PlaybackController
     private lateinit var scenario: ActivityScenario<ComponentActivity>
     private lateinit var playerView: PlayerView
+    private lateinit var trackProbe: ControllerTrackProbe
 
     @Before
     fun setUp() {
@@ -81,6 +88,8 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
             mediaCache = cache,
             playerPreferencesRepository = PlayerPreferencesRepository(context),
         )
+        trackProbe = ControllerTrackProbe()
+        controller.setCallback(trackProbe)
         scenario = ActivityScenario.launch(ComponentActivity::class.java)
         scenario.onActivity { activity ->
             playerView = PlayerView(activity).apply {
@@ -123,71 +132,110 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
     }
 
     @Test
-    fun hlsTracks_sideLoadsApiSubtitleMarkedEmbedded_selectsCueAndDisablesText() = run {
+    fun hlsTracks_discoversManifestVariants_deduplicatesApiCopyAndSelectsExactCues() = run {
         lateinit var probe: PlayerProbe
-        lateinit var subtitleUrl: String
+        lateinit var apiSubtitle: SubtitleLink
 
-        step("Prepare HLS with two AAC renditions and API WebVTT marked embedded") {
-            server.reset(commonHlsRoutes())
-            subtitleUrl = loopbackUrl("/media/subtitle.vtt?signature=test-signature")
+        step("Prepare HLS full and forced renditions with a side-loaded API duplicate") {
+            server.reset(
+                commonHlsRoutes(
+                    masterBody = subtitleVariantMaster(),
+                    extraRoutes = server.subtitleVariantRoutes("/media/hls"),
+                ),
+            )
+            apiSubtitle = SubtitleLink(
+                lang = "en",
+                url = loopbackUrl("/media/hls/subtitle_full.vtt?signature=test-signature"),
+                embed = true,
+                forced = false,
+                file = "/media/hls/subtitle_full.m3u8",
+            )
             probe = prepare(
                 path = "/media/hls/master.m3u8",
-                subtitles = listOf(
-                    SubtitleLink(
-                        lang = "en",
-                        url = subtitleUrl,
-                        embed = true,
-                    ),
-                ),
+                subtitles = listOf(apiSubtitle),
             )
         }
 
-        step("Reach READY and expose both AAC renditions") {
+        step("Discover both HLS subtitle variants plus the raw API copy") {
             awaitReady(probe)
             runOnPlayer { controller.pause() }
             awaitCondition("both AAC renditions are exposed") {
                 audioTracks().map(AudioTrackUIState::language).toSet() == setOf("en", "es")
             }
+            awaitCondition("manifest variants and API duplicate are exposed by Media3") {
+                trackProbe.subtitleTracks.get().size == 3
+            }
             assertEquals(setOf("en", "es"), audioTracks().map(AudioTrackUIState::language).toSet())
         }
 
-        step("Select the Spanish audio rendition") {
-            runOnPlayer { controller.selectAudioTrack(1) }
-            awaitCondition("Spanish AAC rendition selected") {
-                selectedAudioLanguage() == "es"
-            }
-        }
-
-        step("Select the external WebVTT track without losing audio selection") {
-            val subtitle = SubtitleTrackUIState(
-                label = "English",
-                language = "en",
-                url = subtitleUrl,
+        lateinit var mergedTracks: List<SubtitleTrackUIState>
+        step("Merge the API copy into the full rendition without duplicating the picker row") {
+            val apiTracks = listOf(
+                SubtitleTrackUIState(label = "Off", language = "", url = ""),
+                SubtitleTrackUIState(
+                    label = "English API full",
+                    language = apiSubtitle.lang,
+                    url = apiSubtitle.url,
+                    isForced = apiSubtitle.forced,
+                    sourceFile = apiSubtitle.file,
+                ),
             )
-            runOnPlayer { controller.selectSubtitle(subtitle) }
-            awaitCondition("side-loaded WebVTT track enabled on HLS") {
-                !textTracksDisabled() && selectedTextTrack()
-            }
-            assertEquals("es", selectedAudioLanguage())
+            mergedTracks = SubtitleTrackMerger(
+                labeler = SubtitleLabeler(
+                    displayLanguageTag = "en",
+                    aiGeneratedLabel = "AI generated",
+                    forcedQualifier = "forced",
+                    variantLabel = { label, ordinal -> "$label variant $ordinal" },
+                    unknownLabel = { position -> "Subtitle $position" },
+                ),
+            ).merge(apiTracks, trackProbe.subtitleTracks.get())
+
+            assertEquals(listOf("Off", "English", "English · forced"), mergedTracks.map { it.label })
+            assertEquals(
+                listOf(
+                    loopbackUrl("/media/hls/subtitle_full.m3u8"),
+                    loopbackUrl("/media/hls/subtitle_forced.m3u8"),
+                ),
+                mergedTracks.drop(1).map { it.playerTrackUri },
+            )
+            assertEquals(listOf(false, true), mergedTracks.drop(1).map { it.isForced })
         }
 
-        step("Render the known fixture cue and journal its subtitle request") {
+        step("Select the forced rendition and render only its known cue") {
             runOnPlayer {
-                controller.seekTo(900L)
+                controller.selectSubtitle(mergedTracks[2])
+                controller.seekTo(SUBTITLE_CUE_POSITION_MS)
                 controller.play()
             }
-            awaitCondition("fixture cue is rendered") {
-                probe.cueTexts.any { it.contains("Synthetic player fixture cue") } ||
-                    currentCueTexts().any { it.contains("Synthetic player fixture cue") }
+            awaitCondition("forced rendition selected") {
+                selectedTextTrackLabel() == FORCED_SUBTITLE_MANIFEST_LABEL
             }
-            assertTrue(server.requestJournal.entries.any { it.path == "/media/subtitle.vtt" })
+            awaitCondition("forced cue rendered") {
+                currentCueTexts() == listOf(FORCED_SUBTITLE_CUE)
+            }
         }
 
-        step("Disable text while preserving audio and hermetic routing") {
+        step("Select the full rendition and render only its known cue") {
+            runOnPlayer {
+                controller.pause()
+                controller.seekTo(SUBTITLE_CUE_POSITION_MS)
+                controller.selectSubtitle(mergedTracks[1])
+                controller.play()
+            }
+            awaitCondition("full rendition selected") {
+                selectedTextTrackLabel() == FULL_SUBTITLE_MANIFEST_LABEL
+            }
+            awaitCondition("full cue rendered") {
+                currentCueTexts() == listOf(FULL_SUBTITLE_CUE)
+            }
+        }
+
+        step("Disable text after selecting both real manifest variants") {
             runOnPlayer { controller.selectSubtitle(null) }
-            awaitCondition("WebVTT track disabled") { textTracksDisabled() }
-            assertEquals("es", selectedAudioLanguage())
+            awaitCondition("HLS text tracks disabled") { textTracksDisabled() }
             assertEquals(0, server.requestJournal.unknownRequests.size)
+            assertTrue(server.requestJournal.entries.any { it.path.endsWith("subtitle_full.vtt") })
+            assertTrue(server.requestJournal.entries.any { it.path.endsWith("subtitle_forced.vtt") })
         }
     }
 
@@ -719,6 +767,14 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
             ?.any { it.isSelected } == true
     }
 
+    private fun selectedTextTrackLabel(): String? = playerRead {
+        player?.currentTracks?.groups
+            ?.filter { it.type == C.TRACK_TYPE_TEXT }
+            ?.firstOrNull { it.isSelected }
+            ?.getTrackFormat(0)
+            ?.label
+    }
+
     private fun textTracksDisabled(): Boolean = playerRead {
         player?.trackSelectionParameters?.disabledTrackTypes?.contains(C.TRACK_TYPE_TEXT) == true
     }
@@ -922,6 +978,27 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
         $videoPlaylist
         """.trimIndent()
 
+    private class ControllerTrackProbe : PlaybackControl.Callback {
+        val subtitleTracks = AtomicReference<List<SubtitleTrackUIState>>(emptyList())
+        val error = AtomicReference<String?>()
+
+        override fun onTracksUpdated(
+            audioTracks: List<AudioTrackUIState>,
+            selectedIndex: Int,
+            subtitleTracks: List<SubtitleTrackUIState>,
+        ) {
+            this.subtitleTracks.set(subtitleTracks)
+        }
+
+        override fun onPlaybackStateChanged(snapshot: PlaybackSnapshot) = Unit
+
+        override fun onPlaybackEnded() = Unit
+
+        override fun onError(message: String) {
+            error.set(message)
+        }
+    }
+
     private class PlayerProbe : Player.Listener {
         val stateEvents = CopyOnWriteArrayList<Int>()
         val cueTexts = CopyOnWriteArrayList<String>()
@@ -952,5 +1029,6 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
         const val PLAYER_TIMEOUT_SECONDS = 20L
         const val CONDITION_POLL_MS = 25L
         const val MAX_DIAGNOSTIC_REQUESTS = 8
+        const val SUBTITLE_CUE_POSITION_MS = 500L
     }
 }

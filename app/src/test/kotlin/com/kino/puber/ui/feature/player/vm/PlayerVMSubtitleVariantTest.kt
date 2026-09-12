@@ -13,7 +13,7 @@ import org.junit.jupiter.api.extension.RegisterExtension
 internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
 
     companion object {
-        private const val MAX_TRACK_UPDATES = 15
+        private const val EMPTY_TRACK_UPDATES = 11
 
         @JvmField
         @RegisterExtension
@@ -167,23 +167,63 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
     }
 
     @Test
-    fun tracksUpdated_stopsRetryingRestore_whenSubtitleTracksNeverAppear() {
+    fun tracksUpdated_restoresSubtitle_whenTrackAppearsAfterElevenEmptyUpdates() {
         every { interactor.getPreferredAudioLang(42) } returns "rus"
         every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns ""
+        every { interactor.getPreferredSubtitleUrl(42) } returns "hls-russian-forced"
         val vm = startedVM()
         val audioTracks = listOf(
             AudioTrackUIState(0, "English", "eng"),
             AudioTrackUIState(1, "Russian", "rus"),
         )
+        val manifestTracks = listOf(
+            manifestTrack("Russian full", "hls-russian-full", groupIndex = 0),
+            manifestTrack("Russian forced", "hls-russian-forced", groupIndex = 1)
+                .copy(language = "ru", isForced = true),
+        )
 
-        repeat(MAX_TRACK_UPDATES) {
+        repeat(EMPTY_TRACK_UPDATES) {
             callbackSlot.captured.onTracksUpdated(audioTracks, 0, emptyList())
         }
+        callbackSlot.captured.onTracksUpdated(audioTracks, 0, manifestTracks)
 
-        // The audio restore must run once, not once per deferred subtitle retry.
         verify(exactly = 1) { playbackController.selectAudioTrack(any()) }
-        assertEquals(0, contentState(vm).selectedSubtitleIndex)
+        verify(exactly = 1) {
+            playbackController.selectSubtitle(match { it.playerTrackId == "hls-russian-forced" })
+        }
+        assertEquals(2, contentState(vm).selectedSubtitleIndex)
+    }
+
+    @Test
+    fun retryPlayback_restoresSelectedAudioAndExactSubtitleVariant() {
+        val vm = startedVM()
+        val audioTracks = listOf(
+            AudioTrackUIState(0, "English", "eng"),
+            AudioTrackUIState(1, "Spanish", "es"),
+        )
+        val manifestTracks = listOf(
+            manifestTrack("English full", "hls-english-full", groupIndex = 0),
+            manifestTrack("English forced", "hls-english-forced", groupIndex = 1)
+                .copy(isForced = true),
+        )
+        callbackSlot.captured.onTracksUpdated(audioTracks, 0, manifestTracks)
+        vm.onAction(PlayerAction.SelectAudioTrack(1))
+        vm.onAction(PlayerAction.SelectSubtitle(2))
+        every { interactor.getPreferredAudioLabel(42) } returns "Spanish"
+        every { interactor.getPreferredAudioLang(42) } returns "es"
+        every { interactor.getPreferredSubtitleLang(42) } returns "en"
+        every { interactor.getPreferredSubtitleUrl(42) } returns "hls-english-forced"
+
+        callbackSlot.captured.onError("Network error")
+        vm.onAction(PlayerAction.RetryPlayback)
+        callbackSlot.captured.onTracksUpdated(audioTracks, 0, manifestTracks)
+
+        verify(exactly = 2) { playbackController.selectAudioTrack(1) }
+        verify(exactly = 2) {
+            playbackController.selectSubtitle(match { it.playerTrackId == "hls-english-forced" })
+        }
+        assertEquals(1, contentState(vm).selectedAudioTrackIndex)
+        assertEquals(2, contentState(vm).selectedSubtitleIndex)
     }
 
     @Test
