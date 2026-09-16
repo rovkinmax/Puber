@@ -14,7 +14,7 @@ setup_script = ".kent/worktrees/setup.sh"
 subagents = true
 
 [subagents."android-codebase-analyst"]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 system_prompt_file = "subagents/android-codebase-analyst.md"
 thinking_level = "medium"
 model_verbosity = "low"
@@ -23,7 +23,7 @@ model_verbosity = "low"
 patch = false
 
 [subagents."android-researcher"]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 system_prompt_file = "subagents/android-codebase-analyst.md"
 thinking_level = "medium"
 model_verbosity = "low"
@@ -32,7 +32,7 @@ model_verbosity = "low"
 patch = false
 
 [subagents."project-researcher"]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 system_prompt_file = "subagents/android-codebase-analyst.md"
 thinking_level = "medium"
 model_verbosity = "low"
@@ -43,12 +43,12 @@ workflow_subagent = true
 patch = false
 
 [subagents."gradle-build-doctor"]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 system_prompt_file = "subagents/gradle-build-doctor.md"
 thinking_level = "medium"
 
 [subagents."build-doctor"]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 system_prompt_file = "subagents/gradle-build-doctor.md"
 thinking_level = "medium"
 agent_callable = true
@@ -56,22 +56,24 @@ workflow_subagent = true
 
 [subagents."implementation-worker"]
 model = "gpt-5.6-luna"
+model_context_window = 372000
+context_compaction_threshold_tokens = 353400
 system_prompt_file = "subagents/implementation-worker.md"
-thinking_level = "high"
+thinking_level = "xhigh"
 agent_callable = true
 workflow_subagent = true
 
 [subagents."fix-worker"]
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 system_prompt_file = "subagents/fix-worker.md"
 thinking_level = "medium"
 agent_callable = true
 workflow_subagent = true
 
 [subagents."compose-reviewer"]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 system_prompt_file = "subagents/compose-reviewer.md"
-thinking_level = "high"
+thinking_level = "medium"
 agent_callable = true
 workflow_subagent = true
 
@@ -79,9 +81,9 @@ workflow_subagent = true
 patch = false
 
 [subagents."domain-model-reviewer"]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 system_prompt_file = "subagents/domain-model-reviewer.md"
-thinking_level = "high"
+thinking_level = "medium"
 agent_callable = true
 workflow_subagent = true
 
@@ -89,9 +91,9 @@ workflow_subagent = true
 patch = false
 
 [subagents."quality-reviewer"]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 system_prompt_file = "subagents/quality-reviewer.md"
-thinking_level = "high"
+thinking_level = "medium"
 agent_callable = true
 workflow_subagent = true
 
@@ -99,7 +101,7 @@ workflow_subagent = true
 patch = false
 
 [subagents."release-manager"]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 system_prompt_file = "subagents/release-manager.md"
 thinking_level = "medium"
 model_verbosity = "low"
