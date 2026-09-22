@@ -23,6 +23,8 @@ interface Screens {
 
     fun bookmarks(): PuberScreen
 
+    fun bookmarkPicker(itemId: Int, resultCode: Int): PuberScreen
+
     fun favorites(): PuberScreen
 
     fun deviceSettings(): PuberScreen

@@ -42,7 +42,7 @@ private fun buildFlowModule(
     scope(named(scopeId)) {
         scoped<AppLauncher> { appLauncher }
         scoped<Screens> { ScreensImpl }
-        scoped { VideoItemUIMapper(get(), get()) }
+        scoped { VideoItemUIMapper(get(), get(), get()) }
         scopedOf(::VideoItemTypeMapper)
         viewModelOf(::UpdatePromptVM)
     }

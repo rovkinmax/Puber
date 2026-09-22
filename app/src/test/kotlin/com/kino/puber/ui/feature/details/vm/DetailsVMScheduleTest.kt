@@ -12,7 +12,9 @@ import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.Season
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
+import com.kino.puber.domain.interactor.details.DetailsBookmarkState
 import com.kino.puber.domain.interactor.details.DetailsInteractor
 import com.kino.puber.domain.interactor.details.WatchedUpdate
 import com.kino.puber.domain.interactor.schedule.EpisodeScheduleInteractor
@@ -70,6 +72,7 @@ class DetailsVMScheduleTest {
     private lateinit var interactor: DetailsInteractor
     private lateinit var episodeScheduleInteractor: EpisodeScheduleInteractor
     private lateinit var savedItemInteractor: SavedItemInteractor
+    private val bookmarkPreferences = BookmarkPreferencesRepository()
     private lateinit var errorHandler: ErrorHandler
 
     @BeforeEach
@@ -89,7 +92,7 @@ class DetailsVMScheduleTest {
 
         coEvery { interactor.getItemDetails(ITEM_ID) } returns testItem
         coEvery { interactor.refreshItemDetails(ITEM_ID) } returns refreshedItem
-        coEvery { interactor.isInWatchLaterFolder(any()) } returns false
+        coEvery { interactor.getBookmarkState(any(), any()) } returns bookmarkState()
         coEvery { interactor.getSimilarItems(ITEM_ID) } returns listOf(similarItem)
         every { mapper.map(any(), any()) } returns content()
         every { mapper.mapSimilarItems(any()) } returns listOf(videoItem(id = SIMILAR_ITEM_ID))
@@ -418,6 +421,7 @@ class DetailsVMScheduleTest {
             interactor = interactor,
             episodeScheduleInteractor = episodeScheduleInteractor,
             savedItemInteractor = savedItemInteractor,
+        bookmarkPreferencesRepository = bookmarkPreferences,
             resources = FakeResourceProvider(),
             errorHandler = errorHandler,
         ).also { it.testOnStart() }
@@ -523,3 +527,11 @@ class DetailsVMScheduleTest {
         type = ItemType.MOVIE,
     )
 }
+
+private fun bookmarkState(
+    isInWatchLaterFolder: Boolean = false,
+    isBookmarked: Boolean = false,
+) = DetailsBookmarkState(
+    isInWatchLaterFolder = isInWatchLaterFolder,
+    isBookmarked = isBookmarked,
+)
