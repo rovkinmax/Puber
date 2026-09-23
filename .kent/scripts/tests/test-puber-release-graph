@@ -16,6 +16,7 @@ source=json.loads(GRAPH.read_text())
 assert source["workflow"]["version"] == 88, "checked-in graph is still revision 89"
 assert source["workflow"]["source_revision"] == 90, "source revision 90 is absent"
 assert (len(source["nodes"]), len(source["transition_groups"]), len(source["edges"])) == (18, 51, 51), "profile/finalization topology is absent"
+assert not any(node.get("kind") == "join" for node in source["nodes"]), "release graph unexpectedly contains a native Join"
 by_key = {node["key"]: node for node in source["nodes"]}
 assert by_key["profile_generation"]["kind"] == "script"
 assert by_key["profile_generation"]["script_path"] == ".kent/scripts/workflow-puber-release-profile-generation"
