@@ -14,11 +14,12 @@ and that the prospective PR diff is exactly `app/build.gradle.kts` plus the
 changed generated profile files. A no-profile-diff report must not invent or
 stage profile changes. Reject any unrelated path or report/checkpoint drift.
 Release publication is a separate approval-gated operation and is never part
-of PR Checks. For initial, retry, and target-policy/head-change cycles, require
-source-derived Build, Detekt, and Unit Tests; retain extra checks only as
-diagnostics. Verify the flat expected-check packet, history/cursor, explicit
-verification_summary, concrete rebase strategy, and actual PR head/base facts.
-The PR base is not the policy target commit.
+of PR Checks. For initial, retry, and head-change cycles, validate the
+identity-only `ci_contract`, dynamic `ci_report`, and acknowledged feedback
+cursor. Classify every effective check observed: failed extras are failures,
+incomplete observations are not green, and pending observations are not user
+actions. Verify explicit `verification_summary`, concrete rebase strategy, and
+actual PR head/base facts.
 
 ## Revision 90 closed safety contract
 

@@ -16,17 +16,40 @@ _spec = importlib.util.spec_from_loader("puber_release_ci_helper", SourceFileLoa
 helper = importlib.util.module_from_spec(_spec)
 assert _spec and _spec.loader
 _spec.loader.exec_module(helper)
-CI_FIELDS = ("expected_ci_checks", "expected_ci_checks_sha256", "runtime_source_envelope_digest",
-             "ci_policy_snapshot", "ci_report", "pr_feedback_cursor")
+CI_FIELDS = ("ci_contract", "ci_report", "pr_feedback_cursor")
 SHARED_INPUTS = ("workspace_path", "pr_url", "branch_name", "merge_strategy", "task_short_id",
                  "pr_head_oid", "pr_base_oid", *CI_FIELDS)
+SHARED_OUTPUTS = (*SHARED_INPUTS, "pr_report")
 SHARED_PATHS = {"ci_prepare": "workflow-prepare-github-ci", "ci_watch": "workflow-wait-github-ci",
                 "merge_watch": "workflow-wait-github-pr"}
 
 
+def _runtime():
+    return helper._runtime_contracts_module(ROOT)
+
+
+def _pull_number(pr_url: str) -> int:
+    try:
+        number = int(pr_url.rsplit("/", 1)[1])
+    except (ValueError, IndexError) as error:
+        raise helper.ContractError("PR URL does not contain a valid pull number") from error
+    if number < 1:
+        raise helper.ContractError("PR number is invalid")
+    return number
+
+
+def _same_pr_transport_identity(before: Mapping[str, Any], after: Mapping[str, Any]) -> bool:
+    for key in ("url", "headRefOid", "baseRefOid", "headRefName", "baseRefName", "state", "mergedAt"):
+        if before.get(key) != after.get(key):
+            return False
+    before_merge = before.get("mergeCommit") or {}
+    after_merge = after.get("mergeCommit") or {}
+    return before_merge.get("oid") == after_merge.get("oid")
+
+
 def _read_actual_pr(payload: Mapping[str, Any]) -> dict:
-    kit = helper._kit_modules()
-    pr = kit["read_pull_request"](ROOT, helper.canonical_pr_url(payload["pr_url"]))
+    observer = helper._github_observer(ROOT)
+    pr = observer.read_pr(helper.canonical_pr_url(payload["pr_url"]))
     if (pr.get("url") != payload["pr_url"] or pr.get("headRefName") != payload["branch_name"]
             or pr.get("baseRefName") != "master" or pr.get("state") not in {"OPEN", "MERGED", "CLOSED"}
             or any(not helper.SHA1.fullmatch(str(pr.get(key, ""))) for key in ("headRefOid", "baseRefOid"))):
@@ -36,12 +59,14 @@ def _read_actual_pr(payload: Mapping[str, Any]) -> dict:
 
 def _run_shared(operation: str, payload: Mapping[str, Any]) -> dict:
     selected = {key: payload[key] for key in SHARED_INPUTS if key in payload}
-    # PR observation's source contract binds policy P; retain actual PR base
-    # separately in the outer release carrier and never rewrite the policy DTO.
-    if operation == "merge_watch":
-        selected["pr_base_oid"] = json.loads(selected["ci_policy_snapshot"])["target_commit"]
+    environment = helper.child_env()
+    # Native CI/PR Script nodes own the bounded wait.  In production the
+    # shared watcher must continue polling until a terminal/material state,
+    # while test mode retains its explicit short-poll controls.
+    if operation == "ci_watch" and environment.get("KENT_CI_WATCH_TEST_MODE") != "1":
+        environment["KENT_CI_WATCH_MAX_POLLS"] = "0"
     result = helper.run([str(ROOT / ".kent/scripts" / SHARED_PATHS[operation])], cwd=ROOT,
-        env=helper.child_env(), input_text=helper.canonical_json(selected), check=False)
+        env=environment, input_text=helper.canonical_json(selected), check=False)
     if result.returncode:
         raise helper.ContractError("shared CI command failed; inspect its scoped diagnostic")
     return helper._json_one(result.stdout.encode())
@@ -61,21 +86,34 @@ def _checkpoint(payload: dict, state: dict) -> None:
 
 
 def _packet(value: dict) -> None:
-    kit = helper._kit_modules()
-    expected = kit["validate_expected_ci_checks"](kit["parse_canonical_json"](
-        value["expected_ci_checks"], label="expected CI checks", max_bytes=64 * 1024))
-    policy = kit["validate_ci_policy_snapshot"](kit["parse_canonical_json"](
-        value["ci_policy_snapshot"], label="CI policy", max_bytes=64 * 1024))
-    if (value["expected_ci_checks_sha256"] != kit["expected_ci_checks_sha256"](expected)
-            or value["runtime_source_envelope_digest"] != expected["runtime_source_envelope_digest"]
-            or expected["project_commit"] != value["release_head_oid"]
-            or expected["repository"] != helper.REPOSITORY
-            or policy["policy_sha256"] != kit["ci_policy_projection_sha256"](expected)
-            or {(row["workflow_name"], row["check_name"], row["allow_skipped"]) for row in expected["checks"]}
-                != {("PR Checks", name, False) for name in ("Build", "Detekt", "Unit Tests")}):
-        raise helper.ContractError("release CI packet is not the exact mandatory H contract")
+    runtime = _runtime()
+    contract = runtime.validate_ci_contract(
+        runtime.parse_canonical_json(
+            value["ci_contract"], label="CI contract", max_bytes=64 * 1024,
+        )
+    )
+    if (
+        contract["repository"] != helper.REPOSITORY
+        or contract["pull_number"] != _pull_number(value["pr_url"])
+        or contract["head_oid"] != value["pr_head_oid"]
+        or contract["base_oid"] != value["pr_base_oid"]
+        or contract["require_ci"] is not True
+    ):
+        raise helper.ContractError("release CI contract does not match the observed PR")
     if value.get("ci_report"):
-        kit["validate_ci_report"](kit["parse_canonical_json"](value["ci_report"], label="CI report", max_bytes=kit["MAX_CI_REPORT_BYTES"]))
+        report = runtime.validate_dynamic_ci_report(
+            runtime.parse_canonical_json(
+                value["ci_report"], label="CI report", max_bytes=runtime.MAX_DYNAMIC_CI_REPORT_BYTES,
+            )
+        )
+        if report["contract"] != contract:
+            raise helper.ContractError("release CI report contract drifted")
+    cursor = value.get("pr_feedback_cursor", "uninitialized")
+    runtime.validate_dynamic_pr_feedback_cursor(
+        "uninitialized" if cursor == "uninitialized" else runtime.parse_canonical_json(
+            cursor, label="PR feedback cursor", max_bytes=runtime.MAX_FEEDBACK_BYTES,
+        )
+    )
 
 
 def transport(operation: str, payload: dict, state: dict) -> dict:
@@ -103,11 +141,21 @@ def transport(operation: str, payload: dict, state: dict) -> dict:
             raise helper.ContractError("release PR closed without merge; explicit disposition is required")
         shared = _run_shared(operation, result)
         transition = shared.pop("transition", "")
-        if operation == "ci_prepare" and transition == "ci_prepare_ready_initial":
+        if operation == "ci_prepare" and transition in {
+            "ci_prepare_ready_initial",
+            "ci_prepare_pr_merged",
+        }:
             result.pop("ci_report", None)  # The shared preparer archived the previous cycle.
-        result.update({key: value for key, value in shared.items() if key in SHARED_INPUTS})
+        result.update({key: value for key, value in shared.items() if key in SHARED_OUTPUTS})
         after = _read_actual_pr(payload)
-        if after != before:
+        identity_transition = {
+            "ci_watch_source_changed",
+            "ci_prepare_pr_merged",
+            "ci_watch_pr_merged",
+            "merge_watch_state_changed",
+            "merge_watch_pr_merged",
+        }
+        if transition not in identity_transition and not _same_pr_transport_identity(before, after):
             raise helper.ContractError("PR observation changed during CI transport; reprepare the cycle")
         result.update(pr_head_oid=after["headRefOid"], pr_base_oid=after["baseRefOid"])
         transitions = {
@@ -117,9 +165,24 @@ def transport(operation: str, payload: dict, state: dict) -> dict:
         }
         if transition not in transitions[operation]:
             raise helper.ContractError("shared CI transition is not an admitted outcome")
-        if transition in {"ci_prepare_failed", "ci_prepare_pr_merged", "ci_watch_pr_merged", "merge_watch_pr_merged"}:
-            raise helper.ContractError("shared CI state changed; re-read through the normal retry")
-        result["transition"] = "ci_watch_state_changed" if transition == "ci_watch_source_changed" else transition
+        if transition == "ci_watch_source_changed":
+            result.setdefault(
+                "pr_report",
+                helper.canonical_json({
+                    "reason": "source_changed",
+                    "headRefOid": after["headRefOid"],
+                    "baseRefOid": after["baseRefOid"],
+                }),
+            )
+        result["transition"] = (
+            "ci_watch_state_changed"
+            if transition == "ci_watch_source_changed"
+            else (
+                "ci_prepare_already_merged"
+                if transition == "ci_prepare_pr_merged"
+                else transition
+            )
+        )
         if transition != "ci_watch_source_changed":
             _packet(result)
         if transition not in {"ci_prepare_ready_initial", "ci_watch_passed", "ci_prepare_ready_retry"}:

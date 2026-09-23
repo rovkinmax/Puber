@@ -25,6 +25,7 @@ kit_managed_commands = [
   "wait_pr",
   "wait_ci",
   "prepare_ci",
+  "github_observation",
 ]
 
 [command_versions]
@@ -32,9 +33,10 @@ runtime_contracts = "2.0.0"
 verify = "2.0.0"
 evidence = "2.0.0"
 janitor = "2.0.0"
-wait_pr = "2.0.0"
-wait_ci = "2.0.0"
-prepare_ci = "1.0.0"
+wait_pr = "3.0.0"
+wait_ci = "3.0.0"
+prepare_ci = "2.0.0"
+github_observation = "1.0.0"
 
 [release]
 topology_kind = "puber-release"
@@ -82,6 +84,7 @@ plan_contract_fix_continue = ".kent/scripts/workflow-plan-contract-fix-continue"
 prepare_ci = ".kent/scripts/workflow-prepare-github-ci"
 wait_ci = ".kent/scripts/workflow-wait-github-ci"
 wait_pr = ".kent/scripts/workflow-wait-github-pr"
+github_observation = ".kent/scripts/workflow_github_observation.py"
 janitor = ".kent/scripts/workflow-task-janitor"
 smoke = ""
 

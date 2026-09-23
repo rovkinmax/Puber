@@ -67,19 +67,24 @@ RELEASE_PROOF_PARAMETERS = (
     "release_preparation_report_digest", "verification_summary",
 )
 REVISIONED_RELEASE_CARRIER = RELEASE_IDENTITY_PARAMETERS + RELEASE_PROOF_PARAMETERS
-CI_EXPECTED_PARAMETERS = (
-    "expected_ci_checks", "expected_ci_checks_sha256",
-    "runtime_source_envelope_digest", "ci_policy_snapshot",
-)
+CI_EXPECTED_PARAMETERS = ("ci_contract",)
 CI_STATE_PARAMETERS = ("ci_report", "pr_feedback_cursor")
 PR_FACT_PARAMETERS = (
     "pr_url", "branch_name", "merge_strategy", "pr_head_oid", "pr_base_oid",
 )
 RELEASE_CI_INITIAL = REVISIONED_RELEASE_CARRIER + PR_FACT_PARAMETERS
+RELEASE_CI_ENTRY_INITIAL = RELEASE_CI_INITIAL + ("ci_contract", "pr_feedback_cursor")
+RELEASE_CI_REPAIR = REVISIONED_RELEASE_CARRIER + PR_FACT_PARAMETERS + (
+    "ci_contract", "ci_report", "pr_feedback_cursor",
+)
 RELEASE_CI_READY_INITIAL = REVISIONED_RELEASE_CARRIER + PR_FACT_PARAMETERS + CI_EXPECTED_PARAMETERS + ("pr_feedback_cursor",)
-RELEASE_CI_READY_RETRY = RELEASE_CI_READY_INITIAL + ("ci_report",)
+RELEASE_CI_READY_RETRY = REVISIONED_RELEASE_CARRIER + PR_FACT_PARAMETERS + ("ci_contract", "ci_report", "pr_feedback_cursor")
 RELEASE_CI_FULL = RELEASE_CI_READY_RETRY
 RELEASE_CI_MERGE = RELEASE_CI_FULL
+RELEASE_CI_STATE_CHANGED = (
+    REVISIONED_RELEASE_CARRIER + PR_FACT_PARAMETERS
+    + ("pr_report", "ci_contract", "ci_report", "pr_feedback_cursor")
+)
 SCRIPT_EDGE_PARAMETERS = {
     "start_release_intent_gate": ("release_intent_gate", ()),
     "release_intent_passed": (
@@ -134,11 +139,11 @@ SCRIPT_EDGE_PARAMETERS = {
             "profile_report_digest", "blocker_reason",
         ),
     ),
-    "ship_pr_ci_watch": ("ci_prepare", RELEASE_CI_INITIAL),
+    "ship_pr_ci_watch": ("ci_prepare", RELEASE_CI_ENTRY_INITIAL),
     "ci_waiting_pr": ("ci_prepare", RELEASE_CI_FULL),
     "ci_watch_passed": ("waiting_pr", RELEASE_CI_FULL),
     "ci_watch_failed": ("ci_monitor", RELEASE_CI_FULL),
-    "ci_watch_state_changed": ("ci_prepare", RELEASE_CI_FULL),
+    "ci_watch_state_changed": ("waiting_pr", RELEASE_CI_STATE_CHANGED),
     "ci_watch_needs_user_action": ("ci_prepare", RELEASE_CI_FULL + ("blocker_reason",)),
     "ci_watch_pr_merged": ("merge_watch", RELEASE_CI_MERGE),
     "ci_prepare_ready_initial": ("ci_watch", RELEASE_CI_READY_INITIAL),
@@ -148,8 +153,16 @@ SCRIPT_EDGE_PARAMETERS = {
     "waiting_pr_ci_recheck": ("ci_prepare", RELEASE_CI_FULL),
     "waiting_pr_merge_watch": ("merge_watch", RELEASE_CI_FULL),
     "waiting_pr_needs_user_action": ("waiting_pr", RELEASE_CI_FULL + ("waiting_reason",)),
+    "pr_feedback": (
+        "prepare",
+        (
+            "workspace_path", "release_version", "release_tag", "pr_report",
+            "pr_head_oid", "pr_base_oid", "ci_contract", "ci_report",
+            "pr_feedback_cursor",
+        ),
+    ),
     "merge_watch_still_waiting": ("merge_watch", RELEASE_CI_FULL),
-    "merge_watch_state_changed": ("waiting_pr", RELEASE_CI_FULL),
+    "merge_watch_state_changed": ("waiting_pr", RELEASE_CI_STATE_CHANGED),
     "merge_watch_needs_user_action": ("merge_watch", RELEASE_CI_FULL + ("blocker_reason",)),
     "compliance_ship_pr": (
         "ship_pr",
@@ -259,8 +272,8 @@ SCRIPT_EDGE_PARAMETERS = {
 }
 REPAIR_EDGE_PARAMETERS = {
     "compliance_fix": ("prepare", REVISIONED_RELEASE_CARRIER + ("compliance_report",)),
-    "ci_fix": ("prepare", REVISIONED_RELEASE_CARRIER + ("ci_report",)),
-    "pr_fix": ("prepare", REVISIONED_RELEASE_CARRIER + ("blocker_reason",)),
+    "ci_fix": ("prepare", RELEASE_CI_REPAIR),
+    "pr_fix": ("prepare", RELEASE_CI_REPAIR + ("blocker_reason",)),
 }
 REQUIRED_EDGE_PARAMETERS = {**SCRIPT_EDGE_PARAMETERS, **REPAIR_EDGE_PARAMETERS}
 EXPECTED_NODES = set(BASE_NODE_IDS) | set(NEW_NODES) | set(AGENT_NODES)
@@ -308,10 +321,7 @@ PARAMETER_DESCRIPTIONS = {
     "target_commit": "Master commit targeted by the release tag.",
     "task_short_id": "Stable human-readable task identity.",
     "verification_summary": "Explicit verification summary for this transition; it is not part of the profile checkpoint.",
-    "expected_ci_checks": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
-    "expected_ci_checks_sha256": "SHA-256 digest of expected_ci_checks.",
-    "runtime_source_envelope_digest": "Digest of the immutable selected-head runtime source envelope.",
-    "ci_policy_snapshot": "Flat canonical policy snapshot for the current CI cycle.",
+    "ci_contract": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
     "pr_feedback_cursor": "Validated pull-request feedback cursor.",
     "pr_head_oid": "Actual pull-request head commit observed for this CI cycle.",
     "pr_base_oid": "Actual pull-request base commit observed for this CI cycle; never policy P.",
@@ -435,7 +445,7 @@ def expected_derived_wiring(source: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-CI_AGENT_ENTRY_PROMPTS = {'ci_watch_passed': 'Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}', 'ci_watch_failed': 'Inspect the release PR CI failure in {{.Params.ci_report}} using read-only GitHub observations. Read AGENTS.md, .kent/project-contract.md, and .kent/commands/release.md.\n\nPreserve the complete flat release/CI carrier, explicit verification summary, and feedback cursor. Do not edit source, push commits, merge, publish, or rerun CI. If a task-scoped code repair is required, return the evidence through ci_fix so the existing prepare -> profile_generation -> finalize_release -> compliance path revalidates the changed candidate. If a fresh CI check is appropriate without a code repair, use ci_waiting_pr through the existing CI preparer. For missing access or an unresolved external blocker, use ci_monitor_needs_user_action with blocker_reason. Do not infer passing CI from missing or stale checks.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}'}
+CI_AGENT_ENTRY_PROMPTS = {'ci_watch_passed': 'Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nci_contract: {{.Params.ci_contract}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}', 'ci_watch_failed': 'Inspect the release PR CI failure in {{.Params.ci_report}} using read-only GitHub observations. Read AGENTS.md, .kent/project-contract.md, and .kent/commands/release.md.\n\nPreserve the complete flat release/CI carrier, explicit verification summary, and feedback cursor. Do not edit source, push commits, merge, publish, or rerun CI. If a task-scoped code repair is required, return the evidence through ci_fix so the existing prepare -> profile_generation -> finalize_release -> compliance path revalidates the changed candidate. If a fresh CI check is appropriate without a code repair, use ci_waiting_pr through the existing CI preparer. For missing access or an unresolved external blocker, use ci_monitor_needs_user_action with blocker_reason. Do not infer passing CI from missing or stale checks.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nci_contract: {{.Params.ci_contract}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}'}
 
 
 def check_graph(path: Path) -> list[str]:
@@ -486,6 +496,20 @@ def check_graph(path: Path) -> list[str]:
         key = edge.get("key")
         if key in CI_AGENT_ENTRY_PROMPTS and edge.get("prompt_template") != CI_AGENT_ENTRY_PROMPTS[key]:
             errors.append("CI Agent entry prompt must match the approved read-only handoff")
+    # Prepare reuses these sessions with a writer role; CI re-entry must
+    # establish the configured monitor role rather than retain that writer.
+    expected_continuity_contexts = {
+        "ci_watch_passed": ("new_session", {"kind": "immediate_source"}),
+        "ci_watch_failed": ("new_session", {"kind": "immediate_source"}),
+        "merge_watch_state_changed": ("continue_session", {"kind": "previous_target_or_new"}),
+    }
+    for key, (context_mode, context_source) in expected_continuity_contexts.items():
+        edge = next((item for item in edges if item.get("key") == key), {})
+        if (
+            edge.get("context_mode") != context_mode
+            or edge.get("context_source") != context_source
+        ):
+            errors.append(f"continuity context is not exact: {key}")
     by_key = {node.get("key"): node for node in nodes}
     if set(by_key) != EXPECTED_NODES:
         errors.append("graph node keys differ from the closed revision-90 set")

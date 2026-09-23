@@ -1004,12 +1004,22 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
           "purpose": "ordinary"
         }
       ]
@@ -1140,42 +1150,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "pr_feedback_cursor",
-          "description": "Validated pull-request feedback cursor.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "ci_report",
           "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
           "purpose": "ordinary"
         }
       ]
@@ -1271,8 +1266,43 @@
           "purpose": "ordinary"
         },
         {
+          "key": "pr_url",
+          "description": "URL of the created, updated, or monitored pull request.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the task or release branch associated with the pull request.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Concrete strategy resolved from repository rules; currently rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_head_oid",
+          "description": "Observed pull-request head commit for this CI cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_base_oid",
+          "description": "Observed pull-request base commit for this CI cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
           "key": "ci_report",
           "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
           "purpose": "ordinary"
         }
       ]
@@ -1402,12 +1432,12 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Immutable S05 carrier field: pr_head_oid.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Immutable S05 carrier field: pr_base_oid.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
@@ -1746,6 +1776,46 @@
           "purpose": "ordinary"
         },
         {
+          "key": "pr_url",
+          "description": "URL of the created, updated, or monitored pull request.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Name of the task or release branch associated with the pull request.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Concrete strategy resolved from repository rules; currently rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_head_oid",
+          "description": "Observed pull-request head commit for this CI cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_base_oid",
+          "description": "Observed pull-request base commit for this CI cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
+          "purpose": "ordinary"
+        },
+        {
           "key": "blocker_reason",
           "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed.",
           "purpose": "ordinary"
@@ -1856,42 +1926,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "pr_feedback_cursor",
-          "description": "Validated pull-request feedback cursor.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "ci_report",
           "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
           "purpose": "ordinary"
         }
       ]
@@ -1930,6 +1985,31 @@
           "key": "pr_report",
           "description": "PR creation, review, conflict, or post-CI regression report.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_head_oid",
+          "description": "Observed pull-request head commit for this CI cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_base_oid",
+          "description": "Observed pull-request base commit for this CI cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
+          "purpose": "ordinary"
         }
       ]
     },
@@ -1946,7 +2026,7 @@
       "context_source": {
         "kind": "immediate_source"
       },
-      "prompt_template": "Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}\nwaiting_reason: {{.Params.waiting_reason}}",
+      "prompt_template": "Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nci_contract: {{.Params.ci_contract}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}\nwaiting_reason: {{.Params.waiting_reason}}",
       "parameters": [
         {
           "key": "workspace_path",
@@ -2040,42 +2120,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "pr_feedback_cursor",
-          "description": "Validated pull-request feedback cursor.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "ci_report",
           "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
           "purpose": "ordinary"
         },
         {
@@ -2455,46 +2520,34 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_feedback_cursor",
           "description": "Validated pull-request feedback cursor.",
           "purpose": "ordinary"
-        },
-        {
-          "key": "ci_report",
-          "description": "Canonical CI report including mandatory and extra checks.",
-          "purpose": "ordinary"
         }
       ],
-      "prompt_template": "Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}"
+      "prompt_template": "Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nci_contract: {{.Params.ci_contract}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}",
+      "context_source": {
+        "kind": "immediate_source"
+      }
     },
     {
       "id": "e07d2297-6b2c-489b-8e5c-1bb878d667a7",
@@ -2597,46 +2650,34 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_feedback_cursor",
           "description": "Validated pull-request feedback cursor.",
           "purpose": "ordinary"
-        },
-        {
-          "key": "ci_report",
-          "description": "Canonical CI report including mandatory and extra checks.",
-          "purpose": "ordinary"
         }
       ],
-      "prompt_template": "Inspect the release PR CI failure in {{.Params.ci_report}} using read-only GitHub observations. Read AGENTS.md, .kent/project-contract.md, and .kent/commands/release.md.\n\nPreserve the complete flat release/CI carrier, explicit verification summary, and feedback cursor. Do not edit source, push commits, merge, publish, or rerun CI. If a task-scoped code repair is required, return the evidence through ci_fix so the existing prepare -> profile_generation -> finalize_release -> compliance path revalidates the changed candidate. If a fresh CI check is appropriate without a code repair, use ci_waiting_pr through the existing CI preparer. For missing access or an unresolved external blocker, use ci_monitor_needs_user_action with blocker_reason. Do not infer passing CI from missing or stale checks.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}"
+      "prompt_template": "Inspect the release PR CI failure in {{.Params.ci_report}} using read-only GitHub observations. Read AGENTS.md, .kent/project-contract.md, and .kent/commands/release.md.\n\nPreserve the complete flat release/CI carrier, explicit verification summary, and feedback cursor. Do not edit source, push commits, merge, publish, or rerun CI. If a task-scoped code repair is required, return the evidence through ci_fix so the existing prepare -> profile_generation -> finalize_release -> compliance path revalidates the changed candidate. If a fresh CI check is appropriate without a code repair, use ci_waiting_pr through the existing CI preparer. For missing access or an unresolved external blocker, use ci_monitor_needs_user_action with blocker_reason. Do not infer passing CI from missing or stale checks.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nci_contract: {{.Params.ci_contract}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}",
+      "context_source": {
+        "kind": "immediate_source"
+      }
     },
     {
       "id": "80633937-6e1d-4c24-b3f7-de854065e0be",
@@ -2739,42 +2780,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_feedback_cursor",
           "description": "Validated pull-request feedback cursor.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_report",
-          "description": "Canonical CI report including mandatory and extra checks.",
           "purpose": "ordinary"
         }
       ],
@@ -2787,7 +2813,7 @@
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "transition_group_id": "d6347dd0-bc52-4428-a8f3-854265a0fb00",
       "key": "ci_watch_state_changed",
-      "target_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
+      "target_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
       "requires_approval": false,
       "context_mode": "new_session",
       "parameters": [
@@ -2883,42 +2909,32 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
+          "key": "pr_report",
+          "description": "PR creation, review, conflict, or post-CI regression report.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_feedback_cursor",
           "description": "Validated pull-request feedback cursor.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_report",
-          "description": "Canonical CI report including mandatory and extra checks.",
           "purpose": "ordinary"
         }
       ],
@@ -3027,42 +3043,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_feedback_cursor",
           "description": "Validated pull-request feedback cursor.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_report",
-          "description": "Canonical CI report including mandatory and extra checks.",
           "purpose": "ordinary"
         },
         {
@@ -3176,42 +3177,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Observed PR head.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Observed PR base.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "pr_feedback_cursor",
-          "description": "Validated pull-request feedback cursor.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "ci_report",
           "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
           "purpose": "ordinary"
         }
       ],
@@ -3226,7 +3212,7 @@
       "key": "merge_watch_state_changed",
       "target_node_id": "94e4c8ab-b0d7-45cf-b922-3a970a6e3eee",
       "requires_approval": false,
-      "context_mode": "new_session",
+      "context_mode": "continue_session",
       "parameters": [
         {
           "key": "workspace_path",
@@ -3320,46 +3306,39 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Observed PR head.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Observed PR base.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
+          "key": "pr_report",
+          "description": "PR creation, review, conflict, or post-CI regression report.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "pr_feedback_cursor",
-          "description": "Validated pull-request feedback cursor.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "ci_report",
           "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
+          "purpose": "ordinary"
         }
       ],
-      "prompt_template": "Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nexpected_ci_checks: {{.Params.expected_ci_checks}}\nexpected_ci_checks_sha256: {{.Params.expected_ci_checks_sha256}}\nruntime_source_envelope_digest: {{.Params.runtime_source_envelope_digest}}\nci_policy_snapshot: {{.Params.ci_policy_snapshot}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}"
+      "prompt_template": "Observe the release PR without merge/tag effects. Carry the complete flat release/CI identity, explicit verification summary and cursor. CI changes return through waiting_pr_ci_recheck. Only merge_watch_pr_merged may request Publish approval.\n\nworkspace_path: {{.Params.workspace_path}}\noperation_id: {{.Params.operation_id}}\ntask_short_id: {{.Params.task_short_id}}\nrelease_type: {{.Params.release_type}}\nrelease_version: {{.Params.release_version}}\nrelease_tag: {{.Params.release_tag}}\nrelease_branch: {{.Params.release_branch}}\nrelease_base_oid: {{.Params.release_base_oid}}\ncandidate_oid: {{.Params.candidate_oid}}\nrelease_head_oid: {{.Params.release_head_oid}}\nprofile_report: {{.Params.profile_report}}\nprofile_report_digest: {{.Params.profile_report_digest}}\nrelease_preparation_report: {{.Params.release_preparation_report}}\nrelease_preparation_report_digest: {{.Params.release_preparation_report_digest}}\nverification_summary: {{.Params.verification_summary}}\npr_url: {{.Params.pr_url}}\nbranch_name: {{.Params.branch_name}}\nmerge_strategy: {{.Params.merge_strategy}}\npr_head_oid: {{.Params.pr_head_oid}}\npr_base_oid: {{.Params.pr_base_oid}}\nci_contract: {{.Params.ci_contract}}\npr_feedback_cursor: {{.Params.pr_feedback_cursor}}\nci_report: {{.Params.ci_report}}",
+      "context_source": {
+        "kind": "previous_target_or_new"
+      }
     },
     {
       "id": "a6e42669-837f-43f1-a8f0-5c9d99d70c39",
@@ -3397,12 +3376,12 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Observed PR head.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Observed PR base.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         }
       ],
@@ -3511,42 +3490,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Observed PR head.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Observed PR base.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "pr_feedback_cursor",
-          "description": "Validated pull-request feedback cursor.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "ci_report",
           "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
           "purpose": "ordinary"
         },
         {
@@ -3595,12 +3559,12 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Observed PR head.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Observed PR base.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         }
       ],
@@ -4208,32 +4172,17 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
@@ -4347,42 +4296,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_feedback_cursor",
           "description": "Validated pull-request feedback cursor.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_report",
-          "description": "Canonical CI report including mandatory and extra checks.",
           "purpose": "ordinary"
         }
       ]
@@ -4491,42 +4425,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_feedback_cursor",
           "description": "Validated pull-request feedback cursor.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_report",
-          "description": "Canonical CI report including mandatory and extra checks.",
           "purpose": "ordinary"
         },
         {
@@ -4640,42 +4559,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
+          "key": "ci_report",
+          "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_feedback_cursor",
           "description": "Validated pull-request feedback cursor.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_report",
-          "description": "Canonical CI report including mandatory and extra checks.",
           "purpose": "ordinary"
         }
       ]
@@ -4784,42 +4688,27 @@
         },
         {
           "key": "pr_head_oid",
-          "description": "Actual pull-request head commit observed for this CI cycle.",
+          "description": "Observed pull-request head commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "pr_base_oid",
-          "description": "Actual pull-request base commit observed for this CI cycle; never policy P.",
+          "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of expected_ci_checks.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the immutable selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Flat canonical policy snapshot for the current CI cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "pr_feedback_cursor",
-          "description": "Validated pull-request feedback cursor.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "ci_report",
           "description": "CI/check status report, including failures, skipped checks, or accepted absent checks.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Validated pull-request feedback cursor.",
           "purpose": "ordinary"
         }
       ]
@@ -5151,15 +5040,27 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
+          },
+          {
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           },
           {
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           }
         ]
       },
@@ -5240,35 +5141,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           },
           {
             "name": "blocker_reason",
@@ -5337,11 +5226,11 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Immutable S05 carrier field: pr_head_oid."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Immutable S05 carrier field: pr_base_oid."
+            "description": "Observed pull-request base commit for this CI cycle."
           }
         ]
       },
@@ -5551,35 +5440,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           },
           {
             "name": "pr_report",
@@ -5708,35 +5585,27 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
           },
           {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
+            "name": "pr_report",
+            "description": "PR creation, review, conflict, or post-CI regression report."
           },
           {
             "name": "blocker_reason",
@@ -5821,35 +5690,27 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
           },
           {
-            "name": "ci_report",
-            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+            "name": "pr_report",
+            "description": "PR creation, review, conflict, or post-CI regression report."
           },
           {
             "name": "blocker_reason",
@@ -5959,27 +5820,15 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "pr_feedback_cursor",
@@ -5987,7 +5836,7 @@
           },
           {
             "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "blocker_reason",
@@ -6486,11 +6335,19 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
+          },
+          {
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ]
       },
@@ -6580,35 +6437,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ]
       },
@@ -6676,8 +6521,36 @@
             "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
           },
           {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "merge_strategy",
+            "description": "Concrete strategy resolved from repository rules; currently rebase."
+          },
+          {
+            "name": "pr_head_oid",
+            "description": "Observed pull-request head commit for this CI cycle."
+          },
+          {
+            "name": "pr_base_oid",
+            "description": "Observed pull-request base commit for this CI cycle."
+          },
+          {
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
+          },
+          {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ]
       },
@@ -6760,11 +6633,11 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Immutable S05 carrier field: pr_head_oid."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Immutable S05 carrier field: pr_base_oid."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
             "name": "release_version",
@@ -7007,6 +6880,38 @@
             "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
           },
           {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "merge_strategy",
+            "description": "Concrete strategy resolved from repository rules; currently rebase."
+          },
+          {
+            "name": "pr_head_oid",
+            "description": "Observed pull-request head commit for this CI cycle."
+          },
+          {
+            "name": "pr_base_oid",
+            "description": "Observed pull-request base commit for this CI cycle."
+          },
+          {
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
+          },
+          {
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           }
@@ -7089,35 +6994,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ]
       },
@@ -7139,6 +7032,26 @@
           {
             "name": "pr_report",
             "description": "PR creation, review, conflict, or post-CI regression report."
+          },
+          {
+            "name": "pr_head_oid",
+            "description": "Observed pull-request head commit for this CI cycle."
+          },
+          {
+            "name": "pr_base_oid",
+            "description": "Observed pull-request base commit for this CI cycle."
+          },
+          {
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ]
       },
@@ -7219,35 +7132,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           },
           {
             "name": "waiting_reason",
@@ -7503,35 +7404,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ]
       },
@@ -7612,35 +7501,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ]
       },
@@ -7721,35 +7598,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ]
       },
@@ -7830,35 +7695,27 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "pr_report",
+            "description": "PR creation, review, conflict, or post-CI regression report."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ]
       },
@@ -7939,35 +7796,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           },
           {
             "name": "blocker_reason",
@@ -8052,35 +7897,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ]
       },
@@ -8161,35 +7994,27 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "pr_report",
+            "description": "PR creation, review, conflict, or post-CI regression report."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ]
       },
@@ -8218,11 +8043,11 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           }
         ]
       },
@@ -8303,35 +8128,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           },
           {
             "name": "blocker_reason",
@@ -8364,11 +8177,11 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           }
         ]
       },
@@ -8574,27 +8387,15 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "pr_feedback_cursor",
@@ -8679,35 +8480,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ]
       },
@@ -8788,35 +8577,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           },
           {
             "name": "blocker_reason",
@@ -8901,35 +8678,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ]
       },
@@ -9010,35 +8775,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ]
       }
@@ -9631,6 +9384,16 @@
             "name": "pr_base_oid",
             "source": "transition_output",
             "field": "pr_base_oid"
+          },
+          {
+            "name": "ci_contract",
+            "source": "transition_output",
+            "field": "ci_contract"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -9708,11 +9471,19 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
+          },
+          {
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ],
         "assignee_selection_applicability": {
@@ -9856,34 +9627,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -9961,35 +9717,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ],
         "assignee_selection_applicability": {
@@ -10082,9 +9826,44 @@
             "field": "verification_summary"
           },
           {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "merge_strategy",
+            "source": "transition_output",
+            "field": "merge_strategy"
+          },
+          {
+            "name": "pr_head_oid",
+            "source": "transition_output",
+            "field": "pr_head_oid"
+          },
+          {
+            "name": "pr_base_oid",
+            "source": "transition_output",
+            "field": "pr_base_oid"
+          },
+          {
+            "name": "ci_contract",
+            "source": "transition_output",
+            "field": "ci_contract"
+          },
+          {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -10149,8 +9928,36 @@
             "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
           },
           {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "merge_strategy",
+            "description": "Concrete strategy resolved from repository rules; currently rebase."
+          },
+          {
+            "name": "pr_head_oid",
+            "description": "Observed pull-request head commit for this CI cycle."
+          },
+          {
+            "name": "pr_base_oid",
+            "description": "Observed pull-request base commit for this CI cycle."
+          },
+          {
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
+          },
+          {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ],
         "assignee_selection_applicability": {
@@ -10394,11 +10201,11 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Immutable S05 carrier field: pr_head_oid."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Immutable S05 carrier field: pr_base_oid."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
             "name": "release_version",
@@ -10867,6 +10674,46 @@
             "field": "verification_summary"
           },
           {
+            "name": "pr_url",
+            "source": "transition_output",
+            "field": "pr_url"
+          },
+          {
+            "name": "branch_name",
+            "source": "transition_output",
+            "field": "branch_name"
+          },
+          {
+            "name": "merge_strategy",
+            "source": "transition_output",
+            "field": "merge_strategy"
+          },
+          {
+            "name": "pr_head_oid",
+            "source": "transition_output",
+            "field": "pr_head_oid"
+          },
+          {
+            "name": "pr_base_oid",
+            "source": "transition_output",
+            "field": "pr_base_oid"
+          },
+          {
+            "name": "ci_contract",
+            "source": "transition_output",
+            "field": "ci_contract"
+          },
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
+          },
+          {
             "name": "blocker_reason",
             "source": "transition_output",
             "field": "blocker_reason"
@@ -10932,6 +10779,38 @@
           {
             "name": "verification_summary",
             "description": "Explicit verification summary for this transition; not part of the profile checkpoint."
+          },
+          {
+            "name": "pr_url",
+            "description": "URL of the created, updated, or monitored pull request."
+          },
+          {
+            "name": "branch_name",
+            "description": "Name of the task or release branch associated with the pull request."
+          },
+          {
+            "name": "merge_strategy",
+            "description": "Concrete strategy resolved from repository rules; currently rebase."
+          },
+          {
+            "name": "pr_head_oid",
+            "description": "Observed pull-request head commit for this CI cycle."
+          },
+          {
+            "name": "pr_base_oid",
+            "description": "Observed pull-request base commit for this CI cycle."
+          },
+          {
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           },
           {
             "name": "blocker_reason",
@@ -11053,34 +10932,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -11158,35 +11022,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ],
         "assignee_selection_applicability": {
@@ -11222,6 +11074,31 @@
             "name": "pr_report",
             "source": "transition_output",
             "field": "pr_report"
+          },
+          {
+            "name": "pr_head_oid",
+            "source": "transition_output",
+            "field": "pr_head_oid"
+          },
+          {
+            "name": "pr_base_oid",
+            "source": "transition_output",
+            "field": "pr_base_oid"
+          },
+          {
+            "name": "ci_contract",
+            "source": "transition_output",
+            "field": "ci_contract"
+          },
+          {
+            "name": "ci_report",
+            "source": "transition_output",
+            "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -11240,6 +11117,26 @@
           {
             "name": "pr_report",
             "description": "PR creation, review, conflict, or post-CI regression report."
+          },
+          {
+            "name": "pr_head_oid",
+            "description": "Observed pull-request head commit for this CI cycle."
+          },
+          {
+            "name": "pr_base_oid",
+            "description": "Observed pull-request base commit for this CI cycle."
+          },
+          {
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
+          },
+          {
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ],
         "assignee_selection_applicability": {
@@ -11357,34 +11254,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           },
           {
             "name": "waiting_reason",
@@ -11467,35 +11349,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           },
           {
             "name": "waiting_reason",
@@ -12042,34 +11912,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -12147,35 +12002,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ],
         "assignee_selection_applicability": {
@@ -12293,34 +12136,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -12398,35 +12226,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ],
         "assignee_selection_applicability": {
@@ -12544,34 +12360,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -12649,35 +12450,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ],
         "assignee_selection_applicability": {
@@ -12795,34 +12584,24 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "pr_report",
             "source": "transition_output",
-            "field": "expected_ci_checks"
+            "field": "pr_report"
           },
           {
-            "name": "expected_ci_checks_sha256",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -12900,35 +12679,27 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "pr_report",
+            "description": "PR creation, review, conflict, or post-CI regression report."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ],
         "assignee_selection_applicability": {
@@ -13046,34 +12817,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           },
           {
             "name": "blocker_reason",
@@ -13156,35 +12912,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           },
           {
             "name": "blocker_reason",
@@ -13306,34 +13050,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -13411,35 +13140,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ],
         "assignee_selection_applicability": {
@@ -13557,34 +13274,24 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "pr_report",
             "source": "transition_output",
-            "field": "expected_ci_checks"
+            "field": "pr_report"
           },
           {
-            "name": "expected_ci_checks_sha256",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -13662,35 +13369,27 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "pr_report",
+            "description": "PR creation, review, conflict, or post-CI regression report."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ],
         "assignee_selection_applicability": {
@@ -13766,11 +13465,11 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           }
         ],
         "assignee_selection_applicability": {
@@ -13888,34 +13587,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           },
           {
             "name": "blocker_reason",
@@ -13998,35 +13682,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           },
           {
             "name": "blocker_reason",
@@ -14106,11 +13778,11 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Observed PR head."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Observed PR base."
+            "description": "Observed pull-request base commit for this CI cycle."
           }
         ],
         "assignee_selection_applicability": {
@@ -15038,24 +14710,9 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
+            "field": "ci_contract"
           },
           {
             "name": "pr_feedback_cursor",
@@ -15138,27 +14795,15 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "pr_feedback_cursor",
@@ -15280,34 +14925,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -15385,35 +15015,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ],
         "assignee_selection_applicability": {
@@ -15531,34 +15149,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           },
           {
             "name": "blocker_reason",
@@ -15641,35 +15244,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           },
           {
             "name": "blocker_reason",
@@ -15791,34 +15382,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -15896,35 +15472,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
+            "name": "ci_report",
+            "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
           },
           {
             "name": "pr_feedback_cursor",
             "description": "Validated pull-request feedback cursor."
-          },
-          {
-            "name": "ci_report",
-            "description": "Canonical CI report including mandatory and extra checks."
           }
         ],
         "assignee_selection_applicability": {
@@ -16042,34 +15606,19 @@
             "field": "pr_base_oid"
           },
           {
-            "name": "expected_ci_checks",
+            "name": "ci_contract",
             "source": "transition_output",
-            "field": "expected_ci_checks"
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "source": "transition_output",
-            "field": "expected_ci_checks_sha256"
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "source": "transition_output",
-            "field": "runtime_source_envelope_digest"
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "source": "transition_output",
-            "field": "ci_policy_snapshot"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
+            "field": "ci_contract"
           },
           {
             "name": "ci_report",
             "source": "transition_output",
             "field": "ci_report"
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "source": "transition_output",
+            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -16147,35 +15696,23 @@
           },
           {
             "name": "pr_head_oid",
-            "description": "Actual pull-request head commit observed for this CI cycle."
+            "description": "Observed pull-request head commit for this CI cycle."
           },
           {
             "name": "pr_base_oid",
-            "description": "Actual pull-request base commit observed for this CI cycle; never policy P."
+            "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "expected_ci_checks",
-            "description": "Canonical source-derived mandatory CI checks for the current target-policy/head cycle."
-          },
-          {
-            "name": "expected_ci_checks_sha256",
-            "description": "SHA-256 digest of expected_ci_checks."
-          },
-          {
-            "name": "runtime_source_envelope_digest",
-            "description": "Digest of the immutable selected-head runtime source envelope."
-          },
-          {
-            "name": "ci_policy_snapshot",
-            "description": "Flat canonical policy snapshot for the current CI cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
           },
           {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ],
         "assignee_selection_applicability": {

@@ -10,6 +10,7 @@
     ".kent/commands/release.md",
     ".kent/scripts/tests/test-github-release-workflow",
     ".kent/scripts/tests/test-puber-release-graph",
+    ".kent/scripts/tests/test-puber-release-session-roles",
     ".kent/scripts/tests/test-runtime-v2-command-closure",
     ".kent/scripts/tests/test-workflow-puber-release-intent",
     ".kent/scripts/tests/test-workflow-puber-release-profile-generation",
@@ -24,6 +25,7 @@
     ".kent/scripts/workflow-wait-github-release",
     ".kent/subagents/release-manager.md",
     ".kent/workflows/README.md",
+    ".kent/workflows/specs/puber-engineering-delivery-v22.json",
     "app/build.gradle.kts",
     "docs/release.md",
     "tools/agentw",
@@ -35,7 +37,7 @@
   "external_roots": [
     {
       "kind": "builder-sha256",
-      "key": "0523bd0573ff22c4399eb9e4791573969d722da99bd3f65ab9beec34fedbdbf2",
+      "key": "7cbe4940ccf9510742d96ed89a953239e6f852437c056a96918ab9e0052f06e1",
       "runtime_digest_required": true
     },
     {
@@ -45,7 +47,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/compliance-review.md=4e6f7dbdc0065426ae497fcf02c475b8545ad400abecade0f310f306bed6c1f4",
+      "key": ".kent/commands/compliance-review.md=73b9ed71d6ad0b4bb93802687f7250b7a8a271b3bedf2222c2c4c207dc755ef9",
       "runtime_digest_required": true
     },
     {
@@ -60,12 +62,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/release.md=32b898bcc138958c44f4a207d1bba6b13143abc35f42b22019d5d7f3b2f59197",
+      "key": ".kent/commands/release.md=6e1100f5b5631b2e56e274f015e7a926f16f60c1fe98b8e5d84a10a41a16fe3e",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/ship-pr.md=ef53b19a331e8a7c9b9fb321fe177f377af5c4fcbbd61027b1c84b46e4eda652",
+      "key": ".kent/commands/ship-pr.md=c45b9b49399d66601c816bde3666855b6dfca5130f71d1fb6a6a4d26d11698c9",
       "runtime_digest_required": true
     },
     {
@@ -80,17 +82,22 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-puber-release-graph=f4f89b805f729274fe3542596490821c892bf16f0893b64bd75434c57df618be",
+      "key": ".kent/scripts/tests/test-puber-release-graph=95bd327979d46bbc8e0a9fa8bc7bd75bf02446d21cbe630769372873f89703f3",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-runtime-v2-command-closure=58dda1b331d03c13eeb766ab4d6708a84f80e1ba06dc7b94c457003a9f5e97ae",
+      "runtime_digest_required": true,
+      "key": ".kent/scripts/tests/test-puber-release-session-roles=ac699615c8029c99340a99cd33ba46cf5c715bd9f83cbc06e84107e49d548b60"
+    },
+    {
+      "kind": "source-sha256",
+      "key": ".kent/scripts/tests/test-runtime-v2-command-closure=8d78165e7012422548e00f864066fdcf1ba9eccb9a877bf2eaa9cedae6b43008",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-puber-release-intent=54286aa7110b85e23b34b12e57b2d5d5d7ccf6b2cf365deadabd69025d494726",
+      "key": ".kent/scripts/tests/test-workflow-puber-release-intent=4078a143dd39fdaf5d5d3fb74bba085cf9c86e9c014b04da42b00c1085d76f51",
       "runtime_digest_required": true
     },
     {
@@ -100,7 +107,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-puber-release-publish=7a6eb3840a7a632250e05afe6d44a9ba8380d100b32ffe646f06d905f0605e28",
+      "key": ".kent/scripts/tests/test-workflow-puber-release-publish=52aca4027c146f9d4fa89949ce3d5354ff9c4398daca1213b5a1c877396db8f9",
       "runtime_digest_required": true
     },
     {
@@ -110,12 +117,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-verify-report=7246ef5b8ce04ff101b4e036b280571c386c67a94358ad58ce6695787adabc41",
+      "key": ".kent/scripts/tests/test-workflow-verify-report=beb9f5bcac385cc572107e692bdc8a8430a2aa4e95df3a981e8369d9b4ac3df9",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-wait-github-release=75ef9af1ba79dfdd7b39c5becfd5ff2573bd8ce28185163cfc1480d1c6273103",
+      "key": ".kent/scripts/tests/test-workflow-wait-github-release=b0bb8c000bb1a3f3f9df9dab0850af5828c90b028e490103aa4e7d4445599c82",
       "runtime_digest_required": true
     },
     {
@@ -125,12 +132,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-puber-release-ci=b45bef044f2dc987efeef07134bfa40487106003385bb2a41cd0d1e6fc7e94fa",
+      "key": ".kent/scripts/workflow-puber-release-ci=f9dd5cffbf984f486cb4bbc61d02ab1cd01541989a4fdf173120457f29704be8",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-puber-release-intent=8bbb6df21718a03d4d9be1da46f0132fb56d9e440847356b834b63f09895d568",
+      "key": ".kent/scripts/workflow-puber-release-intent=46e49e50bfb3d86bb466c7ab991c639f9f1a56fa7faceb3dc98b53355e510218",
       "runtime_digest_required": true
     },
     {
@@ -145,12 +152,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-release-cleanup=fee7248249f9743da8d77ec6c723663bf4b16839981f3e30727c2151751bfaee",
+      "key": ".kent/scripts/workflow-release-cleanup=f0299a176ed70c6131dfaa37ba477826e9418d04d249a516aa59711b3d855dad",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-task-janitor=73a774a2a9d22fd1bf8390487c4fc23e03928882c433cc7795146063d6d907a3",
+      "key": ".kent/scripts/workflow-task-janitor=46e7b163a0c739754e53d6321054adaaa227c5d8113bf3cda22046c05915397c",
       "runtime_digest_required": true
     },
     {
@@ -160,12 +167,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-wait-github-ci=36c257ad39b59804444c84dc6c51fea479ae55a3e9ae260d062b9aa2dcf10332",
+      "key": ".kent/scripts/workflow-wait-github-ci=c913f57926a3b5ab537fb885f7105600a62f436e8661e0834d6187f64385fd1b",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-wait-github-pr=18d13a15b9dbdf5f902de7e85456a104a65216aaac07520ab2cfadd8cd334b55",
+      "key": ".kent/scripts/workflow-wait-github-pr=af19c6434cbfded1ea53abb52881e82b5abae4379c07cf98a39a20f0b2fe9e25",
       "runtime_digest_required": true
     },
     {
@@ -175,13 +182,48 @@
     },
     {
       "kind": "source-sha256",
+      "runtime_digest_required": true,
+      "key": ".kent/scripts/workflow_github_observation.py=5d8c34d104c5885217a50cc86d1e85c3a9ae1f833f2e229fffc86af1e2dfc077"
+    },
+    {
+      "kind": "source-sha256",
+      "runtime_digest_required": true,
+      "key": ".kent/scripts/workflow_runtime_contracts.py=1a72a4b1231646521a0891642aa4055cde5ab2cbaf639acd4df1716a4c77415a"
+    },
+    {
+      "kind": "source-sha256",
       "key": ".kent/subagents/release-manager.md=0b6f7cbcb59bf2b21444371144b3fcb1c9c1759d708f26ebb26e79f978b51f8a",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
+      "runtime_digest_required": true,
+      "key": ".kent/workflow-profile.toml=ffa6e753ce4bcb6662fc82fbabb6b102c63662b0eaa0136530c2165a99f5b76b"
+    },
+    {
+      "kind": "source-sha256",
       "key": ".kent/workflows/README.md=92635c548a285f76c8447640df2afc93d38f526c4af6311bf0525bf56ca9e852",
       "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "runtime_digest_required": true,
+      "key": ".kent/workflows/builders/puber_release.py=7cbe4940ccf9510742d96ed89a953239e6f852437c056a96918ab9e0052f06e1"
+    },
+    {
+      "kind": "source-sha256",
+      "runtime_digest_required": true,
+      "key": ".kent/workflows/puber-release.json=e85eaa4a071ab9a785515d9af50b1b34a0d815f99d8e312baaf080ce893515c5"
+    },
+    {
+      "kind": "source-sha256",
+      "runtime_digest_required": true,
+      "key": ".kent/workflows/specs/puber-engineering-delivery-v21.json=9a60e63bcb99d037126ffdbc3babdc96cec7d2a222f40075f93fd78d3f9362be"
+    },
+    {
+      "kind": "source-sha256",
+      "runtime_digest_required": true,
+      "key": ".kent/workflows/specs/puber-engineering-delivery-v22.json=2ffddb61cf67bdaf0c75e29c3ebc443885d07abbf13ba3cab2364e79dde32c86"
     },
     {
       "kind": "source-sha256",

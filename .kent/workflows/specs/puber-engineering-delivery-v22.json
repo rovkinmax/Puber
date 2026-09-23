@@ -1,5 +1,5 @@
 {
-  "name": "Puber Engineering Delivery v21",
+  "name": "Puber Engineering Delivery v22",
   "description": "Plan, implement, independently verify, fix, and deliver an engineering change for Puber.",
   "execution_target": "ask-on-first-execution",
   "nodes": [
@@ -1021,6 +1021,41 @@
           "key": "review_context",
           "description": "Implementation, fix, report, and artifact context required by verification.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1076,6 +1111,41 @@
           "key": "review_context",
           "description": "Implementation, fix, report, and artifact context required by verification.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1101,6 +1171,41 @@
           "key": "fix_context",
           "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1125,6 +1230,41 @@
         {
           "key": "fix_context",
           "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1301,6 +1441,36 @@
           "key": "task_short_id",
           "description": "Stable human-readable Kent task short ID.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1314,12 +1484,47 @@
       "target": "fix",
       "context": "new_session",
       "context_source": "immediate_source",
-      "prompt": "Restart the `fix` stage in a fresh bounded session after user action.\n\nPrevious blocker: {{.Params.blocker_reason}}\n\nRead `.kent/context/implement.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `fix`, `evidence_type` to\n`implementation`, and `context.manifest_path` to `.kent/context/implement.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nRead the task body, current task comments, project instructions, authoritative\ntask artifacts, preserved worktree diff, and existing evidence before editing\nor repeating checks. If user feedback changed a product decision or acceptance\ncriterion, update the authoritative design/specification/plan first and\nreference the exact task-comment ID. Do not restart completed work.\n\nApply exactly one independently verifiable remaining fix slice. Update the\nauthoritative fix checklist. Choose `fix_continue_fix` with `workspace_path`,\n`task_short_id={{.TaskShortId}}`, and a refreshed `fix_context` containing only\nthe remaining findings, or choose `fix_verify` with the same `task_short_id` plus\nthe complete `review_context` when no fix slice remains.\n\nApproval means only that the exact reported blocker action is now complete; it\nis not acknowledgement that waiting may begin. Verify resolution before\nediting. If the blocker remains, preserve task scope and return\n`fix_needs_user_action` again. Do not infer approval for any broader or destructive\naction.\nIf the latest user instruction explicitly cancels the task, choose `fix_wont_do` and provide `closure_reason`.",
+      "prompt": "Restart the `fix` stage in a fresh bounded session after user action.\n\nPrevious blocker: {{.Params.blocker_reason}}\n\nRead `.kent/context/implement.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `fix`, `evidence_type` to\n`implementation`, and `context.manifest_path` to `.kent/context/implement.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nRead the task body, current task comments, project instructions, authoritative\ntask artifacts, preserved worktree diff, and existing evidence before editing\nor repeating checks. If user feedback changed a product decision or acceptance\ncriterion, update the authoritative design/specification/plan first and\nreference the exact task-comment ID. Do not restart completed work.\n\nApply exactly one independently verifiable remaining fix slice. Update the\nauthoritative fix checklist. Choose `fix_continue_fix` with `workspace_path`,\n`task_short_id={{.TaskShortId}}`, and a refreshed `fix_context` containing only\nthe remaining findings, or choose `fix_verify` with the same `task_short_id` plus\nthe complete `review_context` when no fix slice remains.\n\nApproval means only that the exact reported blocker action is now complete; it\nis not acknowledgement that waiting may begin. Verify resolution before\nediting. If the blocker remains, preserve task scope and return\n`fix_needs_user_action` again. Do not infer approval for any broader or destructive\naction.\nPreserve the exact PR identity, CI contract/report, and acknowledged feedback cursor through Fix recovery.\nIf the latest user instruction explicitly cancels the task, choose `fix_wont_do` and provide `closure_reason`.",
       "transition_description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
       "parameters": [
         {
           "key": "blocker_reason",
           "description": "Exact blocker and the next user or external action required.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1371,6 +1576,36 @@
           "key": "task_short_id",
           "description": "Stable human-readable Kent task short ID.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1395,6 +1630,41 @@
         {
           "key": "review_context",
           "description": "Implementation, fix, report, and artifact context required by verification.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1421,6 +1691,41 @@
           "key": "fix_context",
           "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1445,6 +1750,41 @@
         {
           "key": "review_context",
           "description": "Implementation, fix, report, and artifact context required by verification.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1471,6 +1811,41 @@
           "key": "review_context",
           "description": "Implementation, fix, report, and artifact context required by verification.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1496,6 +1871,41 @@
           "key": "verification_report",
           "description": "Deterministic verification command, result, and report or log location.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1511,7 +1921,43 @@
       "context_source": "immediate_source",
       "prompt": "Evaluate the joined verification reports without editing files.\n\nRead `.kent/context/review.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `verification_gate`, `evidence_type` to\n`review`, and `context.manifest_path` to `.kent/context/review.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nWorkspace: {{.Params.verification_dispatch_fanout_verify.workspace_path}}\nReview context: {{.Params.verification_dispatch_fanout_verify.review_context}}\nVerification status: {{.Params.verification_status}}\nVerification report: {{.Params.verification_report}}\nStandards status: {{.Params.standards_status}}\nStandards report: {{.Params.standards_report}}\nSpec status: {{.Params.spec_status}}\nSpec report: {{.Params.review_report}}\n\nApply the `workflow-gate` role contract. Choose a delivery transition only when\nevery enabled status is `passed`. Do not poll or classify PR CI here; delivery\nowns CI after PR preparation. Keep full reports in `review_context` and make\nuser-facing commentary name only a real decision or external action.\n\nFor `verification_gate_needs_changes`, emit the deduplicated, dependency-ordered repair bundle\nrequired by the `workflow-gate` role contract.\n\nProvide `workspace_path`, a refreshed `review_context` summarizing all reports,\nand the required Smoke decision fields. The refreshed `review_context` must\nrecord the profile Smoke policy, selected transition, rationale, and required\nscope or concrete evidence for bypassing Smoke.\n\nProject policy makes runtime Smoke conditional.\nUse .kent/commands/smoke-policy.md as the project procedure.\nChoose `verification_gate_smoke_required` for user-visible or runtime behavior, navigation, state\nor data flow, permissions or security, storage or migrations, external\nintegration, browser/device/hardware interaction, explicit acceptance criteria,\nor uncertain runtime impact. Provide `smoke_rationale` and a focused\n`smoke_scope`.\n\nChoose `verification_gate_delivery_ready` only for changes proven not to affect a runtime\nartifact or user-observable behavior, and provide an evidence-based\n`smoke_rationale`. Uncertainty must route to `verification_gate_smoke_required`. Resource\nunavailability must never downgrade the decision.\n\nChoose `verification_gate_needs_changes` for task-scoped failures and provide `workspace_path`\nplus `fix_context`. Choose `verification_gate_needs_user_action` for external or contradictory\nblockers and provide `workspace_path`, `review_context`, and `blocker_reason`;\nafter approval every verification branch reruns. Choose `verification_gate_wont_do` only for an\nexplicit cancellation decision and provide `closure_reason`.",
       "transition_description": "All direct verification branches reported; evaluate them.",
-      "parameters": [],
+      "parameters": [
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
+        }
+      ],
       "assignee_selection": "configured",
       "thinking_selection": "configured",
       "requires_approval": false
@@ -1534,6 +1980,41 @@
         {
           "key": "standards_report",
           "description": "Read-only repository standards, architecture, and engineering report.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1560,6 +2041,41 @@
           "key": "review_report",
           "description": "Read-only specification and acceptance-criteria review report.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1584,6 +2100,41 @@
         {
           "key": "fix_context",
           "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1614,6 +2165,41 @@
         {
           "key": "blocker_reason",
           "description": "Exact blocker and the next user or external action required.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1670,6 +2256,41 @@
           "key": "smoke_scope",
           "description": "Focused runtime scenarios and surfaces that smoke testing must exercise.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1700,6 +2321,41 @@
           "key": "smoke_rationale",
           "description": "Evidence-based reason that runtime smoke is required or may be skipped.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1725,6 +2381,41 @@
           "key": "review_context",
           "description": "Implementation, fix, report, and artifact context required by verification.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1749,6 +2440,41 @@
         {
           "key": "fix_context",
           "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1783,7 +2509,7 @@
       "target": "prepare_pr",
       "context": "new_session",
       "context_source": "immediate_source",
-      "prompt": "Prepare delivery for {{.TaskShortId}}.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `prepare_pr`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nWorkspace: {{.Params.workspace_path}}. Review context:\n{{.Params.review_context}}\n\nFor runtime-contract v2, initialize the outgoing PR feedback cursor to the literal `uninitialized` on the first PR watcher edge; do not read an incoming cursor here.\n\nFinal Compliance Review: {{.Params.compliance_report}}\n\nUse .kent/commands/ship-pr.md as the project procedure.\n\nThis workflow explicitly authorizes committing the task changes, pushing only\nthe current task branch, and creating or updating its pull request. It never\nauthorizes merging, pushing protected branches, or broadening scope.\n\nTreat `git branch --show-current` as branch authority. The branch may differ\nfrom the Kent task short ID when the project enabled deterministic branch\nidentity; never reconstruct or reject it by comparing branch text with\n`{{.TaskShortId}}`.\n\nIf the task source URL or body identifies an issue in the same repository and\nthis task fully resolves it, include the provider-native closing reference in\nthe pull-request body, such as `Fixes #N` on GitHub. Use a non-closing link for\ncross-repository, partial, or follow-up relationships. Read the task's current\n`source_url` through Kent task metadata when it is not already visible in the\nprompt; do not infer issue linkage from branch text alone.\n\nConfigured PR merge policy: `auto`.\n\nApply the `delivery-operator` role contract. Resolve the strategy once before\npublishing. On GitHub, serialize repository capabilities, target branch\nprotection, applicable rulesets, merge queue, and PR method state, then run:\n\n`~/.kent/bin/kent-resolve-github-merge-strategy --policy auto`\n\nThe adapter's structured result is authoritative for strategy selection.\nContinue only when it returns `outcome=resolved`; for\n`outcome=needs_user_action`, preserve its code, candidates, and reason instead\nof manually choosing. Validate the resolved method through the role's\nmethod-specific contract before and after creating or updating the PR.\n\nBefore committing, prove that the checkout is on a task-owned branch permitted\nby the project contract. A source workspace, detached checkout, protected\nbranch, or ambiguous branch owner must route to `prepare_pr_needs_user_action`; never push\nthrough that ambiguity.\n\nComplete through `prepare_pr_monitor_ci` and provide `workspace_path`, `pr_url`, and\n`branch_name`, plus the resolved `merge_strategy`.\nSource-contract CI also requires `task_short_id={{.TaskShortId}}`.\nIf no PR is genuinely\napplicable, choose `prepare_pr_no_pr` and provide `pr_report`; this path requires\napproval. Use `prepare_pr_needs_changes` with `workspace_path` and `blocker_reason` for\nrecoverable PR/branch issues; this path also requires approval. Use\n`prepare_pr_needs_user_action` with `blocker_reason` for external blockers.\n\nPrepare PR emits `pr_feedback_cursor=uninitialized`; delivery preserves\nsupplied cursors and never synthesizes materialized cursors. Only the\ndeterministic PR watcher resets invalid cursors to `uninitialized` with\n`pull_request_feedback_invalid`.",
+      "prompt": "Prepare delivery for {{.TaskShortId}}.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `prepare_pr`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nWorkspace: {{.Params.workspace_path}}. Review context:\n{{.Params.review_context}}\n\nPreserve a same-PR feedback cursor; initialize `uninitialized` only for a new PR. Never reset it after Fix or verification.\n\nFinal Compliance Review: {{.Params.compliance_report}}\n\nUse .kent/commands/ship-pr.md as the project procedure.\n\nThis workflow explicitly authorizes committing the task changes, pushing only\nthe current task branch, and creating or updating its pull request. It never\nauthorizes merging, pushing protected branches, or broadening scope.\n\nTreat `git branch --show-current` as branch authority. The branch may differ\nfrom the Kent task short ID when the project enabled deterministic branch\nidentity; never reconstruct or reject it by comparing branch text with\n`{{.TaskShortId}}`.\n\nIf the task source URL or body identifies an issue in the same repository and\nthis task fully resolves it, include the provider-native closing reference in\nthe pull-request body, such as `Fixes #N` on GitHub. Use a non-closing link for\ncross-repository, partial, or follow-up relationships. Read the task's current\n`source_url` through Kent task metadata when it is not already visible in the\nprompt; do not infer issue linkage from branch text alone.\n\nConfigured PR merge policy: `auto`.\n\nApply the `delivery-operator` role contract. Resolve the strategy once before\npublishing. On GitHub, serialize repository capabilities, target branch\nprotection, applicable rulesets, merge queue, and PR method state, then run:\n\n`~/.kent/bin/kent-resolve-github-merge-strategy --policy auto`\n\nThe adapter's structured result is authoritative for strategy selection.\nContinue only when it returns `outcome=resolved`; for\n`outcome=needs_user_action`, preserve its code, candidates, and reason instead\nof manually choosing. Validate the resolved method through the role's\nmethod-specific contract before and after creating or updating the PR.\n\nBefore committing, prove that the checkout is on a task-owned branch permitted\nby the project contract. A source workspace, detached checkout, protected\nbranch, or ambiguous branch owner must route to `prepare_pr_needs_user_action`; never push\nthrough that ambiguity.\n\nComplete through `prepare_pr_monitor_ci` and provide `workspace_path`, `pr_url`, and\n`branch_name`, plus the resolved `merge_strategy`.\nSource-contract CI also requires `task_short_id={{.TaskShortId}}`.\nIf no PR is genuinely\napplicable, choose `prepare_pr_no_pr` and provide `pr_report`; this path requires\napproval. Use `prepare_pr_needs_changes` with `workspace_path` and `blocker_reason` for\nrecoverable PR/branch issues; this path also requires approval. Use\n`prepare_pr_needs_user_action` with `blocker_reason` for external blockers.\n\nPrepare PR preserves supplied same-PR cursor; initialize only for a new PR.\ndelivery preserves supplied cursors and never synthesizes materialized cursors.\nOnly the deterministic PR watcher resets invalid cursors to `uninitialized`\nwith `pull_request_feedback_invalid`.",
       "transition_description": "Final compliance passed; prepare or update the task pull request.",
       "parameters": [
         {
@@ -1799,6 +2525,41 @@
         {
           "key": "compliance_report",
           "description": "Final delivery compliance attestation and any blocking findings.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1824,6 +2585,41 @@
         {
           "key": "fix_context",
           "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1855,6 +2651,41 @@
           "key": "evidence_context",
           "description": "Packaging-only evidence findings and exact artifacts permitted for repair.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -1884,6 +2715,41 @@
         {
           "key": "blocker_reason",
           "description": "Exact blocker and the next user or external action required.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1916,7 +2782,7 @@
       "source": "evidence_repair",
       "transition": "evidence_repair_recheck_compliance",
       "target": "compliance",
-      "context": "continue_session",
+      "context": "compact_and_continue_session",
       "context_source": "previous_target",
       "prompt": "Recheck final Compliance after packaging-only evidence repair.\n\nRead `.kent/context/review.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `compliance`, `evidence_type` to\n`review`, and `context.manifest_path` to `.kent/context/review.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nWorkspace: {{.Params.workspace_path}}\nUpdated review context: {{.Params.review_context}}\n\nUse .kent/commands/compliance-review.md as the project procedure.\n\nApply the retained `compliance_reviewer` role context only to the repaired\nevidence artifacts. Confirm they agree with already-passed substantive results;\ndo not repeat code, architecture, specification, build, or runtime review.\n\nChoose `compliance_ship_pr` with `workspace_path`, `review_context`, and\n`compliance_report` when the package is complete. Choose `compliance_repair_evidence`\nagain only for another packaging-only defect and provide `evidence_context`.\nChoose `compliance_needs_changes` with `workspace_path` and `fix_context` only when the\nrepair exposed a substantive task defect. Use `compliance_needs_user_action` with\n`workspace_path`, `review_context`, and `blocker_reason` for an external or\nauthority blocker. Choose `compliance_wont_do` only for explicit cancellation and provide\n`closure_reason`.",
       "transition_description": "Packaging evidence was repaired; rerun only final Compliance Review.",
@@ -1929,6 +2795,41 @@
         {
           "key": "review_context",
           "description": "Implementation, fix, report, and artifact context required by verification.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -1954,6 +2855,41 @@
         {
           "key": "fix_context",
           "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
           "purpose": "ordinary"
         }
       ],
@@ -2052,6 +2988,11 @@
           "purpose": "ordinary"
         },
         {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
           "key": "task_short_id",
           "description": "Stable human-readable Kent task short ID.",
           "purpose": "ordinary"
@@ -2134,7 +3075,7 @@
       "context": "new_session",
       "context_source": "immediate_source",
       "prompt": null,
-      "transition_description": "The source-derived initial CI contract is complete; watch this exact head and policy cycle.",
+      "transition_description": "The initial CI contract is complete; watch this exact PR identity cycle.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -2157,23 +3098,8 @@
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
@@ -2199,7 +3125,7 @@
       "context": "new_session",
       "context_source": "immediate_source",
       "prompt": null,
-      "transition_description": "The unchanged source-derived CI cycle is ready for another deterministic observation.",
+      "transition_description": "The unchanged CI contract is ready for another deterministic observation.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -2222,23 +3148,8 @@
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
@@ -2266,10 +3177,10 @@
       "source": "ci_prepare",
       "transition": "ci_prepare_failed",
       "target": "ci_monitor",
-      "context": "continue_session",
-      "context_source": "previous_target_or_new",
-      "prompt": "Monitor CI for {{.TaskShortId}} without editing files.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `ci_monitor`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\nDeterministic CI report: {{.Params.ci_report}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nIn the source-contract mode, mandatory identities come only from the\ntarget-branch source-derived expected contract. Unexpected failed checks are\ndiagnostics and do not independently block delivery. When a retry is allowed,\nchoose `ci_monitor_watch_ci` with the complete expected-check fields, policy snapshot,\nunchanged `ci_report`, and cursor; do not choose `waiting_pr` directly.\nExpected checks: {{.Params.expected_ci_checks}}\nExpected checks digest: {{.Params.expected_ci_checks_sha256}}\nRuntime source envelope digest: {{.Params.runtime_source_envelope_digest}}\nPolicy snapshot: {{.Params.ci_policy_snapshot}}\nTask: {{.Params.task_short_id}}\nA `ci_prepare_failed` entry is preparation diagnosis, not a terminal CI\nobservation. Missing packets are represented by empty strings only on this\ndiagnostic route. Never parse an empty `ci_report` as a report, invent a report\nor expected contract, or infer green CI. Preserve all supplied packet strings,\nincluding empty values, cursor and `task_short_id` when choosing `ci_monitor_watch_ci`;\nthis always re-enters deterministic preparation, never the watcher directly.\nOnly a bounded retry or a proven task-scoped fix/external blocker is allowed.\n\nApply the `ci-monitor` role contract to the exact terminal watcher report when present.\nDo not start another polling loop or ask for approval merely to wait. Re-read\nonly the exact PR/run/job metadata and bounded failed-job logs. If the role's\nbounded exact-job retry policy applies, perform one permitted retry and choose\n`ci_monitor_watch_ci` with `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy` plus the unchanged accumulated `ci_report`; the deterministic\nwatcher owns the wait and appends the new terminal observation. Preserve every\nattempt and failure fingerprint in `ci_report`.\n\nQuery authoritative PR merge state before classifying any failed or late check.\nIf the PR is already merged, never route the merged task branch to Fix. Complete\nwith `ci_monitor_pr_merged` and provide `workspace_path`, `pr_url`, `branch_name`, and a\n`merge_report` that includes merge proof plus the late CI state. Any actionable\npost-merge regression belongs in a separate follow-up task.\n\nIn source-contract mode there is no direct `waiting_pr` transition; the deterministic watcher must prove green after preparation.\n`workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and `ci_report`.\nUse `ci_monitor_needs_changes` with `workspace_path` and `fix_context` only for a proven\ntask-differential code or history failure. After retry exhaustion, use\n`ci_monitor_needs_user_action` only for a real external blocker or decision.\nNever use `ci_monitor_needs_user_action` merely because CI is still running.",
-      "transition_description": "CI preparation could not prove the target policy, head sources, or runtime envelope.",
+      "context": "new_session",
+      "context_source": "immediate_source",
+      "prompt": "Monitor CI for {{.TaskShortId}} without editing files.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `ci_monitor`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\nDeterministic CI report: {{.Params.ci_report}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nIn source-contract mode, the CI contract contains only the current\nPR identity and whether CI is required. It contains no expected job names or\nrelease fields. The deterministic watcher classifies every effective check\nreported for that PR; failed extras are not ignored and pending observations\nare not human actions. When a retry is allowed, choose `ci_monitor_watch_ci` with the\nunchanged validated contract, accumulated `ci_report`, and cursor; do not\nchoose `waiting_pr` directly.\nGitHub CI contract: {{.Params.ci_contract}}\nTask: {{.Params.task_short_id}}\nA `ci_prepare_failed` entry is preparation diagnosis, not a terminal\nCI observation. Missing packets are represented by empty strings only on this\ndiagnostic route. Never parse an empty `ci_report` as a report, invent a\ncontract, or infer green CI. Preserve the supplied contract, report, cursor\nand `task_short_id` when choosing `ci_monitor_watch_ci`; this always re-enters\ndeterministic preparation, never the watcher directly. Only a bounded retry\nor a proven task-scoped fix/external blocker is allowed.\n\nApply the `ci-monitor` role contract to the exact terminal watcher report when present.\nDo not start another polling loop or ask for approval merely to wait. Re-read\nonly the exact PR/run/job metadata and bounded failed-job logs. If the role's\nbounded exact-job retry policy applies, perform one permitted retry and choose\n`ci_monitor_watch_ci` with `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy` plus the unchanged accumulated `ci_report`; the deterministic\nwatcher owns the wait and appends the new terminal observation. Preserve every\nattempt and failure fingerprint in `ci_report`.\n\nQuery authoritative PR merge state before classifying any failed or late check.\nIf the PR is already merged, never route the merged task branch to Fix. Complete\nwith `ci_monitor_pr_merged` and provide `workspace_path`, `pr_url`, `branch_name`, and a\n`merge_report` that includes merge proof plus the late CI state. Any actionable\npost-merge regression belongs in a separate follow-up task.\n\nIn source-contract mode there is no direct `waiting_pr` transition; the deterministic watcher must prove green after preparation.\n`workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and `ci_report`.\nUse `ci_monitor_needs_changes` with `workspace_path` and `fix_context` for a proven\ntask-differential failure or normal target conflict; no task-differential proof\nis needed for that integration conflict. Fix re-verifies the exact PR\nhead/base. After retry exhaustion, `ci_monitor_needs_user_action` is only for an\nexternal blocker.\nNever use `ci_monitor_needs_user_action` merely because CI is still running.",
+      "transition_description": "CI preparation could not establish or validate the current PR identity and CI cycle contract.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -2292,33 +3203,18 @@
           "purpose": "ordinary"
         },
         {
-          "key": "ci_report",
-          "description": "CI checks and status summary.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "task_short_id",
           "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
           "purpose": "ordinary"
         },
         {
@@ -2371,9 +3267,9 @@
       "source": "ci_watch",
       "transition": "ci_watch_passed",
       "target": "waiting_pr",
-      "context": "continue_session",
-      "context_source": "previous_target_or_new",
-      "prompt": "Check delivery state for {{.TaskShortId}}.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `waiting_pr`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nSource-derived CI contract:\nExpected mandatory checks: {{.Params.expected_ci_checks}}\nExpected-check digest: {{.Params.expected_ci_checks_sha256}}\nRuntime source envelope digest: {{.Params.runtime_source_envelope_digest}}\nTarget policy snapshot: {{.Params.ci_policy_snapshot}}\nCI report: {{.Params.ci_report}}\nTask: {{.Params.task_short_id}}\nUse the exact source-declared mandatory identities for blocking. An extra\nfailed check is diagnostic feedback and does not independently block or wake\nthis wait. Preserve the contract and CI report through every watcher re-entry.\n\nApply the `ci-monitor` role contract. Do not merge or push. Revalidate the\nresolved method using method-specific evidence; investigate contradictory\nsource-control or user-reported feasibility without mutating the task branch.\n\nIf the PR head changed or required checks restarted, choose\n`waiting_pr_ci_required` and provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy`; the CI node will watch the new exact run.\n\nChoose `waiting_pr_pr_merged` only when the source-control system conclusively reports the\nPR as merged; provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_report`. If it remains open, required checks are green, no changes are\nrequested, and the selected method is feasible, choose `waiting_pr_watch_merge` and\nprovide `workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and the\nexact current head and base commits as `pr_head_oid` and `pr_base_oid`. The\ndeterministic watcher waits without an approval or model turn and wakes this\nnode only after meaningful state changes. A base OID change wakes this node so\nmethod-specific feasibility can be revalidated through the normal merge-policy\ncontract.\n\nUse `waiting_pr_needs_user_action` only for authentication/access failure, ambiguous or\ncontradictory merge policy, or another actual human decision.\nMerely waiting for review or merge is not a blocker. Use\n`waiting_pr_needs_changes` with `workspace_path`, `merge_strategy`, and `pr_report` when\ntask code or history must change. Choose `waiting_pr_close_without_merge` only when the\nlatest user comment explicitly approves closing or canceling this PR; provide\n`workspace_path`, `pr_report`, and `closure_reason`.",
+      "context": "new_session",
+      "context_source": "immediate_source",
+      "prompt": "Check delivery state for {{.TaskShortId}}.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `waiting_pr`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nGitHub CI contract:\n{{.Params.ci_contract}}\nCI report: {{.Params.ci_report}}\nThe contract binds only the current PR identity and whether CI is required.\nThe deterministic watcher considers every effective check it observes; no\nexpected job list, digest, or extra-check allowlist can make a failure\nirrelevant. Preserve the contract and CI report through every watcher\nre-entry.\nTask: {{.Params.task_short_id}}\n\nApply the `ci-monitor` role contract. Do not merge or push. Revalidate the\nresolved method using method-specific evidence; investigate contradictory\nsource-control or user-reported feasibility without mutating the task branch.\n\nIf the PR head changed or required checks restarted, choose\n`waiting_pr_ci_required` and provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy`; the CI node will watch the new exact run.\n\nChoose `waiting_pr_pr_merged` only when the source-control system conclusively reports the\nPR as merged; provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_report`. If it remains open and the target reports a normal integration\nconflict, choose `waiting_pr_needs_changes` with the current `pr_report`; do not demand\nproof that the task introduced the target change. The existing Fix path owns\nconflict resolution and refreshed verification, without granting new push or\nforce-push rights. Otherwise, when CI is green, no changes are requested, and\nthe selected method is feasible, choose `waiting_pr_watch_merge` and provide\n`workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and the exact\ncurrent head and base commits as `pr_head_oid` and `pr_base_oid`. The\ndeterministic watcher waits without an approval or model turn and wakes this\nnode only after meaningful state changes. A base OID change wakes this node so\nmethod-specific feasibility can be revalidated through the normal merge-policy\ncontract.\n\nUse `waiting_pr_needs_user_action` only for authentication/access failure, ambiguous or\ncontradictory merge policy, or another actual human decision.\nMerely waiting for review or merge is not a blocker. Use\n`waiting_pr_needs_changes` with `workspace_path`, `merge_strategy`, and `pr_report` when\ntask code or history must change. Choose `waiting_pr_close_without_merge` only when the\nlatest user comment explicitly approves closing or canceling this PR; provide\n`workspace_path`, `pr_report`, and `closure_reason`.",
       "transition_description": "The deterministic watcher confirmed terminal green CI; classify merge readiness once.",
       "parameters": [
         {
@@ -2397,33 +3293,88 @@
           "purpose": "ordinary"
         },
         {
-          "key": "ci_report",
-          "description": "CI checks and status summary.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "task_short_id",
           "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
+        }
+      ],
+      "assignee_selection": "configured",
+      "thinking_selection": "configured",
+      "requires_approval": false
+    },
+    {
+      "key": "ci_watch_state_changed",
+      "source": "ci_watch",
+      "transition": "ci_watch_state_changed",
+      "target": "waiting_pr",
+      "context": "new_session",
+      "context_source": "immediate_source",
+      "prompt": "Check delivery state for {{.TaskShortId}}.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `waiting_pr`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nGitHub CI contract:\n{{.Params.ci_contract}}\nCI report: {{.Params.ci_report}}\nThe contract binds only the current PR identity and whether CI is required.\nThe deterministic watcher considers every effective check it observes; no\nexpected job list, digest, or extra-check allowlist can make a failure\nirrelevant. Preserve the contract and CI report through every watcher\nre-entry.\nTask: {{.Params.task_short_id}}\n\nApply the `ci-monitor` role contract. Do not merge or push. Revalidate the\nresolved method using method-specific evidence; investigate contradictory\nsource-control or user-reported feasibility without mutating the task branch.\n\nIf the PR head changed or required checks restarted, choose\n`waiting_pr_ci_required` and provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy`; the CI node will watch the new exact run.\n\nChoose `waiting_pr_pr_merged` only when the source-control system conclusively reports the\nPR as merged; provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_report`. If it remains open and the target reports a normal integration\nconflict, choose `waiting_pr_needs_changes` with the current `pr_report`; do not demand\nproof that the task introduced the target change. The existing Fix path owns\nconflict resolution and refreshed verification, without granting new push or\nforce-push rights. Otherwise, when CI is green, no changes are requested, and\nthe selected method is feasible, choose `waiting_pr_watch_merge` and provide\n`workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and the exact\ncurrent head and base commits as `pr_head_oid` and `pr_base_oid`. The\ndeterministic watcher waits without an approval or model turn and wakes this\nnode only after meaningful state changes. A base OID change wakes this node so\nmethod-specific feasibility can be revalidated through the normal merge-policy\ncontract.\n\nUse `waiting_pr_needs_user_action` only for authentication/access failure, ambiguous or\ncontradictory merge policy, or another actual human decision.\nMerely waiting for review or merge is not a blocker. Use\n`waiting_pr_needs_changes` with `workspace_path`, `merge_strategy`, and `pr_report` when\ntask code or history must change. Choose `waiting_pr_close_without_merge` only when the\nlatest user comment explicitly approves closing or canceling this PR; provide\n`workspace_path`, `pr_report`, and `closure_reason`.\n\nThe deterministic watcher stopped because PR state changed:\n{{.Params.pr_report}}\n\nValidated PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nClassify only that fresh state. The report may include\n`observed_feedback_cursor` for newly reported or edited feedback. Keep the\nincoming acknowledged cursor unchanged while considering all simultaneous CI,\nfeedback, head, base, and mergeability changes. Advance the cursor only after\nevery reported feedback item has been considered. Do not repeat passive\npolling in the agent.",
+      "transition_description": "The PR feedback, mergeability, or identity changed while CI was still being observed; classify the material change before passive waiting resumes.",
+      "parameters": [
+        {
+          "key": "workspace_path",
+          "description": "Repository or managed-worktree root; never an artifact directory.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_report",
+          "description": "Pull request creation, review, conflict, or post-CI status report.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_head_oid",
+          "description": "Pull-request head commit observed after green CI.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_base_oid",
+          "description": "Pull-request base commit observed after green CI.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
           "purpose": "ordinary"
         },
         {
@@ -2441,9 +3392,9 @@
       "source": "ci_watch",
       "transition": "ci_watch_failed",
       "target": "ci_monitor",
-      "context": "continue_session",
-      "context_source": "previous_target_or_new",
-      "prompt": "Monitor CI for {{.TaskShortId}} without editing files.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `ci_monitor`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\nDeterministic CI report: {{.Params.ci_report}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nIn the source-contract mode, mandatory identities come only from the\ntarget-branch source-derived expected contract. Unexpected failed checks are\ndiagnostics and do not independently block delivery. When a retry is allowed,\nchoose `ci_monitor_watch_ci` with the complete expected-check fields, policy snapshot,\nunchanged `ci_report`, and cursor; do not choose `waiting_pr` directly.\nExpected checks: {{.Params.expected_ci_checks}}\nExpected checks digest: {{.Params.expected_ci_checks_sha256}}\nRuntime source envelope digest: {{.Params.runtime_source_envelope_digest}}\nPolicy snapshot: {{.Params.ci_policy_snapshot}}\nTask: {{.Params.task_short_id}}\nA `ci_prepare_failed` entry is preparation diagnosis, not a terminal CI\nobservation. Missing packets are represented by empty strings only on this\ndiagnostic route. Never parse an empty `ci_report` as a report, invent a report\nor expected contract, or infer green CI. Preserve all supplied packet strings,\nincluding empty values, cursor and `task_short_id` when choosing `ci_monitor_watch_ci`;\nthis always re-enters deterministic preparation, never the watcher directly.\nOnly a bounded retry or a proven task-scoped fix/external blocker is allowed.\n\nApply the `ci-monitor` role contract to the exact terminal watcher report when present.\nDo not start another polling loop or ask for approval merely to wait. Re-read\nonly the exact PR/run/job metadata and bounded failed-job logs. If the role's\nbounded exact-job retry policy applies, perform one permitted retry and choose\n`ci_monitor_watch_ci` with `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy` plus the unchanged accumulated `ci_report`; the deterministic\nwatcher owns the wait and appends the new terminal observation. Preserve every\nattempt and failure fingerprint in `ci_report`.\n\nQuery authoritative PR merge state before classifying any failed or late check.\nIf the PR is already merged, never route the merged task branch to Fix. Complete\nwith `ci_monitor_pr_merged` and provide `workspace_path`, `pr_url`, `branch_name`, and a\n`merge_report` that includes merge proof plus the late CI state. Any actionable\npost-merge regression belongs in a separate follow-up task.\n\nIn source-contract mode there is no direct `waiting_pr` transition; the deterministic watcher must prove green after preparation.\n`workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and `ci_report`.\nUse `ci_monitor_needs_changes` with `workspace_path` and `fix_context` only for a proven\ntask-differential code or history failure. After retry exhaustion, use\n`ci_monitor_needs_user_action` only for a real external blocker or decision.\nNever use `ci_monitor_needs_user_action` merely because CI is still running.",
+      "context": "new_session",
+      "context_source": "immediate_source",
+      "prompt": "Monitor CI for {{.TaskShortId}} without editing files.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `ci_monitor`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\nDeterministic CI report: {{.Params.ci_report}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nIn source-contract mode, the CI contract contains only the current\nPR identity and whether CI is required. It contains no expected job names or\nrelease fields. The deterministic watcher classifies every effective check\nreported for that PR; failed extras are not ignored and pending observations\nare not human actions. When a retry is allowed, choose `ci_monitor_watch_ci` with the\nunchanged validated contract, accumulated `ci_report`, and cursor; do not\nchoose `waiting_pr` directly.\nGitHub CI contract: {{.Params.ci_contract}}\nTask: {{.Params.task_short_id}}\nA `ci_prepare_failed` entry is preparation diagnosis, not a terminal\nCI observation. Missing packets are represented by empty strings only on this\ndiagnostic route. Never parse an empty `ci_report` as a report, invent a\ncontract, or infer green CI. Preserve the supplied contract, report, cursor\nand `task_short_id` when choosing `ci_monitor_watch_ci`; this always re-enters\ndeterministic preparation, never the watcher directly. Only a bounded retry\nor a proven task-scoped fix/external blocker is allowed.\n\nApply the `ci-monitor` role contract to the exact terminal watcher report when present.\nDo not start another polling loop or ask for approval merely to wait. Re-read\nonly the exact PR/run/job metadata and bounded failed-job logs. If the role's\nbounded exact-job retry policy applies, perform one permitted retry and choose\n`ci_monitor_watch_ci` with `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy` plus the unchanged accumulated `ci_report`; the deterministic\nwatcher owns the wait and appends the new terminal observation. Preserve every\nattempt and failure fingerprint in `ci_report`.\n\nQuery authoritative PR merge state before classifying any failed or late check.\nIf the PR is already merged, never route the merged task branch to Fix. Complete\nwith `ci_monitor_pr_merged` and provide `workspace_path`, `pr_url`, `branch_name`, and a\n`merge_report` that includes merge proof plus the late CI state. Any actionable\npost-merge regression belongs in a separate follow-up task.\n\nIn source-contract mode there is no direct `waiting_pr` transition; the deterministic watcher must prove green after preparation.\n`workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and `ci_report`.\nUse `ci_monitor_needs_changes` with `workspace_path` and `fix_context` for a proven\ntask-differential failure or normal target conflict; no task-differential proof\nis needed for that integration conflict. Fix re-verifies the exact PR\nhead/base. After retry exhaustion, `ci_monitor_needs_user_action` is only for an\nexternal blocker.\nNever use `ci_monitor_needs_user_action` merely because CI is still running.",
       "transition_description": "CI reached a failed, cancelled, empty, or infrastructure-error state; classify it once.",
       "parameters": [
         {
@@ -2467,33 +3418,18 @@
           "purpose": "ordinary"
         },
         {
-          "key": "ci_report",
-          "description": "CI checks and status summary.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "task_short_id",
           "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
           "purpose": "ordinary"
         },
         {
@@ -2514,7 +3450,7 @@
       "context": "new_session",
       "context_source": "immediate_source",
       "prompt": null,
-      "transition_description": "The target policy changed during observation; recompute a fresh CI cycle from immutable sources.",
+      "transition_description": "The PR identity changed during observation; start a fresh CI cycle for its current head and base.",
       "parameters": [
         {
           "key": "workspace_path",
@@ -2537,23 +3473,8 @@
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
@@ -2642,33 +3563,18 @@
           "purpose": "ordinary"
         },
         {
-          "key": "ci_report",
-          "description": "CI checks and status summary.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "task_short_id",
           "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
           "purpose": "ordinary"
         },
         {
@@ -2735,6 +3641,41 @@
           "key": "fix_context",
           "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
           "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "merge_strategy",
+          "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "task_short_id",
+          "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_feedback_cursor",
+          "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+          "purpose": "ordinary"
         }
       ],
       "assignee_selection": "configured",
@@ -2777,33 +3718,18 @@
           "purpose": "ordinary"
         },
         {
-          "key": "ci_report",
-          "description": "CI checks and status summary.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
           "key": "task_short_id",
           "description": "Stable human-readable Kent task short ID.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "ci_report",
+          "description": "CI checks and status summary.",
           "purpose": "ordinary"
         },
         {
@@ -2927,23 +3853,8 @@
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
@@ -3007,23 +3918,8 @@
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
@@ -3051,9 +3947,9 @@
       "source": "merge_watch",
       "transition": "merge_watch_state_changed",
       "target": "waiting_pr",
-      "context": "continue_session",
+      "context": "compact_and_continue_session",
       "context_source": "previous_target",
-      "prompt": "Check delivery state for {{.TaskShortId}}.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `waiting_pr`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nSource-derived CI contract:\nExpected mandatory checks: {{.Params.expected_ci_checks}}\nExpected-check digest: {{.Params.expected_ci_checks_sha256}}\nRuntime source envelope digest: {{.Params.runtime_source_envelope_digest}}\nTarget policy snapshot: {{.Params.ci_policy_snapshot}}\nCI report: {{.Params.ci_report}}\nTask: {{.Params.task_short_id}}\nUse the exact source-declared mandatory identities for blocking. An extra\nfailed check is diagnostic feedback and does not independently block or wake\nthis wait. Preserve the contract and CI report through every watcher re-entry.\n\nApply the `ci-monitor` role contract. Do not merge or push. Revalidate the\nresolved method using method-specific evidence; investigate contradictory\nsource-control or user-reported feasibility without mutating the task branch.\n\nIf the PR head changed or required checks restarted, choose\n`waiting_pr_ci_required` and provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy`; the CI node will watch the new exact run.\n\nChoose `waiting_pr_pr_merged` only when the source-control system conclusively reports the\nPR as merged; provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_report`. If it remains open, required checks are green, no changes are\nrequested, and the selected method is feasible, choose `waiting_pr_watch_merge` and\nprovide `workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and the\nexact current head and base commits as `pr_head_oid` and `pr_base_oid`. The\ndeterministic watcher waits without an approval or model turn and wakes this\nnode only after meaningful state changes. A base OID change wakes this node so\nmethod-specific feasibility can be revalidated through the normal merge-policy\ncontract.\n\nUse `waiting_pr_needs_user_action` only for authentication/access failure, ambiguous or\ncontradictory merge policy, or another actual human decision.\nMerely waiting for review or merge is not a blocker. Use\n`waiting_pr_needs_changes` with `workspace_path`, `merge_strategy`, and `pr_report` when\ntask code or history must change. Choose `waiting_pr_close_without_merge` only when the\nlatest user comment explicitly approves closing or canceling this PR; provide\n`workspace_path`, `pr_report`, and `closure_reason`.\n\nThe deterministic watcher stopped because PR state changed:\n{{.Params.pr_report}}\n\nValidated PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nClassify only that fresh state. Do not repeat passive polling in the agent.",
+      "prompt": "Check delivery state for {{.TaskShortId}}.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `waiting_pr`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nGitHub CI contract:\n{{.Params.ci_contract}}\nCI report: {{.Params.ci_report}}\nThe contract binds only the current PR identity and whether CI is required.\nThe deterministic watcher considers every effective check it observes; no\nexpected job list, digest, or extra-check allowlist can make a failure\nirrelevant. Preserve the contract and CI report through every watcher\nre-entry.\nTask: {{.Params.task_short_id}}\n\nApply the `ci-monitor` role contract. Do not merge or push. Revalidate the\nresolved method using method-specific evidence; investigate contradictory\nsource-control or user-reported feasibility without mutating the task branch.\n\nIf the PR head changed or required checks restarted, choose\n`waiting_pr_ci_required` and provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy`; the CI node will watch the new exact run.\n\nChoose `waiting_pr_pr_merged` only when the source-control system conclusively reports the\nPR as merged; provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_report`. If it remains open and the target reports a normal integration\nconflict, choose `waiting_pr_needs_changes` with the current `pr_report`; do not demand\nproof that the task introduced the target change. The existing Fix path owns\nconflict resolution and refreshed verification, without granting new push or\nforce-push rights. Otherwise, when CI is green, no changes are requested, and\nthe selected method is feasible, choose `waiting_pr_watch_merge` and provide\n`workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and the exact\ncurrent head and base commits as `pr_head_oid` and `pr_base_oid`. The\ndeterministic watcher waits without an approval or model turn and wakes this\nnode only after meaningful state changes. A base OID change wakes this node so\nmethod-specific feasibility can be revalidated through the normal merge-policy\ncontract.\n\nUse `waiting_pr_needs_user_action` only for authentication/access failure, ambiguous or\ncontradictory merge policy, or another actual human decision.\nMerely waiting for review or merge is not a blocker. Use\n`waiting_pr_needs_changes` with `workspace_path`, `merge_strategy`, and `pr_report` when\ntask code or history must change. Choose `waiting_pr_close_without_merge` only when the\nlatest user comment explicitly approves closing or canceling this PR; provide\n`workspace_path`, `pr_report`, and `closure_reason`.\n\nThe deterministic watcher stopped because PR state changed:\n{{.Params.pr_report}}\n\nValidated PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nClassify only that fresh state. The report may include\n`observed_feedback_cursor` for newly reported or edited feedback. Keep the\nincoming acknowledged cursor unchanged while considering all simultaneous CI,\nfeedback, head, base, and mergeability changes. Advance the cursor only after\nevery reported feedback item has been considered. Do not repeat passive\npolling in the agent.",
       "transition_description": "PR state changed materially; let the retained Waiting PR session classify it once.",
       "parameters": [
         {
@@ -3082,23 +3978,8 @@
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
@@ -3163,7 +4044,7 @@
       "target": "waiting_pr",
       "context": "compact_and_continue_session",
       "context_source": "immediate_source",
-      "prompt": "Check delivery state for {{.TaskShortId}}.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `waiting_pr`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nSource-derived CI contract:\nExpected mandatory checks: {{.Params.expected_ci_checks}}\nExpected-check digest: {{.Params.expected_ci_checks_sha256}}\nRuntime source envelope digest: {{.Params.runtime_source_envelope_digest}}\nTarget policy snapshot: {{.Params.ci_policy_snapshot}}\nCI report: {{.Params.ci_report}}\nTask: {{.Params.task_short_id}}\nUse the exact source-declared mandatory identities for blocking. An extra\nfailed check is diagnostic feedback and does not independently block or wake\nthis wait. Preserve the contract and CI report through every watcher re-entry.\n\nApply the `ci-monitor` role contract. Do not merge or push. Revalidate the\nresolved method using method-specific evidence; investigate contradictory\nsource-control or user-reported feasibility without mutating the task branch.\n\nIf the PR head changed or required checks restarted, choose\n`waiting_pr_ci_required` and provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy`; the CI node will watch the new exact run.\n\nChoose `waiting_pr_pr_merged` only when the source-control system conclusively reports the\nPR as merged; provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_report`. If it remains open, required checks are green, no changes are\nrequested, and the selected method is feasible, choose `waiting_pr_watch_merge` and\nprovide `workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and the\nexact current head and base commits as `pr_head_oid` and `pr_base_oid`. The\ndeterministic watcher waits without an approval or model turn and wakes this\nnode only after meaningful state changes. A base OID change wakes this node so\nmethod-specific feasibility can be revalidated through the normal merge-policy\ncontract.\n\nUse `waiting_pr_needs_user_action` only for authentication/access failure, ambiguous or\ncontradictory merge policy, or another actual human decision.\nMerely waiting for review or merge is not a blocker. Use\n`waiting_pr_needs_changes` with `workspace_path`, `merge_strategy`, and `pr_report` when\ntask code or history must change. Choose `waiting_pr_close_without_merge` only when the\nlatest user comment explicitly approves closing or canceling this PR; provide\n`workspace_path`, `pr_report`, and `closure_reason`.",
+      "prompt": "Check delivery state for {{.TaskShortId}}.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `waiting_pr`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPR: {{.Params.pr_url}}\nBranch: {{.Params.branch_name}}\nResolved merge strategy: {{.Params.merge_strategy}}\nWorkspace: {{.Params.workspace_path}}\n\nIncremental PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\nGitHub CI contract:\n{{.Params.ci_contract}}\nCI report: {{.Params.ci_report}}\nThe contract binds only the current PR identity and whether CI is required.\nThe deterministic watcher considers every effective check it observes; no\nexpected job list, digest, or extra-check allowlist can make a failure\nirrelevant. Preserve the contract and CI report through every watcher\nre-entry.\nTask: {{.Params.task_short_id}}\n\nApply the `ci-monitor` role contract. Do not merge or push. Revalidate the\nresolved method using method-specific evidence; investigate contradictory\nsource-control or user-reported feasibility without mutating the task branch.\n\nIf the PR head changed or required checks restarted, choose\n`waiting_pr_ci_required` and provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_strategy`; the CI node will watch the new exact run.\n\nChoose `waiting_pr_pr_merged` only when the source-control system conclusively reports the\nPR as merged; provide `workspace_path`, `pr_url`, `branch_name`, and\n`merge_report`. If it remains open and the target reports a normal integration\nconflict, choose `waiting_pr_needs_changes` with the current `pr_report`; do not demand\nproof that the task introduced the target change. The existing Fix path owns\nconflict resolution and refreshed verification, without granting new push or\nforce-push rights. Otherwise, when CI is green, no changes are requested, and\nthe selected method is feasible, choose `waiting_pr_watch_merge` and provide\n`workspace_path`, `pr_url`, `branch_name`, `merge_strategy`, and the exact\ncurrent head and base commits as `pr_head_oid` and `pr_base_oid`. The\ndeterministic watcher waits without an approval or model turn and wakes this\nnode only after meaningful state changes. A base OID change wakes this node so\nmethod-specific feasibility can be revalidated through the normal merge-policy\ncontract.\n\nUse `waiting_pr_needs_user_action` only for authentication/access failure, ambiguous or\ncontradictory merge policy, or another actual human decision.\nMerely waiting for review or merge is not a blocker. Use\n`waiting_pr_needs_changes` with `workspace_path`, `merge_strategy`, and `pr_report` when\ntask code or history must change. Choose `waiting_pr_close_without_merge` only when the\nlatest user comment explicitly approves closing or canceling this PR; provide\n`workspace_path`, `pr_report`, and `closure_reason`.",
       "transition_description": "Waiting PR requires an actual human decision or external access recovery.",
       "parameters": [
         {
@@ -3192,23 +4073,8 @@
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
@@ -3238,12 +4104,22 @@
       "target": "fix",
       "context": "new_session",
       "context_source": "immediate_source",
-      "prompt": "Fix task-scoped PR feedback.\n\nRead `.kent/context/implement.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `fix`, `evidence_type` to\n`implementation`, and `context.manifest_path` to `.kent/context/implement.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nWorkspace: {{.Params.workspace_path}}.\nResolved merge strategy: {{.Params.merge_strategy}}.\nPR report: {{.Params.pr_report}}\n\nValidated PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\n\n\nThis is a fresh bounded writer session. Inspect the preserved diff, task\ncomments, authoritative artifacts, and existing evidence before editing.\nResolve exactly one independently verifiable PR-feedback slice.\n\nRemain the single writer. Do not merge or push protected branches. A history\nrewrite or force-push requires an exact latest user authorization naming the\nbranch and permitted repair. Preserve the old remote head in a local backup,\npin the expected remote head, prove the repaired final tree is byte-for-byte\nidentical unless the authorization explicitly permits code changes, and update\nonly the task branch with force-with-lease. Stop with `fix_needs_user_action` on a\nlease, tree, target-tip, or authorization mismatch; never fall back to an\nunconditional force push.\nAfter one slice, choose `fix_continue_fix` with\n`workspace_path`, `task_short_id={{.TaskShortId}}`, and `fix_context`\ncontaining only the remaining task-scoped issues. Choose `fix_verify` only when no\nPR-feedback slice remains, and provide `workspace_path`, the same\n`task_short_id`, plus refreshed `review_context`.\nUse `fix_needs_user_action` with `blocker_reason` for external or policy blockers.\nChoose `fix_wont_do` only for an explicit cancellation decision and provide\n`closure_reason`.",
+      "prompt": "Fix task-scoped PR feedback or a normal target-branch integration\nconflict.\n\nRead `.kent/context/implement.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `fix`, `evidence_type` to\n`implementation`, and `context.manifest_path` to `.kent/context/implement.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nWorkspace: {{.Params.workspace_path}}.\nResolved merge strategy: {{.Params.merge_strategy}}.\nPR report: {{.Params.pr_report}}\n\nValidated PR feedback cursor: {{.Params.pr_feedback_cursor}}\n\n\nFollow the project contract and repository instructions.\n\n\nThis is a fresh bounded writer session. Inspect the preserved diff, task\ncomments, authoritative artifacts, and existing evidence before editing.\nResolve exactly one independently verifiable PR-feedback slice.\n\nRemain the single writer. Do not merge or push protected branches. A history\nrewrite or force-push requires an exact latest user authorization naming the\nbranch and permitted repair. Preserve the old remote head in a local backup,\npin the expected remote head, prove the repaired final tree is byte-for-byte\nidentical unless the authorization explicitly permits code changes, and update\nonly the task branch with force-with-lease. Stop with `fix_needs_user_action` on a\nlease, tree, target-tip, or authorization mismatch; never fall back to an\nunconditional force push. For an ordinary conflict with the current target\nbranch, preserve the immutable task baseline and exact PR identity, resolve\nthe integration conflict through the existing approved merge strategy, and do\nnot require task-differential proof that the target introduced the conflict.\nNo new push or force-push authority is granted by this route.\nIf the PR report includes `observed_feedback_cursor`, consider every reported\nfeedback item before acknowledging it; retain the acknowledged cursor through\nthe full Fix and verification loop.\nAfter one slice, choose `fix_continue_fix` with\n`workspace_path`, `task_short_id={{.TaskShortId}}`, and `fix_context`\ncontaining only the remaining task-scoped issues. Choose `fix_verify` only when no\nPR-feedback slice remains, and provide `workspace_path`, the same\n`task_short_id`, plus refreshed `review_context`.\nUse `fix_needs_user_action` with `blocker_reason` for external or policy blockers.\nChoose `fix_wont_do` only for an explicit cancellation decision and provide\n`closure_reason`.",
       "transition_description": "The PR state requires task-scoped changes before merge.",
       "parameters": [
         {
           "key": "workspace_path",
           "description": "Repository or managed-worktree root; never an artifact directory.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "pr_url",
+          "description": "Canonical pull request URL.",
+          "purpose": "ordinary"
+        },
+        {
+          "key": "branch_name",
+          "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
           "purpose": "ordinary"
         },
         {
@@ -3257,23 +4133,8 @@
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
@@ -3357,23 +4218,8 @@
           "purpose": "ordinary"
         },
         {
-          "key": "expected_ci_checks",
-          "description": "Canonical source-derived mandatory CI check contract for the current cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "expected_ci_checks_sha256",
-          "description": "SHA-256 digest of the canonical expected CI check contract.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "runtime_source_envelope_digest",
-          "description": "Digest of the real selected-head runtime source envelope.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "ci_policy_snapshot",
-          "description": "Canonical target-branch policy snapshot for the current CI cycle.",
+          "key": "ci_contract",
+          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
           "purpose": "ordinary"
         },
         {
@@ -3476,7 +4322,7 @@
       "source": "task_janitor",
       "transition": "task_janitor_blocked",
       "target": "cleanup",
-      "context": "continue_session",
+      "context": "compact_and_continue_session",
       "context_source": "previous_target",
       "prompt": "Recover the task cleanup after deterministic Janitor failure.\n\nRead `.kent/context/delivery.md` first and stay inside its required and\nconditionally triggered sources.\n\nBefore transition, pipe one non-empty JSON object to\n`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace\n<workspace>`. Set `node_key` to `cleanup`, `evidence_type` to\n`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.\n`context.files_read` lists other project instruction files in actual read\norder; do not repeat the manifest there. Record repeated questions and\nverification loops, use null for unavailable model/compaction counters, and\nexclude secrets or broad raw evidence. Append is idempotent for the current\nKent run; on recovery, reuse the returned sequence/hash and continue.\n\nPrevious cleanup report:\n{{.Params.cleanup_report}}\nBlocker:\n{{.Params.blocker_reason}}\n\nUse .kent/commands/cleanup-task.md as the project procedure.\n\nUse the retained Cleanup context. Do not directly remove a Kent-managed\nworktree from this agent session. Close every task-owned background shell or\nkept-open tool session. If this session still targets the task worktree, run\n`kent worktree leave` before retrying. If the infrastructure failure is\ntransient and the same safety proofs still hold, choose `cleanup_run_janitor` again\nwith the complete canonical parameter contract. Otherwise choose\n`cleanup_needs_user_action` with the exact blocker. Preserve every ambiguous or unique\nresource.",
       "transition_description": "Janitor infrastructure failed after safety checks; return to Cleanup without losing its context.",

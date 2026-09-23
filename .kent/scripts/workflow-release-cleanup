@@ -226,12 +226,21 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
                 safe_file(path, name)
                 if identity(before) != identity(path.lstat()):
                     raise helper.ContractError("CI artifact changed during admission")
-                raw = os.read(descriptor, kit["MAX_CI_REPORT_BYTES"] + 1)
+                max_report_bytes = max(
+                    kit["MAX_CI_REPORT_BYTES"],
+                    kit["MAX_DYNAMIC_CI_REPORT_BYTES"],
+                )
+                raw = os.read(descriptor, max_report_bytes + 1)
                 total += len(raw)
                 if total > 4 * 1024 * 1024:
                     raise helper.ContractError("CI artifacts exceed total byte limit")
-                report = kit["validate_ci_report"](kit["parse_canonical_json"](
-                    raw, label="CI artifact", max_bytes=kit["MAX_CI_REPORT_BYTES"]))
+                report = kit["validate_ci_archive"](
+                    kit["parse_canonical_json"](
+                        raw,
+                        label="CI artifact",
+                        max_bytes=max_report_bytes,
+                    )
+                )
                 if helper.canonical_bytes(report) != raw or helper.sha256_bytes(raw) != CI_REPORT_NAME.fullmatch(name).group(1):
                     raise helper.ContractError("CI artifact canonical bytes or filename digest mismatch")
                 if identity(os.fstat(descriptor)) != identity(before) or identity(path.lstat()) != identity(before):

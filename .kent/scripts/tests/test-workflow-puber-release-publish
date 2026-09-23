@@ -14,7 +14,8 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
-KIT = Path("/Users/rovkinmax/dev/llm-staf/kent-engineering-kit")
+KIT = Path(os.environ.get("PUBER_STAGE_A_KIT_ROOT", "/Users/rovkinmax/.kent/worktrees/--json")).resolve()
+os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
 helper_spec = importlib.util.spec_from_loader("publish_runtime_test", SourceFileLoader("publish_runtime_test", str(ROOT / ".kent/scripts/workflow-puber-release-intent")))
 helper = importlib.util.module_from_spec(helper_spec); assert helper_spec and helper_spec.loader; helper_spec.loader.exec_module(helper)
 SCRIPT_PATHS = [
@@ -69,8 +70,20 @@ def materialize(root: Path, bare: Path, *, linked: bool = False) -> tuple[Path, 
         encoding="utf-8",
     )
     profile = work / "app/src/main/generated/baselineProfiles/baseline-prof.txt"
+    startup = work / "app/src/main/generated/baselineProfiles/startup-prof.txt"
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    if not profile.exists():
+        profile.write_bytes(b"# deterministic baseline fixture\n")
+    if not startup.exists():
+        startup.write_bytes(b"# deterministic startup fixture\n")
     profile.write_bytes(profile.read_bytes() + b"\n# deterministic publish fixture\n")
-    sh(["git", "add", "app/build.gradle.kts", str(profile.relative_to(work))], work)
+    sh([
+        "git",
+        "add",
+        "app/build.gradle.kts",
+        str(profile.relative_to(work)),
+        str(startup.relative_to(work)),
+    ], work)
     sh(["git", "commit", "--quiet", "-m", "test release preparation"], work)
     target = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
     sh(["git", "init", "--bare", str(bare)], root)
@@ -867,6 +880,10 @@ class Revision90StageRunner:
             }:
                 raise StageContractError("release PR carrier drifted")
             self._validate_preparation(carrier)
+            master_oid = sh(
+                ["git", "--git-dir", str(self.bare), "rev-parse", "refs/heads/master"],
+                self.work,
+            ).stdout.strip()
             return self._emit(
                 "ship_pr_ci_watch",
                 {
@@ -875,7 +892,16 @@ class Revision90StageRunner:
                     "branch_name": carrier["release_branch"],
                     "merge_strategy": "rebase",
                     "pr_head_oid": pr["headRefOid"],
-                    "pr_base_oid": sh(["git", "--git-dir", str(self.bare), "rev-parse", "refs/heads/master"], self.work).stdout.strip(),
+                    "pr_base_oid": master_oid,
+                    "ci_contract": helper.canonical_json({
+                        "schema": "github-ci-contract-v1",
+                        "repository": "rovkinmax/Puber",
+                        "pull_number": 7,
+                        "head_oid": pr["headRefOid"],
+                        "base_oid": master_oid,
+                        "require_ci": True,
+                    }),
+                    "pr_feedback_cursor": "uninitialized",
                 },
             )
 
@@ -1160,6 +1186,7 @@ sys.exit(2)
         env = {
             **os.environ,
             "KENT_ENGINEERING_KIT_ROOT": str(KIT),
+            "PYTHONDONTWRITEBYTECODE": "1",
             "PUBER_KENT_BIN": str(kent),
             "PUBER_FAKE_TASK": str(task_path),
             "FAKE_GITHUB_STATE": str(github_state),
@@ -1456,7 +1483,7 @@ def test_publication(rebased: bool) -> None:
         checkpoint_path.chmod(0o600)
         log = root / "gh.log"; kent, gh = write_fake_bins(root, task, target, bare_path, log)
         payload = {"_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "merge_watch_pr_merged"}, "workspace_path": str(work), "operation_id": "a"*64, "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "branch_name": "release/99.0.0", "merge_strategy": "rebase", "pr_head_oid": target, "pr_base_oid": base_oid}
-        env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(fake_task := root / "fake-task.json"), "PUBER_GH_LOG": str(log), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": target, "PUBER_PR_BASE": base_oid}
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(fake_task := root / "fake-task.json"), "PUBER_GH_LOG": str(log), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": target, "PUBER_PR_BASE": base_oid}
         fake_task.write_text(json.dumps(task), encoding="utf-8")
         head = target
         if rebased:

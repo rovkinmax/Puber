@@ -70,6 +70,10 @@ MAX_CI_UNEXPECTED_OBSERVATIONS = 10000
 MAX_CI_ATTEMPTS = 8
 MAX_CI_REPORT_BYTES = 64 * 1024
 MAX_CI_ATTEMPT_BYTES = 48 * 1024
+MAX_DYNAMIC_CI_CHECKS = 10000
+MAX_DYNAMIC_CI_ATTEMPTS = 8
+MAX_DYNAMIC_CI_REPORT_BYTES = 64 * 1024
+MAX_DYNAMIC_CI_ATTEMPT_BYTES = 48 * 1024
 MAX_OBSERVATION_CANONICAL_BYTES = 4 * 1024 * 1024
 MAX_CANONICAL_JSON_NESTING = 100
 
@@ -84,6 +88,9 @@ PR_CURSOR_SCHEMA = "github-pr-feedback-cursor-v1"
 EXPECTED_CHECKS_SCHEMA = "github-ci-expected-checks-v1"
 CI_REPORT_SCHEMA = "github-ci-report-v2"
 CI_POLICY_SNAPSHOT_SCHEMA = "github-ci-policy-snapshot-v1"
+CI_CONTRACT_SCHEMA = "github-ci-contract-v1"
+DYNAMIC_CI_REPORT_SCHEMA = "github-ci-report-v3"
+DYNAMIC_PR_CURSOR_SCHEMA = "github-pr-feedback-cursor-v2"
 
 
 @dataclass(frozen=True)
@@ -258,6 +265,9 @@ LOG_PATH_RE = re.compile(
 )
 LINK_RE = re.compile(
     r"^https://(?:github\.com|www\.github\.com)(?:/|$)"
+)
+DYNAMIC_LINK_RE = re.compile(
+    r"^https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/|$)"
 )
 RFC3339_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
@@ -3729,7 +3739,1068 @@ def validate_ci_report_history(
     return report
 
 
+_DYNAMIC_CHECK_BUCKETS = {"pass", "fail", "pending", "skipping", "cancel"}
+_DYNAMIC_CHECK_STATES = {
+    "pass": {"SUCCESS"},
+    "skipping": {"SKIPPED", "NEUTRAL"},
+    "fail": {
+        "FAILURE",
+        "ERROR",
+        "TIMED_OUT",
+        "ACTION_REQUIRED",
+        "STARTUP_FAILURE",
+    },
+    "cancel": {"CANCELLED"},
+    "pending": {
+        "REQUESTED",
+        "EXPECTED",
+        "PENDING",
+        "QUEUED",
+        "WAITING",
+        "IN_PROGRESS",
+        "STALE",
+    },
+}
+_DYNAMIC_CI_STATES = {
+    "green",
+    "pending",
+    "failed",
+    "no_checks",
+    "not_required",
+}
+_DYNAMIC_CI_REASONS = _DYNAMIC_CI_STATES | {
+    "invalid_observation",
+    "source_changed",
+    "query_failed",
+    "query_timeout",
+    "incomplete_observation",
+    "observation_limit",
+}
+_DYNAMIC_CI_ERROR_CODES = {
+    "invalid_observation",
+    "source_changed",
+    "query_failed",
+    "query_timeout",
+    "incomplete_observation",
+    "observation_limit",
+}
+
+
+def validate_ci_contract(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the identity-only contract used by dynamic CI monitoring."""
+
+    keys = {
+        "schema",
+        "repository",
+        "pull_number",
+        "head_oid",
+        "base_oid",
+        "require_ci",
+    }
+    data = _closed(value, keys, "CI contract")
+    if set(data) != keys:
+        raise RuntimeContractError("CI contract has missing fields")
+    if data["schema"] != CI_CONTRACT_SCHEMA:
+        raise RuntimeContractError("unsupported CI contract schema")
+    repository = _string(data["repository"], "CI contract.repository")
+    if not REPOSITORY_RE.fullmatch(repository):
+        raise RuntimeContractError("CI contract.repository has an invalid shape")
+    pull_number = _integer(
+        data["pull_number"],
+        "CI contract.pull_number",
+        minimum=1,
+    )
+    if pull_number > 2147483647:
+        raise RuntimeContractError("CI contract.pull_number is too large")
+    head_oid = _commit(data["head_oid"], "CI contract.head_oid")
+    base_oid = _commit(data["base_oid"], "CI contract.base_oid")
+    require_ci = _boolean(data["require_ci"], "CI contract.require_ci")
+    return {
+        "schema": CI_CONTRACT_SCHEMA,
+        "repository": repository,
+        "pull_number": pull_number,
+        "head_oid": head_oid,
+        "base_oid": base_oid,
+        "require_ci": require_ci,
+    }
+
+
+def _dynamic_check_sort_key(value: Mapping[str, Any]) -> tuple[str, ...]:
+    return (
+        value["workflow_name"],
+        value["check_name"],
+        value["event"],
+        value["bucket"],
+        value["state"],
+        "" if value["link"] is None else value["link"],
+    )
+
+
+def _validate_dynamic_check(
+    value: Mapping[str, Any],
+    label: str,
+) -> dict[str, Any]:
+    keys = {
+        "workflow_name",
+        "check_name",
+        "event",
+        "bucket",
+        "state",
+        "link",
+    }
+    data = _closed(value, keys, label)
+    if set(data) != keys:
+        raise RuntimeContractError(f"{label} has missing fields")
+    workflow_name = _string(
+        data["workflow_name"],
+        f"{label}.workflow_name",
+        nonempty=False,
+        max_bytes=256,
+    )
+    check_name = _string(
+        data["check_name"],
+        f"{label}.check_name",
+        max_bytes=256,
+    )
+    event = _string(
+        data["event"],
+        f"{label}.event",
+        nonempty=False,
+        max_bytes=256,
+    )
+    bucket = _string(data["bucket"], f"{label}.bucket")
+    if bucket not in _DYNAMIC_CHECK_BUCKETS:
+        raise RuntimeContractError(f"{label}.bucket is unsupported")
+    state = _string(data["state"], f"{label}.state", max_bytes=64)
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", state):
+        raise RuntimeContractError(f"{label}.state is invalid")
+    if state not in _DYNAMIC_CHECK_STATES[bucket]:
+        raise RuntimeContractError(f"{label}.state_bucket_conflict")
+    link = data["link"]
+    if link is not None:
+        link = _string(link, f"{label}.link", max_bytes=2048)
+        if not DYNAMIC_LINK_RE.match(link):
+            raise RuntimeContractError(f"{label}.link is unsafe")
+    return {
+        "workflow_name": workflow_name,
+        "check_name": check_name,
+        "event": event,
+        "bucket": bucket,
+        "state": state,
+        "link": link,
+    }
+
+
+def _dynamic_check_receipt(rows: Sequence[Any]) -> str:
+    try:
+        receipt = _bounded_canonical_observation(
+            list(rows),
+            "projected_rows",
+        )
+        if isinstance(receipt, RejectedObservationHardLimit):
+            return receipt.prefix_sha256
+        return receipt.sha256
+    except RuntimeContractError:
+        return sha256_bytes(b"github-ci-invalid-observation-v1")
+
+
+def _dynamic_invalid_observation(
+    *,
+    count: int,
+    receipt: str,
+    code: str,
+    index: int | None = None,
+) -> dict[str, Any]:
+    diagnostic: dict[str, Any] = {
+        "code": code,
+        "message": {
+            "invalid_observation": "a check row is malformed or contradictory",
+            "observation_limit": "the effective check set exceeds its bound",
+            "query_failed": "the GitHub check query failed",
+            "query_timeout": "the GitHub check query timed out",
+            "incomplete_observation": "the effective check set was incomplete",
+            "source_changed": "the pull request identity changed",
+        }.get(code, "the effective check observation is invalid"),
+    }
+    if index is not None:
+        diagnostic["index"] = index
+    return {
+        "state": "invalid_observation",
+        "transition": "invalid_observation",
+        "checks": [],
+        "check_count": count,
+        "checks_sha256": receipt,
+        "diagnostic": diagnostic,
+    }
+
+
+def classify_github_checks(
+    checks: Sequence[Mapping[str, Any]],
+    *,
+    require_ci: bool,
+) -> dict[str, Any]:
+    """Classify the complete effective check set without expected-job policy."""
+
+    if not isinstance(require_ci, bool):
+        raise RuntimeContractError("require_ci must be a boolean")
+    if not isinstance(checks, Sequence) or isinstance(checks, (str, bytes)):
+        return _dynamic_invalid_observation(
+            count=0,
+            receipt=_dynamic_check_receipt([]),
+            code="invalid_observation",
+        )
+    count = len(checks)
+    if count > MAX_DYNAMIC_CI_CHECKS:
+        return _dynamic_invalid_observation(
+            count=count,
+            receipt=_dynamic_check_receipt(checks),
+            code="observation_limit",
+        )
+    projected_receipt = _bounded_canonical_observation(
+        list(checks),
+        "projected_rows",
+    )
+    if isinstance(projected_receipt, RejectedObservationHardLimit):
+        return _dynamic_invalid_observation(
+            count=count,
+            receipt=projected_receipt.prefix_sha256,
+            code="observation_limit",
+        )
+    normalized: list[dict[str, Any]] = []
+    for index, row in enumerate(checks):
+        try:
+            normalized.append(_validate_dynamic_check(row, f"checks[{index}]"))
+        except RuntimeContractError as error:
+            code = (
+                "invalid_observation"
+                if str(error) != f"checks[{index}].state_bucket_conflict"
+                else "state_bucket_conflict"
+            )
+            return _dynamic_invalid_observation(
+                count=count,
+                receipt=_dynamic_check_receipt(checks),
+                code=code,
+                index=index,
+            )
+    normalized.sort(key=_dynamic_check_sort_key)
+    normalized_receipt = _bounded_canonical_observation(
+        normalized,
+        "projected_rows",
+    )
+    if isinstance(normalized_receipt, RejectedObservationHardLimit):
+        return _dynamic_invalid_observation(
+            count=count,
+            receipt=normalized_receipt.prefix_sha256,
+            code="observation_limit",
+        )
+    receipt = normalized_receipt.sha256
+    result = {
+        "checks": normalized,
+        "check_count": count,
+        "checks_sha256": receipt,
+        "diagnostic": None,
+    }
+    if not normalized:
+        state = "no_checks" if require_ci else "not_required"
+        return {
+            **result,
+            "state": state,
+            "transition": state,
+        }
+    if any(row["bucket"] in {"fail", "cancel"} for row in normalized):
+        state = "failed"
+    elif any(row["bucket"] == "pending" for row in normalized):
+        state = "pending"
+    else:
+        state = "green"
+    return {
+        **result,
+        "state": state,
+        "transition": state,
+    }
+
+
+def _validate_dynamic_retry(
+    value: Any,
+    label: str,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    data = _closed(
+        value,
+        {"attempt_id", "failure_fingerprint_sha256"},
+        label,
+    )
+    if set(data) != {"attempt_id", "failure_fingerprint_sha256"}:
+        raise RuntimeContractError(f"{label} has missing fields")
+    return {
+        "attempt_id": _string(data["attempt_id"], f"{label}.attempt_id", max_bytes=256),
+        "failure_fingerprint_sha256": _digest(
+            data["failure_fingerprint_sha256"],
+            f"{label}.failure_fingerprint_sha256",
+        ),
+    }
+
+
+def _validate_dynamic_error(
+    value: Any,
+    label: str,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    data = _closed(
+        value,
+        {"code", "message", "stdout_sha256", "stderr_sha256"},
+        label,
+    )
+    if set(data) != {"code", "message", "stdout_sha256", "stderr_sha256"}:
+        raise RuntimeContractError(f"{label} has missing fields")
+    code = _string(data["code"], f"{label}.code")
+    if code not in _DYNAMIC_CI_ERROR_CODES:
+        raise RuntimeContractError(f"{label}.code is unsupported")
+    return {
+        "code": code,
+        "message": _string(data["message"], f"{label}.message", max_bytes=512),
+        "stdout_sha256": _digest(
+            data["stdout_sha256"],
+            f"{label}.stdout_sha256",
+        ),
+        "stderr_sha256": _digest(
+            data["stderr_sha256"],
+            f"{label}.stderr_sha256",
+        ),
+    }
+
+
+def _validate_dynamic_attempt(
+    value: Mapping[str, Any],
+    label: str,
+    contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    keys = {
+        "sequence",
+        "head_oid",
+        "base_oid",
+        "retry",
+        "checks",
+        "check_count",
+        "checks_sha256",
+        "reason",
+        "watcher_exit_code",
+        "error",
+    }
+    data = _closed(value, keys, label)
+    if set(data) != keys:
+        raise RuntimeContractError(f"{label} has missing fields")
+    sequence = _integer(data["sequence"], f"{label}.sequence", minimum=1)
+    if sequence > 2147483647:
+        raise RuntimeContractError(f"{label}.sequence is too large")
+    head_oid = _commit(data["head_oid"], f"{label}.head_oid")
+    base_oid = _commit(data["base_oid"], f"{label}.base_oid")
+    reason = _string(data["reason"], f"{label}.reason")
+    if reason not in _DYNAMIC_CI_REASONS:
+        raise RuntimeContractError(f"{label}.reason is unsupported")
+    watcher_exit_code = data["watcher_exit_code"]
+    if watcher_exit_code is not None:
+        watcher_exit_code = _integer(
+            watcher_exit_code,
+            f"{label}.watcher_exit_code",
+            minimum=-255,
+        )
+        if watcher_exit_code > 255:
+            raise RuntimeContractError(
+                f"{label}.watcher_exit_code is too large"
+            )
+    raw_checks = data["checks"]
+    if not isinstance(raw_checks, list):
+        raise RuntimeContractError(f"{label}.checks must be an array")
+    if len(raw_checks) > MAX_DYNAMIC_CI_CHECKS:
+        raise RuntimeContractError(f"{label}.checks exceeds its limit")
+    projected_receipt = _bounded_canonical_observation(
+        raw_checks,
+        "projected_rows",
+    )
+    if isinstance(projected_receipt, RejectedObservationHardLimit):
+        raise RuntimeContractError(
+            f"{label}.checks exceed their canonical byte limit"
+        )
+    checks = [
+        _validate_dynamic_check(item, f"{label}.checks[{index}]")
+        for index, item in enumerate(raw_checks)
+    ]
+    checks.sort(key=_dynamic_check_sort_key)
+    check_count = _integer(data["check_count"], f"{label}.check_count")
+    if check_count > 2147483647:
+        raise RuntimeContractError(f"{label}.check_count is too large")
+    checks_sha256 = _digest(data["checks_sha256"], f"{label}.checks_sha256")
+    retry = _validate_dynamic_retry(data["retry"], f"{label}.retry")
+    error = _validate_dynamic_error(data["error"], f"{label}.error")
+    expected_identity = (
+        contract["head_oid"],
+        contract["base_oid"],
+    )
+    if reason != "source_changed" and (head_oid, base_oid) != expected_identity:
+        raise RuntimeContractError(
+            f"{label}.head_oid/base_oid do not match the CI contract"
+        )
+    if reason in _DYNAMIC_CI_STATES:
+        if error is not None:
+            raise RuntimeContractError(
+                f"{label}.error must be null for an ordinary state"
+            )
+        if check_count != len(checks):
+            raise RuntimeContractError(
+                f"{label}.check_count does not match checks"
+            )
+        normalized_receipt = _bounded_canonical_observation(
+            checks,
+            "projected_rows",
+        )
+        if isinstance(normalized_receipt, RejectedObservationHardLimit):
+            raise RuntimeContractError(
+                f"{label}.checks exceed their canonical byte limit"
+            )
+        expected_digest = normalized_receipt.sha256
+        if checks_sha256 != expected_digest:
+            raise RuntimeContractError(
+                f"{label}.checks_sha256 is invalid"
+            )
+        classified = classify_github_checks(
+            checks,
+            require_ci=contract["require_ci"],
+        )
+        if classified["state"] != reason:
+            raise RuntimeContractError(
+                f"{label}.reason does not match its check evidence"
+            )
+    else:
+        if error is None:
+            raise RuntimeContractError(
+                f"{label}.error is required for a diagnostic attempt"
+            )
+        if error["code"] != reason:
+            raise RuntimeContractError(
+                f"{label}.error.code does not match the attempt reason"
+            )
+        if check_count < len(checks):
+            raise RuntimeContractError(
+                f"{label}.check_count is smaller than its evidence"
+            )
+        if reason == "source_changed":
+            if check_count != len(checks):
+                raise RuntimeContractError(
+                    f"{label}.check_count does not match source-change evidence"
+                )
+            source_receipt = _bounded_canonical_observation(
+                checks,
+                "projected_rows",
+            )
+            if isinstance(source_receipt, RejectedObservationHardLimit):
+                raise RuntimeContractError(
+                    f"{label}.checks exceed their canonical byte limit"
+                )
+            if checks_sha256 != source_receipt.sha256:
+                raise RuntimeContractError(
+                    f"{label}.checks_sha256 is invalid"
+                )
+    result = {
+        "sequence": sequence,
+        "head_oid": head_oid,
+        "base_oid": base_oid,
+        "retry": retry,
+        "checks": checks,
+        "check_count": check_count,
+        "checks_sha256": checks_sha256,
+        "reason": reason,
+        "watcher_exit_code": watcher_exit_code,
+        "error": error,
+    }
+    if len(canonical_bytes(result)) > MAX_DYNAMIC_CI_ATTEMPT_BYTES:
+        raise RuntimeContractError(
+            f"{label} exceeds the {MAX_DYNAMIC_CI_ATTEMPT_BYTES}-byte limit"
+        )
+    return result
+
+
+def _dynamic_discarded_attempt_digest(
+    previous_digest: str,
+    attempt: Mapping[str, Any],
+    contract: Mapping[str, Any],
+) -> str:
+    previous_digest = _digest(previous_digest, "previous discarded digest")
+    attempt_bytes = canonical_bytes(
+        _validate_dynamic_attempt(attempt, "discarded attempt", contract)
+    )
+    return sha256_bytes(
+        b"github-ci-v3-discarded-v1\0"
+        + bytes.fromhex(previous_digest)
+        + attempt_bytes
+    )
+
+
+def validate_dynamic_ci_report(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    keys = {
+        "schema",
+        "contract",
+        "discarded_attempt_count",
+        "discarded_attempts_sha256",
+        "attempts",
+    }
+    data = _closed(value, keys, "dynamic CI report")
+    if set(data) != keys:
+        raise RuntimeContractError("dynamic CI report has missing fields")
+    if data["schema"] != DYNAMIC_CI_REPORT_SCHEMA:
+        raise RuntimeContractError("unsupported dynamic CI report schema")
+    contract = validate_ci_contract(data["contract"])
+    discarded_count = _integer(
+        data["discarded_attempt_count"],
+        "dynamic CI report.discarded_attempt_count",
+    )
+    if discarded_count > 2147483647:
+        raise RuntimeContractError(
+            "dynamic CI report.discarded_attempt_count is too large"
+        )
+    discarded_digest = _digest(
+        data["discarded_attempts_sha256"],
+        "dynamic CI report.discarded_attempts_sha256",
+    )
+    if discarded_count == 0 and discarded_digest != "0" * 64:
+        raise RuntimeContractError(
+            "dynamic CI report empty history must use the zero digest"
+        )
+    attempts = data["attempts"]
+    if not isinstance(attempts, list) or not attempts:
+        raise RuntimeContractError(
+            "dynamic CI report attempts must be non-empty"
+        )
+    normalized = [
+        _validate_dynamic_attempt(
+            item,
+            f"dynamic CI report.attempts[{index}]",
+            contract,
+        )
+        for index, item in enumerate(attempts)
+    ]
+    if len(normalized) > MAX_DYNAMIC_CI_ATTEMPTS:
+        raise RuntimeContractError(
+            "dynamic CI report retains too many attempts"
+        )
+    expected_sequences = list(
+        range(
+            discarded_count + 1,
+            discarded_count + len(normalized) + 1,
+        )
+    )
+    if [item["sequence"] for item in normalized] != expected_sequences:
+        raise RuntimeContractError(
+            "dynamic CI report attempt sequences are not contiguous"
+        )
+    result = {
+        "schema": DYNAMIC_CI_REPORT_SCHEMA,
+        "contract": contract,
+        "discarded_attempt_count": discarded_count,
+        "discarded_attempts_sha256": discarded_digest,
+        "attempts": normalized,
+    }
+    if len(canonical_bytes(result)) > MAX_DYNAMIC_CI_REPORT_BYTES:
+        raise RuntimeContractError("dynamic CI report exceeds its byte limit")
+    return result
+
+
+def _bound_dynamic_ci_report(
+    *,
+    contract: Mapping[str, Any],
+    retained: list[dict[str, Any]],
+    discarded_attempt_count: int,
+    discarded_attempts_sha256: str,
+) -> dict[str, Any]:
+    if not retained:
+        raise RuntimeContractError("dynamic CI report needs one current attempt")
+    while True:
+        first_sequence = discarded_attempt_count + 1
+        for index, item in enumerate(retained, start=first_sequence):
+            if item["sequence"] != index:
+                raise RuntimeContractError(
+                    "dynamic CI report attempts must have contiguous sequences"
+                )
+        report = {
+            "schema": DYNAMIC_CI_REPORT_SCHEMA,
+            "contract": dict(contract),
+            "discarded_attempt_count": discarded_attempt_count,
+            "discarded_attempts_sha256": discarded_attempts_sha256,
+            "attempts": retained,
+        }
+        if (
+            len(retained) <= MAX_DYNAMIC_CI_ATTEMPTS
+            and len(canonical_bytes(report)) <= MAX_DYNAMIC_CI_REPORT_BYTES
+        ):
+            return validate_dynamic_ci_report(report)
+        if len(retained) == 1:
+            raise RuntimeContractError(
+                "latest dynamic CI attempt cannot fit the report limit"
+            )
+        discarded_attempts_sha256 = _dynamic_discarded_attempt_digest(
+            discarded_attempts_sha256,
+            retained.pop(0),
+            contract,
+        )
+        discarded_attempt_count += 1
+
+
+def build_dynamic_ci_report(
+    *,
+    contract: Mapping[str, Any],
+    attempts: Sequence[Mapping[str, Any]],
+    discarded_attempts: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    contract = validate_ci_contract(contract)
+    normalized_discarded = [
+        _validate_dynamic_attempt(
+            item,
+            f"dynamic discarded_attempts[{index}]",
+            contract,
+        )
+        for index, item in enumerate(discarded_attempts)
+    ]
+    if [
+        item["sequence"] for item in normalized_discarded
+    ] != list(range(1, len(normalized_discarded) + 1)):
+        raise RuntimeContractError(
+            "dynamic discarded attempts must have contiguous initial sequences"
+        )
+    normalized_attempts = [
+        _validate_dynamic_attempt(
+            item,
+            f"dynamic attempts[{index}]",
+            contract,
+        )
+        for index, item in enumerate(attempts)
+    ]
+    if not normalized_attempts:
+        raise RuntimeContractError("dynamic CI report needs one current attempt")
+    discarded_digest = "0" * 64
+    for item in normalized_discarded:
+        discarded_digest = _dynamic_discarded_attempt_digest(
+            discarded_digest,
+            item,
+            contract,
+        )
+    return _bound_dynamic_ci_report(
+        contract=contract,
+        retained=list(normalized_attempts),
+        discarded_attempt_count=len(normalized_discarded),
+        discarded_attempts_sha256=discarded_digest,
+    )
+
+
+def append_dynamic_ci_report(
+    previous_report: Mapping[str, Any],
+    attempt: Mapping[str, Any],
+    *,
+    discarded_attempts: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    previous = validate_dynamic_ci_report(previous_report)
+    if discarded_attempts:
+        validate_dynamic_ci_report_history(previous, discarded_attempts)
+    normalized = _validate_dynamic_attempt(
+        attempt,
+        "dynamic attempt",
+        previous["contract"],
+    )
+    if normalized["sequence"] != previous["attempts"][-1]["sequence"] + 1:
+        raise RuntimeContractError(
+            "appended dynamic CI attempt sequence is not the next global sequence"
+        )
+    return _bound_dynamic_ci_report(
+        contract=previous["contract"],
+        retained=[*previous["attempts"], normalized],
+        discarded_attempt_count=previous["discarded_attempt_count"],
+        discarded_attempts_sha256=previous["discarded_attempts_sha256"],
+    )
+
+
+def validate_dynamic_ci_report_history(
+    value: Mapping[str, Any],
+    discarded_attempts: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    report = validate_dynamic_ci_report(value)
+    digest = "0" * 64
+    for index, attempt in enumerate(discarded_attempts):
+        normalized = _validate_dynamic_attempt(
+            attempt,
+            f"dynamic discarded_attempts[{index}]",
+            report["contract"],
+        )
+        if normalized["sequence"] != index + 1:
+            raise RuntimeContractError(
+                "dynamic discarded attempt sequences are not contiguous"
+            )
+        digest = _dynamic_discarded_attempt_digest(
+            digest,
+            normalized,
+            report["contract"],
+        )
+    if len(discarded_attempts) != report["discarded_attempt_count"]:
+        raise RuntimeContractError(
+            "dynamic CI report discarded count is invalid"
+        )
+    if digest != report["discarded_attempts_sha256"]:
+        raise RuntimeContractError(
+            "dynamic CI report discarded digest is invalid"
+        )
+    return report
+
+
+def validate_ci_archive(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate an explicitly tagged v2 or v3 CI archive."""
+    if not isinstance(value, Mapping):
+        raise RuntimeContractError("CI archive must be an object")
+    schema = value.get("schema")
+    if schema == CI_REPORT_SCHEMA:
+        return validate_ci_report(value)
+    if schema == DYNAMIC_CI_REPORT_SCHEMA:
+        return validate_dynamic_ci_report(value)
+    raise RuntimeContractError("unsupported CI archive schema")
+
+
+def classify_dynamic_ci_report(value: Mapping[str, Any]) -> str:
+    report = validate_dynamic_ci_report(value)
+    return report["attempts"][-1]["reason"]
+
+
+def _validate_dynamic_feedback_item(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    raw = _object(value, "dynamic feedback item")
+    if raw.get("kind") == "review" and (
+        "updated_at" not in raw or raw["updated_at"] is None
+    ):
+        keys = {
+            "kind",
+            "id",
+            "author_login",
+            "state",
+            "submitted_at",
+            "updated_at",
+            "commit_oid",
+            "body_bytes",
+            "body_sha256",
+        }
+        item = _closed(
+            {**raw, "updated_at": None},
+            keys,
+            "dynamic review",
+        )
+        if set(item) != keys:
+            raise RuntimeContractError("dynamic review has missing fields")
+        return {
+            "kind": "review",
+            "id": _string(item["id"], "dynamic review.id", max_bytes=256),
+            "author_login": _optional_login(
+                item["author_login"],
+                "dynamic review.author_login",
+            ),
+            "state": _upper_state(item["state"], "dynamic review.state"),
+            "submitted_at": _optional_timestamp(
+                item["submitted_at"],
+                "dynamic review.submitted_at",
+            ),
+            "updated_at": None,
+            "commit_oid": _commit(
+                item["commit_oid"],
+                "dynamic review.commit_oid",
+                nullable=True,
+            ),
+            "body_bytes": _integer(
+                item["body_bytes"],
+                "dynamic review.body_bytes",
+            ),
+            "body_sha256": _digest(
+                item["body_sha256"],
+                "dynamic review.body_sha256",
+            ),
+        }
+    return validate_pr_feedback_item(raw)
+
+
+def _dynamic_feedback_semantics(
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    normalized = _validate_dynamic_feedback_item(item)
+    result = dict(normalized)
+    result.pop("created_at", None)
+    result.pop("updated_at", None)
+    result.pop("submitted_at", None)
+    return result
+
+
+def _dynamic_feedback_semantic_digest(
+    items: Sequence[Mapping[str, Any]],
+) -> str:
+    semantic = [
+        _dynamic_feedback_semantics(item)
+        for item in items
+    ]
+    semantic.sort(key=lambda item: (item["kind"], item["id"]))
+    return canonical_sha256(semantic)
+
+
+def validate_dynamic_pr_feedback_cursor(
+    value: Any,
+) -> str | dict[str, Any]:
+    if value == "uninitialized":
+        return value
+    if isinstance(value, str):
+        value = parse_canonical_json(
+            value,
+            label="dynamic PR feedback cursor",
+            max_bytes=MAX_FEEDBACK_BYTES,
+        )
+    data = _object(value, "dynamic PR feedback cursor")
+    mode = data.get("mode")
+    common = {
+        "schema",
+        "mode",
+        "repository",
+        "pull_number",
+        "review_decision",
+        "item_count",
+        "items_sha256",
+    }
+    keys = common | ({"items"} if mode == "complete" else set())
+    data = _closed(data, keys, "dynamic PR feedback cursor")
+    if set(data) != keys:
+        raise RuntimeContractError(
+            "dynamic PR feedback cursor has missing fields"
+        )
+    if data["schema"] != DYNAMIC_PR_CURSOR_SCHEMA:
+        raise RuntimeContractError(
+            "unsupported dynamic PR feedback cursor schema"
+        )
+    if mode not in {"complete", "digest_only"}:
+        raise RuntimeContractError(
+            "dynamic PR feedback cursor.mode is unsupported"
+        )
+    repository = _string(
+        data["repository"],
+        "dynamic cursor.repository",
+    )
+    if not REPOSITORY_RE.fullmatch(repository):
+        raise RuntimeContractError(
+            "dynamic cursor.repository has an invalid shape"
+        )
+    pull_number = _integer(
+        data["pull_number"],
+        "dynamic cursor.pull_number",
+        minimum=1,
+    )
+    if pull_number > 2147483647:
+        raise RuntimeContractError(
+            "dynamic cursor.pull_number is too large"
+        )
+    review_decision = _timestamp_or_empty(
+        data["review_decision"],
+        "dynamic cursor.review_decision",
+    )
+    item_count = _integer(data["item_count"], "dynamic cursor.item_count")
+    if item_count > MAX_FEEDBACK_HARD_LIMIT:
+        raise RuntimeContractError(
+            "dynamic cursor.item_count exceeds its hard limit"
+        )
+    items_sha256 = _digest(
+        data["items_sha256"],
+        "dynamic cursor.items_sha256",
+    )
+    result = {
+        "schema": DYNAMIC_PR_CURSOR_SCHEMA,
+        "mode": mode,
+        "repository": repository,
+        "pull_number": pull_number,
+        "review_decision": review_decision,
+        "item_count": item_count,
+        "items_sha256": items_sha256,
+    }
+    if mode == "complete":
+        items = data["items"]
+        if not isinstance(items, list) or len(items) > MAX_FEEDBACK_ITEMS:
+            raise RuntimeContractError(
+                "dynamic cursor items exceed its limit"
+            )
+        normalized = [
+            _validate_dynamic_feedback_item(item)
+            for item in items
+        ]
+        identities = [(item["kind"], item["id"]) for item in normalized]
+        if identities != sorted(identities) or (
+            len(set(identities)) != len(identities)
+        ):
+            raise RuntimeContractError(
+                "dynamic cursor items must be sorted and unique"
+            )
+        if item_count != len(normalized):
+            raise RuntimeContractError(
+                "dynamic cursor item_count does not match items"
+            )
+        if _dynamic_feedback_semantic_digest(normalized) != items_sha256:
+            raise RuntimeContractError(
+                "dynamic cursor items_sha256 is invalid"
+            )
+        result["items"] = normalized
+    if len(canonical_bytes(result)) > MAX_FEEDBACK_BYTES:
+        raise RuntimeContractError(
+            "dynamic PR feedback cursor exceeds its byte limit"
+        )
+    return result
+
+
+def make_dynamic_pr_feedback_cursor(
+    *,
+    repository: str,
+    pull_number: int,
+    items: Sequence[Mapping[str, Any]],
+    review_decision: str = "",
+    checks: Sequence[Mapping[str, Any]] = (),
+) -> str | dict[str, Any]:
+    repository = _string(repository, "dynamic cursor.repository")
+    if not REPOSITORY_RE.fullmatch(repository):
+        raise RuntimeContractError(
+            "dynamic cursor.repository has an invalid shape"
+        )
+    pull_number = _integer(
+        pull_number,
+        "dynamic cursor.pull_number",
+        minimum=1,
+    )
+    if pull_number > 2147483647:
+        raise RuntimeContractError(
+            "dynamic cursor.pull_number is too large"
+        )
+    review_decision = _timestamp_or_empty(
+        review_decision,
+        "dynamic cursor.review_decision",
+    )
+    if not isinstance(items, Sequence) or isinstance(items, (str, bytes)):
+        raise RuntimeContractError("dynamic cursor items must be a sequence")
+    if len(items) > MAX_FEEDBACK_HARD_LIMIT:
+        raise RuntimeContractError("dynamic cursor items exceed its hard limit")
+    normalized = [
+        _validate_dynamic_feedback_item(item)
+        for item in items
+    ]
+    normalized.sort(key=lambda item: (item["kind"], item["id"]))
+    identities = [(item["kind"], item["id"]) for item in normalized]
+    if len(set(identities)) != len(identities):
+        raise RuntimeContractError("dynamic cursor items must be unique")
+    if not isinstance(checks, Sequence) or isinstance(checks, (str, bytes)):
+        raise RuntimeContractError("dynamic cursor checks must be a sequence")
+    for index, check in enumerate(checks):
+        _validate_dynamic_check(check, f"dynamic cursor checks[{index}]")
+    items_sha256 = _dynamic_feedback_semantic_digest(normalized)
+    result: dict[str, Any] = {
+        "schema": DYNAMIC_PR_CURSOR_SCHEMA,
+        "mode": "complete",
+        "repository": repository,
+        "pull_number": pull_number,
+        "review_decision": review_decision,
+        "item_count": len(normalized),
+        "items_sha256": items_sha256,
+        "items": normalized,
+    }
+    if len(normalized) > MAX_FEEDBACK_ITEMS or (
+        len(canonical_bytes(result)) > MAX_FEEDBACK_BYTES
+    ):
+        result.pop("items")
+        result["mode"] = "digest_only"
+    return validate_dynamic_pr_feedback_cursor(result)
+
+
+def diff_dynamic_pr_feedback_cursor(
+    previous: Any,
+    current: Mapping[str, Any] | str,
+) -> dict[str, Any]:
+    current = validate_dynamic_pr_feedback_cursor(current)
+    if current == "uninitialized":
+        raise RuntimeContractError(
+            "current dynamic cursor must be materialized"
+        )
+    previous = validate_dynamic_pr_feedback_cursor(previous)
+    if previous != "uninitialized" and (
+        previous["repository"] != current["repository"]
+        or previous["pull_number"] != current["pull_number"]
+    ):
+        raise RuntimeContractError(
+            "dynamic feedback cursors do not identify the same pull request"
+        )
+    if previous == "uninitialized":
+        changed = bool(
+            current["item_count"] or current["review_decision"]
+        )
+        return {
+            "transition": "state_changed" if changed else "still_waiting",
+            "observed_cursor": current,
+            "changed_items": None if current["mode"] == "digest_only" else (
+                [
+                    {"kind": item["kind"], "id": item["id"]}
+                    for item in current.get("items", [])
+                ]
+                if changed
+                else []
+            ),
+            "needs_refresh": current["mode"] == "digest_only" and changed,
+        }
+    if (
+        previous["review_decision"] == current["review_decision"]
+        and previous["items_sha256"] == current["items_sha256"]
+    ):
+        return {
+            "transition": "still_waiting",
+            "observed_cursor": current,
+            "changed_items": [],
+            "needs_refresh": False,
+        }
+    if previous["mode"] != "complete" or current["mode"] != "complete":
+        return {
+            "transition": "state_changed",
+            "observed_cursor": current,
+            "changed_items": None,
+            "needs_refresh": True,
+            "diagnostic": {
+                "code": "bounded_feedback_history",
+                "message": (
+                    "complete feedback items are required to enumerate changes"
+                ),
+            },
+        }
+    previous_items = {
+        (item["kind"], item["id"]): _dynamic_feedback_semantics(item)
+        for item in previous["items"]
+    }
+    current_items = {
+        (item["kind"], item["id"]): _dynamic_feedback_semantics(item)
+        for item in current["items"]
+    }
+    changed_items = [
+        {"kind": kind, "id": identifier}
+        for kind, identifier in sorted(
+            set(previous_items) | set(current_items)
+        )
+        if previous_items.get((kind, identifier))
+        != current_items.get((kind, identifier))
+    ]
+    return {
+        "transition": "state_changed",
+        "observed_cursor": current,
+        "changed_items": changed_items,
+        "needs_refresh": False,
+    }
+
+
 __all__ = [
+    "CI_CONTRACT_SCHEMA",
+    "DYNAMIC_CI_REPORT_SCHEMA",
+    "DYNAMIC_PR_CURSOR_SCHEMA",
     "CI_REPORT_SCHEMA",
     "CI_POLICY_SNAPSHOT_SCHEMA",
     "CiAttemptSizeLimit",
@@ -3750,7 +4821,9 @@ __all__ = [
     "TERMINAL_SEAL_SCHEMA",
     "VERIFICATION_REPORT_SCHEMA",
     "build_ci_report",
+    "build_dynamic_ci_report",
     "append_ci_report_attempt",
+    "append_dynamic_ci_report",
     "build_terminal_marker",
     "build_terminal_seal_record",
     "canonical_bytes",
@@ -3764,6 +4837,8 @@ __all__ = [
     "classify_expected_ci_checks",
     "classify_expected_ci_checks_with_receipt",
     "classify_ci_report",
+    "classify_dynamic_ci_report",
+    "classify_github_checks",
     "classify_pr_feedback",
     "classify_terminal_state",
     "classify_verification_report",
@@ -3772,6 +4847,7 @@ __all__ = [
     "make_observation_hard_limit_attempt",
     "make_observation_limit_attempt",
     "make_pr_feedback_cursor",
+    "make_dynamic_pr_feedback_cursor",
     "make_ci_policy_snapshot",
     "make_report_invalid_attempt",
     "parse_runtime_external_captures",
@@ -3783,11 +4859,16 @@ __all__ = [
     "terminal_marker_line",
     "validate_ci_report",
     "validate_ci_report_history",
+    "validate_ci_archive",
+    "validate_dynamic_ci_report",
+    "validate_dynamic_ci_report_history",
+    "validate_ci_contract",
     "validate_captured_runtime_source_envelope",
     "validate_cleanup_report",
     "validate_expected_ci_checks",
     "validate_ci_policy_snapshot",
     "validate_pr_feedback_cursor",
+    "validate_dynamic_pr_feedback_cursor",
     "validate_pr_feedback_item",
     "validate_runtime_source_envelope",
     "validate_terminal_chain",
@@ -3795,4 +4876,5 @@ __all__ = [
     "validate_terminal_seal_record",
     "validate_terminal_seal_request",
     "validate_verification_report",
+    "diff_dynamic_pr_feedback_cursor",
 ]
