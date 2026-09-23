@@ -12,10 +12,12 @@ from pathlib import Path
 import subprocess
 import tempfile
 import shutil
+import contextlib
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
-KIT = Path("/Users/rovkinmax/dev/llm-staf/kent-engineering-kit")
+KIT = Path(os.environ.get("PUBER_STAGE_A_KIT_ROOT", "/Users/rovkinmax/.kent/worktrees/--json")).resolve()
 result = subprocess.run([str(ROOT / ".kent/scripts/workflow-puber-release-intent")], cwd=ROOT, input="{}", text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 assert result.returncode != 0 and "error" in result.stderr
 
@@ -423,3 +425,217 @@ with tempfile.TemporaryDirectory() as directory:
     rejected_case("kit_drift", env_override={**env, "KENT_ENGINEERING_KIT_ROOT": str(bad_kit)})
 
 print("workflow-puber-release-intent: passed scenarios=happy,malformed,task_id,project,workflow_revision,current_node,current_script,execution_commit,worktree,source_drift,kit_drift,no_effect")
+
+# Dynamic CI carrier seam.  Keep this source-only and dependency-injected so
+# the strict published Kit release-authority gate above remains independent.
+dynamic_adapter_spec = importlib.util.spec_from_loader(
+    "puber_dynamic_ci",
+    SourceFileLoader(
+        "puber_dynamic_ci",
+        str(ROOT / ".kent/scripts/workflow-puber-release-ci"),
+    ),
+)
+dynamic_adapter = importlib.util.module_from_spec(dynamic_adapter_spec)
+assert dynamic_adapter_spec and dynamic_adapter_spec.loader
+dynamic_adapter_spec.loader.exec_module(dynamic_adapter)
+dynamic_runtime_spec = importlib.util.spec_from_loader(
+    "puber_dynamic_runtime",
+    SourceFileLoader(
+        "puber_dynamic_runtime",
+        str(ROOT / ".kent/scripts/workflow_runtime_contracts.py"),
+    ),
+)
+dynamic_runtime = importlib.util.module_from_spec(dynamic_runtime_spec)
+assert dynamic_runtime_spec and dynamic_runtime_spec.loader
+dynamic_runtime_spec.loader.exec_module(dynamic_runtime)
+profile_blob = b'[policies]\npr_merge_strategy = "auto"\n[command_versions]\nprepare_ci = "2.0.0"\n'
+resolver_calls = []
+
+def resolve_with_candidate_profile() -> str:
+    def resolver(policy, payload):
+        resolver_calls.append(policy)
+        return SimpleNamespace(outcome="resolved", strategy="rebase")
+
+    fake_kit = {
+        "tree_mode": lambda *_: "100644",
+        "read_blob_bytes": lambda *_args, **_kwargs: profile_blob,
+        "resolve_github_merge_strategy": resolver,
+    }
+    with patch.object(dynamic_adapter.helper, "_kit_modules", return_value=fake_kit), \
+         patch.object(
+             dynamic_adapter.helper,
+             "gh_api",
+             side_effect=lambda _root, endpoint, **_kwargs: (
+                 {"full_name": "rovkinmax/Puber", "default_branch": "master"}
+                 if endpoint == "repos/rovkinmax/Puber"
+                 else None
+             ),
+         ), \
+         patch.object(
+             dynamic_adapter.helper,
+             "gh",
+             return_value=subprocess.CompletedProcess(
+                 [], 0, '[{"type":"required_linear_history"}]', ""
+             ),
+         ):
+        return dynamic_adapter.helper.resolve_merge_strategy(
+            ROOT,
+            {"controller_commit": "a" * 40, "commit": "a" * 40},
+            {"merge_strategy": "rebase"},
+        )
+
+assert resolve_with_candidate_profile() == "rebase"
+assert resolver_calls == ["auto"]
+dynamic_sha = lambda value: value * 40
+dynamic_contract = dynamic_runtime.validate_ci_contract({
+    "schema": "github-ci-contract-v1",
+    "repository": "rovkinmax/Puber",
+    "pull_number": 7,
+    "head_oid": dynamic_sha("a"),
+    "base_oid": dynamic_sha("b"),
+    "require_ci": True,
+})
+dynamic_classification = dynamic_runtime.classify_github_checks(
+    [{
+        "workflow_name": "PR Checks",
+        "check_name": "Build",
+        "event": "pull_request",
+        "bucket": "pass",
+        "state": "SUCCESS",
+        "link": None,
+    }],
+    require_ci=True,
+)
+dynamic_attempt = {
+    "sequence": 1,
+    "head_oid": dynamic_contract["head_oid"],
+    "base_oid": dynamic_contract["base_oid"],
+    "retry": None,
+    "checks": dynamic_classification["checks"],
+    "check_count": dynamic_classification["check_count"],
+    "checks_sha256": dynamic_classification["checks_sha256"],
+    "reason": dynamic_classification["state"],
+    "watcher_exit_code": 0,
+    "error": None,
+}
+dynamic_report = dynamic_runtime.build_dynamic_ci_report(
+    contract=dynamic_contract,
+    attempts=[dynamic_attempt],
+)
+dynamic_cursor = dynamic_runtime.make_dynamic_pr_feedback_cursor(
+    repository="rovkinmax/Puber",
+    pull_number=7,
+    items=[],
+)
+dynamic_payload = {
+    "workspace_path": str(ROOT),
+    "operation_id": "operation-1",
+    "task_short_id": "PUB-99",
+    "release_type": "minor",
+    "release_version": "99.0.0",
+    "release_tag": "v99.0.0",
+    "release_branch": "release/99.0.0",
+    "release_base_oid": dynamic_contract["base_oid"],
+    "candidate_oid": dynamic_contract["head_oid"],
+    "release_head_oid": dynamic_contract["head_oid"],
+    "profile_report": "{}",
+    "profile_report_digest": "a" * 64,
+    "release_preparation_report": "{}",
+    "release_preparation_report_digest": "b" * 64,
+    "verification_summary": "source-only fixture",
+    "pr_url": "https://github.com/rovkinmax/Puber/pull/7",
+    "branch_name": "release/99.0.0",
+    "merge_strategy": "rebase",
+    "pr_head_oid": dynamic_contract["head_oid"],
+    "pr_base_oid": dynamic_contract["base_oid"],
+    "ci_contract": dynamic_runtime.canonical_bytes(dynamic_contract).decode("utf-8"),
+    "ci_report": dynamic_runtime.canonical_bytes(dynamic_report).decode("utf-8"),
+    "pr_feedback_cursor": dynamic_runtime.canonical_bytes(dynamic_cursor).decode("utf-8"),
+}
+dynamic_adapter._packet(dynamic_payload)
+dynamic_bad = dict(dynamic_payload)
+dynamic_bad["ci_report"] = dynamic_runtime.canonical_bytes({
+    **dynamic_report,
+    "contract": {**dynamic_contract, "head_oid": dynamic_sha("c")},
+}).decode("utf-8")
+try:
+    dynamic_adapter._packet(dynamic_bad)
+except Exception:
+    pass
+else:
+    raise AssertionError("contract/report mismatch was accepted")
+
+dynamic_before = {
+    "url": dynamic_payload["pr_url"],
+    "headRefOid": dynamic_contract["head_oid"],
+    "baseRefOid": dynamic_contract["base_oid"],
+    "headRefName": dynamic_payload["branch_name"],
+    "baseRefName": "master",
+    "state": "OPEN",
+    "mergedAt": None,
+    "mergeCommit": None,
+}
+dynamic_after = {**dynamic_before, "headRefOid": dynamic_sha("c")}
+dynamic_state = {
+    "task_short_id": "PUB-99",
+    "controller_commit": dynamic_contract["head_oid"],
+}
+with contextlib.ExitStack() as stack:
+    stack.enter_context(patch.object(dynamic_adapter, "_checkpoint", lambda *_: None))
+    stack.enter_context(patch.object(
+        dynamic_adapter.helper,
+        "resolve_merge_strategy",
+        return_value="rebase",
+    ))
+    stack.enter_context(patch.object(
+        dynamic_adapter,
+        "_read_actual_pr",
+        side_effect=[dynamic_before, dynamic_after],
+    ))
+    stack.enter_context(patch.object(
+        dynamic_adapter,
+        "_run_shared",
+        return_value={
+            "transition": "ci_watch_source_changed",
+            "ci_contract": dynamic_payload["ci_contract"],
+            "pr_feedback_cursor": dynamic_payload["pr_feedback_cursor"],
+        },
+    ))
+    dynamic_changed = dynamic_adapter.transport(
+        "ci_watch",
+        dynamic_payload,
+        dynamic_state,
+    )
+assert dynamic_changed["transition"] == "ci_watch_state_changed"
+assert dynamic_changed["pr_head_oid"] == dynamic_sha("c")
+assert json.loads(dynamic_changed["pr_report"])["reason"] == "source_changed"
+
+with contextlib.ExitStack() as stack:
+    stack.enter_context(patch.object(dynamic_adapter, "_checkpoint", lambda *_: None))
+    stack.enter_context(patch.object(
+        dynamic_adapter.helper,
+        "resolve_merge_strategy",
+        return_value="rebase",
+    ))
+    stack.enter_context(patch.object(
+        dynamic_adapter,
+        "_read_actual_pr",
+        side_effect=[dynamic_before, dynamic_before],
+    ))
+    stack.enter_context(patch.object(
+        dynamic_adapter,
+        "_run_shared",
+        return_value={
+            "transition": "merge_watch_still_waiting",
+            "ci_contract": dynamic_payload["ci_contract"],
+            "ci_report": dynamic_payload["ci_report"],
+            "pr_feedback_cursor": dynamic_payload["pr_feedback_cursor"],
+        },
+    ))
+    dynamic_waiting = dynamic_adapter.transport(
+        "merge_watch",
+        dynamic_payload,
+        dynamic_state,
+    )
+assert dynamic_waiting["transition"] == "merge_watch_still_waiting"
+print("workflow-puber-release-intent: dynamic-ci-carrier=passed")

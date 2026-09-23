@@ -90,11 +90,13 @@ Release source revision 90 is distinct from prepared native revision 88. Native
 verified live 87 preimage; no source command applies that rollout.
 
 `ci_prepare` obtains a real initial/retry CI packet from the shared preparer.
-Carry flat release identity, explicit `verification_summary`, CI history and
-feedback cursor. Re-read the complete checkpoint with `expected=...`; never
-transport the entire checkpoint or synthesize an initial CI report. Build,
-Detekt and UnitTests remain mandatory. Policy commit P is not the actual PR
-base: preserve actual PR head/base for the unchanged seven Publish inputs.
+Carry flat release identity, validated `ci_contract`, dynamic `ci_report`,
+acknowledged feedback cursor, and explicit `verification_summary`. Re-read the
+complete checkpoint with `expected=...`; never transport the entire checkpoint
+or synthesize an initial CI report. Classify every effective check observed:
+failed extras are not ignored, and incomplete or pending observations cannot
+be treated as green. Preserve actual PR head/base for the unchanged seven
+Publish inputs.
 Materialize publication approval commentary using actual version, tag and
 merged T before asking for tag authority.
 

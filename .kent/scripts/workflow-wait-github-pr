@@ -1,1394 +1,400 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import importlib.util
 import json
-import hashlib
 import os
 from pathlib import Path
-import selectors
-import signal
-import shutil
-import subprocess
 import sys
 import time
 import tomllib
-from urllib.parse import urlparse
+from typing import Any
 
 sys.dont_write_bytecode = True
 
-
-MAX_QUERY_OUTPUT_BYTES = 4 * 1024 * 1024
-MAX_FEEDBACK_BODY_BYTES = 64 * 1024
 MAX_PROFILE_BYTES = 64 * 1024
 
 
-class QueryError(RuntimeError):
-    def __init__(
-        self,
-        code: str,
-        *,
-        exit_code: int | None,
-        stdout: bytes = b"",
-        stderr: bytes = b"",
-    ) -> None:
-        super().__init__(code)
-        self.code = code
-        self.exit_code = exit_code
-        self.stdout = stdout
-        self.stderr = stderr
-
-
-FIELDS = (
-    "state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,baseRefOid,"
-    "reviewDecision,mergeStateStatus,statusCheckRollup,url"
-)
-FAILED_CHECK_STATES = {
-    "ACTION_REQUIRED",
-    "CANCELLED",
-    "ERROR",
-    "FAILURE",
-    "STALE",
-    "STARTUP_FAILURE",
-    "TIMED_OUT",
-}
-DEFAULT_GH_PATHS = (
-    "/opt/homebrew/bin/gh",
-    "/usr/local/bin/gh",
-)
-
-
-def workflow_result(transition: str, **values: object) -> None:
-    print(json.dumps({"transition": transition, **values}, ensure_ascii=False))
-
-
-def require_string(payload: dict[str, object], key: str) -> str:
-    value = payload.get(key)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{key} must be a non-empty string")
-    return value.strip()
-
-
-def _terminate_and_reap(
-    process: subprocess.Popen[bytes],
-    *,
-    process_group_id: int,
-    deadline: float,
-) -> None:
-    try:
-        os.killpg(process_group_id, signal.SIGTERM)
-    except OSError:
-        pass
-    remaining = max(0.0, deadline - time.monotonic())
-    if process.poll() is None and remaining:
-        try:
-            process.wait(timeout=remaining)
-        except subprocess.TimeoutExpired:
-            pass
-    try:
-        os.killpg(process_group_id, signal.SIGKILL)
-    except OSError:
-        pass
-    if process.returncode is None:
-        try:
-            process.kill()
-        except OSError:
-            pass
-    # The recorded group was signaled; wait to reap the direct parent.
-    if process.returncode is None:
-        process.wait()
-
-
-def _process_group_exists(process_group_id: int) -> bool:
-    try:
-        os.killpg(process_group_id, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return True
-    return True
-
-
-def validate_pr_url(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"}:
-        raise ValueError("pr_url must be an https://github.com pull-request URL")
-    parts = [part for part in parsed.path.split("/") if part]
-    if len(parts) != 4 or parts[2] != "pull" or not parts[3].isdigit():
-        raise ValueError("pr_url must identify one GitHub pull request")
-
-
-def profile_schema3_legacy(workspace: Path) -> bool:
-    profile = workspace / ".kent" / "workflow-profile.toml"
-    try:
-        raw = profile.read_bytes()
-    except OSError:
-        return False
-    if len(raw) > MAX_PROFILE_BYTES:
-        return False
-    try:
-        value = tomllib.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
-        return False
-    schema = value.get("schema_version") if isinstance(value, dict) else None
-    return type(schema) is int and schema == 3
-
-
-def source_contract_mode(payload: dict[str, object]) -> bool:
-    return "ci_policy_snapshot" in payload
-
-
-def source_contract_values(payload: dict[str, object]) -> dict[str, object]:
-    if not source_contract_mode(payload):
-        return {}
-    keys = (
-        "expected_ci_checks",
-        "expected_ci_checks_sha256",
-        "runtime_source_envelope_digest",
-        "ci_policy_snapshot",
-        "ci_report",
-        "task_short_id",
-    )
-    return {key: payload[key] for key in keys if key in payload}
-
-
-def validate_source_contract(payload: dict[str, object], runtime: object) -> set[tuple[str, str]]:
-    raw_expected = payload.get("expected_ci_checks")
-    if not isinstance(raw_expected, str):
-        raise ValueError("expected_ci_checks is required")
-    expected = runtime.parse_canonical_json(
-        raw_expected,
-        label="expected_ci_checks",
-        max_bytes=runtime.MAX_EXPECTED_CHECKS_BYTES,
-    )
-    expected = runtime.validate_expected_ci_checks(expected)
-    supplied = payload.get("expected_ci_checks_sha256")
-    if supplied != runtime.expected_ci_checks_sha256(expected):
-        raise ValueError("expected_ci_checks_sha256 is invalid")
-    snapshot = payload.get("ci_policy_snapshot")
-    if not isinstance(snapshot, str):
-        raise ValueError("ci_policy_snapshot is required")
-    policy = runtime.parse_canonical_json(
-        snapshot,
-        label="ci_policy_snapshot",
-        max_bytes=runtime.MAX_EXPECTED_CHECKS_BYTES,
-    )
-    policy = runtime.validate_ci_policy_snapshot(policy)
-    if policy["policy_sha256"] != runtime.ci_policy_projection_sha256(expected):
-        raise ValueError("ci_policy_snapshot does not match expected checks")
-    envelope = payload.get("runtime_source_envelope_digest")
-    if envelope != expected["runtime_source_envelope_digest"]:
-        raise ValueError("runtime_source_envelope_digest is invalid")
-    repository = str(payload["pr_url"]).split("/pull/")[0].removeprefix("https://github.com/")
-    if (
-        expected["repository"] != repository
-        or expected["project_commit"] != payload["pr_head_oid"]
-        or policy["target_commit"] != payload["pr_base_oid"]
-    ):
-        raise ValueError("source CI packet identity is contradictory")
-    return {
-        (item["workflow_name"], item["check_name"])
-        for item in expected["checks"]
-    }
-
-
-def runtime_contracts():
-    import importlib.util
-
-    sibling = Path(__file__).with_name("workflow_runtime_contracts.py")
-    if sibling.is_symlink() or not sibling.is_file():
-        raise ValueError("runtime contract support module is unsafe")
+def _sibling(name: str) -> Any:
+    path = Path(__file__).with_name(name)
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError("{} support module is unsafe".format(name))
     spec = importlib.util.spec_from_file_location(
-        "workflow_runtime_contracts",
-        sibling,
+        "kent_{}".format(name.replace(".", "_")),
+        path,
     )
     if spec is None or spec.loader is None:
-        raise ValueError("runtime contract support module is unavailable")
+        raise RuntimeError("{} support module is unavailable".format(name))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def feedback_cursor(payload: dict[str, object]) -> object:
-    value = payload.get("pr_feedback_cursor")
-    if value is None:
-        return None
-    if value == "uninitialized":
-        return value
-    runtime = runtime_contracts()
-    if isinstance(value, str):
-        decoded = runtime.parse_canonical_json(
-            value,
-            label="PR feedback cursor",
-            max_bytes=runtime.MAX_FEEDBACK_BYTES,
-        )
-        if not isinstance(decoded, dict):
-            raise ValueError("PR feedback cursor must encode an object")
-        value = decoded
-    return runtime.validate_pr_feedback_cursor(value)
+def runtime_contracts() -> Any:
+    return _sibling("workflow_runtime_contracts.py")
 
 
-def serialize_cursor(value: object) -> str:
-    return runtime_contracts().canonical_bytes(value).decode("utf-8")
+def github_observation() -> Any:
+    return _sibling("workflow_github_observation.py")
 
 
-def cursor_values(payload: dict[str, object]) -> dict[str, object]:
-    value = feedback_cursor(payload)
-    if value is None:
-        return {}
-    if value == "uninitialized":
-        return {"pr_feedback_cursor": value}
-    return {
-        "pr_feedback_cursor": serialize_cursor(value)
-    }
+def _text(payload: dict[str, object], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("{} must be a non-empty string".format(key))
+    return value.strip()
 
 
-def materialize_cursor(
+def _canonical(runtime: Any, value: object) -> str:
+    return runtime.canonical_bytes(value).decode("utf-8")
+
+
+def _profile_ci_enabled(workspace: Path) -> bool:
+    path = workspace / ".kent" / "workflow-profile.toml"
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise ValueError("workflow profile is required") from error
+    if len(raw) > MAX_PROFILE_BYTES:
+        raise ValueError("workflow profile is too large")
+    try:
+        value = tomllib.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        raise ValueError("workflow profile is invalid") from error
+    capabilities = value.get("capabilities")
+    return isinstance(capabilities, dict) and (
+        capabilities.get("ci_monitoring") is True
+    )
+
+
+def _contract(
+    runtime: Any,
     payload: dict[str, object],
-    state: dict[str, object],
-    pr_url: str,
-) -> object:
-    previous = feedback_cursor(payload)
-    if previous is None:
+    workspace: Path,
+) -> tuple[dict[str, Any] | None, str | None]:
+    raw = payload.get("ci_contract")
+    if raw is None:
+        if _profile_ci_enabled(workspace):
+            raise ValueError("ci_contract is required")
+        if payload.get("ci_report") not in (None, ""):
+            raise ValueError("ci_report requires ci_contract")
+        return None, None
+    if not isinstance(raw, str) or not raw:
+        raise ValueError("ci_contract is invalid")
+    value = runtime.parse_canonical_json(
+        raw,
+        label="ci_contract",
+        max_bytes=runtime.MAX_CI_REPORT_BYTES,
+    )
+    contract = runtime.validate_ci_contract(value)
+    return contract, _canonical(runtime, contract)
+
+
+def _report(
+    runtime: Any,
+    payload: dict[str, object],
+    contract: dict[str, Any] | None,
+) -> str | None:
+    raw = payload.get("ci_report")
+    if raw in (None, ""):
         return None
-    if "feedback_items" not in state and "feedback_checks" not in state:
-        return previous
-    parsed = urlparse(pr_url)
-    parts = [part for part in parsed.path.split("/") if part]
-    if parsed.hostname not in {"github.com", "www.github.com"} or len(parts) != 4:
-        raise ValueError("cannot derive GitHub repository from pr_url")
-    checks = state.get("feedback_checks", [])
-    if not isinstance(checks, list):
-        raise ValueError("feedback_checks must be an array")
-    items = state.get("feedback_items", [])
-    if not isinstance(items, list):
-        raise ValueError("feedback_items must be an array")
-    return runtime_contracts().make_pr_feedback_cursor(
-        repository="{}/{}".format(parts[0], parts[1]),
-        pull_number=int(parts[3]),
-        head_oid=str(state.get("headRefOid") or ""),
-        base_oid=str(state.get("baseRefOid") or ""),
-        pr_state=str(state.get("state") or "").upper(),
-        review_decision=str(state.get("reviewDecision") or "").upper(),
-        merge_state_status=str(state.get("mergeStateStatus") or "").upper(),
-        checks=checks,
-        items=items,
-    )
-
-
-def _body_digest(value: object) -> tuple[int, str]:
-    if value is not None and not isinstance(value, str):
-        raise ValueError("GitHub feedback item body must be text or null")
-    body = "" if value is None else value
-    encoded = body.encode("utf-8")
-    if len(encoded) > MAX_FEEDBACK_BODY_BYTES:
-        raise ValueError("feedback_body_hard_limit")
-    return len(encoded), hashlib.sha256(encoded).hexdigest()
-
-
-def _timestamp(value: object, fallback: str = "") -> str:
-    candidate = str(value or fallback)
-    if not candidate:
-        raise ValueError("GitHub feedback item has no timestamp")
-    return candidate
-
-
-def _feedback_item(kind: str, raw: dict[str, object]) -> dict[str, object]:
-    body_bytes, body_sha256 = _body_digest(raw.get("body"))
-    author = raw.get("author")
-    if isinstance(author, dict):
-        author_login = author.get("login")
-    else:
-        author_login = raw.get("user", {}).get("login") if isinstance(
-            raw.get("user"), dict
-        ) else raw.get("author_login")
-    if author_login is not None:
-        if not isinstance(author_login, str):
-            raise ValueError("GitHub feedback item author is malformed")
-        author_login = author_login.strip()
-        if not author_login:
-            author_login = None
-    identifier = raw.get("id") or raw.get("node_id")
-    if not isinstance(identifier, (str, int)) or not str(identifier).strip():
-        raise ValueError("GitHub feedback item has no stable ID")
-    if kind == "issue_comment":
-        return {
-            "kind": kind,
-            "id": str(identifier),
-            "author_login": author_login,
-            "created_at": _timestamp(
-                raw.get("created_at") or raw.get("createdAt"),
-                "",
-            ),
-            "updated_at": _timestamp(
-                raw.get("updated_at") or raw.get("updatedAt"),
-                "",
-            ),
-            "body_bytes": body_bytes,
-            "body_sha256": body_sha256,
-        }
-    if kind == "review":
-        commit = raw.get("commit_id") or raw.get("commitId")
-        return {
-            "kind": kind,
-            "id": str(identifier),
-            "author_login": author_login,
-            "state": str(raw.get("state") or "").upper(),
-            "submitted_at": (
-                None
-                if raw.get("submitted_at", raw.get("submittedAt")) is None
-                else _timestamp(
-                    raw.get("submitted_at") or raw.get("submittedAt")
-                )
-            ),
-            "updated_at": _timestamp(
-                raw.get("updated_at")
-                or raw.get("updatedAt")
-                or raw.get("submitted_at")
-                or raw.get("submittedAt"),
-                "",
-            ),
-            "commit_oid": None if commit is None else str(commit),
-            "body_bytes": body_bytes,
-            "body_sha256": body_sha256,
-        }
-    if kind == "review_comment":
-        current = raw.get("commit_id") or raw.get("current_commit_oid")
-        original = raw.get("original_commit_id") or raw.get(
-            "original_commit_oid"
+    if contract is None:
+        raise ValueError("ci_report requires ci_contract")
+    if not isinstance(raw, str):
+        raise ValueError("ci_report must be canonical JSON")
+    report = runtime.validate_dynamic_ci_report(
+        runtime.parse_canonical_json(
+            raw,
+            label="ci_report",
+            max_bytes=runtime.MAX_DYNAMIC_CI_REPORT_BYTES,
         )
-        return {
-            "kind": kind,
-            "id": str(identifier),
-            "thread_id": str(
-                raw.get("pull_request_review_thread_id")
-                or raw.get("thread_id")
-                or raw.get("in_reply_to_id")
-                or raw.get("id")
-                or ""
-            ),
-            "author_login": author_login,
-            "created_at": _timestamp(
-                raw.get("created_at") or raw.get("createdAt"),
-                "",
-            ),
-            "updated_at": _timestamp(
-                raw.get("updated_at")
-                or raw.get("updatedAt")
-                or raw.get("created_at")
-                or raw.get("createdAt"),
-                "",
-            ),
-            "current_commit_oid": None if current is None else str(current),
-            "original_commit_oid": None if original is None else str(original),
-            "body_bytes": body_bytes,
-            "body_sha256": body_sha256,
-        }
-    raise ValueError("unsupported feedback kind")
-
-
-def _query_bytes(value: object) -> bytes:
-    return value if isinstance(value, bytes) else b""
-
-
-def _run_query(
-    command: list[str],
-    workspace: Path,
-    *,
-    timeout: int,
-    accepted_exit_codes: tuple[int, ...] = (0,),
-) -> tuple[bytes, bytes, int]:
-    process = subprocess.Popen(
-        command,
-        cwd=workspace,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
     )
-    process_group_id = os.getpgid(process.pid)
-    assert process.stdout is not None
-    assert process.stderr is not None
-    selector = selectors.DefaultSelector()
-    selector.register(process.stdout, selectors.EVENT_READ, "stdout")
-    selector.register(process.stderr, selectors.EVENT_READ, "stderr")
-    captured = {"stdout": bytearray(), "stderr": bytearray()}
-    deadline = time.monotonic() + timeout
-    failure_code: str | None = None
-    try:
-        while selector.get_map():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                failure_code = "github_query_failed"
-                break
-            events = selector.select(remaining)
-            if not events:
-                failure_code = "github_query_failed"
-                break
-            for key, _ in events:
-                data = os.read(key.fileobj.fileno(), 65536)
-                if not data:
-                    selector.unregister(key.fileobj)
-                    continue
-                buffer = captured[key.data]
-                if len(buffer) < MAX_QUERY_OUTPUT_BYTES + 1:
-                    buffer.extend(
-                        data[: MAX_QUERY_OUTPUT_BYTES + 1 - len(buffer)]
-                    )
-                if len(buffer) > MAX_QUERY_OUTPUT_BYTES:
-                    failure_code = "hard_limit"
-                    break
-            if failure_code is not None:
-                break
-    finally:
-        selector.close()
-    if failure_code is None and process.poll() is None:
-        remaining = deadline - time.monotonic()
-        if remaining > 0:
-            try:
-                process.wait(timeout=remaining)
-            except subprocess.TimeoutExpired:
-                failure_code = "github_query_failed"
-        else:
-            failure_code = "github_query_failed"
-    if failure_code is not None:
-        _terminate_and_reap(
-            process,
-            process_group_id=process_group_id,
-            deadline=(
-                deadline
-                if failure_code == "github_query_failed"
-                else time.monotonic()
-            ),
-        )
-    else:
-        process.wait(timeout=0)
-        direct_exit_code = process.returncode
-        if _process_group_exists(process_group_id):
-            _terminate_and_reap(
-                process,
-                process_group_id=process_group_id,
-                deadline=time.monotonic(),
-            )
-            if direct_exit_code == 0:
-                failure_code = "github_query_failed"
-    stdout = bytes(captured["stdout"])
-    stderr = bytes(captured["stderr"])
-    try:
-        process.stdout.close()
-    finally:
-        process.stderr.close()
-    if failure_code == "github_query_failed":
-        raise QueryError(
-            "github_query_failed",
-            exit_code=None,
-            stdout=stdout,
-            stderr=stderr,
-        )
-    if failure_code == "hard_limit":
-        raise QueryError(
-            "hard_limit",
-            exit_code=process.returncode,
-            stdout=stdout,
-            stderr=stderr,
-        )
-    if process.returncode not in accepted_exit_codes:
-        raise QueryError(
-            "github_query_failed",
-            exit_code=process.returncode,
-            stdout=stdout,
-            stderr=stderr,
-        )
-    return stdout, stderr, process.returncode
+    if report["contract"] != contract:
+        raise ValueError("ci_report contract does not match ci_contract")
+    return _canonical(runtime, report)
 
 
-def _json_output(
-    stdout: bytes,
-    *,
-    label: str,
-    fallback: str = "",
-    stderr: bytes = b"",
-) -> object:
-    try:
-        text = stdout.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise QueryError(
-            "github_output_invalid",
-            exit_code=0,
-            stdout=stdout,
-            stderr=stderr,
-        ) from error
-    try:
-        return json.loads(text or fallback)
-    except json.JSONDecodeError as error:
-        raise QueryError(
-            "github_output_invalid",
-            exit_code=0,
-            stdout=stdout,
-            stderr=stderr,
-        ) from error
-
-
-def _paginate_feedback(
-    gh_bin: str,
-    workspace: Path,
-    endpoint: str,
-    *,
-    timeout: int,
-) -> list[dict[str, object]]:
-    stdout, stderr, _exit_code = _run_query(
-        [
-            gh_bin,
-            "api",
-            "--paginate",
-            "--slurp",
-            endpoint,
-        ],
-        workspace,
-        timeout=timeout,
-    )
-    value = _json_output(
-        stdout,
-        label="GitHub feedback query",
-        fallback="[]",
-        stderr=stderr,
-    )
-    if not isinstance(value, list):
-        raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-    if value and all(isinstance(page, list) for page in value):
-        pages = value
-    else:
-        pages = [value]
-    flattened: list[dict[str, object]] = []
-    for page in pages:
-        if not isinstance(page, list):
-            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-        if len(flattened) + len(page) > 1000:
-            raise ValueError("feedback_hard_limit")
-        for item in page:
-            if not isinstance(item, dict):
-                raise QueryError(
-                    "github_output_invalid",
-                    exit_code=0,
-                    stdout=stdout,
-                )
-            flattened.append(item)
-    return flattened
-
-
-def _read_review_threads(
-    gh_bin: str,
-    workspace: Path,
-    repository: str,
-    number: str,
-    *,
-    timeout: int,
-) -> list[dict[str, object]]:
-    query = """
-query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
-  repository(owner:$owner, name:$name) {
-    pullRequest(number:$number) {
-      reviewThreads(first:100, after:$endCursor) {
-        nodes {
-          id
-          isResolved
-          isOutdated
-          path
-          line
-          startLine
-          originalLine
-          originalStartLine
-          subjectType
-          comments(first:100) {
-            nodes { id }
-            pageInfo { hasNextPage endCursor }
-          }
-        }
-        pageInfo { hasNextPage endCursor }
-      }
-    }
-  }
-}
-"""
-    owner, name = repository.split("/", 1)
-    stdout, stderr, _exit_code = _run_query(
-        [
-            gh_bin,
-            "api",
-            "graphql",
-            "--paginate",
-            "--slurp",
-            "-f",
-            "query=" + query,
-            "-F",
-            "owner=" + owner,
-            "-F",
-            "name=" + name,
-            "-F",
-            "number=" + number,
-            "-F",
-            "endCursor=null",
-        ],
-        workspace,
-        timeout=timeout,
-    )
-    payload = _json_output(
-        stdout,
-        label="GitHub review-thread query",
-        fallback="[]",
-        stderr=stderr,
-    )
-    if not isinstance(payload, list):
-        raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-    pages = payload
-    threads: list[dict[str, object]] = []
-    observation_count = 0
-    for page in pages:
-        if not isinstance(page, dict):
-            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-        data = page.get("data")
-        if not isinstance(data, dict):
-            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-        repository_data = data.get("repository")
-        if not isinstance(repository_data, dict):
-            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-        pull = repository_data.get("pullRequest")
-        if not isinstance(pull, dict):
-            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-        connection = pull.get("reviewThreads")
-        if not isinstance(connection, dict):
-            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-        nodes = connection.get("nodes")
-        page_info = connection.get("pageInfo")
-        if not isinstance(nodes, list) or not isinstance(page_info, dict):
-            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-        if not isinstance(page_info.get("hasNextPage"), bool):
-            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-        end_cursor = page_info.get("endCursor")
-        if end_cursor is not None and not isinstance(end_cursor, str):
-            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-        if page_info["hasNextPage"] and not end_cursor:
-            raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-        for node in nodes:
-            if not isinstance(node, dict):
-                raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-            for required in ("id", "path", "subjectType"):
-                if not isinstance(node.get(required), str) or not node[required]:
-                    raise QueryError(
-                        "github_output_invalid",
-                        exit_code=0,
-                        stdout=stdout,
-                    )
-            comments = node.get("comments")
-            if not isinstance(comments, dict):
-                raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-            comment_nodes = comments.get("nodes")
-            comment_page_info = comments.get("pageInfo")
-            if not isinstance(comment_nodes, list) or not isinstance(
-                comment_page_info,
-                dict,
-            ):
-                raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-            if not isinstance(comment_page_info.get("hasNextPage"), bool):
-                raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-            comment_ids: list[str] = []
-            for item in comment_nodes:
-                if (
-                    not isinstance(item, dict)
-                    or not isinstance(item.get("id"), str)
-                    or not item["id"]
-                ):
-                    raise QueryError(
-                        "github_output_invalid",
-                        exit_code=0,
-                        stdout=stdout,
-                    )
-                comment_ids.append(item["id"])
-            observation_count += 1 + len(comment_ids)
-            if observation_count > 1000:
-                raise ValueError("feedback_hard_limit")
-            if comment_page_info["hasNextPage"]:
-                cursor = comment_page_info.get("endCursor")
-                if not isinstance(cursor, str) or not cursor:
-                    raise QueryError(
-                        "github_output_invalid",
-                        exit_code=0,
-                        stdout=stdout,
-                    )
-                continuation = """
-query($threadId:ID!, $endCursor:String) {
-  node(id:$threadId) {
-    ... on PullRequestReviewThread {
-      comments(first:100, after:$endCursor) {
-        nodes { id }
-        pageInfo { hasNextPage endCursor }
-      }
-    }
-  }
-}
-"""
-                while True:
-                    continuation_stdout, continuation_stderr, _exit_code = _run_query(
-                        [
-                            gh_bin,
-                            "api",
-                            "graphql",
-                            "-f",
-                            "query=" + continuation,
-                            "-F",
-                            "threadId=" + node["id"],
-                            "-F",
-                            "endCursor=" + cursor,
-                        ],
-                        workspace,
-                        timeout=timeout,
-                    )
-                    continuation_value = _json_output(
-                        continuation_stdout,
-                        label="GitHub review-thread continuation",
-                        stderr=continuation_stderr,
-                    )
-                    if not isinstance(continuation_value, dict):
-                        raise QueryError(
-                            "github_output_invalid",
-                            exit_code=0,
-                            stdout=continuation_stdout,
-                        )
-                    continuation_data = continuation_value.get("data")
-                    continuation_node = (
-                        continuation_data.get("node")
-                        if isinstance(continuation_data, dict)
-                        else None
-                    )
-                    continuation_comments = (
-                        continuation_node.get("comments")
-                        if isinstance(continuation_node, dict)
-                        else None
-                    )
-                    if not isinstance(continuation_comments, dict):
-                        raise QueryError(
-                            "github_output_invalid",
-                            exit_code=0,
-                            stdout=continuation_stdout,
-                        )
-                    continuation_nodes = continuation_comments.get("nodes")
-                    continuation_info = continuation_comments.get("pageInfo")
-                    if not isinstance(continuation_nodes, list) or not isinstance(
-                        continuation_info,
-                        dict,
-                    ):
-                        raise QueryError(
-                            "github_output_invalid",
-                            exit_code=0,
-                            stdout=continuation_stdout,
-                        )
-                    for item in continuation_nodes:
-                        if (
-                            not isinstance(item, dict)
-                            or not isinstance(item.get("id"), str)
-                            or not item["id"]
-                        ):
-                            raise QueryError(
-                                "github_output_invalid",
-                                exit_code=0,
-                                stdout=continuation_stdout,
-                            )
-                        comment_ids.append(item["id"])
-                        observation_count += 1
-                        if observation_count > 1000:
-                            raise ValueError("feedback_hard_limit")
-                    if not isinstance(
-                        continuation_info.get("hasNextPage"),
-                        bool,
-                    ):
-                        raise QueryError(
-                            "github_output_invalid",
-                            exit_code=0,
-                            stdout=continuation_stdout,
-                        )
-                    if not continuation_info["hasNextPage"]:
-                        break
-                    cursor = continuation_info.get("endCursor")
-                    if not isinstance(cursor, str) or not cursor:
-                        raise QueryError(
-                            "github_output_invalid",
-                            exit_code=0,
-                            stdout=continuation_stdout,
-                        )
-            threads.append(
-                {
-                    "kind": "review_thread",
-                    "id": node["id"],
-                    "resolved": node.get("isResolved"),
-                    "outdated": node.get("isOutdated"),
-                    "path": node["path"],
-                    "current_line": node.get("line"),
-                    "current_start_line": node.get("startLine"),
-                    "original_line": node.get("originalLine"),
-                    "original_start_line": node.get("originalStartLine"),
-                    "subject_type": node["subjectType"],
-                    "comment_ids": comment_ids,
-                }
-            )
-            if len(threads) > 1000:
-                raise ValueError("feedback_hard_limit")
-    return threads
-
-
-def read_feedback(
-    workspace: Path,
-    pr_url: str,
-    gh_bin: str,
-    *,
-    timeout: int,
-) -> list[dict[str, object]]:
-    parsed = urlparse(pr_url)
-    parts = [part for part in parsed.path.split("/") if part]
-    if parsed.hostname not in {"github.com", "www.github.com"} or len(parts) != 4:
-        raise ValueError("cannot derive GitHub repository from pr_url")
-    repository = "{}/{}".format(parts[0], parts[1])
-    number = parts[3]
-    issue_comments = _paginate_feedback(
-        gh_bin,
-        workspace,
-        f"repos/{repository}/issues/{number}/comments?per_page=100",
-        timeout=timeout,
-    )
-    reviews = _paginate_feedback(
-        gh_bin,
-        workspace,
-        f"repos/{repository}/pulls/{number}/reviews?per_page=100",
-        timeout=timeout,
-    )
-    review_comments = _paginate_feedback(
-        gh_bin,
-        workspace,
-        f"repos/{repository}/pulls/{number}/comments?per_page=100",
-        timeout=timeout,
-    )
-    review_threads = _read_review_threads(
-        gh_bin,
-        workspace,
-        repository,
-        number,
-        timeout=timeout,
-    )
-    if (
-        len(issue_comments)
-        + len(reviews)
-        + len(review_comments)
-        + len(review_threads)
-        + sum(len(item["comment_ids"]) for item in review_threads)
-        > 1000
-    ):
-        raise ValueError("feedback_hard_limit")
-    items = [
-        _feedback_item("issue_comment", item) for item in issue_comments
-    ]
-    items.extend(_feedback_item("review", item) for item in reviews)
-    items.extend(
-        _feedback_item("review_comment", item) for item in review_comments
-    )
-    items.extend(review_threads)
-    runtime = runtime_contracts()
-    normalized = [
-        runtime.validate_pr_feedback_item(item) for item in items
-    ]
-    identities = [(item["kind"], item["id"]) for item in normalized]
-    if len(identities) != len(set(identities)):
-        raise RuntimeError("duplicate_feedback_item")
-    normalized.sort(key=lambda item: (item["kind"], item["id"]))
-    return normalized
-
-
-def feedback_checks(state: dict[str, object]) -> list[dict[str, object]]:
-    raw_checks = state.get("statusCheckRollup")
-    if not isinstance(raw_checks, list):
-        return []
-    if len(raw_checks) > 1000:
-        raise ValueError("feedback_hard_limit")
-    rows: list[dict[str, object]] = []
-    for item in raw_checks:
-        if not isinstance(item, dict):
-            raise ValueError("malformed_feedback_check")
-        bucket = str(
-            item.get("bucket")
-            or item.get("conclusion")
-            or item.get("status")
-            or ""
-        ).lower()
-        if bucket in {"success", "completed", "pass"}:
-            bucket = "pass"
-        elif bucket in {"failure", "failed", "fail", "error"}:
-            bucket = "fail"
-        elif bucket in {"cancelled", "cancel"}:
-            bucket = "cancel"
-        elif bucket in {"skipped", "skipping"}:
-            bucket = "skipping"
-        else:
-            bucket = "pending"
-        workflow_value = (
-            item.get("workflow")
-            or item.get("workflow_name")
-            or ""
-        )
-        if isinstance(workflow_value, dict):
-            workflow_value = (
-                workflow_value.get("name")
-                or workflow_value.get("workflowName")
-                or ""
-            )
-        rows.append(
-            {
-                "workflow_name": str(workflow_value),
-                "check_name": str(
-                    item.get("name")
-                    or item.get("context")
-                    or ""
-                ),
-                "bucket": bucket,
-                "state": str(
-                    item.get("state")
-                    or item.get("conclusion")
-                    or item.get("status")
-                    or "UNKNOWN"
-                ).upper(),
-                "link": item.get("detailsUrl") or item.get("link"),
-            }
-        )
-    return rows
-
-
-def resolve_gh_bin() -> str:
-    configured = os.environ.get("KENT_GH_BIN")
-    candidates = (configured,) if configured else ("gh", *DEFAULT_GH_PATHS)
-    for candidate in candidates:
-        if candidate and (resolved := shutil.which(candidate)):
-            return resolved
-    if configured:
-        raise RuntimeError(
-            f"configured GitHub CLI is not executable: {configured}"
-        )
-    raise RuntimeError(
-        "GitHub CLI was not found; set KENT_GH_BIN to its absolute path"
+def _cursor(runtime: Any, payload: dict[str, object]) -> tuple[object, str | None]:
+    if "pr_feedback_cursor" not in payload:
+        return "uninitialized", None
+    raw = payload["pr_feedback_cursor"]
+    if raw != "uninitialized" and not isinstance(raw, (str, dict)):
+        raise ValueError("pr_feedback_cursor is invalid")
+    value = runtime.validate_dynamic_pr_feedback_cursor(raw)
+    return (
+        value,
+        value if value == "uninitialized" else _canonical(runtime, value),
     )
 
 
-def read_state(
-    workspace: Path,
-    pr_url: str,
-    gh_bin: str,
-    *,
-    timeout: int,
-) -> dict[str, object]:
-    stdout, stderr, _exit_code = _run_query(
-        [
-            gh_bin,
-            "pr",
-            "view",
-            pr_url,
-            "--json",
-            FIELDS,
-        ],
-        workspace,
-        timeout=timeout,
-    )
-    payload = _json_output(stdout, label="GitHub PR query", stderr=stderr)
-    if not isinstance(payload, dict):
-        raise QueryError("github_output_invalid", exit_code=0, stdout=stdout)
-    return payload
-
-
-def read_source_checks(workspace: Path, pr_url: str, gh_bin: str, *, timeout: int) -> list[dict[str, object]]:
-    stdout, stderr, exit_code = _run_query(
-        [gh_bin, "pr", "checks", pr_url, "--json", "name,workflow,bucket,state,link"],
-        workspace, timeout=timeout, accepted_exit_codes=(0, 1, 8),
-    )
-    values = _json_output(stdout, label="GitHub PR checks", stderr=stderr)
-    if not isinstance(values, list) or len(values) > 1000:
-        raise ValueError("feedback_hard_limit")
-    identities = set()
-    for item in values:
-        if not isinstance(item, dict) or not all(
-            isinstance(item.get(key), str) for key in ("name", "workflow", "bucket", "state")
-        ):
-            raise ValueError("malformed_feedback_check")
-        identity = (item["workflow"], item["name"])
-        if identity in identities:
-            raise ValueError("ambiguous_feedback_check")
-        identities.add(identity)
-    return values
-
-
-def _safe_error(error: Exception) -> dict[str, object]:
-    if isinstance(error, QueryError):
-        return {
-            "code": error.code,
-            "exit_code": error.exit_code,
-            "stdout_sha256": hashlib.sha256(error.stdout).hexdigest(),
-            "stderr_sha256": hashlib.sha256(error.stderr).hexdigest(),
-        }
-    return {
-        "code": "github_output_invalid",
-        "exit_code": None,
-        "stdout_sha256": hashlib.sha256(b"").hexdigest(),
-        "stderr_sha256": hashlib.sha256(b"").hexdigest(),
-    }
-
-
-def state_report(
-    state: dict[str, object],
-    reason: str,
-    *,
-    feedback_error: Exception | None = None,
-) -> str:
-    checks = []
-    raw_checks = state.get("statusCheckRollup")
-    if isinstance(raw_checks, list):
-        for check in raw_checks[:25]:
-            if not isinstance(check, dict):
-                continue
-            checks.append(
-                {
-                    "name": check.get("name") or check.get("context"),
-                    "status": check.get("status") or check.get("state"),
-                    "conclusion": check.get("conclusion"),
-                }
-            )
-    report: dict[str, object] = {
-        "reason": reason,
-        "state": state.get("state"),
-        "headRefOid": state.get("headRefOid"),
-        "baseRefOid": state.get("baseRefOid"),
-        "reviewDecision": state.get("reviewDecision"),
-        "mergeStateStatus": state.get("mergeStateStatus"),
-        "checks": checks,
-        "url": state.get("url"),
-    }
-    if feedback_error is not None:
-        report["safe_error"] = _safe_error(feedback_error)
+def _merge_report(pr: dict[str, object]) -> str:
     return json.dumps(
-        report,
+        {
+            "state": pr.get("state"),
+            "mergedAt": pr.get("mergedAt"),
+            "mergeCommit": pr.get("mergeCommit"),
+            "headRefName": pr.get("headRefName"),
+            "headRefOid": pr.get("headRefOid"),
+            "baseRefName": pr.get("baseRefName"),
+            "baseRefOid": pr.get("baseRefOid"),
+            "url": pr.get("url"),
+        },
         ensure_ascii=False,
         sort_keys=True,
     )
 
 
+def _pr_report(
+    *,
+    pr: dict[str, object],
+    reason: str,
+    checks: list[dict[str, object]] | None = None,
+    observed_cursor: str | None = None,
+    error: Exception | None = None,
+) -> str:
+    value: dict[str, object] = {
+        "reason": reason,
+        "state": pr.get("state"),
+        "headRefOid": pr.get("headRefOid"),
+        "baseRefOid": pr.get("baseRefOid"),
+        "reviewDecision": pr.get("reviewDecision"),
+        "mergeStateStatus": pr.get("mergeStateStatus"),
+        "checks": checks or [],
+        "url": pr.get("url"),
+    }
+    if observed_cursor is not None:
+        value["observed_feedback_cursor"] = observed_cursor
+    if error is not None:
+        if hasattr(error, "as_dict"):
+            value["safe_error"] = error.as_dict()
+        else:
+            value["safe_error"] = {
+                "code": str(getattr(error, "code", "") or "invalid_observation"),
+            }
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _emit(
+    transition: str,
+    values: dict[str, object],
+    *,
+    cursor: str | None = None,
+) -> None:
+    result = dict(values)
+    if cursor is not None:
+        result["pr_feedback_cursor"] = cursor
+    print(json.dumps(
+        {"transition": transition, **result},
+        ensure_ascii=False,
+        sort_keys=True,
+    ))
+
+
 def main() -> int:
     try:
-        raw = json.load(sys.stdin)
+        payload = json.load(sys.stdin)
     except json.JSONDecodeError as error:
-        raise ValueError(f"stdin is not valid JSON: {error}") from error
-    if not isinstance(raw, dict):
+        raise ValueError("stdin is not valid JSON: {}".format(error))
+    if not isinstance(payload, dict):
         raise ValueError("stdin must be one JSON object")
 
-    workspace = Path(require_string(raw, "workspace_path")).expanduser().resolve()
-    pr_url = require_string(raw, "pr_url")
-    branch_name = require_string(raw, "branch_name")
-    merge_strategy = require_string(raw, "merge_strategy")
-    initial_head = require_string(raw, "pr_head_oid")
-    initial_base = require_string(raw, "pr_base_oid")
-    v2_mode = not (
-        profile_schema3_legacy(workspace) and "ci_report" not in raw
-    )
-    source_mode = source_contract_mode(raw)
-    prevalidation_error: Exception | None = None
-    cursor: dict[str, object] = {}
-    mandatory_checks: set[tuple[str, str]] | None = None
-    if v2_mode:
-        try:
-            cursor = cursor_values(raw)
-            if source_mode:
-                mandatory_checks = validate_source_contract(
-                    raw,
-                    runtime_contracts(),
-                )
-        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
-            prevalidation_error = error
-    else:
-        cursor = cursor_values(raw)
-    validate_pr_url(pr_url)
+    workspace = Path(_text(payload, "workspace_path")).expanduser().resolve()
+    pr_url = _text(payload, "pr_url")
+    branch_name = _text(payload, "branch_name")
+    merge_strategy = _text(payload, "merge_strategy")
+    initial_head = _text(payload, "pr_head_oid")
+    initial_base = _text(payload, "pr_base_oid")
     if not workspace.is_dir():
-        raise ValueError(f"workspace does not exist: {workspace}")
+        raise ValueError("workspace does not exist: {}".format(workspace))
     if merge_strategy not in {"merge", "squash", "rebase"}:
-        raise ValueError(f"unsupported merge_strategy: {merge_strategy!r}")
+        raise ValueError("unsupported merge_strategy: {!r}".format(merge_strategy))
+
+    runtime = runtime_contracts()
+    observation = github_observation()
+    contract, contract_text = _contract(runtime, payload, workspace)
+    report_text = _report(runtime, payload, contract)
+    acknowledged, acknowledged_text = _cursor(runtime, payload)
+    repository, pull_number = observation.parse_pr_url(pr_url)
+    if contract is not None and (
+        repository != contract["repository"]
+        or pull_number != contract["pull_number"]
+    ):
+        raise ValueError("ci_contract does not identify pr_url")
+    values: dict[str, object] = {
+        "workspace_path": str(workspace),
+        "pr_url": pr_url,
+        "branch_name": branch_name,
+        "merge_strategy": merge_strategy,
+    }
+    if contract_text is not None:
+        values["ci_contract"] = contract_text
+    if report_text is not None:
+        values["ci_report"] = report_text
+    if "task_short_id" in payload:
+        values["task_short_id"] = _text(payload, "task_short_id")
 
     test_mode = os.environ.get("KENT_PR_WATCH_TEST_MODE") == "1"
-    requested_interval = int(
-        os.environ.get("KENT_PR_WATCH_INTERVAL_SECONDS", "60")
+    interval = max(
+        0 if test_mode else 30,
+        int(os.environ.get("KENT_PR_WATCH_INTERVAL_SECONDS", "60")),
     )
-    interval = (
-        max(0, requested_interval)
-        if test_mode
-        else max(30, requested_interval)
-    )
-    requested_max_polls = int(
-        os.environ.get("KENT_PR_WATCH_MAX_POLLS", "120")
-    )
-    max_polls = (
-        max(0, requested_max_polls)
-        if test_mode
-        else max(2, requested_max_polls or 120)
-    )
-    query_timeout = max(
+    max_polls = max(0, int(os.environ.get("KENT_PR_WATCH_MAX_POLLS", "120")))
+    max_errors = max(1, int(os.environ.get("KENT_PR_WATCH_MAX_ERRORS", "5")))
+    timeout = max(
         1,
         int(os.environ.get("KENT_PR_WATCH_QUERY_TIMEOUT_SECONDS", "60")),
     )
-    max_errors = max(
-        1,
-        int(os.environ.get("KENT_PR_WATCH_MAX_ERRORS", "5")),
-    )
-    if v2_mode and prevalidation_error is not None:
-        workflow_result(
-            "merge_watch_state_changed",
-            workspace_path=str(workspace),
-            pr_url=pr_url,
-            branch_name=branch_name,
-            merge_strategy=merge_strategy,
-            pr_report=state_report(
-                {},
-                "pull_request_feedback_invalid",
-                feedback_error=prevalidation_error,
-            ),
-            pr_feedback_cursor="uninitialized",
-            **source_contract_values(raw),
-        )
-        return 0
-    gh_bin = resolve_gh_bin()
-    consecutive_errors = 0
-    poll = 0
-
+    gh_bin = os.environ.get("KENT_GH_BIN")
+    errors = 0
+    polls = 0
     while True:
-        poll += 1
+        polls += 1
         try:
-            state = read_state(
+            watcher = observation.GitHubObserver(
                 workspace,
-                pr_url,
-                gh_bin,
-                timeout=query_timeout,
+                gh_bin=gh_bin,
+                timeout=timeout,
             )
-            if mandatory_checks is not None and state.get("state") == "OPEN":
-                # The PR rollup does not include workflow identity. Use the
-                # actual checks endpoint, then reject a head/base race.
-                checks = read_source_checks(workspace, pr_url, gh_bin, timeout=query_timeout)
-                confirmed = read_state(workspace, pr_url, gh_bin, timeout=query_timeout)
-                if any(confirmed.get(key) != state.get(key) for key in (
-                    "state", "url", "headRefOid", "baseRefOid", "headRefName", "baseRefName",
-                )):
-                    raise ValueError("pull_request_identity_changed")
-                state["statusCheckRollup"] = checks
-            consecutive_errors = 0
-        except (QueryError, RuntimeError, ValueError) as error:
-            consecutive_errors += 1
-            if consecutive_errors >= max_errors:
-                if cursor:
-                    safe = {
-                        "reason": "github_query_failed",
-                        "safe_error": _safe_error(error),
-                    }
-                    report = json.dumps(safe, ensure_ascii=False, sort_keys=True)
-                else:
-                    report = json.dumps(
-                        {
-                            "reason": "github_query_failed",
-                            "attempts": consecutive_errors,
-                            "safe_error": _safe_error(error),
-                        },
-                        ensure_ascii=False,
-                    )
-                workflow_result(
-                    "merge_watch_state_changed",
-                    workspace_path=str(workspace),
-                    pr_url=pr_url,
-                    branch_name=branch_name,
-                    merge_strategy=merge_strategy,
-                    pr_report=report,
-                    **source_contract_values(raw),
-                    **cursor,
+            observed = watcher.observe_pr(pr_url)
+            errors = 0
+            pr = observed["pr"]
+            state = str(pr.get("state") or "").upper()
+            head_oid = str(pr["headRefOid"])
+            base_oid = str(pr["baseRefOid"])
+            if state == "MERGED":
+                _emit(
+                    "merge_watch_pr_merged",
+                    {**values, "merge_report": _merge_report(pr)},
+                    cursor=acknowledged_text,
                 )
                 return 0
-            print(
-                f"GitHub PR query failed "
-                f"({consecutive_errors}/{max_errors}): {error}",
-                file=sys.stderr,
-            )
-            time.sleep(interval)
-            continue
 
-        state_name = str(state.get("state") or "").upper()
-        head_oid = str(state.get("headRefOid") or "")
-        base_oid = str(state.get("baseRefOid") or "")
-        review_decision = str(state.get("reviewDecision") or "").upper()
-        merge_state = str(state.get("mergeStateStatus") or "").upper()
-        feedback_reason = ""
-        feedback_error: Exception | None = None
-        if cursor:
-            try:
-                previous_cursor = feedback_cursor(raw)
-                state["feedback_items"] = read_feedback(
-                    workspace,
-                    pr_url,
-                    gh_bin,
-                    timeout=query_timeout,
-                )
-                state["feedback_checks"] = feedback_checks(state)
-                current_cursor = materialize_cursor(raw, state, pr_url)
-                cursor = {
-                    "pr_feedback_cursor": serialize_cursor(current_cursor)
+            current = runtime.make_dynamic_pr_feedback_cursor(
+                repository=repository,
+                pull_number=pull_number,
+                items=observed["feedback_items"],
+                review_decision=str(pr.get("reviewDecision") or ""),
+                checks=observed["checks"],
+            )
+            delta = runtime.diff_dynamic_pr_feedback_cursor(
+                acknowledged,
+                current,
+            )
+            initial_cursor_baseline = (
+                acknowledged == "uninitialized"
+                and not observed["feedback_items"]
+                and current.get("review_decision") in {"", "APPROVED"}
+            )
+            if initial_cursor_baseline:
+                delta = {
+                    **delta,
+                    "transition": "still_waiting",
+                    "changed_items": [],
+                    "needs_refresh": False,
                 }
-                if current_cursor != previous_cursor:
-                    feedback_transition = runtime_contracts().classify_pr_feedback(
-                        previous_cursor,
-                        current_cursor,
-                    )["transition"]
-                    if feedback_transition == "state_changed":
-                        feedback_reason = "pull_request_feedback_changed"
-                    elif feedback_transition == "feedback_hard_limit":
-                        feedback_reason = "pull_request_feedback_hard_limit"
-            except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
-                feedback_error = error
-                feedback_reason = (
-                    "pull_request_feedback_hard_limit"
-                    if (
-                        str(error)
-                        in {"feedback_hard_limit", "feedback_body_hard_limit"}
-                        or (
-                            isinstance(error, QueryError)
-                            and error.code == "hard_limit"
-                        )
-                    )
-                    else "pull_request_feedback_invalid"
-                )
-        checks = state.get("statusCheckRollup")
-        required_checks_reason = ""
-        if mandatory_checks is not None:
-            normalized_checks = feedback_checks(state)
-            observed = {
-                (item["workflow_name"], item["check_name"]): item
-                for item in normalized_checks
-            }
-            if any(
-                identity not in observed
-                or observed[identity]["bucket"] != "pass"
-                or observed[identity]["state"] != "SUCCESS"
-                for identity in mandatory_checks
+            observed_text = (
+                _canonical(runtime, current)
+                if delta["transition"] == "state_changed"
+                else None
+            )
+            classification = runtime.classify_github_checks(
+                observed["checks"],
+                require_ci=(
+                    contract["require_ci"]
+                    if contract is not None
+                    else False
+                ),
+            )
+            reason = ""
+            if state == "CLOSED":
+                reason = "pull_request_closed_without_merge"
+            elif head_oid != initial_head:
+                reason = "pull_request_head_changed"
+            elif base_oid != initial_base:
+                reason = "pull_request_base_changed"
+            elif (
+                str(pr.get("mergeStateStatus") or "").upper()
+                in {"DIRTY", "CONFLICTING"}
+                or str(pr.get("mergeable") or "").upper() == "CONFLICTING"
             ):
-                required_checks_reason = "required_checks_not_green"
-        failed_checks = []
-        if isinstance(checks, list):
-            for check in checks:
-                if not isinstance(check, dict):
-                    continue
-                check_state = str(
-                    check.get("conclusion")
-                    or check.get("state")
-                    or check.get("status")
-                    or ""
-                ).upper()
-                if check_state in FAILED_CHECK_STATES:
-                    identity = (
-                        str(
-                            check.get("workflow")
-                            or check.get("workflow_name")
-                            or ""
-                        ),
-                        str(
-                            check.get("name")
-                            or check.get("context")
-                            or ""
-                        ),
-                    )
-                    if mandatory_checks is not None and identity not in mandatory_checks:
-                        continue
-                    failed_checks.append(
-                        identity[1] or "unknown"
-                    )
+                reason = "merge_conflict"
+            elif (
+                str(pr.get("reviewDecision") or "").upper()
+                == "CHANGES_REQUESTED"
+                and delta["transition"] == "state_changed"
+            ):
+                reason = "changes_requested"
+            elif delta["transition"] == "state_changed":
+                reason = (
+                    "pull_request_feedback_refresh_required"
+                    if delta.get("needs_refresh")
+                    else "pull_request_feedback_changed"
+                )
+            elif classification["state"] == "failed":
+                reason = "checks_failed"
+            elif classification["state"] in {
+                "invalid_observation",
+                "observation_limit",
+            }:
+                reason = classification["state"]
 
-        if state_name == "MERGED":
-            workflow_result(
-                "merge_watch_pr_merged",
-                workspace_path=str(workspace),
-                pr_url=pr_url,
-                branch_name=branch_name,
-                merge_report=json.dumps(
+            if reason:
+                report = {
+                    **values,
+                    "pr_report": _pr_report(
+                        pr=pr,
+                        reason=reason,
+                        checks=list(classification.get("checks", [])),
+                        observed_cursor=observed_text,
+                    ),
+                    "pr_head_oid": head_oid,
+                    "pr_base_oid": base_oid,
+                }
+                if observed_text is not None:
+                    report["observed_feedback_cursor"] = observed_text
+                _emit(
+                    "merge_watch_state_changed",
+                    report,
+                    cursor=acknowledged_text,
+                )
+                return 0
+            if max_polls and polls >= max_polls:
+                _emit(
+                    "merge_watch_still_waiting",
                     {
-                        "state": state_name,
-                        "mergedAt": state.get("mergedAt"),
-                        "mergeCommit": state.get("mergeCommit"),
-                        "headRefOid": head_oid,
-                        "baseRefName": state.get("baseRefName"),
-                        "url": state.get("url"),
+                        **values,
+                        "pr_head_oid": head_oid,
+                        "pr_base_oid": base_oid,
                     },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                ),
-                **source_contract_values(raw),
-                **cursor,
-            )
-            return 0
-
-        reason = ""
-        if state_name == "CLOSED":
-            reason = "pull_request_closed_without_merge"
-        elif head_oid and head_oid != initial_head:
-            reason = "pull_request_head_changed"
-        elif base_oid and base_oid != initial_base:
-            reason = "pull_request_base_changed"
-        elif review_decision == "CHANGES_REQUESTED":
-            reason = "changes_requested"
-        elif failed_checks:
-            reason = "checks_failed"
-        elif required_checks_reason:
-            reason = required_checks_reason
-        elif merge_state == "DIRTY":
-            reason = "merge_conflict"
-        elif state_name not in {"OPEN", ""}:
-            reason = "unexpected_pull_request_state"
-        elif feedback_reason:
-            reason = feedback_reason
-
-        if reason:
-            workflow_result(
+                    cursor=acknowledged_text,
+                )
+                return 0
+            time.sleep(interval)
+        except Exception as error:
+            errors += 1
+            if errors < max_errors:
+                time.sleep(interval)
+                continue
+            _emit(
                 "merge_watch_state_changed",
-                workspace_path=str(workspace),
-                pr_url=pr_url,
-                branch_name=branch_name,
-                merge_strategy=merge_strategy,
-                pr_report=state_report(
-                    state,
-                    reason,
-                    feedback_error=feedback_error,
-                ),
-                **source_contract_values(raw),
-                **cursor,
+                {
+                    **values,
+                    "pr_report": _pr_report(
+                        pr={},
+                        reason="github_query_failed",
+                        error=error,
+                    ),
+                    "pr_head_oid": initial_head,
+                    "pr_base_oid": initial_base,
+                },
+                cursor=acknowledged_text,
             )
             return 0
-
-        if max_polls and poll >= max_polls:
-            workflow_result(
-                "merge_watch_still_waiting",
-                workspace_path=str(workspace),
-                pr_url=pr_url,
-                branch_name=branch_name,
-                merge_strategy=merge_strategy,
-                pr_head_oid=initial_head,
-                pr_base_oid=initial_base,
-                **source_contract_values(raw),
-                **cursor,
-            )
-            return 0
-
-        if poll == 1 or poll % 10 == 0:
-            print(
-                f"PR remains open; waiting for state change (poll {poll})",
-                file=sys.stderr,
-            )
-        time.sleep(interval)
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (OSError, RuntimeError, ValueError) as error:
-        print(f"workflow-wait-github-pr: {error}", file=sys.stderr)
+        print("workflow-wait-github-pr: {}".format(error), file=sys.stderr)
         raise SystemExit(1)

@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Source-graph regression model of Kent 2.8 Session policy, not a live canary."""
+
+from collections import deque
+from copy import deepcopy
+import json
+from pathlib import Path
+import unittest
+
+
+SOURCE = Path(__file__).resolve().parents[3] / ".kent/workflows/puber-release.json"
+
+
+class SessionTrace:
+    def __init__(self, graph):
+        self.nodes = {node["id"]: node for node in graph["nodes"]}
+        self.node_keys = {node["key"]: node["id"] for node in graph["nodes"]}
+        groups = {group["id"]: group for group in graph["transition_groups"]}
+        self.edges = {edge["key"]: edge for edge in graph["edges"]}
+        self.sources = {
+            edge["key"]: groups[edge["transition_group_id"]]["source_node_id"]
+            for edge in graph["edges"]
+        }
+        self.current = next(node["id"] for node in graph["nodes"] if node["kind"] == "start")
+        self.session = None
+        self.associations = {}
+        self.roles = {}
+        self.serial = 0
+
+    def enter(self, key):
+        edge = self.edges[key]
+        assert self.current == self.sources[key], (key, "source mismatch")
+        target = self.nodes[edge["target_node_id"]]
+        mode = edge["context_mode"]
+        source = edge.get("context_source", {"kind": "immediate_source"})["kind"]
+        if target["kind"] == "agent":
+            if mode == "new_session":
+                selected = None
+            elif source == "immediate_source":
+                selected = self.session
+                assert selected is not None
+            elif source in {"previous_target", "previous_target_or_new"}:
+                selected = self.associations.get(target["id"])
+                assert selected is not None or source == "previous_target_or_new"
+            else:
+                raise AssertionError(f"unmodelled source: {source}")
+            fresh = selected is None
+            if fresh:
+                self.serial += 1
+                selected = self.serial
+            if fresh or mode == "compact_and_continue_session":
+                self.roles[selected] = target["subagent_role"]
+            self.session = selected
+            self.associations[target["id"]] = selected
+        else:
+            assert target["kind"] == "script", (key, target["kind"])
+        self.current = target["id"]
+
+    def reach(self, key):
+        target = self.node_keys[key]
+        queue = deque([(self.current, [])])
+        visited = set()
+        while queue:
+            node, path = queue.popleft()
+            if node == target:
+                for edge in path:
+                    self.enter(edge)
+                return
+            if node in visited:
+                continue
+            visited.add(node)
+            for edge_key, edge in self.edges.items():
+                next_node = self.nodes[edge["target_node_id"]]
+                if self.sources[edge_key] == node and next_node["kind"] in {"agent", "script"}:
+                    queue.append((next_node["id"], path + [edge_key]))
+        raise AssertionError(f"no path to {key}")
+
+
+def roundtrip(graph, entry, fix):
+    trace = SessionTrace(graph)
+    trace.reach("ci_watch")
+    trace.enter(entry)
+    original_session = trace.session
+    assert trace.roles[original_session] == "ci-monitor"
+    trace.enter(fix)
+    assert trace.session == original_session
+    assert trace.roles[original_session] == "release-manager"
+    trace.reach("ci_watch")
+    trace.enter(entry)
+    return trace, original_session
+
+
+class PuberRoleRoundtripTest(unittest.TestCase):
+    def test_repeat_ci_failure_establishes_ci_monitor(self):
+        trace, old = roundtrip(json.loads(SOURCE.read_bytes()), "ci_watch_failed", "ci_fix")
+        self.assertEqual(trace.roles[trace.session], "ci-monitor")
+        self.assertNotEqual(trace.session, old)
+
+    def test_repeat_waiting_pr_and_merge_watch_keep_ci_monitor(self):
+        trace, old = roundtrip(json.loads(SOURCE.read_bytes()), "ci_watch_passed", "pr_feedback")
+        self.assertEqual(trace.roles[trace.session], "ci-monitor")
+        self.assertNotEqual(trace.session, old)
+        waiting = trace.session
+        trace.enter("waiting_pr_merge_watch")
+        trace.enter("merge_watch_state_changed")
+        self.assertEqual(trace.session, waiting)
+        self.assertEqual(trace.roles[trace.session], "ci-monitor")
+
+    def test_negative_control_reproduces_the_retained_writer_regression(self):
+        graph = json.loads(SOURCE.read_bytes())
+        for entry, fix in (("ci_watch_failed", "ci_fix"), ("ci_watch_passed", "pr_feedback")):
+            with self.subTest(entry=entry):
+                mutated = deepcopy(graph)
+                edge = next(edge for edge in mutated["edges"] if edge["key"] == entry)
+                edge["context_mode"] = "continue_session"
+                edge["context_source"] = {"kind": "previous_target_or_new"}
+                trace, old = roundtrip(mutated, entry, fix)
+                self.assertEqual(trace.session, old)
+                self.assertEqual(trace.roles[trace.session], "release-manager")
+
+
+if __name__ == "__main__":
+    unittest.main()

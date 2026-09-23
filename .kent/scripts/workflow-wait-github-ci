@@ -1,447 +1,217 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
 import hashlib
+import importlib.util
+import json
 import os
 from pathlib import Path
-import re
-import selectors
-import signal
-import shutil
-import subprocess
 import sys
-import tempfile
 import time
-import tomllib
-from typing import Any, Dict, List
-from urllib.parse import urlparse
+from typing import Any
 
 sys.dont_write_bytecode = True
 
 
-PR_FIELDS = (
-    "state,mergedAt,mergeCommit,headRefName,headRefOid,baseRefName,"
-    "baseRefOid,url"
-)
-CHECK_FIELDS = "bucket,completedAt,link,name,startedAt,state,workflow"
-DEFAULT_GH_PATHS = ("/opt/homebrew/bin/gh", "/usr/local/bin/gh")
-MAX_QUERY_OUTPUT_BYTES = 4 * 1024 * 1024
-MAX_PROFILE_BYTES = 64 * 1024
-
-
-class QueryError(RuntimeError):
-    def __init__(
-        self,
-        code: str,
-        *,
-        exit_code: int | None,
-        stdout: bytes = b"",
-        stderr: bytes = b"",
-    ) -> None:
-        super().__init__(code)
-        self.code = code
-        self.exit_code = exit_code
-        self.stdout = stdout
-        self.stderr = stderr
-
-
-def workflow_result(transition: str, **values: object) -> None:
-    if "ci_policy_snapshot" in values and values.get("ci_report"):
-        try:
-            archive_terminal_report(values)
-        except (OSError, RuntimeError, ValueError):
-            transition = "ci_watch_failed"
-            previous = runtime_contracts().validate_ci_report(json.loads(values["ci_report"]))
-            latest = previous["attempts"][-1]
-            values["ci_report"] = v2_safe_report(
-                values, reason="report_invalid",
-                pr={"headRefOid": latest["head_oid"], "baseRefOid": latest["base_oid"]},
-            )
-    print(json.dumps({"transition": transition, **values}, ensure_ascii=False))
-
-
-def archive_terminal_report(values: Dict[str, Any]) -> None:
-    tool = os.environ.get("KENT_PREPARE_GITHUB_CI_BIN") or str(
-        Path.home() / ".kent/bin/kent-prepare-github-ci"
+def _sibling(name: str) -> Any:
+    path = Path(__file__).with_name(name)
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError("{} support module is unsafe".format(name))
+    spec = importlib.util.spec_from_file_location(
+        "kent_{}".format(name.replace(".", "_")),
+        path,
     )
-    result = run_gh(
-        tool, Path(values["workspace_path"]), [], timeout=60,
-        input_bytes=json.dumps({**values, "operation": "archive_ci_report"}).encode("utf-8"),
-    )
-    if result.returncode or not isinstance(json.loads(result.stdout).get("ci_report_artifact"), str):
-        raise RuntimeError("ci_report_archive_failed")
+    if spec is None or spec.loader is None:
+        raise RuntimeError("{} support module is unavailable".format(name))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def require_string(payload: Dict[str, Any], key: str) -> str:
+def runtime_contracts() -> Any:
+    return _sibling("workflow_runtime_contracts.py")
+
+
+def github_observation() -> Any:
+    return _sibling("workflow_github_observation.py")
+
+
+def _text(payload: dict[str, object], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError("{} must be a non-empty string".format(key))
     return value.strip()
 
 
-def _terminate_and_reap(
-    process: subprocess.Popen[bytes],
-    *,
-    process_group_id: int,
-    deadline: float,
-) -> None:
-    try:
-        os.killpg(process_group_id, signal.SIGTERM)
-    except OSError:
-        pass
-    remaining = max(0.0, deadline - time.monotonic())
-    if process.poll() is None and remaining:
-        try:
-            process.wait(timeout=remaining)
-        except subprocess.TimeoutExpired:
-            pass
-    try:
-        os.killpg(process_group_id, signal.SIGKILL)
-    except OSError:
-        pass
-    if process.returncode is None:
-        try:
-            process.kill()
-        except OSError:
-            pass
-    # The recorded group was signaled; wait to reap the direct parent.
-    if process.returncode is None:
-        process.wait()
+def _canonical(runtime: Any, value: object) -> str:
+    return runtime.canonical_bytes(value).decode("utf-8")
 
 
-def _process_group_exists(process_group_id: int) -> bool:
-    try:
-        os.killpg(process_group_id, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return True
-    return True
+def _contract(runtime: Any, payload: dict[str, object]) -> tuple[dict[str, Any], str]:
+    raw = payload.get("ci_contract")
+    if not isinstance(raw, str) or not raw:
+        raise ValueError("ci_contract is required")
+    value = runtime.parse_canonical_json(
+        raw,
+        label="ci_contract",
+        max_bytes=runtime.MAX_CI_REPORT_BYTES,
+    )
+    contract = runtime.validate_ci_contract(value)
+    return contract, _canonical(runtime, contract)
 
 
-def validate_pr_url(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname not in {
-        "github.com",
-        "www.github.com",
-    }:
-        raise ValueError("pr_url must be an https://github.com pull-request URL")
-    parts = [part for part in parsed.path.split("/") if part]
-    if len(parts) != 4 or parts[2] != "pull" or not parts[3].isdigit():
-        raise ValueError("pr_url must identify one GitHub pull request")
-
-
-def resolve_gh_bin() -> str:
-    configured = os.environ.get("KENT_GH_BIN")
-    candidates = (configured,) if configured else ("gh",) + DEFAULT_GH_PATHS
-    for candidate in candidates:
-        if candidate:
-            resolved = shutil.which(candidate)
-            if resolved:
-                return resolved
-    if configured:
-        raise RuntimeError(
-            "configured GitHub CLI is not executable: {}".format(configured)
+def _report(
+    runtime: Any,
+    payload: dict[str, object],
+    contract: dict[str, Any],
+) -> dict[str, Any] | None:
+    raw = payload.get("ci_report")
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, str):
+        raise ValueError("ci_report must be canonical JSON")
+    report = runtime.validate_dynamic_ci_report(
+        runtime.parse_canonical_json(
+            raw,
+            label="ci_report",
+            max_bytes=runtime.MAX_DYNAMIC_CI_REPORT_BYTES,
         )
-    raise RuntimeError(
-        "GitHub CLI was not found; set KENT_GH_BIN to its absolute path"
+    )
+    if report["contract"] != contract:
+        raise ValueError("ci_report contract does not match ci_contract")
+    return report
+
+
+def _cursor(runtime: Any, payload: dict[str, object]) -> tuple[object, str | None]:
+    if "pr_feedback_cursor" not in payload:
+        return "uninitialized", None
+    raw = payload["pr_feedback_cursor"]
+    if raw != "uninitialized" and not isinstance(raw, (str, dict)):
+        raise ValueError("pr_feedback_cursor is invalid")
+    value = runtime.validate_dynamic_pr_feedback_cursor(raw)
+    return (
+        value,
+        value if value == "uninitialized" else _canonical(runtime, value),
     )
 
 
-def run_gh(
-    gh_bin: str,
-    workspace: Path,
-    args: List[str],
+def _error(runtime: Any, error: Exception) -> dict[str, str]:
+    allowed = {
+        "invalid_observation",
+        "source_changed",
+        "query_failed",
+        "query_timeout",
+        "incomplete_observation",
+        "observation_limit",
+    }
+    code = str(getattr(error, "code", "") or "")
+    if code not in allowed:
+        code = "invalid_observation"
+    empty = hashlib.sha256(b"").hexdigest()
+    return {
+        "code": code,
+        "message": str(getattr(error, "code", None) or code),
+        "stdout_sha256": str(getattr(error, "stdout_sha256", empty)),
+        "stderr_sha256": str(getattr(error, "stderr_sha256", empty)),
+    }
+
+
+def _append(
+    runtime: Any,
+    contract: dict[str, Any],
+    previous: dict[str, Any] | None,
     *,
-    timeout: int,
-    input_bytes: bytes | None = None,
-) -> subprocess.CompletedProcess:
-    command = [gh_bin] + args
-    with tempfile.TemporaryFile() as input_stream:
-        if input_bytes is not None:
-            if len(input_bytes) > 1024 * 1024:
-                raise ValueError("archive_input_limit")
-            input_stream.write(input_bytes)
-            input_stream.seek(0)
-        process = subprocess.Popen(
-            command,
-            cwd=workspace,
-            stdin=input_stream if input_bytes is not None else subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True,
-        )
-    process_group_id = process.pid
-    selector = selectors.DefaultSelector()
-    assert process.stdout is not None
-    assert process.stderr is not None
-    selector.register(process.stdout, selectors.EVENT_READ, "stdout")
-    selector.register(process.stderr, selectors.EVENT_READ, "stderr")
-    captured = {"stdout": bytearray(), "stderr": bytearray()}
-    deadline = time.monotonic() + timeout
-    failure_code: str | None = None
-    try:
-        while selector.get_map():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                failure_code = "github_query_failed"
-                break
-            events = selector.select(remaining)
-            if not events:
-                failure_code = "github_query_failed"
-                break
-            for key, _ in events:
-                data = os.read(key.fileobj.fileno(), 65536)
-                if not data:
-                    selector.unregister(key.fileobj)
-                    continue
-                buffer = captured[key.data]
-                if len(buffer) < MAX_QUERY_OUTPUT_BYTES + 1:
-                    buffer.extend(data[: MAX_QUERY_OUTPUT_BYTES + 1 - len(buffer)])
-                if len(buffer) > MAX_QUERY_OUTPUT_BYTES:
-                    failure_code = "hard_limit"
-                    break
-            if failure_code is not None:
-                break
-    finally:
-        selector.close()
-    if failure_code is None and process.poll() is None:
-        remaining = deadline - time.monotonic()
-        if remaining > 0:
-            try:
-                process.wait(timeout=remaining)
-            except subprocess.TimeoutExpired:
-                failure_code = "github_query_failed"
-        else:
-            failure_code = "github_query_failed"
-    if failure_code is not None:
-        _terminate_and_reap(
-            process,
-            process_group_id=process_group_id,
-            deadline=(
-                deadline
-                if failure_code == "github_query_failed"
-                else time.monotonic()
-            ),
-        )
+    head_oid: str,
+    base_oid: str,
+    classification: dict[str, Any] | None = None,
+    error: Exception | None = None,
+    watcher_exit_code: int | None = None,
+) -> dict[str, Any]:
+    sequence = (
+        previous["attempts"][-1]["sequence"] + 1
+        if previous is not None
+        else 1
+    )
+    if error is not None:
+        reason = _error(runtime, error)["code"]
+        checks: list[dict[str, Any]] = []
+        check_count = 0
+        checks_sha256 = runtime.canonical_sha256([])
+        diagnostic = _error(runtime, error)
     else:
-        process.wait(timeout=0)
-        direct_exit_code = process.returncode
-        if _process_group_exists(process_group_id):
-            _terminate_and_reap(
-                process,
-                process_group_id=process_group_id,
-                deadline=time.monotonic(),
-            )
-            if direct_exit_code == 0:
-                failure_code = "github_query_failed"
-    stdout = bytes(captured["stdout"])
-    stderr = bytes(captured["stderr"])
-    try:
-        process.stdout.close()
-    finally:
-        process.stderr.close()
-    if failure_code == "github_query_failed":
-        raise QueryError(
-            "github_query_failed",
-            exit_code=None,
-            stdout=stdout,
-            stderr=stderr,
+        assert classification is not None
+        checks = list(classification["checks"])
+        check_count = int(classification["check_count"])
+        checks_sha256 = classification["checks_sha256"]
+        reason = str(classification["state"])
+        diagnostic = None
+        if reason == "invalid_observation":
+            diagnostic = {
+                "code": "invalid_observation",
+                "message": str(
+                    (classification.get("diagnostic") or {}).get(
+                        "message",
+                        "the effective check observation is invalid",
+                    )
+                ),
+                "stdout_sha256": hashlib.sha256(b"").hexdigest(),
+                "stderr_sha256": hashlib.sha256(b"").hexdigest(),
+            }
+    attempt = {
+        "sequence": sequence,
+        "head_oid": head_oid,
+        "base_oid": base_oid,
+        "retry": None,
+        "checks": checks,
+        "check_count": check_count,
+        "checks_sha256": checks_sha256,
+        "reason": reason,
+        "watcher_exit_code": watcher_exit_code,
+        "error": diagnostic,
+    }
+    if previous is None:
+        return runtime.build_dynamic_ci_report(
+            contract=contract,
+            attempts=[attempt],
         )
-    if failure_code == "hard_limit":
-        raise QueryError(
-            "hard_limit",
-            exit_code=process.returncode,
-            stdout=stdout,
-            stderr=stderr,
-        )
-    return subprocess.CompletedProcess(
-        command,
-        process.returncode,
-        stdout,
-        stderr,
+    return runtime.append_dynamic_ci_report(previous, attempt)
+
+
+def _archive(
+    observation: Any,
+    values: dict[str, object],
+    report: dict[str, Any],
+) -> None:
+    task = values.get("task_short_id")
+    if not isinstance(task, str) or not task:
+        return
+    tool = os.environ.get("KENT_PREPARE_GITHUB_CI_BIN")
+    if not tool:
+        tool = str(Path.home() / ".kent/bin/kent-prepare-github-ci")
+    request = {
+        **values,
+        "operation": "archive_ci_report",
+        "ci_report": _canonical(runtime_contracts(), report),
+    }
+    result = observation.read_json(
+        tool,
+        Path(str(values["workspace_path"])),
+        [],
+        timeout=60,
+        input_bytes=json.dumps(
+            request,
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode("utf-8"),
     )
-
-
-def _decode_json(
-    result: subprocess.CompletedProcess,
-    label: str,
-    *,
-    fallback: str = "",
-) -> object:
-    try:
-        text = result.stdout.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise QueryError(
-            "github_output_invalid",
-            exit_code=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-        ) from error
-    try:
-        return json.loads(text or fallback)
-    except json.JSONDecodeError as error:
-        raise QueryError(
-            "github_output_invalid",
-            exit_code=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-        ) from error
-
-
-def parse_object(result: subprocess.CompletedProcess, label: str) -> Dict[str, Any]:
-    if result.returncode != 0:
-        raise QueryError(
-            "github_query_failed",
-            exit_code=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-        )
-    payload = _decode_json(result, label)
-    if not isinstance(payload, dict):
-        raise QueryError(
-            "github_output_invalid",
-            exit_code=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-        )
-    return payload
-
-
-def parse_array(result: subprocess.CompletedProcess, label: str) -> List[Dict[str, Any]]:
-    if result.returncode not in (0, 1, 8):
-        raise QueryError(
-            "github_query_failed",
-            exit_code=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-        )
-    payload = _decode_json(result, label, fallback="[]")
-    if not isinstance(payload, list) or not all(
-        isinstance(item, dict) for item in payload
+    if not isinstance(result, dict) or not isinstance(
+        result.get("ci_report_artifact"),
+        str,
     ):
-        raise QueryError(
-            "github_output_invalid",
-            exit_code=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-        )
-    return payload
+        raise RuntimeError("ci_report_archive_failed")
 
 
-def read_pr(
-    gh_bin: str,
-    workspace: Path,
-    pr_url: str,
-    *,
-    timeout: int,
-) -> Dict[str, Any]:
-    return parse_object(
-        run_gh(
-            gh_bin,
-            workspace,
-            ["pr", "view", pr_url, "--json", PR_FIELDS],
-            timeout=timeout,
-        ),
-        "gh pr view",
-    )
-
-
-def read_checks(
-    gh_bin: str,
-    workspace: Path,
-    pr_url: str,
-    *,
-    timeout: int,
-) -> List[Dict[str, Any]]:
-    return parse_array(
-        run_gh(
-            gh_bin,
-            workspace,
-            ["pr", "checks", pr_url, "--json", CHECK_FIELDS],
-            timeout=timeout,
-        ),
-        "gh pr checks",
-    )
-
-
-def observe_source_checks(
-    gh_bin: str, workspace: Path, pr_url: str, *, timeout: int,
-) -> tuple[List[Dict[str, Any]], subprocess.CompletedProcess]:
-    # Aggregate --watch waits for extras too; --required reads branch rules,
-    # not this source-derived mandatory contract. Classify bounded snapshots.
-    observation = run_gh(
-        gh_bin, workspace, ["pr", "checks", pr_url, "--json", CHECK_FIELDS],
-        timeout=timeout,
-    )
-    return parse_array(observation, "gh pr checks"), observation
-
-
-def compact_checks(checks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [
-        {
-            "name": check.get("name"),
-            "workflow": check.get("workflow"),
-            "bucket": check.get("bucket"),
-            "state": check.get("state"),
-            "link": check.get("link"),
-        }
-        for check in checks[:50]
-    ]
-
-
-def prior_attempts(
-    payload: Dict[str, Any],
-    *,
-    strict: bool = False,
-) -> List[Dict[str, Any]]:
-    value = payload.get("ci_report")
-    if value in (None, ""):
-        return []
-    if not isinstance(value, str):
-        raise ValueError("ci_report must be a JSON string when supplied")
-    try:
-        report = json.loads(value)
-    except json.JSONDecodeError as error:
-        raise ValueError("ci_report is not valid JSON: {}".format(error))
-    if not isinstance(report, dict):
-        raise ValueError("ci_report must decode to one JSON object")
-    if strict:
-        runtime_contracts().validate_ci_report(report)
-    attempts = report.get("attempts")
-    if attempts is None:
-        return [{key: item for key, item in report.items() if key != "attempts"}]
-    if not isinstance(attempts, list) or not all(
-        isinstance(attempt, dict) for attempt in attempts
-    ):
-        raise ValueError("ci_report.attempts must be an array of objects")
-    normalized = [dict(attempt) for attempt in attempts]
-    if normalized:
-        latest = {
-            key: item for key, item in report.items() if key != "attempts"
-        }
-        normalized[-1].update(latest)
-    return normalized
-
-
-def encode_ci_report(
-    current: Dict[str, Any],
-    previous_attempts: List[Dict[str, Any]],
-) -> str:
-    return json.dumps(
-        {
-            **current,
-            "attempts": [*previous_attempts, current],
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-
-
-def merge_report(pr: Dict[str, Any]) -> str:
+def _merge_report(pr: dict[str, Any]) -> str:
     return json.dumps(
         {
             "state": pr.get("state"),
@@ -458,501 +228,23 @@ def merge_report(pr: Dict[str, Any]) -> str:
     )
 
 
-def ci_report(
-    pr: Dict[str, Any],
-    checks: List[Dict[str, Any]],
-    reason: str,
-    watch_exit: int,
-    previous_attempts: List[Dict[str, Any]],
-) -> str:
-    return encode_ci_report(
-        {
-            "reason": reason,
-            "watch_exit": watch_exit,
-            "headRefOid": pr.get("headRefOid"),
-            "baseRefOid": pr.get("baseRefOid"),
-            "checks": compact_checks(checks),
-            "url": pr.get("url"),
-        },
-        previous_attempts,
-    )
-
-
-def runtime_contracts():
-    import importlib.util
-
-    sibling = Path(__file__).with_name("workflow_runtime_contracts.py")
-    if sibling.is_symlink() or not sibling.is_file():
-        raise RuntimeError("runtime contract support module is unsafe")
-    spec = importlib.util.spec_from_file_location(
-        "workflow_runtime_contracts",
-        sibling,
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("runtime contract support module is unavailable")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def source_contract_values(payload: Dict[str, Any]) -> Dict[str, Any]:
-    if not source_contract_mode(payload):
-        return {}
-    keys = (
-        "expected_ci_checks",
-        "expected_ci_checks_sha256",
-        "runtime_source_envelope_digest",
-        "ci_policy_snapshot",
-        "task_short_id",
-    )
-    return {key: payload[key] for key in keys if key in payload}
-
-
-def source_contract_mode(payload: Dict[str, Any]) -> bool:
-    return "ci_policy_snapshot" in payload
-
-
-def source_policy_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
-    runtime = runtime_contracts()
-    raw = payload.get("ci_policy_snapshot")
-    if not isinstance(raw, str) or not raw:
-        raise ValueError("ci_policy_snapshot is required")
-    value = runtime.parse_canonical_json(
-        raw,
-        label="ci_policy_snapshot",
-        max_bytes=runtime.MAX_EXPECTED_CHECKS_BYTES,
-    )
-    policy = runtime.validate_ci_policy_snapshot(value)
-    raw_expected = payload.get("expected_ci_checks")
-    if not isinstance(raw_expected, str):
-        raise ValueError("expected_ci_checks is required")
-    expected = runtime.validate_expected_ci_checks(
-        runtime.parse_canonical_json(
-            raw_expected,
-            label="expected_ci_checks",
-            max_bytes=runtime.MAX_EXPECTED_CHECKS_BYTES,
-        )
-    )
-    if policy["policy_sha256"] != runtime.ci_policy_projection_sha256(expected):
-        raise ValueError("ci_policy_snapshot does not match expected checks")
-    if (
-        payload.get("expected_ci_checks_sha256") != runtime.expected_ci_checks_sha256(expected)
-        or payload.get("runtime_source_envelope_digest") != expected["runtime_source_envelope_digest"]
-    ):
-        raise ValueError("source CI packet is contradictory")
-    return policy
-
-
-def serialize_pr_feedback_cursor(value: object) -> str:
-    return runtime_contracts().canonical_bytes(value).decode("utf-8")
-
-
-def pr_feedback_cursor_values(payload: Dict[str, Any]) -> Dict[str, Any]:
-    if "pr_feedback_cursor" not in payload:
-        return {}
-    value = payload["pr_feedback_cursor"]
-    if value == "uninitialized":
-        return {"pr_feedback_cursor": value}
-    runtime = runtime_contracts()
-    if isinstance(value, str):
-        decoded = runtime.parse_canonical_json(
-            value,
-            label="PR feedback cursor",
-            max_bytes=runtime.MAX_FEEDBACK_BYTES,
-        )
-        if not isinstance(decoded, dict):
-            raise ValueError("PR feedback cursor must encode an object")
-        value = decoded
-    validated = runtime.validate_pr_feedback_cursor(value)
-    return {
-        "pr_feedback_cursor": serialize_pr_feedback_cursor(validated)
-    }
-
-
-def profile_schema3_legacy(workspace: Path) -> bool:
-    profile = workspace / ".kent" / "workflow-profile.toml"
-    try:
-        raw = profile.read_bytes()
-    except OSError:
-        return False
-    if len(raw) > MAX_PROFILE_BYTES:
-        return False
-    try:
-        value = tomllib.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError):
-        return False
-    schema = value.get("schema_version") if isinstance(value, dict) else None
-    return type(schema) is int and schema == 3
-
-
-def _safe_error(
-    error: Exception | None,
+def _emit(
+    transition: str,
+    values: dict[str, object],
     *,
-    default_code: str = "expected_contract_invalid",
-) -> dict[str, Any]:
-    if isinstance(error, QueryError):
-        return {
-            "code": error.code,
-            "exit_code": error.exit_code,
-            "stdout_sha256": hashlib.sha256(error.stdout).hexdigest(),
-            "stderr_sha256": hashlib.sha256(error.stderr).hexdigest(),
-        }
-    return {
-        "code": default_code,
-        "exit_code": None,
-        "stdout_sha256": hashlib.sha256(b"").hexdigest(),
-        "stderr_sha256": hashlib.sha256(b"").hexdigest(),
-    }
-
-
-def v2_ci_observation(checks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [
-        {
-            "workflow_name": str(item.get("workflow") or ""),
-            "check_name": str(item.get("name") or ""),
-            "bucket": str(item.get("bucket") or "").lower(),
-            "state": str(item.get("state") or "").upper(),
-            "link": item.get("link"),
-        }
-        for item in checks
-    ]
-
-
-def v2_safe_report(
-    payload: Dict[str, Any],
-    *,
-    reason: str,
-    pr: Dict[str, Any] | None = None,
-    error: Exception | None = None,
-    watch_exit: int | None = None,
-) -> str:
-    runtime = runtime_contracts()
-    parsed_url = urlparse(str(payload["pr_url"]))
-    parts = [part for part in parsed_url.path.split("/") if part]
-    repository = str(payload.get("repository") or "")
-    if not repository and len(parts) >= 4:
-        repository = "{}/{}".format(parts[0], parts[1])
-    if not repository or "/" not in repository:
-        repository = "unknown/unknown"
-    envelope = payload.get("runtime_source_envelope_digest")
-    if not isinstance(envelope, str) or not re.fullmatch(r"[0-9a-f]{64}", envelope):
-        envelope = "0" * 64
-    expected_digest = payload.get("expected_ci_checks_sha256")
-    if not isinstance(expected_digest, str) or not re.fullmatch(
-        r"[0-9a-f]{64}",
-        expected_digest,
-    ):
-        expected_digest = "0" * 64
-    head = str((pr or {}).get("headRefOid") or "")
-    base = str((pr or {}).get("baseRefOid") or "")
-    if not re.fullmatch(r"[0-9a-f]{40}", head):
-        head = "0" * 40
-    if not re.fullmatch(r"[0-9a-f]{40}", base):
-        base = "0" * 40
-    previous = None
-    raw_previous = payload.get("ci_report")
-    if isinstance(raw_previous, str) and raw_previous:
-        try:
-            previous = runtime.validate_ci_report(json.loads(raw_previous))
-        except (ValueError, json.JSONDecodeError):
-            previous = None
-    sequence = (
-        previous["attempts"][-1]["sequence"] + 1
-        if previous is not None
-        else 1
-    )
-    attempt = {
-        "sequence": sequence,
-        "head_oid": head,
-        "base_oid": base,
-        "reason": reason,
-        "watcher_exit_code": watch_exit,
-        "expected_checks": [],
-        "unexpected_check_count": 0,
-        "unexpected_checks_sha256": runtime.canonical_sha256([]),
-        "retry": None,
-        "safe_error": _safe_error(error, default_code=reason),
-    }
-    projected_receipt = runtime.RejectedObservationReceipt(
-        "projected_rows",
-        0,
-        runtime.canonical_sha256([]),
-    )
-    attempt = runtime.prepare_ci_attempt(attempt, projected_receipt)
-    if previous is None:
-        report = runtime.build_ci_report(
-            mode="expected-v1",
-            repository=repository,
-            pull_number=int(parts[-1]) if parts and parts[-1].isdigit() else 1,
-            runtime_source_envelope_digest=envelope,
-            expected_ci_checks_sha256=expected_digest,
-            attempts=[attempt],
-        )
-    else:
-        report = runtime.append_ci_report_attempt(previous, attempt)
-    return json.dumps(
-        report,
+    report: dict[str, Any] | None = None,
+    cursor: str | None = None,
+) -> None:
+    result = dict(values)
+    if report is not None:
+        result["ci_report"] = _canonical(runtime_contracts(), report)
+    if cursor is not None:
+        result["pr_feedback_cursor"] = cursor
+    print(json.dumps(
+        {"transition": transition, **result},
         ensure_ascii=False,
         sort_keys=True,
-        separators=(",", ":"),
-    )
-
-
-def _v2_report_from_attempt(
-    runtime: Any,
-    payload: Dict[str, Any],
-    repository: str,
-    expected_digest: str,
-    previous: Dict[str, Any] | None,
-    attempt: Dict[str, Any],
-    projected_receipt: Any | None = None,
-    *,
-    prepare: bool = True,
-) -> str:
-    if prepare:
-        if projected_receipt is None:
-            raise RuntimeError("ordinary CI attempts require a projected receipt")
-        attempt = runtime.prepare_ci_attempt(attempt, projected_receipt)
-    if previous is None:
-        report = runtime.build_ci_report(
-            mode="expected-v1",
-            repository=repository,
-            pull_number=int(str(payload["pr_url"]).rstrip("/").split("/")[-1]),
-            runtime_source_envelope_digest=payload["runtime_source_envelope_digest"],
-            expected_ci_checks_sha256=expected_digest,
-            attempts=[attempt],
-        )
-    else:
-        report = runtime.append_ci_report_attempt(previous, attempt)
-    return json.dumps(
-        report,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-
-
-def v2_ci_report(
-    payload: Dict[str, Any],
-    pr: Dict[str, Any],
-    checks: List[Dict[str, Any]],
-    *,
-    watch_exit: int,
-) -> tuple[str, str | None, str]:
-    runtime = runtime_contracts()
-    raw_expected = payload.get("expected_ci_checks")
-    if isinstance(raw_expected, str):
-        expected = runtime.parse_canonical_json(
-            raw_expected,
-            label="expected_ci_checks",
-            max_bytes=runtime.MAX_EXPECTED_CHECKS_BYTES,
-        )
-    else:
-        expected = raw_expected
-    if isinstance(expected, dict):
-        expected = runtime.validate_expected_ci_checks(expected)
-    envelope = payload.get("runtime_source_envelope_digest")
-    if (
-        not isinstance(expected, dict)
-        or not isinstance(envelope, str)
-        or not re.fullmatch(r"[0-9a-f]{64}", envelope)
-    ):
-        raise RuntimeError(
-            "v2 CI requires expected_ci_checks and runtime_source_envelope_digest"
-        )
-    expected_digest = payload.get("expected_ci_checks_sha256")
-    if (
-        not isinstance(expected_digest, str)
-        or expected_digest != runtime.expected_ci_checks_sha256(expected)
-    ):
-        raise RuntimeError("expected_ci_checks_sha256 is missing or invalid")
-    repository = str(payload.get("repository") or "")
-    if not repository:
-        parsed_url = urlparse(str(payload["pr_url"]))
-        parts = [part for part in parsed_url.path.split("/") if part]
-        if len(parts) < 4:
-            raise RuntimeError("cannot derive GitHub repository from pr_url")
-        repository = "{}/{}".format(parts[0], parts[1])
-    observations = v2_ci_observation(checks)
-    classification = runtime.classify_expected_ci_checks_with_receipt(
-        expected,
-        observations,
-        current_repository=repository,
-        current_head_oid=str(pr.get("headRefOid") or ""),
-        runtime_source_envelope_digest=envelope,
-        expected_checks_digest=expected_digest,
-    )
-    previous = None
-    previous_raw = payload.get("ci_report")
-    if isinstance(previous_raw, str) and previous_raw:
-        previous = runtime.validate_ci_report(json.loads(previous_raw))
-    sequence = (
-        previous["attempts"][-1]["sequence"] + 1
-        if previous is not None
-        else 1
-    )
-    if classification.state == "grammar_invalid":
-        receipt = classification.projected_observations
-        if not isinstance(receipt, runtime.RejectedObservationReceipt):
-            raise RuntimeError("grammar-invalid observations have no receipt")
-        attempt = runtime.make_observation_limit_attempt(
-            sequence=sequence,
-            head_oid=str(pr.get("headRefOid") or ""),
-            base_oid=str(pr.get("baseRefOid") or ""),
-            receipt=receipt,
-            watcher_exit_code=watch_exit,
-        )
-        return (
-            "ci_watch_failed",
-            _v2_report_from_attempt(
-                runtime,
-                payload,
-                repository,
-                expected_digest,
-                previous,
-                attempt,
-                prepare=False,
-            ),
-            "report_invalid",
-        )
-    if classification.state == "hard_limit":
-        hard_limit = (
-            classification.projected_observations
-            if isinstance(
-                classification.projected_observations,
-                runtime.RejectedObservationHardLimit,
-            )
-            else classification.unexpected_observations
-        )
-        if not isinstance(hard_limit, runtime.RejectedObservationHardLimit):
-            raise RuntimeError("hard-limit observations have no receipt")
-        attempt = runtime.make_observation_hard_limit_attempt(
-            sequence=sequence,
-            head_oid=str(pr.get("headRefOid") or ""),
-            base_oid=str(pr.get("baseRefOid") or ""),
-            hard_limit=hard_limit,
-            watcher_exit_code=watch_exit,
-        )
-        return (
-            "ci_watch_failed",
-            _v2_report_from_attempt(
-                runtime,
-                payload,
-                repository,
-                expected_digest,
-                previous,
-                attempt,
-                prepare=False,
-            ),
-            "report_invalid",
-        )
-    if classification.state == "observation_limit":
-        receipt = (
-            classification.unexpected_observations
-            if classification.unexpected_observations is not None
-            else classification.projected_observations
-        )
-        if not isinstance(receipt, runtime.RejectedObservationReceipt):
-            raise RuntimeError("observation-limit observations have no receipt")
-        attempt = runtime.make_observation_limit_attempt(
-            sequence=sequence,
-            head_oid=str(pr.get("headRefOid") or ""),
-            base_oid=str(pr.get("baseRefOid") or ""),
-            receipt=receipt,
-            watcher_exit_code=watch_exit,
-        )
-        return (
-            "ci_watch_failed",
-            _v2_report_from_attempt(
-                runtime,
-                payload,
-                repository,
-                expected_digest,
-                previous,
-                attempt,
-                prepare=False,
-            ),
-            "report_invalid",
-        )
-    classification_value = classification.materialize_value()
-    projected_receipt = classification.projected_observations
-    if not isinstance(projected_receipt, runtime.RejectedObservationReceipt):
-        projected_receipt = runtime.RejectedObservationReceipt(
-            "projected_rows",
-            0,
-            runtime.canonical_sha256([]),
-        )
-    reason = str(classification_value["transition"])
-    if reason == "source_changed":
-        return "ci_watch_source_changed", None, reason
-    if reason not in runtime.CI_REPORT_REASONS:
-        reason = "report_invalid"
-    attempt = {
-        "sequence": sequence,
-        "head_oid": str(pr.get("headRefOid") or ""),
-        "base_oid": str(pr.get("baseRefOid") or ""),
-        "reason": reason,
-        "watcher_exit_code": watch_exit,
-        "expected_checks": classification_value.get("expected_checks", []),
-        "unexpected_check_count": classification_value.get(
-            "unexpected_check_count",
-            0,
-        ),
-        "unexpected_checks_sha256": classification_value.get(
-            "unexpected_checks_sha256",
-            runtime.canonical_sha256([]),
-        ),
-        "retry": None,
-        "safe_error": None,
-    }
-    report = _v2_report_from_attempt(
-        runtime,
-        payload,
-        repository,
-        expected_digest,
-        previous,
-        attempt,
-        projected_receipt,
-    )
-    if reason == "all_expected_checks_terminal_green":
-        transition = "ci_watch_passed"
-    elif reason in {"expected_check_missing", "pending_limit", "no_checks_reported"}:
-        transition = "waiting"
-    else:
-        transition = "ci_watch_failed"
-    return transition, report, reason
-
-
-def v2_pending_limit_report(
-    report_json: str,
-    pr: Dict[str, Any],
-    *,
-    watch_exit: int,
-) -> str:
-    runtime = runtime_contracts()
-    previous = runtime.validate_ci_report(json.loads(report_json))
-    latest = previous["attempts"][-1]
-    attempt = {
-        **latest,
-        "sequence": latest["sequence"] + 1,
-        "head_oid": str(pr.get("headRefOid") or ""),
-        "base_oid": str(pr.get("baseRefOid") or ""),
-        "reason": "pending_limit",
-        "watcher_exit_code": watch_exit,
-        "safe_error": None,
-    }
-    projected_receipt = runtime.RejectedObservationReceipt(
-        "projected_rows",
-        0,
-        runtime.canonical_sha256([]),
-    )
-    attempt = runtime.prepare_ci_attempt(attempt, projected_receipt)
-    return json.dumps(
-        runtime.append_ci_report_attempt(previous, attempt),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    ))
 
 
 def main() -> int:
@@ -963,369 +255,267 @@ def main() -> int:
     if not isinstance(payload, dict):
         raise ValueError("stdin must be one JSON object")
 
-    workspace = Path(
-        require_string(payload, "workspace_path")
-    ).expanduser().resolve()
-    pr_url = require_string(payload, "pr_url")
-    branch_name = require_string(payload, "branch_name")
-    merge_strategy = require_string(payload, "merge_strategy")
-    v2_mode = not (
-        profile_schema3_legacy(workspace) and "ci_report" not in payload
-    )
-    source_mode = "ci_policy_snapshot" in payload
-    runtime = runtime_contracts() if v2_mode else None
-    prevalidation_error: Exception | None = None
-    cursor: Dict[str, Any] = {}
-    if v2_mode:
-        try:
-            cursor = pr_feedback_cursor_values(payload)
-        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
-            prevalidation_error = error
-    if v2_mode:
-        try:
-            raw_expected = payload.get("expected_ci_checks")
-            if not isinstance(raw_expected, str):
-                raise ValueError("expected_ci_checks must be canonical JSON")
-            expected = runtime.parse_canonical_json(
-                raw_expected,
-                label="expected_ci_checks",
-                max_bytes=runtime.MAX_EXPECTED_CHECKS_BYTES,
-            )
-            expected = runtime.validate_expected_ci_checks(expected)
-            supplied_digest = payload.get("expected_ci_checks_sha256")
-            if (
-                not isinstance(supplied_digest, str)
-                or supplied_digest != runtime.expected_ci_checks_sha256(expected)
-            ):
-                raise ValueError("expected_ci_checks_sha256 is missing or invalid")
-            envelope = payload.get("runtime_source_envelope_digest")
-            if not isinstance(envelope, str) or not re.fullmatch(
-                r"[0-9a-f]{64}",
-                envelope,
-            ):
-                raise ValueError("runtime_source_envelope_digest is invalid")
-            if "ci_report" in payload:
-                raw_report = payload["ci_report"]
-                if not isinstance(raw_report, str) or not raw_report:
-                    raise ValueError("ci_report is invalid")
-                runtime.validate_ci_report(json.loads(raw_report))
-            if source_mode:
-                source_policy_snapshot(payload)
-        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
-            if prevalidation_error is None:
-                prevalidation_error = error
-    else:
-        previous_attempts = prior_attempts(payload)
-    validate_pr_url(pr_url)
+    workspace = Path(_text(payload, "workspace_path")).expanduser().resolve()
+    pr_url = _text(payload, "pr_url")
+    branch_name = _text(payload, "branch_name")
+    merge_strategy = _text(payload, "merge_strategy")
     if not workspace.is_dir():
         raise ValueError("workspace does not exist: {}".format(workspace))
     if merge_strategy not in {"merge", "squash", "rebase"}:
-        raise ValueError(
-            "unsupported merge_strategy: {!r}".format(merge_strategy)
-        )
+        raise ValueError("unsupported merge_strategy: {!r}".format(merge_strategy))
 
-    gh_bin = resolve_gh_bin()
+    runtime = runtime_contracts()
+    observation = github_observation()
+    contract, contract_text = _contract(runtime, payload)
+    previous = _report(runtime, payload, contract)
+    acknowledged, acknowledged_text = _cursor(runtime, payload)
+    repository, pull_number = observation.parse_pr_url(pr_url)
+    if (
+        repository != contract["repository"]
+        or pull_number != contract["pull_number"]
+    ):
+        raise ValueError("ci_contract does not identify pr_url")
+    values: dict[str, object] = {
+        "workspace_path": str(workspace),
+        "pr_url": pr_url,
+        "branch_name": branch_name,
+        "merge_strategy": merge_strategy,
+        "ci_contract": contract_text,
+    }
+    if previous is not None:
+        values["ci_report"] = _canonical(runtime, previous)
+    if "task_short_id" in payload:
+        values["task_short_id"] = _text(payload, "task_short_id")
+
     test_mode = os.environ.get("KENT_CI_WATCH_TEST_MODE") == "1"
-    interval = int(os.environ.get("KENT_CI_WATCH_INTERVAL_SECONDS", "30"))
-    interval = max(0 if test_mode else 30, interval)
-    query_timeout = max(
+    interval = max(
+        0 if test_mode else 30,
+        int(os.environ.get("KENT_CI_WATCH_INTERVAL_SECONDS", "30")),
+    )
+    max_polls = max(0, int(os.environ.get("KENT_CI_WATCH_MAX_POLLS", "120")))
+    max_errors = max(1, int(os.environ.get("KENT_CI_WATCH_MAX_ERRORS", "5")))
+    timeout = max(
         1,
         int(os.environ.get("KENT_CI_WATCH_QUERY_TIMEOUT_SECONDS", "60")),
     )
-    max_polls = int(os.environ.get("KENT_CI_WATCH_MAX_POLLS", "120"))
-    max_errors = max(1, int(os.environ.get("KENT_CI_WATCH_MAX_ERRORS", "5")))
+    gh_bin = os.environ.get("KENT_GH_BIN")
     errors = 0
     polls = 0
-    if v2_mode and prevalidation_error is not None:
-        reason = (
-            "report_invalid"
-            if isinstance(payload.get("ci_report"), str)
-            and payload.get("ci_report")
-            else "expected_contract_invalid"
-        )
-        workflow_result(
-            "ci_watch_failed",
-            workspace_path=str(workspace),
-            pr_url=pr_url,
-            branch_name=branch_name,
-            merge_strategy=merge_strategy,
-            ci_report=v2_safe_report(
-                payload,
-                reason=reason,
-                error=prevalidation_error,
-            ),
-            **source_contract_values(payload),
-            **cursor,
-        )
-        return 0
-
     while True:
         polls += 1
         try:
-            pr = read_pr(
-                gh_bin,
+            watcher = observation.GitHubObserver(
                 workspace,
-                pr_url,
-                timeout=query_timeout,
+                gh_bin=gh_bin,
+                timeout=timeout,
             )
-            if str(pr.get("state") or "").upper() == "MERGED":
-                workflow_result(
-                    "ci_watch_pr_merged",
-                    workspace_path=str(workspace),
-                    pr_url=pr_url,
-                    branch_name=branch_name,
-                    merge_report=merge_report(pr),
-                )
-                return 0
-            if source_mode:
-                policy = source_policy_snapshot(payload)
-                expected_head = json.loads(payload["expected_ci_checks"])["project_commit"]
-                if (
-                    str(pr.get("baseRefOid") or "") != policy["target_commit"]
-                    or str(pr.get("headRefOid") or "") != expected_head
-                ):
-                    workflow_result(
-                        "ci_watch_source_changed",
-                        workspace_path=str(workspace),
-                        pr_url=pr_url,
-                        branch_name=branch_name,
-                        merge_strategy=merge_strategy,
-                        ci_report=payload.get("ci_report", ""),
-                        **source_contract_values(payload),
-                        **cursor,
-                    )
-                    return 0
-
-            if source_mode:
-                checks, watch = observe_source_checks(
-                    gh_bin, workspace, pr_url, timeout=query_timeout,
-                )
-            else:
-                watch = run_gh(
-                    gh_bin,
-                    workspace,
-                    [
-                        "pr",
-                        "checks",
-                        pr_url,
-                        "--watch",
-                        "--interval",
-                        str(max(1, interval)),
-                    ],
-                    timeout=query_timeout,
-                )
-                if watch.returncode not in (0, 1, 8):
-                    raise QueryError(
-                        "github_query_failed",
-                        exit_code=watch.returncode,
-                        stdout=watch.stdout,
-                        stderr=watch.stderr,
-                    )
-                checks = read_checks(
-                    gh_bin,
-                    workspace,
-                    pr_url,
-                    timeout=query_timeout,
-                )
-            if source_mode:
-                confirmed = read_pr(gh_bin, workspace, pr_url, timeout=query_timeout)
-                if any(confirmed.get(key) != pr.get(key) for key in (
-                    "state", "url", "headRefOid", "baseRefOid", "headRefName", "baseRefName",
-                )):
-                    workflow_result(
-                        "ci_watch_source_changed", workspace_path=str(workspace),
-                        pr_url=pr_url, branch_name=branch_name, merge_strategy=merge_strategy,
-                        ci_report=payload.get("ci_report", ""),
-                        **source_contract_values(payload), **cursor,
-                    )
-                    return 0
+            observed = watcher.observe_pr(pr_url)
             errors = 0
-        except (QueryError, RuntimeError, ValueError) as error:
-            errors += 1
-            if errors >= max_errors:
-                if v2_mode:
-                    workflow_result(
-                        "ci_watch_failed",
-                        workspace_path=str(workspace),
-                        pr_url=pr_url,
-                        branch_name=branch_name,
-                        merge_strategy=merge_strategy,
-                        ci_report=v2_safe_report(
-                            payload,
-                            reason="github_query_failed",
-                            error=error,
-                        ),
-                        **source_contract_values(payload),
-                        **cursor,
-                    )
-                    return 0
-                workflow_result(
-                    "ci_watch_failed",
-                    workspace_path=str(workspace),
-                    pr_url=pr_url,
-                    branch_name=branch_name,
-                    merge_strategy=merge_strategy,
-                    ci_report=encode_ci_report(
-                        {
-                            "reason": "github_query_failed",
-                            "query_attempts": errors,
-                            "safe_error": _safe_error(error),
-                        },
-                        previous_attempts,
-                    ),
-                    **cursor,
+            pr = observed["pr"]
+            head_oid = str(pr["headRefOid"])
+            base_oid = str(pr["baseRefOid"])
+            if pr["state"] == "MERGED":
+                _emit(
+                    "ci_watch_pr_merged",
+                    {**values, "merge_report": _merge_report(pr)},
                 )
                 return 0
-            print(
-                "GitHub CI query failed ({}/{}): {}".format(
-                    errors,
-                    max_errors,
-                    error,
-                ),
-                file=sys.stderr,
-            )
-            time.sleep(interval)
-            continue
+            if pr["state"] == "CLOSED":
+                report = _append(
+                    runtime,
+                    contract,
+                    previous,
+                    head_oid=head_oid,
+                    base_oid=base_oid,
+                    classification=runtime.classify_github_checks(
+                        [],
+                        require_ci=contract["require_ci"],
+                    ),
+                )
+                _emit(
+                    "ci_watch_state_changed",
+                    {
+                        **values,
+                        "pr_report": json.dumps(
+                            {
+                                "reason": "pull_request_closed_without_merge",
+                                "state": pr.get("state"),
+                                "headRefOid": head_oid,
+                                "baseRefOid": base_oid,
+                            },
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                        "pr_head_oid": head_oid,
+                        "pr_base_oid": base_oid,
+                    },
+                    report=report,
+                    cursor=acknowledged_text,
+                )
+                return 0
+            if (
+                head_oid != contract["head_oid"]
+                or base_oid != contract["base_oid"]
+            ):
+                _emit(
+                    "ci_watch_source_changed",
+                    values,
+                    cursor=acknowledged_text,
+                )
+                return 0
 
-        if v2_mode:
-            try:
-                transition, report, reason = v2_ci_report(
-                    payload,
-                    pr,
-                    checks,
-                    watch_exit=watch.returncode,
+            current = runtime.make_dynamic_pr_feedback_cursor(
+                repository=repository,
+                pull_number=pull_number,
+                items=observed["feedback_items"],
+                review_decision=str(pr.get("reviewDecision") or ""),
+                checks=observed["checks"],
+            )
+            delta = runtime.diff_dynamic_pr_feedback_cursor(
+                acknowledged,
+                current,
+            )
+            classification = runtime.classify_github_checks(
+                observed["checks"],
+                require_ci=contract["require_ci"],
+            )
+            report = _append(
+                runtime,
+                contract,
+                previous,
+                head_oid=head_oid,
+                base_oid=base_oid,
+                classification=classification,
+            )
+            previous = report
+            conflict = (
+                str(pr.get("mergeStateStatus") or "").upper()
+                in {"DIRTY", "CONFLICTING"}
+                or str(pr.get("mergeable") or "").upper() == "CONFLICTING"
+            )
+            feedback_changed = (
+                delta["transition"] == "state_changed"
+                and not (
+                    acknowledged == "uninitialized"
+                    and not observed["feedback_items"]
+                    and current.get("review_decision") in {"", "APPROVED"}
                 )
-            except (
-                OSError,
-                RuntimeError,
-                ValueError,
-                json.JSONDecodeError,
-            ) as error:
-                transition = "ci_watch_failed"
+            )
+            if conflict or feedback_changed:
+                observed_text = (
+                    _canonical(runtime, current)
+                    if feedback_changed
+                    else None
+                )
                 reason = (
-                    "report_invalid"
-                    if isinstance(payload.get("ci_report"), str)
-                    and payload.get("ci_report")
-                    else "expected_contract_invalid"
-                )
-                report = v2_safe_report(
-                    payload,
-                    reason=reason,
-                    pr=pr,
-                    error=error,
-                    watch_exit=watch.returncode,
-                )
-                reason = "report_invalid"
-            if transition == "waiting":
-                payload["ci_report"] = report
-                if max_polls and polls >= max_polls:
-                    if reason != "pending_limit":
-                        report = v2_pending_limit_report(
-                            report,
-                            pr,
-                            watch_exit=watch.returncode,
-                        )
-                    workflow_result(
-                        "ci_watch_failed",
-                        workspace_path=str(workspace),
-                        pr_url=pr_url,
-                        branch_name=branch_name,
-                        merge_strategy=merge_strategy,
-                        ci_report=report,
-                        **source_contract_values(payload),
-                        **cursor,
+                    "merge_conflict"
+                    if conflict
+                    else (
+                        "pull_request_feedback_refresh_required"
+                        if delta.get("needs_refresh")
+                        else "pull_request_feedback_changed"
                     )
-                    return 0
+                )
+                _archive(observation, values, report)
+                report_values = {
+                    **values,
+                    "pr_report": json.dumps(
+                        {
+                            "reason": reason,
+                            "state": pr.get("state"),
+                            "headRefOid": head_oid,
+                            "baseRefOid": base_oid,
+                            "mergeStateStatus": pr.get("mergeStateStatus"),
+                            "checks": classification.get("checks", []),
+                            **(
+                                {"observed_feedback_cursor": observed_text}
+                                if observed_text is not None
+                                else {}
+                            ),
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                    "pr_head_oid": head_oid,
+                    "pr_base_oid": base_oid,
+                }
+                if observed_text is not None:
+                    report_values["observed_feedback_cursor"] = observed_text
+                _emit(
+                    "ci_watch_state_changed",
+                    report_values,
+                    report=report,
+                    cursor=acknowledged_text,
+                )
+                return 0
+            if classification["state"] == "failed":
+                _archive(observation, values, report)
+                _emit(
+                    "ci_watch_failed",
+                    values,
+                    report=report,
+                    cursor=acknowledged_text,
+                )
+                return 0
+            if classification["state"] in {
+                "invalid_observation",
+                "observation_limit",
+            }:
+                _archive(observation, values, report)
+                _emit(
+                    "ci_watch_failed",
+                    values,
+                    report=report,
+                    cursor=acknowledged_text,
+                )
+                return 0
+            if classification["state"] in {"green", "not_required"}:
+                _archive(observation, values, report)
+                _emit(
+                    "ci_watch_passed",
+                    values,
+                    report=report,
+                    cursor=acknowledged_text,
+                )
+                return 0
+            if test_mode and max_polls and polls >= max_polls:
+                _emit(
+                    "ci_watch_still_waiting",
+                    values,
+                    report=report,
+                    cursor=acknowledged_text,
+                )
+                return 0
+            time.sleep(interval)
+        except Exception as error:
+            errors += 1
+            if str(getattr(error, "code", "") or "") == "source_changed":
+                _emit(
+                    "ci_watch_source_changed",
+                    values,
+                    cursor=acknowledged_text,
+                )
+                return 0
+            if errors < max_errors:
                 time.sleep(interval)
                 continue
-            workflow_result(
-                transition,
-                workspace_path=str(workspace),
-                pr_url=pr_url,
-                branch_name=branch_name,
-                merge_strategy=merge_strategy,
-                **(
-                    {"ci_report": report} if report is not None else
-                    {"ci_report": payload.get("ci_report", "")} if source_mode else {}
-                ),
-                **source_contract_values(payload),
-                **cursor,
+            report = _append(
+                runtime,
+                contract,
+                previous,
+                head_oid=contract["head_oid"],
+                base_oid=contract["base_oid"],
+                error=error,
+                watcher_exit_code=getattr(error, "exit_code", None),
             )
-            return 0
-
-        buckets = {
-            str(check.get("bucket") or "").lower() for check in checks
-        }
-        if not checks:
-            workflow_result(
+            _archive(observation, values, report)
+            _emit(
                 "ci_watch_failed",
-                workspace_path=str(workspace),
-                pr_url=pr_url,
-                branch_name=branch_name,
-                merge_strategy=merge_strategy,
-                ci_report=ci_report(
-                    pr,
-                    checks,
-                    "no_checks_reported",
-                    watch.returncode,
-                    previous_attempts,
-                ),
-                **cursor,
+                values,
+                report=report,
+                cursor=acknowledged_text,
             )
             return 0
-        if buckets & {"fail", "cancel"}:
-            workflow_result(
-                "ci_watch_failed",
-                workspace_path=str(workspace),
-                pr_url=pr_url,
-                branch_name=branch_name,
-                merge_strategy=merge_strategy,
-                ci_report=ci_report(
-                    pr,
-                    checks,
-                    "terminal_check_failure",
-                    watch.returncode,
-                    previous_attempts,
-                ),
-                **cursor,
-            )
-            return 0
-        if "pending" not in buckets and buckets <= {"pass", "skipping"}:
-            workflow_result(
-                "ci_watch_passed",
-                workspace_path=str(workspace),
-                pr_url=pr_url,
-                branch_name=branch_name,
-                merge_strategy=merge_strategy,
-                ci_report=ci_report(
-                    pr,
-                    checks,
-                    "all_checks_terminal_green",
-                    watch.returncode,
-                    previous_attempts,
-                ),
-                **cursor,
-            )
-            return 0
-
-        if test_mode and max_polls and polls >= max_polls:
-            workflow_result(
-                "ci_watch_failed",
-                workspace_path=str(workspace),
-                pr_url=pr_url,
-                branch_name=branch_name,
-                merge_strategy=merge_strategy,
-                ci_report=ci_report(
-                    pr,
-                    checks,
-                    "test_poll_limit_with_pending_checks",
-                    watch.returncode,
-                    previous_attempts,
-                ),
-                **cursor,
-            )
-            return 0
-        time.sleep(interval)
 
 
 if __name__ == "__main__":

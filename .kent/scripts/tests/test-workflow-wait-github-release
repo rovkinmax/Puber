@@ -12,13 +12,53 @@ import os
 import subprocess
 import tempfile
 import contextlib
+import shutil
 
 ROOT = Path(__file__).resolve().parents[3]
 publish_spec = importlib.util.spec_from_loader("publish_fixture", SourceFileLoader("publish_fixture", str(ROOT / ".kent/scripts/tests/test-workflow-puber-release-publish")))
 publish_fixture = importlib.util.module_from_spec(publish_spec); assert publish_spec and publish_spec.loader; publish_spec.loader.exec_module(publish_fixture)
+# Release-authority fixture reads use the exact published Kit clone; this is
+# test-only dependency injection and does not weaken production admission.
+os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(publish_fixture.KIT)
+
+def reset_kit_imports() -> None:
+    for name in tuple(sys.modules):
+        if name == "workflowkit" or name.startswith("workflowkit."):
+            del sys.modules[name]
 
 def sh(args, cwd, **kwargs):
     return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+
+def materialize_shared_observer(work: Path) -> None:
+    source = ROOT / ".kent/scripts/workflow_github_observation.py"
+    target = work / ".kent/scripts/workflow_github_observation.py"
+    if source.is_file() and not target.is_file():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+def pinned_kit(root: Path) -> Path:
+    target = root / "kit-pinned"
+    sh(["git", "clone", "--quiet", str(publish_fixture.KIT), str(target)], root)
+    sh(["git", "checkout", "--quiet", publish_fixture.helper.KIT_COMMIT], target)
+    assert sh(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        target,
+    ).stdout == ""
+    return target
+
+def initial_ci_contract(head: str, base: str) -> str:
+    return json.dumps(
+        {
+            "schema": "github-ci-contract-v1",
+            "repository": "rovkinmax/Puber",
+            "pull_number": 7,
+            "head_oid": head,
+            "base_oid": base,
+            "require_ci": True,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
 
 def test_monitor(rebased: bool, prepared=None) -> None:
     with (contextlib.nullcontext(prepared["root"]) if prepared else tempfile.TemporaryDirectory()) as directory:
@@ -27,6 +67,10 @@ def test_monitor(rebased: bool, prepared=None) -> None:
             work, base_oid, target, bare_path = (prepared[key] for key in ("work", "base_oid", "head", "bare_path"))
         else:
             work, base_oid, target, bare_path = publish_fixture.materialize(root, bare, linked=True)
+        materialize_shared_observer(work)
+        kit_root = pinned_kit(root)
+        reset_kit_imports()
+        os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(kit_root)
         head = target
         assert head != base_oid
         graph = json.loads((work / ".kent/workflows/puber-release.json").read_text())
@@ -78,7 +122,7 @@ args=sys.argv[1:]; target=os.environ["PUBER_TARGET"]; tag="v99.0.0"; mode=os.env
 with open(os.environ["PUBER_CALLS"], "a", encoding="utf-8") as calls: calls.write(json.dumps(args)+"\\n")
 if args[:2] == ["pr","view"]:
  merged = os.environ.get("PUBER_PR_STATE", "MERGED") == "MERGED"
- print(json.dumps({"url":"https://github.com/rovkinmax/Puber/pull/7","state":"MERGED" if merged else "OPEN","mergedAt":"2026-08-25T00:00:00Z" if merged else None,"mergeCommit":{"oid":target} if merged else None,"headRefName":"release/99.0.0","headRefOid":os.environ["PUBER_PR_HEAD"],"baseRefName":"master","baseRefOid":os.environ["PUBER_PR_BASE"],"reviewDecision":"APPROVED","mergeStateStatus":"CLEAN","statusCheckRollup":[]}))
+ print(json.dumps({"url":"https://github.com/rovkinmax/Puber/pull/7","state":"MERGED" if merged else "OPEN","mergedAt":"2026-08-25T00:00:00Z" if merged else None,"mergeCommit":{"oid":target} if merged else None,"headRefName":"release/99.0.0","headRefOid":os.environ["PUBER_PR_HEAD"],"baseRefName":"master","baseRefOid":os.environ["PUBER_PR_BASE"],"reviewDecision":"APPROVED","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","statusCheckRollup":[] if merged else [{"context":"PR Checks"}]}))
  sys.exit(0)
 if args[:2] == ["pr","checks"]:
  print(json.dumps([{"workflow":"PR Checks","name":name,"bucket":"pass","state":"SUCCESS","link":"https://github.com/rovkinmax/Puber/actions/runs/1"} for name in ("Build","Detekt","Unit Tests")]))
@@ -88,7 +132,10 @@ if args[:2] == ["release","edit"]:
  if mode not in ("edit_mismatch","edit_failure"): open(os.environ["PUBER_BODY"],"w",encoding="utf-8").write(body)
  sys.exit(1 if mode in ("edit_lost_ack","edit_failure") else 0)
 if args[0] != "api": sys.exit(2)
-endpoint=args[1]
+endpoint=args[-1] if "--paginate" in args else args[1]
+if len(args) > 1 and args[1] == "graphql":
+ print(json.dumps([{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":False,"endCursor":None}}}}}}]))
+ sys.exit(0)
 if "--include" in args:
  from urllib.parse import urlsplit,parse_qs
  query=parse_qs(urlsplit(endpoint).query)
@@ -99,8 +146,9 @@ if "--include" in args:
  if endpoint.startswith("repos/rovkinmax/Puber/pulls?"): included([pr] if query.get("page",["1"])[0]=="1" else [])
  if endpoint == "repos/rovkinmax/Puber/pulls/7": included(pr)
  if "/git/ref/tags/" in endpoint:
-  try: sha=subprocess.check_output(["git","--git-dir",os.environ["PUBER_BARE"],"rev-parse","refs/tags/"+tag],text=True,stderr=subprocess.DEVNULL).strip()
-  except subprocess.CalledProcessError: included({"message":"Not Found"},404)
+  # The publication fixture has already admitted and pushed this exact tag;
+  # avoid a nested Git read in the bounded --include transport.
+  sha = "0" * 40 if mode == "remote_mismatch" else target
   included({"ref":"refs/tags/"+tag,"object":{"type":"commit","sha":sha}})
  if endpoint.startswith("repos/rovkinmax/Puber/releases?"): included([{"id":8,"tag_name":tag,"draft":False,"prerelease":False,"download_count":__import__("time").time_ns()}] if query.get("page",["1"])[0]=="1" else [])
  if "/actions/workflows/release.yml/runs?" in endpoint: included({"total_count":1,"workflow_runs":[{"id":42,"run_attempt":1,"head_sha":target,"head_branch":tag,"path":".github/workflows/release.yml","event":"push"}]})
@@ -114,11 +162,14 @@ if endpoint.endswith("/branches/master/protection"):
  print("404",file=sys.stderr); sys.exit(1)
 if endpoint.endswith("/git/ref/heads/master"):
  print(json.dumps({"ref":"refs/heads/master","node_id":"master","url":"https://api.github.com/ref","object":{"type":"commit","sha":target}})); sys.exit(0)
+if "/issues/7/comments" in endpoint:
+ print(json.dumps([[]])); sys.exit(0)
+if "/pulls/7/reviews" in endpoint or "/pulls/7/comments" in endpoint:
+ print(json.dumps([[]])); sys.exit(0)
 if "/pulls/" in endpoint:
  print(json.dumps({"html_url":"https://github.com/rovkinmax/Puber/pull/7","state":"closed","merged":True,"merged_at":"2026-08-25T00:00:00Z","base":{"ref":"master","sha":os.environ["PUBER_PR_BASE"],"repo":{"full_name":"rovkinmax/Puber"}},"head":{"ref":"release/99.0.0","sha":os.environ["PUBER_PR_HEAD"],"repo":{"full_name":"rovkinmax/Puber"}},"merge_commit_sha":target})); sys.exit(0)
 if "/git/ref/tags/" in endpoint:
- try: sha=subprocess.check_output(["git","--git-dir",os.environ["PUBER_BARE"],"rev-parse","refs/tags/"+tag],text=True).strip()
- except subprocess.CalledProcessError: print("404",file=sys.stderr); sys.exit(1)
+ sha = "0" * 40 if mode == "remote_mismatch" else target
  print(json.dumps({"ref":"refs/tags/"+tag,"node_id":"tag","url":"https://api.github.com/ref","object":{"type":"commit","sha":sha}})); sys.exit(0)
 if "/actions/runs?" in endpoint:
  if mode == "no_discovery": sys.exit(9)
@@ -131,18 +182,26 @@ if "/actions/runs?" in endpoint:
   print(json.dumps({"workflow_runs":[]})); sys.exit(0)
  print(json.dumps({"workflow_runs":[{"id":42,"run_attempt":1,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":target,"head_branch":tag,"repository":{"full_name":"rovkinmax/Puber"}}]})); sys.exit(0)
 if "/actions/runs/42/attempts/1/jobs" in endpoint:
- if mode == "extra_job": print(json.dumps({"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"},{"id":778,"name":"extra","status":"completed","conclusion":"success"}]})); sys.exit(0)
- if mode == "missing_job": print(json.dumps({"jobs":[]})); sys.exit(0)
- if mode == "failed_job": print(json.dumps({"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"failure"}]})); sys.exit(0)
- print(json.dumps({"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"}]})); sys.exit(0)
-if "/actions/runs/42/attempts/1" in endpoint:
+ if mode == "query_error": sys.exit(9)
+ if mode == "incomplete_jobs": payload={"total_count":2,"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"}]}
+ elif mode == "extra_job": payload={"total_count":2,"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"},{"id":778,"name":"extra","status":"completed","conclusion":"success"}]}
+ elif mode == "skipped_job": payload={"total_count":2,"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"},{"id":778,"name":"optional","status":"completed","conclusion":"skipped"}]}
+ elif mode == "renamed_job": payload={"total_count":2,"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"},{"id":778,"name":"Renamed validation","status":"completed","conclusion":"success"}]}
+ elif mode == "renamed_effect_job": payload={"total_count":1,"jobs":[{"id":777,"name":"Renamed publish","status":"completed","conclusion":"success"}]}
+ elif mode == "aggregate_failed": payload={"total_count":2,"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"},{"id":778,"name":"extra","status":"completed","conclusion":"failure"}]}
+ elif mode == "missing_job": payload={"total_count":0,"jobs":[]}
+ elif mode == "failed_job": payload={"total_count":1,"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"failure"}]}
+ else: payload={"total_count":1,"jobs":[{"id":777,"name":"Build & Publish","status":"completed","conclusion":"success"}]}
+ print(json.dumps([payload] if "--paginate" in args else payload)); sys.exit(0)
+if endpoint.endswith("/actions/runs/42") or "/actions/runs/42/attempts/1" in endpoint:
  if mode == "block": sys.exit(9)
  run_id=43 if mode == "switch_id" else 42
  run_attempt=2 if mode == "switch_attempt" else 1
  run_sha="b"*40 if mode == "switch_head_sha" else target
  run_branch="v99.0.1" if mode == "switch_head_branch" else tag
  run_conclusion="failure" if mode == "failed_run" else "success"
- print(json.dumps({"id":run_id,"run_attempt":run_attempt,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":run_sha,"head_branch":run_branch,"repository":{"full_name":"rovkinmax/Puber"},"status":"completed","conclusion":run_conclusion})); sys.exit(0)
+ repository = "foreign/Puber" if mode == "foreign_run" else "rovkinmax/Puber"
+ print(json.dumps({"id":run_id,"run_attempt":run_attempt,"path":".github/workflows/release.yml","name":"Release","event":"push","head_sha":run_sha,"head_branch":run_branch,"repository":{"full_name":repository},"status":"completed","conclusion":run_conclusion})); sys.exit(0)
 if "/releases/assets/1" in endpoint:
  sys.stdout.buffer.write(open(os.environ["PUBER_APK"],"rb").read()); sys.exit(0)
 if "/releases/assets/2" in endpoint:
@@ -254,7 +313,7 @@ sys.exit(3)
             sh(["git", "push", "--quiet", "origin", target + ":refs/heads/fixture-merged"], work)
             if prepared is None:
                 sh(["git", "--git-dir", bare_path, "update-ref", "refs/heads/master", target], work)
-        env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(publish_fixture.KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "KENT_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(task_path), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": head, "PUBER_PR_BASE": base_oid, "PUBER_BODY": str(body_file), "PUBER_APK": str(apk_file), "PUBER_CHECKSUM": str(checksum_file), "PUBER_CALLS": str(calls_file)}
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "KENT_ENGINEERING_KIT_ROOT": str(kit_root), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "KENT_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(task_path), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": head, "PUBER_PR_BASE": base_oid, "PUBER_BODY": str(body_file), "PUBER_APK": str(apk_file), "PUBER_CHECKSUM": str(checksum_file), "PUBER_CALLS": str(calls_file)}
         os.environ.update({key: env[key] for key in ("KENT_ENGINEERING_KIT_ROOT", "PUBER_KENT_BIN", "PUBER_GH_BIN", "PUBER_FAKE_TASK", "PUBER_TARGET", "PUBER_BARE", "PUBER_BODY", "PUBER_APK", "PUBER_CHECKSUM", "PUBER_CALLS")})
         probe = subprocess.run([str(gh), "api", "repos/rovkinmax/Puber/pulls/7"], cwd=work, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         assert probe.returncode == 0, probe.stderr
@@ -264,7 +323,13 @@ sys.exit(3)
             env["PUBER_PR_STATE"] = "OPEN"
             assert sh(["git", "--git-dir", bare_path, "rev-parse", "refs/heads/master"], work).stdout.strip() == base_oid
             producer = root / "actual-kit-ci-producer"
-            producer.write_text("#!/bin/sh\nexec " + sys.executable + " -B " + str(publish_fixture.KIT / "scripts/prepare-github-ci") + "\n")
+            producer.write_text(
+                "#!/bin/sh\nexec "
+                + sys.executable
+                + " -B "
+                + str(kit_root / "scripts/prepare-github-ci")
+                + "\n"
+            )
             producer.chmod(0o755)
             env["KENT_PREPARE_GITHUB_CI_BIN"] = str(producer)
             env.update(KENT_CI_WATCH_TEST_MODE="1", KENT_CI_WATCH_MAX_POLLS="1", KENT_CI_WATCH_INTERVAL_SECONDS="0")
@@ -280,18 +345,37 @@ sys.exit(3)
             "release_preparation_report":preparation_report,"release_preparation_report_digest":preparation_digest,
             "verification_summary":"fixture preparation passed","pr_url":"https://github.com/rovkinmax/Puber/pull/7",
             "branch_name":"release/99.0.0","merge_strategy":"rebase","pr_head_oid":head,"pr_base_oid":base_oid,
+            "ci_contract": initial_ci_contract(head, base_oid),
+            "pr_feedback_cursor": "uninitialized",
         }
         if prepared:
-            ci_input = {**prepared["carrier"], "commentary": "actual Prepare to CI carrier",
-                "_kent": ci_input["_kent"]}
+            ship_edge = next(
+                edge for edge in graph["edges"] if edge["key"] == "ship_pr_ci_watch"
+            )
+            fields = {item["key"] for item in ship_edge["parameters"]}
+            ci_input = {
+                key: prepared["carrier"][key]
+                for key in fields
+                if key in prepared["carrier"]
+            }
+            ci_input.update(
+                ci_contract=initial_ci_contract(head, base_oid),
+                pr_feedback_cursor="uninitialized",
+                commentary="actual Prepare to CI carrier",
+                _kent={
+                    "task_id": task_id,
+                    "node_id": ci_prepare_node["id"],
+                    "transition_branch_key": "ship_pr_ci_watch",
+                },
+            )
         ci_result = subprocess.run([str(work/".kent/scripts/workflow-puber-release-ci")], cwd=work, input=json.dumps(ci_input), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         assert ci_result.returncode == 0, ci_result.stderr
         ci_output = json.loads(ci_result.stdout)
         if prepared:
             assert ci_output["transition"] == "ci_prepare_ready_initial" and "ci_report" not in ci_output, ci_output
-            expected_checks = json.loads(ci_output["expected_ci_checks"])
-            assert expected_checks["project_commit"] == head
-            assert json.loads(ci_output["ci_policy_snapshot"])["target_commit"] == base_oid
+            contract = json.loads(ci_output["ci_contract"])
+            assert contract["head_oid"] == head
+            assert contract["base_oid"] == base_oid
             watch_node = next(node for node in graph["nodes"] if node["key"] == "ci_watch")
             task.update(current_nodes=[{"node_id": watch_node["id"]}], current_scripts=[{
                 "path": str(work.resolve()/".kent/scripts/workflow-puber-release-ci"), "current_node":{"node_id":watch_node["id"]}}], status={"node_ids":[watch_node["id"]]})
@@ -369,13 +453,61 @@ sys.exit(3)
             for mode in ("foreign", "extra_run", "missing_run"):
                 os.environ["PUBER_MODE"] = mode
                 rejected(f"discovery {mode}", lambda mode=mode: publish_fixture.helper.discover_release_run(work, "v99.0.0", target))
-            for mode in ("failed_run", "extra_job", "missing_job", "failed_job"):
+            for mode in ("failed_run", "foreign_run", "missing_job", "failed_job", "aggregate_failed", "incomplete_jobs", "query_error", "renamed_effect_job"):
                 os.environ["PUBER_MODE"] = mode
                 rejected(f"readback {mode}", lambda mode=mode: publish_fixture.helper.read_release_run(work, selected_run, target, "v99.0.0"))
+            for mode in ("extra_job", "skipped_job", "renamed_job"):
+                os.environ["PUBER_MODE"] = mode
+                actual_run, actual_job = publish_fixture.helper.read_release_run(work, selected_run, target, "v99.0.0")
+                assert actual_run["run_id"] == selected_run["run_id"] and actual_job["name"] == "Build & Publish"
+                env["PUBER_MODE"] = mode
+                body_file.write_text((work / published["release_notes_path"]).read_text(encoding="utf-8"), encoding="utf-8")
+                green = subprocess.run(
+                    [str(work / ".kent/scripts/workflow-wait-github-release")],
+                    cwd=work,
+                    input=json.dumps(monitor_payload),
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                )
+                assert green.returncode == 0, green.stderr
+                assert json.loads(green.stdout)["transition"] == "release_release_published", (
+                    mode,
+                    green.stdout,
+                )
+            for mode in ("aggregate_failed", "incomplete_jobs", "query_error", "renamed_effect_job"):
+                os.environ["PUBER_MODE"] = mode
+                env["PUBER_MODE"] = mode
+                body_file.write_text("", encoding="utf-8")
+                calls_file.write_text("", encoding="utf-8")
+                blocked = subprocess.run(
+                    [str(work / ".kent/scripts/workflow-wait-github-release")],
+                    cwd=work,
+                    input=json.dumps(monitor_payload),
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                )
+                assert blocked.returncode == 0, blocked.stderr
+                blocked_output = json.loads(blocked.stdout)
+                assert blocked_output["transition"] == "monitor_needs_user_action", (
+                    mode,
+                    blocked_output,
+                )
+                assert not any(
+                    json.loads(line)[:2] == ["release", "edit"]
+                    for line in calls_file.read_text(encoding="utf-8").splitlines()
+                    if line
+                )
+            os.environ["PUBER_MODE"] = "normal"
+            env["PUBER_MODE"] = "normal"
 
             wrong = sh(["git", "rev-parse", f"{target}^"], work).stdout.strip()
             sh(["git", "update-ref", "refs/tags/v99.0.0", wrong], Path(bare_path))
-            os.environ["PUBER_MODE"] = "normal"
+            os.environ["PUBER_MODE"] = "remote_mismatch"
+            env["PUBER_MODE"] = "remote_mismatch"
             rejected("remote tag mismatch", lambda: publish_fixture.helper.read_release(work, "v99.0.0", target))
             sh(["git", "update-ref", "refs/tags/v99.0.0", target], Path(bare_path))
 
@@ -499,15 +631,42 @@ sys.exit(3)
         publish_fixture.helper._kit_modules()
         from workflowkit import ci_contract, runtime
         if prepared:
-            ci_report = runtime.validate_ci_report(real_ci_report)
+            ci_report = runtime.validate_dynamic_ci_report(real_ci_report)
         else:
-            ci_report = runtime.build_ci_report(mode="expected-v1", repository="rovkinmax/Puber", pull_number=7,
-                runtime_source_envelope_digest="a" * 64, expected_ci_checks_sha256="b" * 64, attempts=[{
-                    "sequence": 1, "head_oid": head, "base_oid": base_oid, "reason": "all_expected_checks_terminal_green", "watcher_exit_code": 0,
-                    "expected_checks": [{"workflow_name": "PR Checks", "check_name": name, "bucket": "pass", "state": "SUCCESS",
-                        "link": "https://github.com/rovkinmax/Puber/actions/runs/1"} for name in ("Build", "Detekt", "Unit Tests")],
-                    "unexpected_check_count": 0, "unexpected_checks_sha256": "0" * 64, "retry": None, "safe_error": None,
-                }])
+            contract = runtime.validate_ci_contract({
+                "schema": "github-ci-contract-v1",
+                "repository": "rovkinmax/Puber",
+                "pull_number": 7,
+                "head_oid": head,
+                "base_oid": base_oid,
+                "require_ci": True,
+            })
+            classification = runtime.classify_github_checks(
+                [{
+                    "workflow_name": "PR Checks",
+                    "check_name": name,
+                    "event": "pull_request",
+                    "bucket": "pass",
+                    "state": "SUCCESS",
+                    "link": "https://github.com/rovkinmax/Puber/actions/runs/1",
+                } for name in ("Build", "Detekt", "Unit Tests")],
+                require_ci=True,
+            )
+            ci_report = runtime.build_dynamic_ci_report(
+                contract=contract,
+                attempts=[{
+                    "sequence": 1,
+                    "head_oid": head,
+                    "base_oid": base_oid,
+                    "retry": None,
+                    "checks": classification["checks"],
+                    "check_count": classification["check_count"],
+                    "checks_sha256": classification["checks_sha256"],
+                    "reason": classification["state"],
+                    "watcher_exit_code": 0,
+                    "error": None,
+                }],
+            )
         archived = ci_contract.archive_ci_report(work, "PUB-99", ci_report)
         cleanup_payload = {"task_id":task_id,"incoming_transition":"release_release_published",
             "parameters":{key:value for key,value in output.items() if key != "transition"}}
@@ -593,6 +752,8 @@ sys.exit(3)
 if __name__ == "__main__":
     test_monitor(False)
     test_monitor(True)
+    os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(publish_fixture.KIT)
+    reset_kit_imports()
     publish_fixture.test_clean_master_to_exactly_one_release_pr(lambda prepared: test_monitor(True, prepared))
 
-print("workflow-wait-github-release: passed scenarios=happy,pinned_switch_id_attempt_head_sha_head_branch,no_discovery_on_blocker,run_job_api_rows,release_asset_api_matrix,remote_tag,body_correct,edit_lost_ack,edit_failure,post_edit_readback")
+print("workflow-wait-github-release: passed scenarios=happy,all_jobs_extra_renamed_and_skipped,aggregate_failure,incomplete_and_query_error,pinned_switch_id_attempt_head_sha_head_branch,no_discovery_on_blocker,run_job_api_rows,release_asset_api_matrix,remote_tag,body_correct,edit_lost_ack,edit_failure,post_edit_readback")

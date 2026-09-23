@@ -2,9 +2,11 @@
 """Terminal evidence admission under the existing cooperative POSIX lock.
 
 One scoped admission owns the directory and file descriptors through rename,
-retention or deletion. CI names are not an allowlist: canonical validated bytes,
-their digest and an exact logical Task reference in the sealed chain authorize
-each report. Tombstone paths never become logical artifact identities.
+retention or deletion. Any non-CI ordinary entry is admitted only as a private,
+owned regular file; its bytes remain opaque. CI names are reserved:
+canonical validated bytes, their digest and an exact logical Task reference in
+the sealed chain authorize each report. Tombstone paths never become logical
+artifact identities.
 Admission Git probes resolve and bind the selected workspace's own Git directory,
 worktree and index, including linked worktrees. Inherited GIT_* routing, object,
 namespace and config injection are removed; ordinary on-disk Git exclusions
@@ -18,8 +20,9 @@ Initial and managed admission require every referenced report. Only a matching
 tombstone with a verified durable sentinel and matching ledger/report marker may
 resume with already-absent reports; that checkpoint cannot distinguish prior
 deletion from unrelated loss. No absent bytes are claimed to have been verified.
-Managed cleanup retains all raw bytes. Primary cleanup removes fix, smoke,
-lexically ordered reports, then the ledger last, fsyncing after each unlink.
+Managed cleanup retains all admitted bytes. Primary cleanup removes ordinary
+opaque files, then lexically ordered validated reports, then the ledger last,
+fsyncing after each unlink.
 FD/link/byte checks detect cooperative drift, not hostile same-UID stat/unlink
 races: POSIX unlink is not an atomic inode compare-and-swap.
 """
@@ -41,12 +44,17 @@ from urllib.parse import urlparse
 
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 GITHUB_LOOKUP_ATTEMPTS = 3
+CI_REPORT_PREFIX = "ci-report-"
 CI_REPORT_NAME = re.compile(r"ci-report-([0-9a-f]{64})\.json")
 MAX_RUNTIME_ENTRIES = 256
 MAX_CI_ARTIFACTS = 64
 MAX_CI_ARTIFACT_BYTES = 4 * 1024 * 1024
 MAX_LEDGER_BYTES = 8 * 1024 * 1024
 MAX_LEDGER_RECORDS = 8192
+RUNTIME_FILE_METADATA = (
+    "st_dev", "st_ino", "st_uid", "st_mode", "st_nlink",
+    "st_size", "st_mtime_ns", "st_ctime_ns",
+)
 
 
 def runtime_state_names(task: str) -> tuple[str, str]:
@@ -181,6 +189,177 @@ def git_registers_worktree(primary: Path, workspace: Path) -> bool:
     return False
 
 
+def _kent_root(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError(f"Kent worktree list has no {label}")
+    return str(Path(value).expanduser().resolve())
+
+
+def _kent_record(
+    item: object,
+    *,
+    workspace: Path,
+) -> dict[str, str]:
+    if not isinstance(item, dict):
+        raise RuntimeError("Kent worktree list contains a malformed entry")
+    topology = item.get("topology")
+    if not isinstance(topology, dict):
+        raise RuntimeError("Kent worktree list entry has no topology")
+    variant = topology.get("variant")
+    if not isinstance(variant, str):
+        raise RuntimeError("Kent worktree list entry has no topology variant")
+    if variant == "external":
+        external = topology.get("external")
+        git = external.get("git") if isinstance(external, dict) else None
+        if not isinstance(git, dict):
+            raise RuntimeError("Kent external topology is malformed")
+        return {
+            "variant": variant,
+            "root": _kent_root(git.get("canonical_root"), "external root"),
+        }
+    if variant == "missing":
+        missing = topology.get("missing")
+        kent = missing.get("kent") if isinstance(missing, dict) else None
+        if not isinstance(kent, dict):
+            raise RuntimeError("Kent missing topology is malformed")
+        root = _kent_root(kent.get("canonical_root"), "missing root")
+        worktree_id = kent.get("worktree_id")
+        if not isinstance(worktree_id, str) or not worktree_id.strip():
+            raise RuntimeError("Kent missing topology has no worktree ID")
+        if kent.get("managed") is not True:
+            raise RuntimeError("Kent missing topology is not managed")
+        return {
+            "variant": variant,
+            "root": root,
+            "worktree_id": worktree_id,
+        }
+    if variant == "registered":
+        registered = topology.get("registered")
+        if not isinstance(registered, dict):
+            raise RuntimeError("Kent registered topology is malformed")
+        git = registered.get("git")
+        kent = registered.get("kent")
+        if not isinstance(git, dict) or not isinstance(kent, dict):
+            raise RuntimeError("Kent registered topology is incomplete")
+        git_root = _kent_root(git.get("canonical_root"), "registered Git root")
+        kent_root = _kent_root(kent.get("canonical_root"), "registered Kent root")
+        if git_root != kent_root:
+            raise RuntimeError("Kent registered Git and Kent roots differ")
+        worktree_id = kent.get("worktree_id")
+        if not isinstance(worktree_id, str) or not worktree_id.strip():
+            raise RuntimeError("Kent registered topology has no worktree ID")
+        if kent.get("managed") is not True:
+            raise RuntimeError("Kent registered topology is not managed")
+        return {
+            "variant": variant,
+            "root": git_root,
+            "worktree_id": worktree_id,
+        }
+    raise RuntimeError(f"Kent worktree list has unknown topology {variant!r}")
+
+
+def kent_worktree_entries(
+    wrapper: str,
+    primary: Path,
+    cleanup_session_id: str,
+    workspace: Path,
+) -> list[dict[str, str]]:
+    result = run(
+        [
+            wrapper,
+            "list",
+            "--session",
+            cleanup_session_id,
+            "--json",
+        ],
+        cwd=primary,
+        timeout=120,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise RuntimeError(f"Kent worktree list failed: {detail}")
+    payload = json_object(result.stdout, "Kent worktree list")
+    worktrees = payload.get("worktrees")
+    if not isinstance(worktrees, list):
+        raise RuntimeError("Kent worktree list has no worktrees array")
+    entries = [
+        _kent_record(item, workspace=workspace)
+        for item in worktrees
+    ]
+    return entries
+
+
+def capture_kent_worktree_record(
+    wrapper: str,
+    primary: Path,
+    workspace: Path,
+    cleanup_session_id: str,
+) -> dict[str, str]:
+    entries = kent_worktree_entries(
+        wrapper,
+        primary,
+        cleanup_session_id,
+        workspace,
+    )
+    matches = [entry for entry in entries if entry.get("root") == str(workspace)]
+    if len(matches) != 1:
+        raise RuntimeError(
+            "Kent worktree list must contain exactly one managed record for "
+            f"{workspace}; found {len(matches)}"
+        )
+    record = matches[0]
+    if record.get("variant") != "registered":
+        raise RuntimeError(
+            f"Kent worktree {workspace} is not registered before deletion"
+        )
+    return record
+
+
+def verify_kent_worktree_postcondition(
+    wrapper: str,
+    primary: Path,
+    workspace: Path,
+    cleanup_session_id: str,
+    expected: dict[str, str],
+) -> tuple[str, dict[str, str] | None]:
+    entries = kent_worktree_entries(
+        wrapper,
+        primary,
+        cleanup_session_id,
+        workspace,
+    )
+    expected_id = expected["worktree_id"]
+    id_matches = [
+        entry for entry in entries if entry.get("worktree_id") == expected_id
+    ]
+    root_matches = [
+        entry for entry in entries if entry.get("root") == str(workspace)
+    ]
+    if len(id_matches) > 1 or len(root_matches) > 1:
+        raise RuntimeError(
+            f"Kent worktree postcondition is ambiguous for {workspace}"
+        )
+    if id_matches:
+        record = id_matches[0]
+        if record.get("root") != str(workspace):
+            raise RuntimeError(
+                f"Kent worktree identity {expected_id} changed its root"
+            )
+        if record.get("variant") == "missing":
+            return "retained", record
+        raise RuntimeError(
+            f"Kent worktree {expected_id} remains registered after deletion"
+        )
+    if root_matches:
+        record = root_matches[0]
+        raise RuntimeError(
+            f"Kent worktree identity changed at {workspace} "
+            f"({record.get('worktree_id', '<unknown>')})"
+        )
+    return "absent", None
+
+
 def github_pull_number(pr_url: str) -> str:
     parsed = urlparse(pr_url)
     if parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"}:
@@ -296,26 +475,23 @@ def remote_branch_oid(primary: Path, branch: str) -> str:
         check=False,
     )
     if result.returncode != 0:
-        return ""
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise RuntimeError(f"remote branch lookup failed: {detail}")
     line = result.stdout.strip().splitlines()
-    return line[0].split()[0] if line else ""
+    if not line:
+        return ""
+    fields = line[0].split()
+    if len(fields) < 2 or fields[1] != f"refs/heads/{branch}":
+        raise RuntimeError("remote branch lookup returned malformed output")
+    return fields[0]
 
 
-def head_matches_current_remote(primary: Path, head: str) -> bool:
-    result = run(
-        ["git", "ls-remote", "--heads", "origin"],
-        cwd=primary,
-        check=False,
-    )
-    if result.returncode != 0:
-        return False
-    return any(
-        fields and fields[0] == head
-        for fields in (
-            line.split()
-            for line in result.stdout.splitlines()
-        )
-    )
+def head_matches_current_remote(
+    primary: Path,
+    branch: str,
+    head: str,
+) -> bool:
+    return remote_branch_oid(primary, branch) == head
 
 
 def open_child_directory(parent_fd: int, name: str) -> int:
@@ -559,12 +735,6 @@ class _EvidenceAdmission:
                     os.fsync(runtime_fd)
                     _revalidate_file_link(runtime_fd, self.sentinel_name, self.sentinel)
                     self.phase = "deletion-resume"
-            allowed = {
-                "evidence-ledger.jsonl", "fix-checkpoint.json", "smoke-checkpoint.json",
-            } | self.references
-            unknown = set(entries) - allowed
-            if unknown:
-                raise ValueError(f"unexpected tombstone entries: {sorted(unknown)}")
             self.git_command, self.git_environment = _evidence_git_workspace(workspace)
             total = 0
             for name in entries:
@@ -572,12 +742,16 @@ class _EvidenceAdmission:
                     descriptor = _open_evidence_file(self.directory, name)
                     self.files[name] = (descriptor, None, None)
                     report_bytes = None
-                    if name in self.references:
+                    if name.startswith(CI_REPORT_PREFIX):
+                        if name not in self.references:
+                            raise ValueError(
+                                f"unreferenced CI artifact: {name}"
+                            )
                         report_bytes = _bounded_file_bytes(descriptor, runtime.MAX_CI_REPORT_BYTES)
                         total += len(report_bytes)
                         if total > MAX_CI_ARTIFACT_BYTES:
                             raise ValueError("total CI report bytes exceed limit")
-                        report = runtime.validate_ci_report(
+                        report = runtime.validate_ci_archive(
                             runtime.parse_canonical_json(
                                 report_bytes, label="CI artifact",
                                 max_bytes=runtime.MAX_CI_REPORT_BYTES,
@@ -639,7 +813,7 @@ class _EvidenceAdmission:
             current = os.fstat(descriptor)
             if any(
                 getattr(current, key) != getattr(saved, key)
-                for key in ("st_dev", "st_ino", "st_uid", "st_mode", "st_nlink")
+                for key in RUNTIME_FILE_METADATA
             ):
                 raise ValueError("runtime file identity changed after admission")
             if raw is not None and _bounded_file_bytes(
@@ -1048,7 +1222,11 @@ def _remove_v2_runtime_state(
         if admission.sentinel < 0:
             admission.sentinel = os.dup(sentinel_fd)
             admission.sentinel_name = sentinel_name
-        order = ["fix-checkpoint.json", "smoke-checkpoint.json"]
+        order = sorted(
+            name for name in admission.files
+            if name != "evidence-ledger.jsonl"
+            and name not in admission.references
+        )
         order += sorted(admission.references & admission.files.keys())
         order += ["evidence-ledger.jsonl"]
         for name in order:
@@ -1057,7 +1235,11 @@ def _remove_v2_runtime_state(
             phase = (
                 "ci_report" if CI_REPORT_NAME.fullmatch(name)
                 else "ledger" if name == "evidence-ledger.jsonl"
-                else name.removesuffix(".json").replace("-", "_")
+                else (
+                    name.removesuffix(".json").replace("-", "_")
+                    if name in {"fix-checkpoint.json", "smoke-checkpoint.json"}
+                    else "opaque"
+                )
             )
             if _phase_hook is not None:
                 _phase_hook(f"before_{phase}_unlink")
@@ -1328,6 +1510,7 @@ def remove_runtime_state(
         return v2_result
 
     descriptors: list[int] = []
+    admitted: dict[str, tuple[int, os.stat_result]] = {}
     try:
         root_fd = os.open(
             workspace,
@@ -1365,47 +1548,81 @@ def remove_runtime_state(
         )
         descriptors.append(lock_fd)
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        allowed = {
-            "evidence-ledger.jsonl",
-            "fix-checkpoint.json",
-            "smoke-checkpoint.json",
-            "runtime.lock",
-            "terminal-sentinel",
-        }
-        entries = os.listdir(task_fd)
+        entries = _bounded_inventory(task_fd)
         if "terminal-sentinel" in entries:
             runtime_contracts()
-        unexpected = sorted(
-            item for item in set(entries) - allowed
-            if not item.startswith(".evidence-cleanup-")
-        )
-        if unexpected:
-            return False, f"unexpected runtime entries: {unexpected}"
         for entry in entries:
-            metadata = os.stat(entry, dir_fd=task_fd, follow_symlinks=False)
-            if not stat.S_ISREG(metadata.st_mode):
-                return False, f"runtime entry is not a regular file: {entry}"
-            if metadata.st_nlink != 1:
-                return False, f"runtime entry has multiple links: {entry}"
-            relative = f".kent/runtime/{task_short_id}/{entry}"
-            ignored = run(
-                ["git", "check-ignore", "-q", "--", relative],
-                cwd=workspace,
-                check=False,
-            ).returncode == 0
-            tracked = run(
-                ["git", "ls-files", "--error-unmatch", "--", relative],
-                cwd=workspace,
-                check=False,
-            ).returncode == 0
-            if not ignored or tracked:
+            if entry.startswith(CI_REPORT_PREFIX):
                 return (
                     False,
-                    f"runtime entry is tracked or not ignored: {relative}",
+                    f"CI evidence requires sealed v2 admission: {entry}",
                 )
-        for entry in entries:
+            descriptor = _open_evidence_file(task_fd, entry)
+            admitted[entry] = (descriptor, os.fstat(descriptor))
+
+        git_command, git_environment = _evidence_git_workspace(workspace)
+
+        def revalidate() -> None:
+            _revalidate_directory_link(root_fd, ".kent", kent_fd)
+            _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+            _revalidate_directory_link(runtime_fd, task_short_id, task_fd)
+            if set(_bounded_inventory(task_fd)) != admitted.keys():
+                raise ValueError("runtime inventory changed after admission")
+            paths = sorted(
+                f".kent/runtime/{task_short_id}/{name}"
+                for name in admitted
+            )
+            if paths:
+                ignored = run(
+                    [*git_command, "check-ignore", "-z", "--stdin"],
+                    cwd=workspace,
+                    check=False,
+                    environment=git_environment,
+                    input_text="".join(path + "\0" for path in paths),
+                )
+                tracked = run(
+                    [
+                        *git_command,
+                        "--literal-pathspecs",
+                        "ls-files",
+                        "-z",
+                        "--",
+                        *paths,
+                    ],
+                    cwd=workspace,
+                    check=False,
+                    environment=git_environment,
+                )
+                if (
+                    ignored.returncode != 0
+                    or not ignored.stdout.endswith("\0")
+                    or ignored.stdout.split("\0")[:-1] != paths
+                    or tracked.returncode != 0
+                    or tracked.stdout
+                ):
+                    raise ValueError(
+                        "runtime entries are tracked or not ignored in "
+                        "selected workspace"
+                    )
+            for name, (descriptor, saved) in admitted.items():
+                _revalidate_file_link(task_fd, name, descriptor)
+                current = os.fstat(descriptor)
+                if any(
+                    getattr(current, key) != getattr(saved, key)
+                    for key in RUNTIME_FILE_METADATA
+                ):
+                    raise ValueError("runtime file changed during cleanup")
+
+        revalidate()
+        order = [entry for entry in entries if entry != "evidence-ledger.jsonl"]
+        if "evidence-ledger.jsonl" in entries:
+            order.append("evidence-ledger.jsonl")
+        for entry in order:
+            revalidate()
             os.unlink(entry, dir_fd=task_fd)
             os.fsync(task_fd)
+            descriptor, _ = admitted.pop(entry)
+            os.close(descriptor)
             if _phase_hook is not None:
                 if entry == "fix-checkpoint.json":
                     _phase_hook("after_fix_checkpoint_unlink_fsync")
@@ -1413,6 +1630,8 @@ def remove_runtime_state(
                     _phase_hook("after_smoke_checkpoint_unlink_fsync")
                 elif entry == "evidence-ledger.jsonl":
                     _phase_hook("after_ledger_unlink_fsync")
+                elif entry not in {"runtime.lock", "terminal-sentinel"}:
+                    _phase_hook("after_opaque_unlink_fsync")
         os.close(task_fd)
         descriptors.remove(task_fd)
         os.rmdir(task_short_id, dir_fd=runtime_fd)
@@ -1420,6 +1639,8 @@ def remove_runtime_state(
     except (NotADirectoryError, OSError, ValueError) as error:
         return False, str(error)
     finally:
+        for descriptor, _ in admitted.values():
+            os.close(descriptor)
         close_descriptors(*descriptors)
 
 
@@ -1436,6 +1657,7 @@ def delete_managed_worktree(
     workspace: Path,
     cleanup_session_id: str,
     cleanup_report: str,
+    expected_kent: dict[str, str],
 ) -> tuple[bool, str, str]:
     flags = (
         os.O_RDONLY
@@ -1575,10 +1797,191 @@ def delete_managed_worktree(
                 "Kent worktree deletion postconditions failed; no branch or "
                 "remote cleanup was attempted.",
             )
-        return True, "", ""
+        try:
+            kent_state, kent_record = verify_kent_worktree_postcondition(
+                wrapper,
+                primary,
+                workspace,
+                cleanup_session_id,
+                expected_kent,
+            )
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+            return (
+                False,
+                f"Janitor removed managed worktree {workspace} and Git "
+                f"registration, but Kent registration readback failed: {error}.",
+                "Kent registration postcondition could not be verified after "
+                "worktree deletion; branch cleanup was not attempted.",
+            )
+        if kent_state == "retained":
+            assert kent_record is not None
+            return (
+                True,
+                "Kent retained restorative metadata: "
+                f"id={kent_record['worktree_id']} root={kent_record['root']}.",
+                "",
+            )
+        return True, "Kent registration absent after deletion.", ""
     finally:
         os.close(workspace_fd)
         os.close(primary_fd)
+
+
+def settle_local_branch(
+    primary: Path,
+    branch: str,
+    head: str,
+    cleanup_mode: str,
+) -> tuple[bool, str, str]:
+    published_oid = ""
+    if cleanup_mode in {"no_pr", "report_only"}:
+        try:
+            published_oid = remote_branch_oid(primary, branch)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            return (
+                False,
+                " Remote branch disposition could not be verified after "
+                f"worktree deletion: {error}",
+                "Published branch readback failed; the local branch was "
+                "preserved and Cleanup must retry after a successful readback.",
+            )
+        if published_oid != head:
+            observed = published_oid or "<absent>"
+            return (
+                False,
+                f" Remote branch {branch} was not retained at the exact "
+                f"published tip (observed {observed}, expected {head}).",
+                "The published source branch changed or disappeared; the "
+                "local branch was preserved and no Done transition is allowed.",
+            )
+
+    exists_result = run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=primary,
+        check=False,
+    )
+    if exists_result.returncode not in {0, 1}:
+        detail = (
+            exists_result.stderr.strip()
+            or exists_result.stdout.strip()
+            or "no output"
+        )
+        return (
+            False,
+            f" Local branch readback failed: {detail}",
+            "Owned local branch disposition is unknown; retry Cleanup without "
+            "forcing branch reconciliation.",
+        )
+    if exists_result.returncode == 1:
+        note = " Local branch was already absent after deletion."
+        if published_oid:
+            note += (
+                f" Remote branch retained: true (origin/{branch} @ "
+                f"{published_oid})."
+            )
+        return True, note, ""
+
+    current_local = run(
+        ["git", "rev-parse", f"refs/heads/{branch}"],
+        cwd=primary,
+        check=False,
+    )
+    if current_local.returncode != 0:
+        detail = (
+            current_local.stderr.strip()
+            or current_local.stdout.strip()
+            or "no output"
+        )
+        return (
+            False,
+            f" Local branch {branch} remained but its OID could not be read: "
+            f"{detail}",
+            "Owned local branch disposition is unknown; no forced deletion "
+            "was attempted.",
+        )
+    current_local_oid = current_local.stdout.strip()
+    worktree_result = run(
+        ["git", "branch", "--format=%(worktreepath)", "--list", branch],
+        cwd=primary,
+        check=False,
+    )
+    if worktree_result.returncode != 0:
+        detail = (
+            worktree_result.stderr.strip()
+            or worktree_result.stdout.strip()
+            or "no output"
+        )
+        return (
+            False,
+            f" Local branch {branch} checkout readback failed: {detail}",
+            "The local branch may still be checked out; no branch deletion "
+            "was attempted.",
+        )
+    worktree_path = worktree_result.stdout.strip()
+    if worktree_path:
+        return (
+            False,
+            f" Local branch {branch} was preserved because it remains "
+            f"checked out at {worktree_path}.",
+            "Owned local branch remains checked out after worktree deletion; "
+            "retry Cleanup after its owner leaves.",
+        )
+    if current_local_oid != head:
+        return (
+            False,
+            f" Local branch {branch} was preserved because its OID changed "
+            f"after cleanup preflight (observed {current_local_oid}, "
+            f"expected {head}).",
+            "Owned local branch changed after preflight; no forced deletion "
+            "was attempted.",
+        )
+    branch_delete = run(
+        [
+            "git",
+            "update-ref",
+            "-d",
+            f"refs/heads/{branch}",
+            current_local_oid,
+        ],
+        cwd=primary,
+        check=False,
+    )
+    if branch_delete.returncode != 0:
+        detail = (
+            branch_delete.stderr.strip()
+            or branch_delete.stdout.strip()
+            or "no output"
+        )
+        return (
+            False,
+            f" Local branch deletion failed safely and was preserved: {detail}",
+            "Exact-OID local branch deletion failed; retry Cleanup without "
+            "forcing reconciliation.",
+        )
+    readback = run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=primary,
+        check=False,
+    )
+    if readback.returncode != 1:
+        detail = (
+            readback.stderr.strip()
+            or readback.stdout.strip()
+            or "branch still exists"
+        )
+        return (
+            False,
+            f" Local branch {branch} deletion readback was not absent: {detail}",
+            "Exact-OID local branch deletion did not reach the expected "
+            "postcondition.",
+        )
+    note = ""
+    if published_oid:
+        note += (
+            f" Remote branch retained: true (origin/{branch} @ "
+            f"{published_oid})."
+        )
+    return True, note, ""
 
 
 def main() -> int:
@@ -1715,7 +2118,17 @@ def main() -> int:
             )
             return 0
     elif cleanup_mode in {"no_pr", "report_only"}:
-        recoverable = head_matches_current_remote(primary, head)
+        try:
+            recoverable = head_matches_current_remote(primary, branch, head)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            complete(
+                "task_janitor_blocked",
+                f"{previous_report}\nJanitor preserved {workspace}: "
+                f"published branch lookup failed: {error}",
+                "The exact published-tip witness was unavailable; no worktree "
+                "or branch was removed.",
+            )
+            return 0
 
     if not recoverable:
         complete(
@@ -1769,7 +2182,36 @@ def main() -> int:
         )
         return 0
 
-    remote_oid = remote_branch_oid(primary, branch) if branch else ""
+    remote_oid = ""
+    if merged_pr is not None and branch:
+        try:
+            remote_oid = remote_branch_oid(primary, branch)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            complete(
+                "task_janitor_blocked",
+                f"{previous_report}\nJanitor preserved {workspace}: "
+                f"merged remote branch lookup failed: {error}",
+                "The remote lease witness was unavailable; no worktree or "
+                "branch was removed.",
+            )
+            return 0
+
+    try:
+        expected_kent = capture_kent_worktree_record(
+            wrapper,
+            primary,
+            workspace,
+            cleanup_session_id,
+        )
+    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+        complete(
+            "task_janitor_blocked",
+            f"{previous_report}\nJanitor preserved {workspace}: "
+            f"Kent registration preflight failed: {error}",
+            "The exact managed Kent record could not be captured; no worktree "
+            "or branch was removed.",
+        )
+        return 0
 
     deletion_ok, deletion_report, deletion_blocker = delete_managed_worktree(
         wrapper,
@@ -1777,6 +2219,7 @@ def main() -> int:
         workspace,
         cleanup_session_id,
         previous_report,
+        expected_kent,
     )
     if not deletion_ok:
         complete(
@@ -1786,105 +2229,157 @@ def main() -> int:
         )
         return 0
 
-    local_deleted = False
+    local_deleted = True
     local_note = ""
+    local_blocker = ""
     if branch:
-        exists = run(
-            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
-            cwd=primary,
-            check=False,
-        ).returncode == 0
-        if exists and cleanup_mode == "merged":
-            current_local_oid = run(
-                ["git", "rev-parse", f"refs/heads/{branch}"],
-                cwd=primary,
-            ).stdout.strip()
-            worktree_path = run(
-                ["git", "branch", "--format=%(worktreepath)", "--list", branch],
-                cwd=primary,
-            ).stdout.strip()
-            if worktree_path:
-                local_note = (
-                    " Kent retained or scheduled removal of the checked-out "
-                    f"local branch at {worktree_path}."
-                )
-            elif current_local_oid == head:
-                branch_delete = run(
-                    [
-                        "git",
-                        "update-ref",
-                        "-d",
-                        f"refs/heads/{branch}",
-                        current_local_oid,
-                    ],
-                    cwd=primary,
-                    check=False,
-                )
-                local_deleted = branch_delete.returncode == 0
-                if not local_deleted:
-                    detail = (
-                        branch_delete.stderr.strip()
-                        or branch_delete.stdout.strip()
-                        or "no output"
-                    )
-                    local_note = f" Local branch deletion failed: {detail}"
-            else:
-                local_note = (
-                    " Local branch was preserved because its OID changed "
-                    "after cleanup preflight."
-                )
-        else:
-            local_deleted = not exists
+        try:
+            local_deleted, local_note, local_blocker = settle_local_branch(
+                primary,
+                branch,
+                head,
+                cleanup_mode,
+            )
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            local_deleted = False
+            local_note = (
+                " Local branch disposition failed after the managed worktree "
+                f"was removed: {error}"
+            )
+            local_blocker = (
+                "Local branch postcondition is unknown after worktree "
+                "deletion; retry Cleanup without forcing reconciliation."
+            )
 
     remote_deleted = False
     remote_note = ""
-    if merged_pr is not None and branch and remote_oid:
-        current_remote_oid = remote_branch_oid(primary, branch)
-        if not current_remote_oid:
-            remote_deleted = True
-            remote_note = " Remote branch was already absent after cleanup."
-        elif (
-            current_remote_oid != remote_oid
-            or current_remote_oid != merged_head_oid
-        ):
-            remote_note = (
-                f" Remote branch {branch} was preserved because its head "
-                "changed after cleanup preflight."
-            )
-        else:
-            remote_delete = run(
-                [
-                    "git",
-                    "push",
-                    f"--force-with-lease=refs/heads/{branch}:{remote_oid}",
-                    "origin",
-                    f":refs/heads/{branch}",
-                ],
-                cwd=primary,
-                timeout=120,
-                check=False,
-            )
-            remote_deleted = remote_delete.returncode == 0
-            if not remote_deleted:
-                detail = (
-                    remote_delete.stderr.strip()
-                    or remote_delete.stdout.strip()
-                    or "no output"
-                )
+    remote_blocker = ""
+    if merged_pr is not None and branch and not local_blocker:
+        if not remote_oid:
+            try:
+                current_remote_oid = remote_branch_oid(primary, branch)
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
                 remote_note = (
-                    " Remote branch deletion failed safely and was preserved: "
-                    f"{detail}"
+                    " Remote branch disposition could not be verified after "
+                    f"cleanup: {error}"
                 )
+                remote_blocker = (
+                    "Merged remote branch readback failed; the worktree was "
+                    "already removed but cleanup cannot finish with unknown "
+                    "remote ownership."
+                )
+            else:
+                if current_remote_oid:
+                    remote_note = (
+                        f" Remote branch {branch} was preserved because its head "
+                        "changed after cleanup preflight."
+                    )
+                    remote_blocker = (
+                        "Merged remote branch changed after its absence "
+                        "witness; no Done transition is allowed."
+                    )
+                else:
+                    remote_deleted = True
+                    remote_note = " Remote branch removed: true (already absent)."
+        else:
+            try:
+                current_remote_oid = remote_branch_oid(primary, branch)
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+                remote_note = (
+                    " Remote branch disposition could not be verified after "
+                    f"cleanup: {error}"
+                )
+                remote_blocker = (
+                    "Merged remote branch readback failed; the worktree was "
+                    "already removed but cleanup cannot finish with unknown "
+                    "remote ownership."
+                )
+            else:
+                if not current_remote_oid:
+                    remote_deleted = True
+                    remote_note = " Remote branch removed: true (already absent)."
+                elif (
+                    current_remote_oid != remote_oid
+                    or current_remote_oid != merged_head_oid
+                ):
+                    remote_note = (
+                        f" Remote branch {branch} was preserved because its head "
+                        "changed after cleanup preflight."
+                    )
+                    remote_blocker = (
+                        "Merged remote branch changed after its exact lease "
+                        "witness; no Done transition is allowed."
+                    )
+                else:
+                    remote_delete = run(
+                        [
+                            "git",
+                            "push",
+                            f"--force-with-lease=refs/heads/{branch}:{remote_oid}",
+                            "origin",
+                            f":refs/heads/{branch}",
+                        ],
+                        cwd=primary,
+                        timeout=120,
+                        check=False,
+                    )
+                    if remote_delete.returncode != 0:
+                        detail = (
+                            remote_delete.stderr.strip()
+                            or remote_delete.stdout.strip()
+                            or "no output"
+                        )
+                        remote_note = (
+                            " Remote branch deletion failed safely and was "
+                            f"preserved: {detail}"
+                        )
+                        remote_blocker = (
+                            "Merged remote branch deletion failed; retry Cleanup "
+                            "without forcing a changed lease."
+                        )
+                    else:
+                        try:
+                            remaining_remote_oid = remote_branch_oid(primary, branch)
+                        except (
+                            OSError,
+                            RuntimeError,
+                            subprocess.TimeoutExpired,
+                        ) as error:
+                            remote_note = (
+                                " Remote branch deletion was attempted but "
+                                f"readback failed: {error}"
+                            )
+                            remote_blocker = (
+                                "Merged remote branch deletion postcondition is "
+                                "unknown; no Done transition is allowed."
+                            )
+                        else:
+                            if remaining_remote_oid:
+                                remote_note = (
+                                    " Remote branch deletion command completed "
+                                    f"but branch remains at {remaining_remote_oid}."
+                                )
+                                remote_blocker = (
+                                    "Merged remote branch remained after exact "
+                                    "lease deletion; retry Cleanup."
+                                )
+                            else:
+                                remote_deleted = True
+                                remote_note = " Remote branch removed: true."
+    elif merged_pr is not None and branch and local_blocker:
+        remote_note = (
+            " Remote branch was not targeted because local branch disposition "
+            "blocked cleanup."
+        )
 
-    complete(
-        "task_janitor_done",
-        (
-            f"{previous_report}\nJanitor removed managed worktree {workspace}. "
-            f"Local branch removed: {str(local_deleted).lower()}. "
-            f"Remote branch removed: {str(remote_deleted).lower()}."
-            f"{local_note}{remote_note}"
-        ),
+    report = (
+        f"{previous_report}\nJanitor removed managed worktree {workspace}. "
+        f"{deletion_report} Local branch removed: "
+        f"{str(local_deleted).lower()}.{local_note}"
+        f"{remote_note}"
     )
+    blocker = local_blocker or remote_blocker
+    complete("task_janitor_blocked" if blocker else "task_janitor_done", report, blocker)
     return 0
 
 

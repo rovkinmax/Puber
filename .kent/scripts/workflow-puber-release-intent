@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Fail-closed Puber release runtime shared by all S05 Script nodes."""
 from __future__ import annotations
-import fcntl, hashlib, importlib, json, math, os, re, secrets, shutil, stat, subprocess, sys, tempfile, tomllib
+import fcntl, hashlib, importlib, importlib.util, json, math, os, re, secrets, shutil, stat, subprocess, sys, tempfile, tomllib
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Mapping
+from tomllib import TOMLDecodeError
 from urllib.parse import urlsplit
 
 sys.dont_write_bytecode = True
 for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
     os.environ.pop(_name, None)
 ROOT = Path(__file__).resolve().parents[2]
-KIT_COMMIT = "9363fa48f9f21d2742a41841ab97b18cc4c4e521"
+KIT_COMMIT = "9acedea07470c91f0c8caddb9546aa89ec7ed844"
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
@@ -569,7 +570,7 @@ def _kit_modules() -> dict[str, Any]:
     runtime = importlib.import_module("workflowkit.runtime")
     result = {name: getattr(workflowkit, name) for name in ("ProjectProfile","ReleaseSpec","NormalizedGitHubWorkflowSourceV1","preflight_project_revision","capture_runtime_execution_context","capture_runtime_authority_binding","validate_operation_jobs","canonicalize_publication_operation")}
     result.update({name: getattr(runtime, name) for name in ("validate_terminal_seal_request","validate_terminal_marker","parse_terminal_marker_line","terminal_marker_line","validate_cleanup_report","validate_terminal_chain","canonical_sha256")})
-    result.update({name: getattr(runtime, name) for name in ("validate_ci_report", "parse_canonical_json", "MAX_CI_REPORT_BYTES")})
+    result.update({name: getattr(runtime, name) for name in ("validate_ci_report", "validate_ci_archive", "parse_canonical_json", "MAX_CI_REPORT_BYTES", "MAX_DYNAMIC_CI_REPORT_BYTES")})
     revision = importlib.import_module("workflowkit.revision")
     result.update({name: getattr(revision, name) for name in ("read_blob_bytes", "tree_mode", "collect_runtime_external_captures", "run_git")})
     ci = importlib.import_module("workflowkit.ci_contract")
@@ -577,6 +578,67 @@ def _kit_modules() -> dict[str, Any]:
     result["resolve_github_merge_strategy"] = importlib.import_module("workflowkit.merge_strategy").resolve_github_merge_strategy
     result.update({name: getattr(runtime, name) for name in ("validate_expected_ci_checks", "expected_ci_checks_sha256", "validate_ci_policy_snapshot", "ci_policy_projection_sha256")})
     return result
+
+def _runtime_contracts_module(root: Path) -> Any:
+    """Load the project-local pure runtime, separate from release authority."""
+    path = root / ".kent/scripts/workflow_runtime_contracts.py"
+    if path.is_symlink() or not path.is_file():
+        raise ContractError("runtime contract support module is unsafe")
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "puber_runtime_contracts",
+            path,
+        )
+        if spec is None or spec.loader is None:
+            raise ContractError("runtime contract support module is unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except ContractError:
+        raise
+    except (
+        AttributeError,
+        ImportError,
+        OSError,
+        RuntimeError,
+        SyntaxError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise ContractError("runtime contract support module cannot load") from error
+
+def _github_observer(root: Path) -> Any:
+    """Load the project-materialized shared read-only GitHub observer."""
+    path = root / ".kent/scripts/workflow_github_observation.py"
+    if path.is_symlink() or not path.is_file():
+        raise ContractError("shared GitHub observation module is missing or unsafe")
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "puber_github_observation",
+            path,
+        )
+        if spec is None or spec.loader is None:
+            raise ContractError("shared GitHub observation module cannot load")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        observer = getattr(module, "GitHubObserver")
+        return observer(
+            root,
+            gh_bin=os.environ.get("PUBER_GH_BIN")
+            or os.environ.get("KENT_GH_BIN"),
+        )
+    except ContractError:
+        raise
+    except (
+        AttributeError,
+        ImportError,
+        OSError,
+        RuntimeError,
+        SyntaxError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise ContractError("shared GitHub observation module cannot load") from error
 
 def _external_captures(root: Path, profile: Any, selected: Any) -> list[tuple[str, str, bytes]]:
     return list(_kit_modules()["collect_runtime_external_captures"](root, selected))
@@ -652,8 +714,25 @@ def _attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, ki
 
 def resolve_merge_strategy(root: Path, state: dict, payload: dict) -> str:
     kit = _kit_modules()
-    profile = kit["ProjectProfile"].from_toml(root,
-        _revision_blob(root, kit, state.get("controller_commit", state["commit"]), ".kent/workflow-profile.toml").decode(), check_files=False)
+    profile_blob = _revision_blob(
+        root,
+        kit,
+        state.get("controller_commit", state["commit"]),
+        ".kent/workflow-profile.toml",
+    )
+    try:
+        profile_data = tomllib.loads(profile_blob.decode("utf-8"))
+    except (TOMLDecodeError, UnicodeDecodeError) as error:
+        raise ContractError("selected profile TOML is invalid") from error
+    policies = profile_data.get("policies", {})
+    if not isinstance(policies, dict):
+        raise ContractError("selected profile policies must be a TOML table")
+    configured_policy = policies.get("pr_merge_strategy", "auto")
+    if not isinstance(configured_policy, str):
+        raise ContractError("policies.pr_merge_strategy must be a string")
+    merge_policy = configured_policy.strip()
+    if merge_policy not in {"auto", "merge", "squash", "rebase"}:
+        raise ContractError("policies.pr_merge_strategy is unsupported")
     repository = gh_api(root, f"repos/{REPOSITORY}")
     rules_response = gh(root, ["api", f"repos/{REPOSITORY}/rules/branches/master"])
     if rules_response.returncode:
@@ -665,7 +744,7 @@ def resolve_merge_strategy(root: Path, state: dict, payload: dict) -> str:
             or any(not isinstance(rule, dict) for rule in rules)
             or protection is not None and not isinstance(protection, dict)):
         raise ContractError("merge rules readback is incomplete")
-    resolution = kit["resolve_github_merge_strategy"](profile.pr_merge_strategy(), {
+    resolution = kit["resolve_github_merge_strategy"](merge_policy, {
         "repository": repository, "branch_protection": protection,
         "rulesets": [{"enforcement": "active", "rules": rules}],
     })
@@ -1322,6 +1401,102 @@ def parse_job(value: Any, attempt: int) -> dict[str, Any]:
         raise ContractError("release job evidence is not exact")
     return dict(value)
 
+def _observed_job(value: Any, attempt: int) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ContractError("release job observation is not an object")
+    identifier = value.get("id")
+    if isinstance(identifier, bool) or not isinstance(identifier, int) or identifier <= 0:
+        raise ContractError("release job observation ID is invalid")
+    name = value.get("name")
+    if not isinstance(name, str) or not name.strip() or len(name.encode("utf-8")) > 256:
+        raise ContractError("release job observation name is invalid")
+    status = value.get("status")
+    conclusion = value.get("conclusion")
+    if status != "completed" or not isinstance(conclusion, str):
+        raise ContractError("release job observation is not terminal")
+    return {
+        "id": identifier,
+        "name": name,
+        "status": status,
+        "conclusion": conclusion,
+        "attempt": attempt,
+    }
+
+def _read_release_run_all_jobs(
+    root: Path,
+    run: Mapping[str, Any],
+    target: str,
+    tag: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Read one pinned run and classify every job reported for that attempt."""
+    try:
+        observed = _github_observer(root).observe_run(
+            REPOSITORY,
+            run["run_id"],
+            attempt=run["attempt"],
+        )
+    except ContractError:
+        raise
+    except Exception as error:
+        code = getattr(error, "code", "invalid_observation")
+        if not isinstance(code, str) or not re.fullmatch(r"[a-z_]+", code):
+            code = "invalid_observation"
+        raise ContractError(f"release run observation failed: {code}") from error
+    if not isinstance(observed, dict) or set(observed) != {"run", "jobs", "checks"}:
+        raise ContractError("release run observation is not closed")
+    response = observed["run"]
+    if not isinstance(response, dict):
+        raise ContractError("release run observation identity is invalid")
+    if (
+        response.get("id") != run["run_id"]
+        or response.get("run_attempt") != run["attempt"]
+        or response.get("path") != ".github/workflows/release.yml"
+        or response.get("name") != "Release"
+        or response.get("event") != "push"
+        or response.get("head_sha") != target
+        or response.get("head_branch") != tag
+        or not isinstance(response.get("repository"), dict)
+        or response["repository"].get("full_name") != REPOSITORY
+        or response.get("status") != "completed"
+        or response.get("conclusion") != "success"
+    ):
+        raise ContractError("release run readback identity switched or drifted")
+    run_api = parse_run_api({
+        "run_id": response["id"],
+        "attempt": response["run_attempt"],
+        "path": response["path"],
+        "name": response["name"],
+        "event": response["event"],
+        "head_sha": response["head_sha"],
+        "head_branch": response["head_branch"],
+        "status": response["status"],
+        "conclusion": response["conclusion"],
+    })
+    raw_jobs = observed["jobs"]
+    if not isinstance(raw_jobs, list) or not raw_jobs:
+        raise ContractError("release run jobs are missing")
+    jobs = [_observed_job(item, run["attempt"]) for item in raw_jobs]
+    checks = observed["checks"]
+    if not isinstance(checks, list) or len(checks) != len(jobs):
+        raise ContractError("release run job/check observation is incomplete")
+    classification = _runtime_contracts_module(root).classify_github_checks(
+        checks,
+        require_ci=True,
+    )
+    if not isinstance(classification, dict):
+        raise ContractError("release run check classification is not closed")
+    if classification.get("state") != "green":
+        diagnostic = classification.get("diagnostic")
+        code = diagnostic.get("code") if isinstance(diagnostic, dict) else classification.get("state")
+        if not isinstance(code, str) or not re.fullmatch(r"[a-z_]+", code):
+            code = "invalid_observation"
+        raise ContractError(f"release run checks are not terminal green: {code}")
+    effect_jobs = [job for job in jobs if job["name"] == "Build & Publish"]
+    if len(effect_jobs) != 1:
+        raise ContractError("release effect job identity is missing or ambiguous")
+    effect_job = parse_job(effect_jobs[0], run["attempt"])
+    return run_api, effect_job
+
 def parse_checksum_proof(value: Any, assets: list[dict[str, Any]]) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != CHECKSUM_KEYS or value.get("schema") != "puber_checksum_proof_v1" or value.get("download_sizes_match") is not True or value.get("apk_checksum_equal") is not True:
         raise ContractError("checksum proof is not closed")
@@ -1472,18 +1647,20 @@ def discover_release_run(root: Path, tag: str, target: str) -> dict[str, Any]:
     return {"schema": "puber_release_run_v1", "state": "selected", "repository": REPOSITORY, "workflow_path": ".github/workflows/release.yml", "workflow_name": "Release", "event": "push", "run_id": row["id"], "attempt": row["run_attempt"], "head_sha": target, "ref": f"refs/tags/{tag}", "head_branch": tag}
 
 def read_release_run(root: Path, run: Mapping[str, Any], target: str, tag: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    response = gh_api(root, f"repos/{REPOSITORY}/actions/runs/{run['run_id']}/attempts/{run['attempt']}")
-    if not isinstance(response, dict) or response.get("id") != run["run_id"] or response.get("run_attempt") != run["attempt"] or response.get("path") != ".github/workflows/release.yml" or response.get("name") != "Release" or response.get("event") != "push" or response.get("head_sha") != target or response.get("head_branch") != tag or response.get("repository", {}).get("full_name") != REPOSITORY:
-        raise ContractError("release run readback identity switched or drifted")
-    if response.get("status") != "completed" or response.get("conclusion") != "success":
-        raise ContractError("release run is not successful")
-    jobs_response = gh_api(root, f"repos/{REPOSITORY}/actions/runs/{run['run_id']}/attempts/{run['attempt']}/jobs?per_page=100")
-    if not isinstance(jobs_response, dict) or not isinstance(jobs_response.get("jobs"), list) or len(jobs_response["jobs"]) != 1:
-        raise ContractError("release jobs are missing, extra, or ambiguous")
-    job = jobs_response["jobs"][0]
-    if not isinstance(job, dict) or job.get("name") != "Build & Publish" or job.get("status") != "completed" or job.get("conclusion") != "success" or isinstance(job.get("id"), bool) or not isinstance(job.get("id"), int) or job["id"] <= 0:
-        raise ContractError("release job identity or outcome is invalid")
-    return {"run_id": run["run_id"], "attempt": run["attempt"], "path": response["path"], "name": response["name"], "event": response["event"], "head_sha": response["head_sha"], "head_branch": response["head_branch"], "status": response["status"], "conclusion": response["conclusion"]}, {"id": job["id"], "name": job["name"], "status": job["status"], "conclusion": job["conclusion"], "attempt": run["attempt"]}
+    """Return the legacy effect proof after a complete all-job observation.
+
+    The singular ``jobs.job`` carrier remains the exact publication-effect
+    proof consumed by Cleanup.  It is deliberately not used as the ordinary
+    monitoring set: every job from the selected run/attempt is classified
+    before this function returns.
+    """
+    run_api, effect_job = _read_release_run_all_jobs(
+        root,
+        run,
+        target,
+        tag,
+    )
+    return run_api, effect_job
 
 def read_release(root: Path, tag: str, target: str) -> dict[str, Any]:
     release = gh_api(root, f"repos/{REPOSITORY}/releases/tags/{tag}")

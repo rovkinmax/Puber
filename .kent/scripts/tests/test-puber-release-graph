@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import copy, json, subprocess, tempfile, sys
+import copy, json, os, subprocess, tempfile, sys
 sys.dont_write_bytecode = True
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 GRAPH = ROOT / ".kent/workflows/puber-release.json"
 MANIFEST = ROOT / ".kent/workflows/puber-release.manifest.json"
+KIT = Path(os.environ.get('PUBER_STAGE_A_KIT_ROOT', '/Users/rovkinmax/.kent/worktrees/--json')).resolve()
+os.environ['KENT_ENGINEERING_KIT_ROOT'] = str(KIT)
 def run(value):
     with tempfile.TemporaryDirectory() as d:
         path=Path(d)/"graph.json"; path.write_text(json.dumps(value))
@@ -83,9 +85,15 @@ for repair_key, report_key in (
 ):
     repair = edge(repair_key)
     assert repair["target_node_id"] == by_key["prepare"]["id"]
-    assert [item["key"] for item in repair["parameters"]] == [
-        key for key in revisioned_carrier + (report_key,)
-    ]
+    expected_repair = revisioned_carrier + (report_key,)
+    if repair_key in {"ci_fix", "pr_fix"}:
+        expected_repair = (
+            revisioned_carrier
+            + ("pr_url", "branch_name", "merge_strategy", "pr_head_oid", "pr_base_oid")
+            + ("ci_contract", "ci_report", "pr_feedback_cursor")
+            + (() if repair_key == "ci_fix" else ("blocker_reason",))
+        )
+    assert [item["key"] for item in repair["parameters"]] == list(expected_repair)
     assert "version_bump_commit" not in repair["prompt_template"]
     assert "prepare_profile_generation" in repair["prompt_template"]
 assert not any(
@@ -226,13 +234,10 @@ assert run(bad).returncode != 0
 import contextlib
 import importlib.util
 import io
-import os
 import runpy
 from importlib.machinery import SourceFileLoader
+from types import SimpleNamespace
 from unittest.mock import patch
-
-KIT = Path('/Users/rovkinmax/dev/llm-staf/kent-engineering-kit')
-os.environ['KENT_ENGINEERING_KIT_ROOT'] = str(KIT)
 
 def load(path, name):
     spec = importlib.util.spec_from_loader(name, SourceFileLoader(name, str(path)))
@@ -264,6 +269,18 @@ with tempfile.TemporaryDirectory() as directory:
     carrier.update({key: checkpoint[key] for key in ('profile_report','profile_report_digest','release_preparation_report','release_preparation_report_digest')})
     carrier.update(workspace_path=str(work), task_short_id='PUB-99', verification_summary='Actual fixture packaging evidence',
         pr_url='https://github.com/rovkinmax/Puber/pull/7', branch_name='release/99.0.0', merge_strategy='rebase', pr_head_oid=head, pr_base_oid=policy)
+    ci_identity = runtime.validate_ci_contract({
+        'schema': 'github-ci-contract-v1',
+        'repository': 'rovkinmax/Puber',
+        'pull_number': 7,
+        'head_oid': head,
+        'base_oid': policy,
+        'require_ci': True,
+    })
+    carrier.update(
+        ci_contract=runtime.canonical_bytes(ci_identity).decode('utf-8'),
+        pr_feedback_cursor='uninitialized',
+    )
     actual_pr = dict(url=carrier['pr_url'], headRefOid=head, baseRefOid=policy, headRefName=carrier['branch_name'],
         baseRefName='master', state='OPEN', mergedAt=None, mergeCommit=None)
     methods = dict(full_name='rovkinmax/Puber', default_branch='master', allow_merge_commit=True, allow_squash_merge=False, allow_rebase_merge=True)
@@ -310,16 +327,47 @@ with tempfile.TemporaryDirectory() as directory:
                 return subprocess.CompletedProcess(args, 0, json.dumps({'ci_report_artifact':artifact}).encode(), b'')
             raise AssertionError(args)
         output = io.StringIO()
+        class FixtureObserver:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def observe_pr(self, _url):
+                return {
+                    'pr': {
+                        **actual_pr,
+                        'mergeable': 'MERGEABLE',
+                        'mergeStateStatus': 'CLEAN',
+                        'reviewDecision': 'APPROVED',
+                        'statusCheckRollup': [],
+                    },
+                    'checks': [{
+                        'workflow_name': row['workflow'],
+                        'check_name': row['name'],
+                        'event': 'pull_request',
+                        'bucket': row['bucket'],
+                        'state': row['state'],
+                        'link': row['link'],
+                    } for row in checks],
+                    'feedback_items': [],
+                }
+
+        def archive_read_json(_tool, _workspace, _args, **kwargs):
+            request = json.loads(kwargs['input_bytes'])
+            assert request['operation'] == 'archive_ci_report'
+            artifact = ci_contract.archive_ci_report(
+                work,
+                'PUB-99',
+                json.loads(request['ci_report']),
+            )
+            return {'ci_report_artifact': artifact}
+
+        observation = SimpleNamespace(
+            parse_pr_url=lambda _url: ('rovkinmax/Puber', 7),
+            GitHubObserver=FixtureObserver,
+            read_json=archive_read_json,
+        )
         with contextlib.ExitStack() as stack:
-            stack.enter_context(patch.object(shared, 'resolve_gh_bin', return_value='/fixture/gh'))
-            if path.name == 'workflow-wait-github-ci':
-                stack.enter_context(patch.object(shared, 'read_pr', side_effect=lambda *a, **k: dict(actual_pr)))
-                stack.enter_context(patch.object(shared, 'observe_source_checks', side_effect=lambda *a, **k: (copy.deepcopy(checks), subprocess.CompletedProcess([],0,b'',b''))))
-                stack.enter_context(patch.object(shared, 'run_gh', side_effect=gh))
-            else:
-                stack.enter_context(patch.object(shared, 'read_state', side_effect=lambda *a, **k: {**actual_pr,'reviewDecision':'APPROVED','mergeStateStatus':'CLEAN','statusCheckRollup':[]}))
-                stack.enter_context(patch.object(shared, 'read_source_checks', side_effect=lambda *a, **k: copy.deepcopy(checks)))
-                stack.enter_context(patch.object(shared, 'read_feedback', return_value=[]))
+            stack.enter_context(patch.object(shared, 'github_observation', return_value=observation))
             stack.enter_context(patch.object(sys, 'stdin', io.StringIO(input_text)))
             stack.enter_context(contextlib.redirect_stdout(output))
             code = shared.main()
@@ -343,9 +391,19 @@ with tempfile.TemporaryDirectory() as directory:
 
     test_env = {f'KENT_{kind}_WATCH_{key}':value for kind in ('CI','PR') for key,value in (
         ('TEST_MODE','1'),('MAX_ERRORS','1'),('MAX_POLLS','1'),('INTERVAL_SECONDS','0'))}
+    class FixtureObserver:
+        def read_pr(self, _url):
+            return {
+                **actual_pr,
+                'mergeable': 'MERGEABLE',
+                'mergeStateStatus': 'CLEAN',
+                'reviewDecision': 'APPROVED',
+                'statusCheckRollup': [],
+            }
     with patch.dict(os.environ,test_env), patch.object(helper,'task_show',return_value=task), \
          patch.object(helper,'gh',side_effect=github_command), patch.object(helper,'run',side_effect=shared_process), \
-         patch.object(ci_contract,'read_pull_request',side_effect=lambda *a,**k:dict(actual_pr)):
+         patch.object(ci_contract,'read_pull_request',side_effect=lambda *a,**k:dict(actual_pr)), \
+         patch.object(helper,'_github_observer',return_value=FixtureObserver()):
         # Do not intercept local Git commands; helper.run owns both Git and Script execution.
         def effects(command, **kwargs):
             return shared_process(command,**kwargs) if Path(command[0]).name in adapter.SHARED_PATHS.values() else original_run(command,**kwargs)
@@ -380,7 +438,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert 'ci_report' not in initial and initial['verification_summary'] == carrier['verification_summary']
         passed = invoke('ci_watch','ci_prepare_ready_initial',initial)
         assert passed['transition'] == 'ci_watch_passed', passed
-        report = runtime.validate_ci_report(json.loads(passed['ci_report']))
+        report = runtime.validate_dynamic_ci_report(json.loads(passed['ci_report']))
         assert report['attempts'][-1]['head_oid'] == head
         retry = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
         assert retry['transition'] == 'ci_prepare_ready_retry' and retry['ci_report'] == passed['ci_report'], retry
@@ -391,13 +449,14 @@ with tempfile.TemporaryDirectory() as directory:
         ):
             original = checks[:]; checks[:] = altered
             observed = invoke('ci_watch','ci_prepare_ready_initial',initial)
-            assert observed['transition'] == 'ci_watch_failed', (label,observed)
-            runtime.validate_ci_report(json.loads(observed['ci_report']))
+            expected_transition = 'ci_watch_failed' if label == 'failed' else 'ci_watch_passed'
+            assert observed['transition'] == expected_transition, (label,observed)
+            runtime.validate_dynamic_ci_report(json.loads(observed['ci_report']))
             checks[:] = original
         checks.append(dict(workflow='Other',name='Extra',bucket='pass',state='SUCCESS',link='https://github.com/rovkinmax/Puber/actions/runs/2'))
         extra = invoke('ci_watch','ci_prepare_ready_initial',initial)
         assert extra['transition'] == 'ci_watch_passed', extra
-        assert json.loads(extra['ci_report'])['attempts'][-1]['unexpected_check_count'] == 1
+        assert json.loads(extra['ci_report'])['attempts'][-1]['check_count'] == 4
         checks.pop()
         waiting = invoke('merge_watch','waiting_pr_merge_watch',passed)
         assert waiting['transition'] in {'merge_watch_state_changed','merge_watch_still_waiting'}, waiting
@@ -410,10 +469,12 @@ with tempfile.TemporaryDirectory() as directory:
         actual_pr['baseRefOid'] = advanced
         changed = invoke('ci_watch','ci_prepare_ready_retry',retry)
         assert changed['transition'] == 'ci_watch_state_changed', changed
-        reprepared = invoke('ci_prepare','ci_watch_state_changed',changed)
-        assert reprepared['transition'] == 'ci_prepare_ready_retry', reprepared
-        assert json.loads(reprepared['ci_policy_snapshot'])['target_commit'] == advanced
-        assert reprepared['ci_report'] == changed['ci_report']
+        reprepared = invoke('ci_prepare','waiting_pr_ci_recheck',changed)
+        assert reprepared['transition'] == 'ci_prepare_ready_initial', reprepared
+        assert json.loads(reprepared['ci_contract'])['base_oid'] == advanced
+        assert reprepared.get('ci_report', '') == ''
+        reprepared = invoke('ci_watch','ci_prepare_ready_initial',reprepared)
+        assert reprepared['transition'] == 'ci_watch_passed', reprepared
         # A changed H cannot borrow the old preparation checkpoint or go green.
         actual_pr['headRefOid'] = advanced
         bad_head = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
@@ -425,7 +486,7 @@ with tempfile.TemporaryDirectory() as directory:
         actual_pr['headRefOid'] = newer_head
         fresh_cycle = ci_contract.prepare_ci_payload(reprepared, gh_bin='/fixture/gh')
         assert fresh_cycle['transition'] == 'ci_prepare_ready_initial' and 'ci_report' not in fresh_cycle
-        assert json.loads(fresh_cycle['expected_ci_checks'])['project_commit'] == newer_head
+        assert json.loads(fresh_cycle['ci_contract'])['head_oid'] == newer_head
         actual_pr['headRefOid'] = head
         methods['allow_squash_merge'] = True
         ambiguous = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
@@ -442,7 +503,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert len(set(published)-{'transition','commentary'}) == 7
         assert all(value in published['commentary'] for value in ('99.0.0','v99.0.0',target))
         files = list((work/'.kent/runtime/PUB-99').glob('ci-report-*.json'))
-        assert files and all(runtime.validate_ci_report(json.loads(path.read_bytes())) for path in files)
+        assert files and all(runtime.validate_dynamic_ci_report(json.loads(path.read_bytes())) for path in files)
         assert {'workflow-prepare-github-ci','workflow-wait-github-ci','workflow-wait-github-pr'} <= set(executions)
 print('puber-ci-real-producer-watch-pr-carrier: passed')
 

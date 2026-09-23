@@ -11,8 +11,9 @@ For a release, validate the profile/preparation checkpoint against the exact
 create/update. The resulting PR diff must contain the version bump and only
 actually changed generated profiles; never amend or force-push and never
 overwrite unrelated user changes. The CI handoff must carry actual
-`pr_head_oid` and `pr_base_oid`, the complete flat release proof, and explicit
-`verification_summary`; `pr_base_oid` must not be replaced with policy P.
+`pr_head_oid` and `pr_base_oid`, the complete release proof, validated
+`ci_contract`, dynamic `ci_report`, acknowledged feedback cursor, and explicit
+`verification_summary`; `pr_base_oid` must remain the observed PR base.
 Do not fabricate an initial CI report or packet: `ci_prepare` derives it.
 A changed release head requires `prepare` and the profile/finalization pipeline
 again; changed CI policy goes through `ci_prepare`. Resolve the profile merge

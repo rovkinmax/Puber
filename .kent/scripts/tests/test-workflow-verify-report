@@ -8,8 +8,8 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
-KIT = Path("/Users/rovkinmax/dev/llm-staf/kent-engineering-kit")
-COMMIT = "9363fa48f9f21d2742a41841ab97b18cc4c4e521"
+KIT = Path(os.environ.get("PUBER_STAGE_A_KIT_ROOT", "/Users/rovkinmax/.kent/worktrees/--json")).resolve()
+COMMIT = "9acedea07470c91f0c8caddb9546aa89ec7ed844"
 VERIFY = ROOT / ".kent/scripts/workflow-verify-report"
 RUNTIME = ROOT / ".kent/scripts/workflow_runtime_contracts.py"
 CHILD = ROOT / ".kent/scripts/workflow-compile-verify"
