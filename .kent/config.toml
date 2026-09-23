@@ -14,27 +14,27 @@ setup_script = ".kent/worktrees/setup.sh"
 subagents = true
 
 [subagents."android-codebase-analyst"]
-model = "gpt-6-astra"
+model = "gpt-6-sol"
 system_prompt_file = "subagents/android-codebase-analyst.md"
-thinking_level = "medium"
+thinking_level = "high"
 model_verbosity = "low"
 
 [subagents."android-codebase-analyst".tools]
 patch = false
 
 [subagents."android-researcher"]
-model = "gpt-6-astra"
+model = "gpt-6-sol"
 system_prompt_file = "subagents/android-codebase-analyst.md"
-thinking_level = "medium"
+thinking_level = "high"
 model_verbosity = "low"
 
 [subagents."android-researcher".tools]
 patch = false
 
 [subagents."project-researcher"]
-model = "gpt-6-astra"
+model = "gpt-6-sol"
 system_prompt_file = "subagents/android-codebase-analyst.md"
-thinking_level = "medium"
+thinking_level = "high"
 model_verbosity = "low"
 agent_callable = true
 workflow_subagent = true
@@ -43,19 +43,19 @@ workflow_subagent = true
 patch = false
 
 [subagents."gradle-build-doctor"]
-model = "gpt-6-astra"
+model = "gpt-6-sol"
 system_prompt_file = "subagents/gradle-build-doctor.md"
-thinking_level = "medium"
+thinking_level = "high"
 
 [subagents."build-doctor"]
-model = "gpt-6-astra"
+model = "gpt-6-sol"
 system_prompt_file = "subagents/gradle-build-doctor.md"
-thinking_level = "medium"
+thinking_level = "high"
 agent_callable = true
 workflow_subagent = true
 
 [subagents."implementation-worker"]
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 model_context_window = 372000
 context_compaction_threshold_tokens = 353400
 system_prompt_file = "subagents/implementation-worker.md"
