@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,10 @@ import subprocess
 import sys
 import tempfile
 
+sys.dont_write_bytecode = True
+
+sys.dont_write_bytecode = True
+
 
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 CHECKBOX = re.compile(
@@ -19,6 +24,26 @@ CHECKBOX = re.compile(
 MODES = {"accept", "check"}
 ROUTES = {"start", "continue", "verify", "fix_continue"}
 ROUTE_CONTEXT_DEFAULT = "not-applicable"
+
+
+def supplied_delivery_context(payload: dict[str, object]) -> str | None:
+    if "delivery_context" not in payload:
+        return None
+    support = Path(__file__).with_name("workflow_runtime_contracts.py")
+    if support.is_symlink() or not support.is_file():
+        raise ValueError(
+            "workflow_runtime_contracts.py support module is unsafe"
+        )
+    spec = importlib.util.spec_from_file_location(
+        "workflow_plan_runtime_contracts",
+        support,
+    )
+    if spec is None or spec.loader is None:
+        raise ValueError("workflow runtime support module cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    fields = module.delivery_context_fields(payload)
+    return fields["delivery_context"]
 
 
 def require_string(payload: dict[str, object], key: str) -> str:
@@ -183,6 +208,7 @@ def complete_route(
     work_kind: str,
     review_context: str,
     route_context: str,
+    delivery_context: str | None,
 ) -> None:
     payload: dict[str, str] = {
         "transition": transition,
@@ -212,6 +238,8 @@ def complete_route(
                 "fix_context": route_context,
             }
         )
+    if delivery_context is not None:
+        payload["delivery_context"] = delivery_context
     print(json.dumps(payload, ensure_ascii=False))
 
 
@@ -219,6 +247,7 @@ def main() -> int:
     payload = json.load(sys.stdin)
     if not isinstance(payload, dict):
         raise ValueError("workflow input must be one JSON object")
+    delivery_context = supplied_delivery_context(payload)
 
     workspace = repository_root(require_string(payload, "workspace_path"))
     mode = require_environment("KENT_PLAN_CONTRACT_MODE")
@@ -273,6 +302,7 @@ def main() -> int:
             work_kind=work_kind,
             review_context=review_context,
             route_context=route_context,
+            delivery_context=delivery_context,
         )
         return 0
 
@@ -290,6 +320,7 @@ def main() -> int:
             work_kind=work_kind,
             review_context=review_context,
             route_context=route_context,
+            delivery_context=delivery_context,
         )
         return 0
 
@@ -299,28 +330,26 @@ def main() -> int:
         f"accepted_sha256={accepted_digest!r}; current_sha256={digest!r}. "
         "Checkbox-only progress is excluded from both digests."
     )
-    print(
-        json.dumps(
-            {
-                "transition": require_environment(
-                    "KENT_PLAN_CONTRACT_CHANGED_TRANSITION"
-                ),
-                "commentary": (
-                    "Контракт плана изменился; требуется повторная сверка "
-                    "требований перед продолжением."
-                ),
-                "workspace_path": str(workspace),
-                "plan_path": configured_plan,
-                "work_kind": work_kind,
-                "plan_route": route,
-                "plan_route_context": route_context,
-                "plan_change_report": change_report,
-                "review_context": review_context,
-                "task_short_id": task,
-            },
-            ensure_ascii=False,
-        )
-    )
+    changed_payload = {
+        "transition": require_environment(
+            "KENT_PLAN_CONTRACT_CHANGED_TRANSITION"
+        ),
+        "commentary": (
+            "Контракт плана изменился; требуется повторная сверка "
+            "требований перед продолжением."
+        ),
+        "workspace_path": str(workspace),
+        "plan_path": configured_plan,
+        "work_kind": work_kind,
+        "plan_route": route,
+        "plan_route_context": route_context,
+        "plan_change_report": change_report,
+        "review_context": review_context,
+        "task_short_id": task,
+    }
+    if delivery_context is not None:
+        changed_payload["delivery_context"] = delivery_context
+    print(json.dumps(changed_payload, ensure_ascii=False))
     return 0
 
 

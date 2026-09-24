@@ -10,11 +10,17 @@ For a release, validate the profile/preparation checkpoint against the exact
 `release_head_oid` immediately before push and again after push or PR
 create/update. The resulting PR diff must contain the version bump and only
 actually changed generated profiles; never amend or force-push and never
-overwrite unrelated user changes. The CI handoff must carry actual
-`pr_head_oid` and `pr_base_oid`, the complete release proof, validated
-`ci_contract`, dynamic `ci_report`, acknowledged feedback cursor, and explicit
-`verification_summary`; `pr_base_oid` must remain the observed PR base.
-Do not fabricate an initial CI report or packet: `ci_prepare` derives it.
+overwrite unrelated user changes. The initial `ship_pr_ci_watch` handoff
+carries actual `pr_head_oid` and observed `pr_base_oid`, the complete release
+proof, existing PR identity, and explicit `verification_summary`. Do not
+require or fabricate `ci_contract`, `ci_report`, or `pr_feedback_cursor` on
+this first edge: `ci_prepare` observes the PR, derives the validated contract,
+and initializes the cursor before handing off to `ci_watch`.
+
+Subsequent CI transitions carry the validated `ci_contract`, dynamic
+`ci_report` when available, acknowledged feedback cursor, actual PR head and
+base, complete release proof, and explicit `verification_summary`.
+`pr_base_oid` must remain the observed PR base.
 A changed release head requires `prepare` and the profile/finalization pipeline
 again; changed CI policy goes through `ci_prepare`. Resolve the profile merge
 policy using the published `workflowkit.merge_strategy` resolver and fresh
