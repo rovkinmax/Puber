@@ -19,6 +19,25 @@ Kent Desktop workflow graph
 
 ## Puber Workflow Set
 
+### Delivery continuity source candidate
+
+`specs/puber-engineering-delivery-v23.json` is generated from published Kit
+commit `b9de82c42ad097f31ac9e865dc49d59f916248bf`. It carries a closed
+`delivery_context` through planning and verification, without requiring PR or
+CI fields before their producers run. Verification result branches remain
+result-only; Gate reads context from the latest scoped dispatch.
+
+This is source preparation, not live activation. The intended native target
+is existing UUID `7061fc98-aae5-4468-9d89-fa28bfe30c72`; do not create a new
+workflow or task. Source version 23 is not its native revision. Existing
+backlog/task state, defaults and primary adapters have not been changed by
+this source candidate. Live application requires its own approved exact
+graph and task-compatibility plan.
+
+Set `KENT_ENGINEERING_KIT_ROOT` to a clean checkout of the published commit
+when running the runtime cohort and verifier wire tests. Historical release
+source/signing pins remain independent of this delivery runtime pin.
+
 - `Puber Release`: non-default schema-4 revision 90 release control plane
   from release intent through PR CI, approved tag publication, release
   monitoring, and conservative cleanup. The tracked source is

@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+
+sys.dont_write_bytecode = True
+
+
+ROOT = Path(__file__).resolve().parents[3]
+SPEC_PATH = ROOT / ".kent/workflows/specs/puber-engineering-delivery-v23.json"
+SCRIPTS = ROOT / ".kent/scripts"
+TASK_ID = "PUB-CONTINUITY"
+DIRECT_PARAMS = re.compile(r"\{\{\s*\.Params\.([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def load_spec() -> dict[str, object]:
+    value = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise AssertionError("generated delivery spec is not an object")
+    return value
+
+
+def edges_for(
+    spec: dict[str, object],
+    *,
+    key: str | None = None,
+) -> list[dict[str, object]]:
+    edges = spec.get("edges")
+    if not isinstance(edges, list):
+        raise AssertionError("generated delivery spec has no edge list")
+    matches = [
+        edge
+        for edge in edges
+        if isinstance(edge, dict) and (key is None or edge.get("key") == key)
+    ]
+    if key is not None and len(matches) != 1:
+        raise AssertionError(
+            f"expected one EdgeSpec for {key}, got {len(matches)}"
+        )
+    return matches
+
+
+def parameter_keys(edge: dict[str, object]) -> tuple[str, ...]:
+    parameters = edge.get("parameters", [])
+    if not isinstance(parameters, list):
+        raise AssertionError(f"invalid parameters for edge {edge.get('key')}")
+    keys = tuple(
+        item["key"]
+        for item in parameters
+        if isinstance(item, dict) and isinstance(item.get("key"), str)
+    )
+    if len(keys) != len(parameters):
+        raise AssertionError(
+            f"invalid parameter key for edge {edge.get('key')}"
+        )
+    return keys
+
+
+def direct_parameter_references(prompt: object) -> set[str]:
+    if not isinstance(prompt, str):
+        return set()
+    return set(DIRECT_PARAMS.findall(prompt))
+
+
+def assert_projection(
+    testcase: unittest.TestCase,
+    spec: dict[str, object],
+    *,
+    source: str,
+    output: dict[str, object],
+) -> list[dict[str, object]]:
+    matches = [
+        edge
+        for edge in edges_for(spec)
+        if edge.get("source") == source
+        and edge.get("transition") == output.get("transition")
+    ]
+    testcase.assertTrue(
+        matches,
+        f"no v23 EdgeSpec for {source}/{output.get('transition')}",
+    )
+    for edge in matches:
+        testcase.assertTrue(
+            set(parameter_keys(edge)) <= output.keys(),
+            f"{edge['key']} requires {parameter_keys(edge)}; got {sorted(output)}",
+        )
+    return matches
+
+
+def create_workspace(testcase: unittest.TestCase) -> Path:
+    temporary = tempfile.TemporaryDirectory(prefix="puber-delivery-continuity-")
+    testcase.addCleanup(temporary.cleanup)
+    root = Path(temporary.name).resolve()
+    subprocess.run(
+        ["git", "init", "-q", str(root)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    (root / ".gitignore").write_text(
+        "/.kent/runtime/\n/build/\n",
+        encoding="utf-8",
+    )
+    return root
+
+
+def run_json_command(
+    command: list[str],
+    *,
+    workspace: Path,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    result = subprocess.run(
+        command,
+        cwd=workspace,
+        input=json.dumps(payload, ensure_ascii=False),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"{Path(command[0]).name} failed ({result.returncode}): "
+            f"{result.stderr.strip() or result.stdout.strip()}"
+        )
+    output = json.loads(result.stdout)
+    if not isinstance(output, dict):
+        raise AssertionError(f"{Path(command[0]).name} did not emit a JSON object")
+    return output
+
+
+class DeliveryContinuityTest(unittest.TestCase):
+    def test_generated_v23_topology_and_direct_ci_pr_contracts(self) -> None:
+        spec = load_spec()
+        nodes = spec.get("nodes")
+        edges = spec.get("edges")
+        self.assertIsInstance(nodes, list)
+        self.assertIsInstance(edges, list)
+        transition_groups = {
+            (edge["source"], edge["transition"])
+            for edge in edges
+            if isinstance(edge, dict)
+        }
+        self.assertEqual(
+            (len(nodes), len(transition_groups), len(edges)),
+            (31, 88, 90),
+        )
+        joins = [
+            node["key"]
+            for node in nodes
+            if isinstance(node, dict) and node.get("kind") == "join"
+        ]
+        self.assertEqual(joins, ["verification_join"])
+
+        for key in (
+            "prepare_pr_ci_prepare",
+            "ci_monitor_watch",
+            "waiting_pr_ci_monitor",
+        ):
+            self.assertEqual(
+                parameter_keys(edges_for(spec, key=key)[0]),
+                ("workspace_path", "task_short_id", "delivery_context"),
+                key,
+            )
+
+        flat_ci_edges = {
+            "ci_prepare_ready_initial": (
+                "workspace_path",
+                "pr_url",
+                "branch_name",
+                "merge_strategy",
+                "ci_contract",
+                "task_short_id",
+                "pr_feedback_cursor",
+            ),
+            "ci_prepare_ready_retry": (
+                "workspace_path",
+                "pr_url",
+                "branch_name",
+                "merge_strategy",
+                "ci_contract",
+                "task_short_id",
+                "ci_report",
+                "pr_feedback_cursor",
+            ),
+            "ci_prepare_failed": (
+                "workspace_path",
+                "pr_url",
+                "branch_name",
+                "merge_strategy",
+                "ci_contract",
+                "task_short_id",
+                "ci_report",
+                "pr_feedback_cursor",
+            ),
+        }
+        for key, expected in flat_ci_edges.items():
+            with self.subTest(edge=key):
+                actual = parameter_keys(edges_for(spec, key=key)[0])
+                self.assertEqual(actual, expected)
+                self.assertNotIn("delivery_context", actual)
+
+        flat_prompt_edges = (
+            "ci_prepare_failed",
+            "ci_watch_diagnose",
+            "ci_watch_waiting_pr",
+            "ci_watch_state_changed",
+            "waiting_pr_needs_user_action",
+        )
+        for key in flat_prompt_edges:
+            edge = edges_for(spec, key=key)[0]
+            self.assertLessEqual(
+                direct_parameter_references(edge.get("prompt")),
+                set(parameter_keys(edge)),
+                key,
+            )
+            self.assertNotIn(
+                "{{.Params.delivery_context}}",
+                edge.get("prompt") or "",
+                key,
+            )
+
+        report_edge = edges_for(spec, key="deterministic_report_join")[0]
+        self.assertEqual(
+            parameter_keys(report_edge),
+            ("verification_status", "verification_report"),
+        )
+        self.assertEqual(
+            parameter_keys(edges_for(spec, key="verification_join_gate")[0]),
+            (),
+        )
+
+    def test_installed_wrappers_preserve_context_and_project_join_results(self) -> None:
+        spec = load_spec()
+        workspace = create_workspace(self)
+        plan = workspace / ".todo/task/plan.md"
+        plan.parent.mkdir(parents=True)
+        plan.write_text("# Plan\n\n- [ ] Implement continuity\n", encoding="utf-8")
+
+        pre_pr = ' { "schema" : "workflow-delivery-context-v1", "phase" : "pre_pr" } '
+        post_pr = (
+            '{ "schema" : "workflow-delivery-context-v1", "phase" : "post_pr", '
+            '"pr_url" : "https://github.com/acme/puber/pull/42", '
+            '"branch_name" : "task/pub-continuity", "merge_strategy" : "rebase", '
+            '"pr_feedback_cursor" : "uninitialized", '
+            '"ci_contract" : "{ \\"schema\\" : \\"github-ci-contract-v1\\" }", '
+            '"ci_report" : "{ \\"schema\\" : \\"github-ci-report-v1\\", '
+            '\\"checks\\" : [\\"detekt\\", \\"unit-tests\\"] }" }'
+        )
+
+        accepted = run_json_command(
+            [str(SCRIPTS / "workflow-plan-contract-accept")],
+            workspace=workspace,
+            payload={
+                "workspace_path": str(workspace),
+                "plan_path": ".todo/task/plan.md",
+                "work_kind": "feature",
+                "plan_route": "start",
+                "plan_route_context": "not-applicable",
+                "review_context": "accepted plan",
+                "task_short_id": TASK_ID,
+                "delivery_context": pre_pr,
+            },
+        )
+        accept_edges = assert_projection(
+            self, spec, source="plan_contract", output=accepted
+        )
+        self.assertIn(
+            "plan_contract_branch_identity",
+            {edge["key"] for edge in accept_edges},
+        )
+        self.assertEqual(accepted["delivery_context"], pre_pr)
+        snapshot = json.loads(
+            (
+                workspace
+                / ".kent/runtime"
+                / TASK_ID
+                / "plan-contract.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertNotIn("delivery_context", snapshot)
+
+        verified = run_json_command(
+            [str(SCRIPTS / "workflow-plan-contract-verify")],
+            workspace=workspace,
+            payload={
+                "workspace_path": str(workspace),
+                "review_context": "all writer steps complete",
+                "task_short_id": TASK_ID,
+                "delivery_context": post_pr,
+            },
+        )
+        verify_edges = assert_projection(
+            self, spec, source="plan_contract_verify", output=verified
+        )
+        self.assertIn(
+            "plan_contract_checked_verify",
+            {edge["key"] for edge in verify_edges},
+        )
+        self.assertEqual(verified["delivery_context"], post_pr)
+
+        dispatched = run_json_command(
+            [str(SCRIPTS / "workflow-verification-dispatch")],
+            workspace=workspace,
+            payload={
+                "workspace_path": str(workspace),
+                "review_context": "verification evidence",
+                "delivery_context": post_pr,
+            },
+        )
+        dispatch_edges = assert_projection(
+            self, spec, source="verification_dispatch", output=dispatched
+        )
+        self.assertIn(
+            "dispatch_deterministic_verify",
+            {edge["key"] for edge in dispatch_edges},
+        )
+        self.assertEqual(dispatched["delivery_context"], post_pr)
+
+        compiler = workspace / ".kent/scripts/workflow-compile-verify"
+        compiler.parent.mkdir(parents=True, exist_ok=True)
+        compiler.write_text(
+            "#!/bin/sh\nprintf '%s\\n' '{\"transition\":\"failed\"}'\n",
+            encoding="utf-8",
+        )
+        compiler.chmod(0o700)
+        failed_report = run_json_command(
+            [
+                sys.executable,
+                str(SCRIPTS / "workflow-verify-report"),
+            ],
+            workspace=workspace,
+            payload={"workspace_path": str(workspace)},
+        )
+        report_edges = assert_projection(
+            self, spec, source="deterministic_verify", output=failed_report
+        )
+        self.assertIn(
+            "deterministic_report_join",
+            {edge["key"] for edge in report_edges},
+        )
+        self.assertEqual(
+            set(failed_report),
+            {"transition", "verification_status", "verification_report"},
+        )
+        self.assertEqual(failed_report["verification_status"], "needs_changes")
+        report = json.loads(failed_report["verification_report"])
+        self.assertEqual(report["code"], "verification_failed")
+        self.assertNotIn("delivery_context", failed_report)
+
+
+if __name__ == "__main__":
+    unittest.main()

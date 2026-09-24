@@ -11,6 +11,8 @@ import sys
 from typing import Optional
 from urllib.parse import urlparse
 
+sys.dont_write_bytecode = True
+
 
 JIRA_KEY = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]+-\d+)(?![A-Z0-9])", re.I)
 URL = re.compile(r"https?://[^\s<>()\[\]{}\"']+")
@@ -25,6 +27,7 @@ TOML_TABLE = re.compile(r"^\[([A-Za-z0-9_.-]+)\]\s*(?:#.*)?$")
 BRANCH_POLICY_ASSIGNMENT = re.compile(
     r'^branch_identity\s*=\s*"([a-z_]+)"\s*(?:#.*)?$'
 )
+BRANCH_DIRECTIVE = re.compile(r"^branch_name:[ \t]*(.*)$", re.MULTILINE)
 
 
 class IdentityAmbiguity(ValueError):
@@ -100,7 +103,7 @@ def task_id(payload: dict[str, object]) -> str:
 
 def handoff_values(payload: dict[str, object]) -> dict[str, str]:
     present = [key for key in HANDOFF_KEYS if key in payload]
-    if not present:
+    if not present and "delivery_context" not in payload:
         return {}
     if len(present) != len(HANDOFF_KEYS):
         missing = sorted(set(HANDOFF_KEYS) - set(present))
@@ -118,6 +121,10 @@ def handoff_values(payload: dict[str, object]) -> dict[str, str]:
         raise ValueError("workspace_path must be non-empty")
     if not values["work_kind"]:
         raise ValueError("work_kind must be non-empty")
+    if "delivery_context" in payload:
+        from workflow_runtime_contracts import delivery_context_fields
+
+        values.update(delivery_context_fields(payload))
     return values
 
 
@@ -332,6 +339,23 @@ def desired_branch(
 ) -> str:
     if policy == "jira":
         key = jira_key(source_url, body)
+        directives = BRANCH_DIRECTIVE.findall(body)
+        if directives:
+            if len(directives) != 1 or not key:
+                raise IdentityAmbiguity(
+                    "Для branch_name нужны ровно одна директива и "
+                    "однозначный исходный Jira issue."
+                )
+            branch = directives[0].strip()
+            if not re.fullmatch(
+                rf"feature/{re.escape(key)}-[A-Za-z0-9][A-Za-z0-9._-]*",
+                branch,
+            ):
+                raise IdentityAmbiguity(
+                    f"branch_name должен иметь вид feature/{key}-<suffix>."
+                )
+            validate_branch(root, branch)
+            return branch
         return f"feature/{key}" if key else fallback
     if policy == "github_issue":
         issue = github_issue_number(root, source_url, body)

@@ -13,6 +13,7 @@ import math
 import re
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
+from urllib.parse import urlsplit
 
 
 class RuntimeContractError(ValueError):
@@ -91,6 +92,8 @@ CI_POLICY_SNAPSHOT_SCHEMA = "github-ci-policy-snapshot-v1"
 CI_CONTRACT_SCHEMA = "github-ci-contract-v1"
 DYNAMIC_CI_REPORT_SCHEMA = "github-ci-report-v3"
 DYNAMIC_PR_CURSOR_SCHEMA = "github-pr-feedback-cursor-v2"
+DELIVERY_CONTEXT_SCHEMA = "workflow-delivery-context-v1"
+MAX_DELIVERY_CONTEXT_BYTES = 256 * 1024
 
 
 @dataclass(frozen=True)
@@ -592,6 +595,206 @@ def _string(
             f"{label} exceeds the {max_bytes}-byte limit"
         )
     return value
+
+
+def _validate_delivery_context(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the closed lifecycle context while retaining packet strings."""
+
+    data = _object(value, "delivery context")
+    if any(not isinstance(key, str) for key in data):
+        raise RuntimeContractError("delivery context keys must be strings")
+    phase = _string(
+        data.get("phase"),
+        "delivery context.phase",
+        max_bytes=16,
+    )
+    if phase == "pre_pr":
+        keys = {"schema", "phase"}
+    elif phase == "post_pr":
+        keys = {
+            "schema",
+            "phase",
+            "pr_url",
+            "branch_name",
+            "merge_strategy",
+            "pr_feedback_cursor",
+            "ci_contract",
+            "ci_report",
+        }
+    else:
+        raise RuntimeContractError("delivery context.phase is unsupported")
+    data = _closed(data, keys, "delivery context")
+    if data.get("schema") != DELIVERY_CONTEXT_SCHEMA:
+        raise RuntimeContractError("unsupported delivery context schema")
+    required = (
+        {"schema", "phase"}
+        if phase == "pre_pr"
+        else {
+            "schema",
+            "phase",
+            "pr_url",
+            "branch_name",
+            "merge_strategy",
+            "pr_feedback_cursor",
+        }
+    )
+    if set(data) - {"ci_contract", "ci_report"} != required:
+        raise RuntimeContractError("delivery context has missing fields")
+    if phase == "post_pr":
+        pr_url = _string(
+            data["pr_url"],
+            "delivery context.pr_url",
+            max_bytes=4096,
+        )
+        try:
+            parsed = urlsplit(pr_url)
+        except ValueError as error:
+            raise RuntimeContractError(
+                "delivery context.pr_url must identify a GitHub pull request"
+            ) from error
+        parts = [part for part in parsed.path.split("/") if part]
+        if (
+            pr_url != pr_url.strip()
+            or parsed.scheme != "https"
+            or parsed.netloc != "github.com"
+            or parsed.query
+            or parsed.fragment
+            or parsed.path != "/" + "/".join(parts)
+            or len(parts) != 4
+            or parts[2] != "pull"
+            or not re.fullmatch(r"[0-9]{1,10}", parts[3])
+            or not 1 <= int(parts[3]) <= 2147483647
+            or not all(
+                re.fullmatch(r"[A-Za-z0-9_.-]+", part)
+                for part in parts[:2]
+            )
+        ):
+            raise RuntimeContractError(
+                "delivery context.pr_url must identify a GitHub pull request"
+            )
+        branch = _string(
+            data["branch_name"],
+            "delivery context.branch_name",
+            max_bytes=4096,
+        )
+        if branch != branch.strip() or branch.startswith("-"):
+            raise RuntimeContractError(
+                "delivery context.branch_name is invalid"
+            )
+        merge_strategy = _string(
+            data["merge_strategy"],
+            "delivery context.merge_strategy",
+            max_bytes=16,
+        )
+        if merge_strategy not in {"merge", "squash", "rebase"}:
+            raise RuntimeContractError(
+                "delivery context.merge_strategy is unsupported"
+            )
+        cursor = _string(
+            data["pr_feedback_cursor"],
+            "delivery context.pr_feedback_cursor",
+            max_bytes=MAX_FEEDBACK_BYTES,
+        )
+        try:
+            normalized_cursor = validate_dynamic_pr_feedback_cursor(cursor)
+        except RuntimeContractError as error:
+            raise RuntimeContractError(
+                "delivery context.pr_feedback_cursor is invalid"
+            ) from error
+        if isinstance(normalized_cursor, Mapping) and (
+            normalized_cursor["repository"] != f"{parts[0]}/{parts[1]}"
+            or normalized_cursor["pull_number"] != int(parts[3])
+        ):
+            raise RuntimeContractError(
+                "delivery context cursor does not match its pull request"
+            )
+        for key, maximum in (
+            ("ci_contract", MAX_DYNAMIC_CI_REPORT_BYTES),
+            ("ci_report", MAX_DYNAMIC_CI_REPORT_BYTES),
+        ):
+            if key not in data:
+                continue
+            packet = data[key]
+            if not isinstance(packet, str) or not packet:
+                raise RuntimeContractError(
+                    f"delivery context.{key} must be a non-empty string"
+                )
+            try:
+                packet_size = len(packet.encode("utf-8"))
+            except UnicodeEncodeError as error:
+                raise RuntimeContractError(
+                    f"delivery context.{key} is not valid UTF-8 text"
+                ) from error
+            if packet_size > maximum:
+                raise RuntimeContractError(
+                    f"delivery context.{key} exceeds its byte limit"
+                )
+    try:
+        encoded = canonical_bytes(data)
+    except RuntimeContractError as error:
+        raise RuntimeContractError("delivery context is not valid JSON") from error
+    if len(encoded) > MAX_DELIVERY_CONTEXT_BYTES:
+        raise RuntimeContractError("delivery context exceeds its byte limit")
+    return dict(data)
+
+
+def validate_delivery_context(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate a delivery context and normalize malformed Unicode failures."""
+
+    try:
+        return _validate_delivery_context(value)
+    except UnicodeEncodeError as error:
+        raise RuntimeContractError(
+            "delivery context contains text that is not valid UTF-8"
+        ) from error
+
+
+def delivery_context_fields(payload: Mapping[str, Any]) -> dict[str, str]:
+    """Validate and return the exact supplied context carrier, if present."""
+
+    if not isinstance(payload, Mapping):
+        raise RuntimeContractError("workflow payload must be an object")
+    if "delivery_context" not in payload:
+        return {}
+    raw = payload["delivery_context"]
+    if not isinstance(raw, str):
+        raise RuntimeContractError("delivery_context must be a JSON string")
+    try:
+        raw_bytes = raw.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise RuntimeContractError(
+            "delivery_context is not valid UTF-8 text"
+        ) from error
+    if len(raw_bytes) > MAX_DELIVERY_CONTEXT_BYTES:
+        raise RuntimeContractError("delivery_context exceeds its byte limit")
+
+    def reject_duplicate_keys(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in items:
+            if key in result:
+                raise RuntimeContractError(
+                    "delivery_context contains a duplicate object key"
+                )
+            result[key] = item
+        return result
+
+    def reject_constant(constant: str) -> None:
+        raise RuntimeContractError(
+            f"delivery_context contains invalid JSON constant {constant}"
+        )
+
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_constant,
+        )
+    except RuntimeContractError:
+        raise
+    except (json.JSONDecodeError, RecursionError) as error:
+        raise RuntimeContractError("delivery_context is invalid JSON") from error
+    validate_delivery_context(value)
+    return {"delivery_context": raw}
 
 
 def _integer(value: Any, label: str, *, minimum: int = 0) -> int:
@@ -4844,6 +5047,7 @@ __all__ = [
     "classify_verification_report",
     "discarded_attempt_digest",
     "expected_ci_checks_sha256",
+    "delivery_context_fields",
     "make_observation_hard_limit_attempt",
     "make_observation_limit_attempt",
     "make_pr_feedback_cursor",
@@ -4858,6 +5062,7 @@ __all__ = [
     "sha256_bytes",
     "terminal_marker_line",
     "validate_ci_report",
+    "validate_delivery_context",
     "validate_ci_report_history",
     "validate_ci_archive",
     "validate_dynamic_ci_report",

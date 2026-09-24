@@ -102,6 +102,49 @@ assert not any(
     for item in source["edges"]
 )
 builder = __import__("runpy").run_path(str(ROOT/".kent/workflows/builders/puber_release.py"))
+initial_producer_fields = (
+    "workspace_path",
+    "operation_id",
+    "task_short_id",
+    "release_type",
+    "release_version",
+    "release_tag",
+    "release_branch",
+    "release_base_oid",
+    "candidate_oid",
+    "release_head_oid",
+    "profile_report",
+    "profile_report_digest",
+    "release_preparation_report",
+    "release_preparation_report_digest",
+    "verification_summary",
+    "pr_url",
+    "branch_name",
+    "merge_strategy",
+    "pr_head_oid",
+    "pr_base_oid",
+)
+initial_producer_input = {
+    key: f"fixture-{key}" for key in initial_producer_fields
+}
+assert initial_producer_fields == tuple(builder["RELEASE_CI_INITIAL"])
+initial_edge_fields = tuple(
+    item["key"] for item in edge("ship_pr_ci_watch")["parameters"]
+)
+missing_initial_inputs = sorted(
+    set(initial_edge_fields) - set(initial_producer_input)
+)
+assert not missing_initial_inputs, (
+    "ship_pr_ci_watch requires values before ci_prepare produces them: "
+    + ", ".join(missing_initial_inputs)
+)
+assert initial_edge_fields == initial_producer_fields, (
+    "the first CI edge must carry the flat release proof and observed PR "
+    "identity only"
+)
+assert not {"ci_contract", "ci_report", "pr_feedback_cursor"} & set(
+    initial_producer_input
+), "the first CI producer input must not invent CI packets"
 for entity_kind in ("workflow", "nodes", "transition_groups", "edges"):
     invalid_id_graph = copy.deepcopy(source)
     entity = invalid_id_graph[entity_kind] if entity_kind == "workflow" else invalid_id_graph[entity_kind][0]
@@ -270,18 +313,7 @@ with tempfile.TemporaryDirectory() as directory:
     carrier.update({key: checkpoint[key] for key in ('profile_report','profile_report_digest','release_preparation_report','release_preparation_report_digest')})
     carrier.update(workspace_path=str(work), task_short_id='PUB-99', verification_summary='Actual fixture packaging evidence',
         pr_url='https://github.com/rovkinmax/Puber/pull/7', branch_name='release/99.0.0', merge_strategy='rebase', pr_head_oid=head, pr_base_oid=policy)
-    ci_identity = runtime.validate_ci_contract({
-        'schema': 'github-ci-contract-v1',
-        'repository': 'rovkinmax/Puber',
-        'pull_number': 7,
-        'head_oid': head,
-        'base_oid': policy,
-        'require_ci': True,
-    })
-    carrier.update(
-        ci_contract=runtime.canonical_bytes(ci_identity).decode('utf-8'),
-        pr_feedback_cursor='uninitialized',
-    )
+    assert not {"ci_contract", "ci_report", "pr_feedback_cursor"} & set(carrier)
     actual_pr = dict(url=carrier['pr_url'], headRefOid=head, baseRefOid=policy, headRefName=carrier['branch_name'],
         baseRefName='master', state='OPEN', mergedAt=None, mergeCommit=None)
     methods = dict(full_name='rovkinmax/Puber', default_branch='master', allow_merge_commit=True, allow_squash_merge=False, allow_rebase_merge=True)

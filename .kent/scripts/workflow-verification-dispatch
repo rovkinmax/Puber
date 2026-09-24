@@ -1,55 +1,130 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env python3
+from __future__ import annotations
 
-input="$(jq -c .)"
-workspace_path="$(jq -er '.workspace_path | strings' <<<"$input")"
-review_context="$(jq -er '.review_context | strings' <<<"$input")"
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+from typing import Any
 
-canonical_directory() {
-  (
-    cd -P -- "$1" 2>/dev/null || exit 1
-    pwd -P
-  )
-}
+sys.dont_write_bytecode = True
 
-execution_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
-execution_root="$(canonical_directory "$execution_root")"
-reported_root="$(canonical_directory "$workspace_path" || true)"
-reported_git_root="$(
-  git -C "$workspace_path" rev-parse --show-toplevel 2>/dev/null || true
-)"
-if [[ -n "$reported_git_root" ]]; then
-  reported_git_root="$(canonical_directory "$reported_git_root")"
-else
-  reported_git_root="$reported_root"
-fi
+sys.dont_write_bytecode = True
 
-if [[ -z "$reported_root" ||
-  "$reported_root" != "$reported_git_root" ||
-  "$reported_root" != "$execution_root" ]]; then
-  jq -nc \
-    --arg transition "verification_dispatch_invalid_workspace" \
-    --arg commentary "Rejected a non-root or foreign workspace path." \
-    --arg reported_workspace_path "$workspace_path" \
-    --arg fix_context \
-      "workspace_path must equal the canonical task execution root: $execution_root" \
-    '{
-      transition: $transition,
-      commentary: $commentary,
-      reported_workspace_path: $reported_workspace_path,
-      fix_context: $fix_context
-    }'
-  exit 0
-fi
 
-jq -nc \
-  --arg transition "verification_dispatch_fanout_verify" \
-  --arg commentary "Starting deterministic and independent read-only verification." \
-  --arg workspace_path "$execution_root" \
-  --arg review_context "$review_context" \
-  '{
-    transition: $transition,
-    commentary: $commentary,
-    workspace_path: $workspace_path,
-    review_context: $review_context
-  }'
+MAX_DISPATCH_INPUT_BYTES = 1024 * 1024
+
+
+def delivery_context_field(payload: dict[str, Any]) -> str | None:
+    if "delivery_context" not in payload:
+        return None
+    support = Path(__file__).with_name("workflow_runtime_contracts.py")
+    if support.is_symlink() or not support.is_file():
+        raise ValueError(
+            "workflow_runtime_contracts.py support module is unsafe"
+        )
+    spec = importlib.util.spec_from_file_location(
+        "workflow_dispatch_runtime_contracts",
+        support,
+    )
+    if spec is None or spec.loader is None:
+        raise ValueError("workflow runtime support module cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    fields = module.delivery_context_fields(payload)
+    return fields["delivery_context"]
+
+
+def canonical_directory(value: str) -> str:
+    path = Path(value).expanduser().resolve(strict=True)
+    return str(path) if path.is_dir() else ""
+
+
+def git_root(value: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", value, "rev-parse", "--show-toplevel"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ""
+    return canonical_directory(result.stdout.strip())
+
+
+def main() -> int:
+    raw = sys.stdin.buffer.read(MAX_DISPATCH_INPUT_BYTES + 1)
+    if len(raw) > MAX_DISPATCH_INPUT_BYTES:
+        raise ValueError("workflow input exceeds its byte limit")
+
+    def reject_duplicate_keys(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in items:
+            if key in result:
+                raise ValueError("workflow input contains a duplicate object key")
+            result[key] = item
+        return result
+
+    payload = json.loads(
+        raw,
+        object_pairs_hook=reject_duplicate_keys,
+        parse_constant=lambda value: (_ for _ in ()).throw(
+            ValueError(f"workflow input contains invalid JSON constant {value}")
+        ),
+    )
+    if not isinstance(payload, dict):
+        raise ValueError("workflow input must be one JSON object")
+    workspace_path = payload.get("workspace_path")
+    review_context = payload.get("review_context")
+    if not isinstance(workspace_path, str) or not workspace_path:
+        raise ValueError("workspace_path must be a non-empty string")
+    if not isinstance(review_context, str) or not review_context:
+        raise ValueError("review_context must be a non-empty string")
+    delivery_context = delivery_context_field(payload)
+
+    execution_root = git_root(os.getcwd()) or canonical_directory(os.getcwd())
+    reported_root = ""
+    try:
+        reported_root = canonical_directory(workspace_path)
+    except (OSError, RuntimeError, ValueError):
+        pass
+    reported_git_root = git_root(workspace_path) or reported_root
+
+    if (
+        not reported_root
+        or reported_root != reported_git_root
+        or reported_root != execution_root
+    ):
+        output: dict[str, str] = {
+            "transition": "verification_dispatch_invalid_workspace",
+            "commentary": "Rejected a non-root or foreign workspace path.",
+            "reported_workspace_path": workspace_path,
+            "fix_context": (
+                "workspace_path must equal the canonical task execution root: "
+                f"{execution_root}"
+            ),
+        }
+    else:
+        output = {
+            "transition": "verification_dispatch_fanout_verify",
+            "commentary": (
+                "Starting deterministic and independent read-only verification."
+            ),
+            "workspace_path": execution_root,
+            "review_context": review_context,
+        }
+    if delivery_context is not None:
+        output["delivery_context"] = delivery_context
+    print(json.dumps(output, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
+        print(f"workflow-verification-dispatch: {error}", file=sys.stderr)
+        raise SystemExit(2)

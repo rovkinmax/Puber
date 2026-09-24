@@ -73,7 +73,7 @@ PR_FACT_PARAMETERS = (
     "pr_url", "branch_name", "merge_strategy", "pr_head_oid", "pr_base_oid",
 )
 RELEASE_CI_INITIAL = REVISIONED_RELEASE_CARRIER + PR_FACT_PARAMETERS
-RELEASE_CI_ENTRY_INITIAL = RELEASE_CI_INITIAL + ("ci_contract", "pr_feedback_cursor")
+RELEASE_CI_ENTRY_INITIAL = RELEASE_CI_INITIAL
 RELEASE_CI_REPAIR = REVISIONED_RELEASE_CARRIER + PR_FACT_PARAMETERS + (
     "ci_contract", "ci_report", "pr_feedback_cursor",
 )

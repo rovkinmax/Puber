@@ -1011,16 +1011,6 @@
           "key": "pr_base_oid",
           "description": "Observed pull-request base commit for this CI cycle.",
           "purpose": "ordinary"
-        },
-        {
-          "key": "ci_contract",
-          "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
-          "purpose": "ordinary"
-        },
-        {
-          "key": "pr_feedback_cursor",
-          "description": "Validated pull-request feedback cursor.",
-          "purpose": "ordinary"
         }
       ]
     },
@@ -5047,20 +5037,20 @@
             "description": "Observed pull-request base commit for this CI cycle."
           },
           {
-            "name": "ci_contract",
-            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
-          },
-          {
             "name": "blocker_reason",
             "description": "Short human-readable blocker explanation in the task language when practical; include the missing access/input/check and the exact next user action needed."
           },
           {
+            "name": "ci_contract",
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
+          },
+          {
             "name": "ci_report",
             "description": "CI/check status report, including failures, skipped checks, or accepted absent checks."
+          },
+          {
+            "name": "pr_feedback_cursor",
+            "description": "Validated pull-request feedback cursor."
           }
         ]
       },
@@ -6340,14 +6330,6 @@
           {
             "name": "pr_base_oid",
             "description": "Observed pull-request base commit for this CI cycle."
-          },
-          {
-            "name": "ci_contract",
-            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
           }
         ]
       },
@@ -9384,16 +9366,6 @@
             "name": "pr_base_oid",
             "source": "transition_output",
             "field": "pr_base_oid"
-          },
-          {
-            "name": "ci_contract",
-            "source": "transition_output",
-            "field": "ci_contract"
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "source": "transition_output",
-            "field": "pr_feedback_cursor"
           }
         ],
         "required_provision_fields": [
@@ -9476,14 +9448,6 @@
           {
             "name": "pr_base_oid",
             "description": "Observed pull-request base commit for this CI cycle."
-          },
-          {
-            "name": "ci_contract",
-            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle."
-          },
-          {
-            "name": "pr_feedback_cursor",
-            "description": "Validated pull-request feedback cursor."
           }
         ],
         "assignee_selection_applicability": {
