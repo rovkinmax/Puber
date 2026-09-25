@@ -180,9 +180,12 @@ Before making a workflow default for the project:
 - Exercise an implementation continuation path and verify params are re-emitted.
 - Exercise cleanup in conservative mode and verify `cleanup_report`.
 - Validate with `kent workflow validate "<workflow>" --mode execution`.
-- Reapply the same taskless experimental graph while iterating. Once tasks
-  reference it, preserve that graph and use another experimental label for
-  semantic changes.
+- Experimental graph updates follow the lifecycle eligibility policy in
+  `kent-engineering-kit/contracts/workflow-contract.md#execution-history-and-compatibility-policy`.
+  Task presence or status alone does not prohibit an update: compatible changes
+  may retain the same Workflow UUID even after execution has started, subject
+  to that policy's evidence and separately approved lifecycle operation.
+  This does not expand client capabilities or change the retirement procedure.
 - Before deleting an obsolete workflow, preview deletion and classify attached
   tasks. Recreate Backlog tasks under the replacement graph; completed and
   canceled history may be discarded. Active or approval-waiting tasks must
