@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import copy, json, os, subprocess, tempfile, sys
+import copy, json, os, re, subprocess, tempfile, sys
 sys.dont_write_bytecode = True
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
@@ -168,6 +168,47 @@ for defect in ("description", "continuation"):
         path = Path(directory) / "invalid-provision.json"
         path.write_text(json.dumps(invalid_graph))
         assert expected_error in builder["check_graph"](path)
+changed_entry = edge("ci_watch_state_changed")
+changed_prompt = changed_entry.get("prompt_template", "")
+assert changed_prompt.strip(), "ci_watch_state_changed requires an Agent handoff prompt"
+assert changed_entry["target_node_id"] == by_key["waiting_pr"]["id"]
+changed_fields = {item["key"] for item in changed_entry["parameters"]}
+assert len(changed_fields) == 24
+assert set(re.findall(r"\{\{\.Params\.([A-Za-z_][A-Za-z0-9_]*)\}\}", changed_prompt)) == changed_fields
+for field in changed_fields:
+    assert f"{field}: {{{{.Params.{field}}}}}" in changed_prompt
+for instruction in (
+    "read-only PR/CI reconciliation",
+    "not successful CI or release acceptance",
+    "source_changed",
+    "waiting_pr_ci_recheck",
+    "ci_prepare",
+    "historical opaque inputs",
+    "never successful CI evidence for the newly observed head/base",
+    "Preserve merge/tag/publication approval gates",
+):
+    assert instruction in changed_prompt, instruction
+print("ci-state-changed-agent-handoff: passed (24 exact Params bindings)")
+
+# Check every Agent entry, not merely the builder's selected CI prompt mapping.
+agent_ids = {node["id"] for node in source["nodes"] if node["kind"] == "agent"}
+for agent_entry in source["edges"]:
+    if agent_entry["target_node_id"] not in agent_ids:
+        continue
+    assert isinstance(agent_entry.get("prompt_template"), str) and agent_entry["prompt_template"].strip()
+    for empty_prompt in (None, "", " \n\t"):
+        invalid_graph = copy.deepcopy(source)
+        selected = next(item for item in invalid_graph["edges"] if item["key"] == agent_entry["key"])
+        if empty_prompt is None:
+            selected.pop("prompt_template")
+        else:
+            selected["prompt_template"] = empty_prompt
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "empty-agent-entry-prompt.json"
+            path.write_text(json.dumps(invalid_graph))
+            assert f"Agent entry requires a nonempty prompt: {agent_entry['key']}" in builder["check_graph"](path)
+print("all-agent-entry-nonempty-prompts: passed")
+
 for entry_key, prompt in builder["CI_AGENT_ENTRY_PROMPTS"].items():
     assert edge(entry_key)["prompt_template"] == prompt
     invalid_graph = copy.deepcopy(source)
