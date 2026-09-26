@@ -20,7 +20,12 @@ Runs smoke test for a feature via MCP mobile.
 - Use `.kent/scripts/workflow-checkpoint` to maintain the canonical ignored
   `.kent/runtime/<TASK-ID>/smoke-checkpoint.json`. Reconcile it before repeating
   build, install, launch, navigation, mutation, or evidence work, and persist it
-  before every workflow transition.
+  before every workflow transition. On resume, if the checkpoint retains an
+  exact resource serial and lock token, call the adapter's `resume` operation
+  for that pair before device discovery or fresh acquisition. A partial or
+  inconsistent retained lock blocks the run; do not acquire a replacement or
+  switch serial. If the checkpoint records that no lock has yet been acquired,
+  follow the fresh-acquisition procedure below.
 - Store only the minimum evidence required for the Smoke decision.
 - On the locked test emulator, bounded semantic or visual inspection and safe
   navigation of the already-authenticated app UI are allowed without another
@@ -54,7 +59,20 @@ Runs smoke test for a feature via MCP mobile.
 ## What it does
 
 1. Reads the MCP Mobile Testing section in `AGENTS.md` to understand the process
-2. **Acquire an emulator resource lock before touching any emulator/device**
+2. **Resume the retained lock or acquire a fresh emulator resource lock**
+   - On a resumed run with a checkpointed resource serial and token, resume that
+     exact lock first:
+     ```bash
+     .kent/adapters/mobile/emulator-resource-lock.sh resume \
+       "$LOCK_RESOURCE" "$LOCK_TOKEN"
+     ```
+     Continue only if the adapter confirms ownership. A serial/token mismatch
+     blocks the run; never fall through to discovery, `acquire-any`, or another
+     target.
+   - If the checkpoint contains only one member of the serial/token pair, block
+     rather than treating the inconsistent retained state as fresh.
+   - For a fresh run, or a checkpoint that records no lock has yet been
+     acquired, discover and acquire a free emulator-specific lock as follows.
    - Physical devices, including a real TV, are forbidden unless the task/user explicitly provides permission and an
      explicit serial for that physical device. Never rely on adb's default target selection.
    - Prefer already-running healthy emulators. Discover them with:

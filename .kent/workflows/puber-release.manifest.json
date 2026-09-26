@@ -47,7 +47,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/compliance-review.md=73b9ed71d6ad0b4bb93802687f7250b7a8a271b3bedf2222c2c4c207dc755ef9",
+      "key": ".kent/commands/compliance-review.md=b9acd6fd06141163bbf03097bce73eba8537f1867df6139b27444a35a02134af",
       "runtime_digest_required": true
     },
     {
@@ -67,12 +67,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/ship-pr.md=5c2b35e4bb8b87a5db486e89ab28ebfd4d7b545507ee1de8cc90b9bad4843965",
+      "key": ".kent/commands/ship-pr.md=b92c391b56fb82a7ec846512f3518fbfcbd4c0304719d4e24f96f730c9879236",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/project-contract.md=2c9457d617c725126ec1ee7eb75cc5d0146a55f5b12d75a262b4317d4808b6b1",
+      "key": ".kent/project-contract.md=f8ba0a743e678cb23c84df51b139a94bf43d1689067b6402214f12b057b0947f",
       "runtime_digest_required": true
     },
     {

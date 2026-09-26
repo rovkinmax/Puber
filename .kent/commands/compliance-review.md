@@ -1,49 +1,43 @@
 ---
-description: Read-only compliance review for Puber release outputs
+description: Read-only compliance review for Puber delivery and release outputs
 ---
 
 # Compliance Review
 
-Review the exact S05 allowlist, schema-4 graph identity, deterministic runtime
-carriers, the 18/51/51 CI-tail transport, Java-21 pinned PR checks, and
-no-effect boundaries. Do not edit,
-commit, push, merge, tag, publish, dispatch, rerun, or mutate Kent state.
-For release preparation, independently validate the closed profile and
-preparation report digests, candidate/base/head OIDs, packaging pass states,
-and that the prospective PR diff is exactly `app/build.gradle.kts` plus the
-changed generated profile files. A no-profile-diff report must not invent or
-stage profile changes. Reject any unrelated path or report/checkpoint drift.
-Release publication is a separate approval-gated operation and is never part
-of PR Checks. For initial, retry, and head-change cycles, validate the
-identity-only `ci_contract`, dynamic `ci_report`, and acknowledged feedback
-cursor. Classify every effective check observed: failed extras are failures,
+Review final task delivery against the approved scope, exact changed paths,
+verification results, and no-effect boundaries. Attest only to evidence
+observed; report missing or ambiguous proof. Do not edit, commit, push, merge,
+tag, publish, dispatch, rerun, or mutate Kent state.
+
+## CI evidence
+
+Require CI evidence only after its producer has run, and bind it to the exact
+PR and observed head/base. `ci_contract` is the producer-validated PR identity,
+not an expected-check packet. Validate the dynamic `ci_report` when returned by
+its producer; do not require it when unavailable or fabricate it. Use
+`pr_feedback_cursor` only after the producer initializes it. Do not require or
+fabricate these fields on an initial handoff before `ci_prepare`.
+
+Classify every effective check observed: failed extras are failures,
 incomplete observations are not green, and pending observations are not user
-actions. Verify explicit `verification_summary`, concrete rebase strategy, and
-actual PR head/base facts.
+actions. Verify the explicit `verification_summary`, concrete rebase strategy,
+and actual PR head/base facts.
 
-## Revision 90 closed safety contract
+## Puber Release-only checks
 
-The exact signing pins, preparation-report v2 fields and admission rules are
-owned by `.kent/commands/release.md`. Require
-`puber_release_profile_checkpoint_v2` and `puber_release_preparation_report_v2`;
-reject v1, missing/extra fields and all identity drift. All checkpoint reads,
-writes and receipt-matched terminal deletes use the shared descriptor-relative
-`O_NOFOLLOW` store in `.kent/scripts/workflow-puber-release-intent`.
+Apply this section only to tasks in the Puber Release workflow. For Release,
+review the exact S05 allowlist, schema-4 graph identity, deterministic runtime
+carriers, the 18/51/51 CI-tail transport, Java-21 pinned PR checks, and
+no-effect boundaries. For release preparation, independently validate the closed profile
+and preparation report digests, candidate/base/head OIDs,
+packaging pass states, and that the prospective PR diff is exactly
+`app/build.gradle.kts` plus the changed generated profile files. If there is no
+profile diff, do not invent or stage profile changes. Reject any unrelated path
+or report/checkpoint drift.
 
-Pre-PR `debug_validation` proves production-variant packaging with the unchanged
-tracked debug key and exact APK signer, but produces a non-publishable artifact.
-Reject production inputs; discard validation APK/build outputs on every exit.
-Compliance and Ship bind the key Git blob, content and certificate identities
-as well as the exact branch/report digests. Publish additionally binds the
-manifest-closed production effect job; a validation report alone is never
-artifact-publication authority.
-
-GitHub Release requires `production`, exact stable alias/APK certificate pins,
-and fail-closed secret preflight. Only preflight/build receive the three signing
-secrets; upload receives none, and only Release creation gets `GH_TOKEN`.
-Production credentials never enter task/preparation worktrees. Missing or
-ambiguous signing sources cannot fall back to debug. There is no external
-secret-name attestation. Semantic source revision 90 uses prepared native
-identity 88 and the approved 18/51/51 topology. Preserve existing node IDs,
-Publish inputs, and approval gates; CI transitions do not grant tag or
-publication authority. This is source-only, with no live rollout or restart.
+`.kent/commands/release.md` is authoritative for Release-only signing,
+checkpoint, packaging, CI, and publication requirements. Keep Release graph
+and topology checks within that workflow and consistent with the source
+identity declared in `.kent/project-contract.md`. Do not apply those release
+requirements to ordinary task delivery. Release publication is a separate
+approval-gated operation and is never part of PR Checks.

@@ -4,22 +4,36 @@ description: Commit, push, and create the single Puber task pull request
 
 # Ship PR
 
+## Common delivery
+
 Ship only the reviewed task branch. Verify the exact branch, base, changed
 paths, local source checks, and no-effect audit before the one non-force push.
-For a release, validate the profile/preparation checkpoint against the exact
+Do not overwrite unrelated user changes; never amend or force-push commits. Do
+not merge, tag, publish, dispatch, rerun, or invoke release automation from
+this command.
+
+Follow the carrier declared by each generated transition. Do not infer or add
+CI fields before their producer has produced them. Bind any CI evidence to the
+exact PR and observed head/base.
+
+## Puber Release-only requirements
+
+Apply this section only when shipping a task in the Puber Release workflow.
+Validate the profile/preparation checkpoint against the exact
 `release_head_oid` immediately before push and again after push or PR
 create/update. The resulting PR diff must contain the version bump and only
-actually changed generated profiles; never amend or force-push and never
-overwrite unrelated user changes. The initial `ship_pr_ci_watch` handoff
-carries actual `pr_head_oid` and observed `pr_base_oid`, the complete release
-proof, existing PR identity, and explicit `verification_summary`. Do not
-require or fabricate `ci_contract`, `ci_report`, or `pr_feedback_cursor` on
-this first edge: `ci_prepare` observes the PR, derives the validated contract,
-and initializes the cursor before handing off to `ci_watch`.
+actually changed generated profiles. The initial `ship_pr_ci_watch` handoff
+carries actual `pr_head_oid`, observed `pr_base_oid`, complete release proof,
+existing PR identity, and explicit `verification_summary`. Do not require or
+fabricate `ci_contract`, `ci_report`, or `pr_feedback_cursor` on this first
+edge: `ci_prepare` observes the PR, derives the validated identity-only
+contract, and initializes the cursor before handing off to `ci_watch`. See
+`.kent/commands/release.md` for the exact release proof requirements.
 
-Subsequent CI transitions carry the validated `ci_contract`, dynamic
-`ci_report` when available, acknowledged feedback cursor, actual PR head and
-base, complete release proof, and explicit `verification_summary`.
+After `ci_prepare`, subsequent CI transitions carry the validated
+`ci_contract`, dynamic `ci_report` only when available from its producer, the
+acknowledged feedback cursor, actual PR head and base, explicit
+`verification_summary`, and—on Release tasks—the complete release proof.
 `pr_base_oid` must remain the observed PR base.
 A changed release head requires `prepare` and the profile/finalization pipeline
 again; changed CI policy goes through `ci_prepare`. Resolve the profile merge
@@ -27,12 +41,10 @@ policy using the published `workflowkit.merge_strategy` resolver and fresh
 GitHub repository capabilities, branch protection and active branch rules.
 Carry only its unique concrete result (currently `rebase`), never infer it
 from admin bypass. The CI adapter independently revalidates that resolution.
-Never merge, tag, publish, dispatch, rerun, or invoke release automation from
-this command. The PR must report the schema-4 S05 checks, the concrete resolved `rebase`
-strategy, and any deferred full Gradle gate; S10 remains a later serial slice
-on the same branch.
+The Release PR must report the schema-4 S05 checks, the concrete resolved
+`rebase` strategy, and any deferred full Gradle gate.
 
-## Revision 90 closed safety contract
+### Revision 90 closed safety contract
 
 The exact signing pins, preparation-report v2 fields and admission rules are
 owned by `.kent/commands/release.md`. Require
