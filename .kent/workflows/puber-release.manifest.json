@@ -192,7 +192,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/subagents/release-manager.md=0b6f7cbcb59bf2b21444371144b3fcb1c9c1759d708f26ebb26e79f978b51f8a",
+      "key": ".kent/subagents/release-manager.md=03f684764d412ff7f037ad66159dc94843f5455830a5f5e28d0a030f56a1cd77",
       "runtime_digest_required": true
     },
     {
