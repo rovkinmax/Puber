@@ -81,9 +81,12 @@ audit snapshot only. Its canonical identity is
 `10d8adb2-c74c-4ef0-8b5c-311cb5cd0459`; source updates preserve that UUID and
 name. `release_intent_gate`, `ci_prepare`, `ci_watch`, `merge_watch`, and
 `task_janitor` are deterministic script nodes. The three CI nodes use the
-project adapter and fail closed while carrying the flat expected-check packet,
-CI history/cursor, actual PR head/base, concrete `rebase` strategy, and
-explicit `verification_summary`.
+project adapter and fail closed with an identity-only `ci_contract`, a dynamic
+`ci_report` when produced, and an acknowledged `pr_feedback_cursor`. The
+initial ship handoff precedes CI packet creation; `ci_prepare` observes the
+exact PR, derives the contract, and initializes the cursor. CI handoffs retain
+actual PR head/base, the concrete `rebase` strategy, and explicit
+`verification_summary`.
 Release preparation is ordered as `prepare -> profile_generation ->
 finalize_release -> compliance`; CI is ordered through `ci_prepare ->
 ci_watch -> waiting_pr`, with already-merged recovery entering the existing
