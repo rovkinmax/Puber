@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.player.vm
 
 import androidx.media3.common.Player
 import com.kino.puber.data.api.models.SubtitleLink
+import com.kino.puber.domain.interactor.player.StreamSource
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
@@ -71,7 +72,7 @@ internal class PlaybackControllerTransitionsTest {
 
             PlaybackTransitions.switchStream(
                 engine = engine,
-                streamUrl = "https://test/new.m3u8",
+                stream = StreamSource("https://test/new.m3u8", isHls = true),
                 subtitles = null,
             )
 
@@ -120,7 +121,7 @@ internal class PlaybackControllerTransitionsTest {
 
         PlaybackTransitions.switchStream(
             engine = engine,
-            streamUrl = "https://test/quality.m3u8",
+            stream = StreamSource("https://test/quality.m3u8", isHls = true),
             subtitles = null,
         )
         PlaybackTransitions.play(engine)
@@ -162,7 +163,7 @@ internal class PlaybackControllerTransitionsTest {
 
             PlaybackTransitions.switchStream(
                 engine = engine,
-                streamUrl = "https://test/quality.m3u8",
+                stream = StreamSource("https://test/quality.m3u8", isHls = true),
                 subtitles = null,
             )
 
@@ -214,8 +215,8 @@ internal class PlaybackControllerTransitionsTest {
             dispatchPlaybackState(Player.STATE_IDLE)
         }
 
-        override fun setMediaSource(streamUrl: String, subtitles: List<SubtitleLink>?) {
-            mutations += "setMediaSource:$streamUrl"
+        override fun setMediaSource(stream: StreamSource, subtitles: List<SubtitleLink>?) {
+            mutations += "setMediaSource:${stream.url}"
         }
 
         override fun restoreTrackSelection() {

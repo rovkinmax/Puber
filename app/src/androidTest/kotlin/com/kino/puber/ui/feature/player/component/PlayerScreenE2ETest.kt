@@ -10,11 +10,14 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -44,10 +47,15 @@ import com.kino.puber.playertestfixtures.server.HermeticTestServer
 import com.kino.puber.playertestfixtures.server.QueryMatchMode
 import com.kino.puber.playertestfixtures.server.ResponsePlan
 import com.kino.puber.profile.PlayerTestControl
+import com.kino.puber.ui.feature.player.FORCED_SUBTITLE_CUE
+import com.kino.puber.ui.feature.player.FORCED_SUBTITLE_MANIFEST_LABEL
+import com.kino.puber.ui.feature.player.FULL_SUBTITLE_MANIFEST_LABEL
 import com.kino.puber.ui.ScreensImpl
 import com.kino.puber.ui.feature.player.PlayerComposeInstrumentationTestCase
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerStartMode
+import com.kino.puber.ui.feature.player.subtitleVariantMaster
+import com.kino.puber.ui.feature.player.subtitleVariantRoutes
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -91,6 +99,55 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
     @After
     fun tearDown() {
         fixture.close()
+    }
+
+    @Test
+    fun movieScreen_subtitlesStayOffAfterRecreation_despiteDefaultManifestRendition() = run {
+        with(fixture) {
+            val itemId = 7905
+            step("Select forced subtitles and then Off with the remote") {
+                server.reset(movieRoutes(itemId, watchingTime = 0, media = MovieMediaRoots(itemId)))
+                launchPlayer(itemId = itemId, startMode = PlayerStartMode.StartFromBeginning)
+                awaitPlayerReady()
+                assertFocusedPlayPause()
+                robot.press(PlayerRemoteKey.Right)
+                robot.press(PlayerRemoteKey.Right)
+                robot.press(PlayerRemoteKey.Select)
+                assertFocusedPanelItem("sound", 0)
+                robot.press(PlayerRemoteKey.Right)
+                robot.press(PlayerRemoteKey.Right)
+                assertFocusedPanelItem("subtitle", 0)
+                robot.press(PlayerRemoteKey.Down)
+                robot.press(PlayerRemoteKey.Down)
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("forced subtitles enabled") {
+                    selectedTextTrackLabel() == FORCED_SUBTITLE_MANIFEST_LABEL
+                }
+                robot.press(PlayerRemoteKey.Up)
+                robot.press(PlayerRemoteKey.Up)
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("explicit Off choice disables text") { textTracksDisabled() }
+                assertSelectedPanelItem("subtitle", 0)
+                robot.pressBack()
+            }
+            step("Recreate the player and retain Off in Media3 and the picker") {
+                composeRule.activityRule.scenario.recreate()
+                setPlayerContent()
+                awaitPlayerReady()
+                awaitPlayerCondition("default HLS subtitles remain disabled after recreation") {
+                    textTracksDisabled() && !selectedTextTrack() && currentCueTexts().isEmpty()
+                }
+                assertEquals(null, preferredSubtitleLanguage())
+                assertEquals(null, preferredSubtitleUrl())
+                robot.press(PlayerRemoteKey.PlayPause)
+                assertFocusedPlayPause()
+                robot.press(PlayerRemoteKey.Right)
+                robot.press(PlayerRemoteKey.Right)
+                robot.press(PlayerRemoteKey.Select)
+                assertSelectedPanelItem("subtitle", 0)
+                robot.pressBack()
+            }
+        }
     }
 
     @Test
@@ -140,7 +197,7 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
                 assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
             }
 
-            step("Select Spanish audio and external subtitles through typed panel items") {
+            step("Select Spanish audio and inspect ordered full, forced, and off subtitle rows") {
                 robot.press(PlayerRemoteKey.Select)
                 assertFocusedPanelItem("sound", 0)
                 robot.press(PlayerRemoteKey.Right)
@@ -155,28 +212,58 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
 
                 robot.press(PlayerRemoteKey.Right)
                 assertFocusedPanelItem("subtitle", 1)
+                assertPanelItemText("subtitle", 0, context.getString(R.string.player_subtitles_off))
+                assertPanelItemText("subtitle", 1, FULL_SUBTITLE_PICKER_LABEL)
+                assertPanelItemText("subtitle", 2, FORCED_SUBTITLE_PICKER_LABEL)
                 robot.press(PlayerRemoteKey.Select)
-                awaitPlayerCondition("external subtitle is persisted and selected in Media3") {
+                awaitPlayerCondition("remote selects the exact full subtitle variant") {
+                    preferredSubtitleUrl()?.contains("subtitle_full.vtt") == true &&
+                        selectedTextTrackLabel() == FULL_SUBTITLE_MANIFEST_LABEL
+                }
+
+                robot.press(PlayerRemoteKey.Down)
+                assertFocusedPanelItem("subtitle", 2)
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("forced HLS subtitle is persisted and selected in Media3") {
                     preferredSubtitleLanguage() == SUBTITLE_LANGUAGE &&
-                        selectedTextTrack() &&
-                        preferredTextLanguages().contains(SUBTITLE_LANGUAGE)
+                        preferredSubtitleUrl()?.endsWith("subtitle:$FORCED_SUBTITLE_MANIFEST_LABEL") == true &&
+                        selectedTextTrackLabel() == FORCED_SUBTITLE_MANIFEST_LABEL
+                }
+
+                robot.press(PlayerRemoteKey.Up)
+                robot.press(PlayerRemoteKey.Up)
+                assertFocusedPanelItem("subtitle", 0)
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("remote selection disables subtitles and clears the preference") {
+                    preferredSubtitleLanguage() == null &&
+                        preferredSubtitleUrl() == null &&
+                        textTracksDisabled()
+                }
+
+                robot.press(PlayerRemoteKey.Down)
+                robot.press(PlayerRemoteKey.Down)
+                assertFocusedPanelItem("subtitle", 2)
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("remote reselects the exact forced variant") {
+                    preferredSubtitleUrl()?.endsWith("subtitle:$FORCED_SUBTITLE_MANIFEST_LABEL") == true &&
+                        selectedTextTrackLabel() == FORCED_SUBTITLE_MANIFEST_LABEL
                 }
                 robot.pressBack()
                 assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
             }
 
-            step("Playback requests the selected subtitle before pausing again") {
+            step("Playback renders the selected forced cue before pausing again") {
                 robot.press(PlayerRemoteKey.Left)
                 assertFocusedTag(PlayerScreenTestTags.MarkWatched, "mark-watched button")
                 robot.press(PlayerRemoteKey.Left)
                 assertFocusedPlayPause()
                 robot.press(PlayerRemoteKey.Select)
-                awaitPlayerCondition("selected external subtitle loads during playback") {
-                    playerIsPlaying()
+                awaitPlayerCondition("selected forced subtitle renders its own cue") {
+                    playerIsPlaying() && currentCueTexts() == listOf(FORCED_SUBTITLE_CUE)
                 }
-                awaitJournalPath("${media.high}/subtitle.vtt")
+                awaitJournalPath("${media.high}/subtitle_forced.vtt")
                 robot.press(PlayerRemoteKey.Select)
-                awaitPlayerCondition("playback pauses after external subtitle request") {
+                awaitPlayerCondition("playback pauses after forced subtitle request") {
                     !playerIsPlaying()
                 }
             }
@@ -199,8 +286,27 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
                     currentMediaPath() == "${media.low}/master.m3u8"
                 }
                 awaitJournalPath("${media.low}/master.m3u8")
+                awaitPlayerCondition("quality change restores the exact forced subtitle variant") {
+                    selectedTextTrackLabel() == FORCED_SUBTITLE_MANIFEST_LABEL &&
+                        preferredSubtitleUrl()?.endsWith("subtitle:$FORCED_SUBTITLE_MANIFEST_LABEL") == true
+                }
                 robot.pressBack()
                 assertFocusedTag(PlayerScreenTestTags.VideoSettings, "video-settings button")
+                robot.press(PlayerRemoteKey.Left)
+                assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "audio/subtitle button")
+                robot.press(PlayerRemoteKey.Select)
+                assertSelectedPanelItem("subtitle", 2)
+                assertFocusedPanelItem("sound", 0)
+                robot.press(PlayerRemoteKey.Right)
+                robot.press(PlayerRemoteKey.Down)
+                assertFocusedPanelItem("audio", 1)
+                robot.press(PlayerRemoteKey.Select)
+                awaitPlayerCondition("saving audio retains the forced subtitle rendition") {
+                    preferredAudioLanguage() == SPANISH_LANGUAGE &&
+                        preferredSubtitleUrl()?.endsWith("subtitle:$FORCED_SUBTITLE_MANIFEST_LABEL") == true
+                }
+                assertSelectedPanelItem("subtitle", 2)
+                robot.pressBack()
                 robot.pressBack()
                 assertFocusedPlayerSurface()
                 robot.press(PlayerRemoteKey.Down)
@@ -226,8 +332,8 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
                 }
                 awaitPlayerCondition("recreated Media3 restores audio and subtitle choices") {
                     selectedAudioLanguage() == SPANISH_LANGUAGE &&
-                        selectedTextTrack() &&
-                        preferredTextLanguages().contains(SUBTITLE_LANGUAGE)
+                        selectedTextTrackLabel() == FORCED_SUBTITLE_MANIFEST_LABEL &&
+                        preferredSubtitleUrl()?.endsWith("subtitle:$FORCED_SUBTITLE_MANIFEST_LABEL") == true
                 }
             }
 
@@ -253,6 +359,10 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
                 assertFocusedPanelItem("sound", 0)
                 assertEquals(SPANISH_LANGUAGE, preferredAudioLanguage())
                 assertEquals(SUBTITLE_LANGUAGE, preferredSubtitleLanguage())
+                assertPanelItemText("subtitle", 0, context.getString(R.string.player_subtitles_off))
+                assertPanelItemText("subtitle", 1, FULL_SUBTITLE_PICKER_LABEL)
+                assertPanelItemText("subtitle", 2, FORCED_SUBTITLE_PICKER_LABEL)
+                assertSelectedPanelItem("subtitle", 2)
                 robot.pressBack()
                 assertFalse(
                     "Audio/subtitle panel Back must not pop PlayerScreen after recreation",
@@ -682,6 +792,9 @@ private class PlayerE2EFixture(
     fun preferredSubtitleLanguage(): String? =
         PlayerPreferencesRepository(context).getPreferredSubtitleLang(currentItemId)
 
+    fun preferredSubtitleUrl(): String? =
+        PlayerPreferencesRepository(context).getPreferredSubtitleUrl(currentItemId)
+
     fun playerPosition(): Long = uiPlayerRead { currentPosition } ?: 0L
 
     fun playerIsPlaying(): Boolean = uiPlayerRead { isPlaying } == true
@@ -705,8 +818,22 @@ private class PlayerE2EFixture(
             .any { it.isSelected }
     } == true
 
-    fun preferredTextLanguages(): List<String> =
-        uiPlayerRead { trackSelectionParameters.preferredTextLanguages.toList() }.orEmpty()
+    fun selectedTextTrackLabel(): String? = uiPlayerRead {
+        currentTracks
+            .groups
+            .filter { it.type == C.TRACK_TYPE_TEXT }
+            .firstOrNull { it.isSelected }
+            ?.getTrackFormat(0)
+            ?.label
+    }
+
+    fun textTracksDisabled(): Boolean = uiPlayerRead {
+        trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+    } == true
+
+    fun currentCueTexts(): List<String> = uiPlayerRead {
+        currentCues.cues.mapNotNull { it.text?.toString() }
+    }.orEmpty()
 
     fun awaitPlayerReady() {
         awaitPlayerCondition("Media3 READY without PlayerScreen error") {
@@ -833,6 +960,21 @@ private class PlayerE2EFixture(
     fun assertFocusedPanelItem(group: String, index: Int) {
         val tag = PlayerScreenTestTags.panelItem(group, index)
         assertFocusedTag(tag, "$group panel item $index")
+    }
+
+    fun assertSelectedPanelItem(group: String, index: Int) {
+        composeRule.onNode(
+            hasTestTag(PlayerScreenTestTags.panelItem(group, index)),
+            useUnmergedTree = true,
+        ).assertIsSelected()
+    }
+
+    fun assertPanelItemText(group: String, index: Int, text: String) {
+        val textMatcher = hasText(text)
+        composeRule.onNode(
+            hasTestTag(PlayerScreenTestTags.panelItem(group, index)),
+            useUnmergedTree = true,
+        ).assert(textMatcher or hasAnyDescendant(textMatcher))
     }
 
     fun assertFocusedTagEventually(tag: String, description: String) {
@@ -983,11 +1125,13 @@ private class PlayerE2EFixture(
         itemId: Int,
         watchingTime: Int,
         media: MovieMediaRoots,
-    ): List<HermeticRoute> =
-        apiRoutes(
+    ): List<HermeticRoute> {
+        val masterResponse = subtitleVariantMasterResponse()
+        return apiRoutes(
             itemId = itemId,
             details = movieDetails(itemId, watchingTime, media),
-        ) + mediaRoutes(media.high) + mediaRoutes(media.low)
+        ) + mediaRoutes(media.high, masterResponse) + mediaRoutes(media.low, masterResponse)
+    }
 
     fun retryMovieRoutes(
         itemId: Int,
@@ -999,7 +1143,7 @@ private class PlayerE2EFixture(
             contentType = HLS_CONTENT_TYPE,
         )
         val success = HermeticTestServer.text(
-            body = fixtureText(FixtureId.HlsMaster),
+            body = subtitleVariantMaster("scenario=$scenarioToken"),
             contentType = HLS_CONTENT_TYPE,
         )
         val retrySequence = HermeticTestServer.sequence(
@@ -1101,16 +1245,8 @@ private class PlayerE2EFixture(
                     contentType = HLS_CONTENT_TYPE,
                 ),
             ),
-            server.route(
-                id = mediaRouteId(root, "subtitle"),
-                path = "$root/subtitle.vtt",
-                queryMode = QueryMatchMode.Contains,
-                response = HermeticTestServer.text(
-                    body = fixtureText(FixtureId.SubtitleWebVtt),
-                    contentType = "text/vtt",
-                ),
-            ),
         )
+        routes += server.subtitleVariantRoutes(root, "scenario=$scenarioToken")
         listOf(
             "video_360_000.ts",
             "video_360_001.ts",
@@ -1169,8 +1305,11 @@ private class PlayerE2EFixture(
               "subtitles": [{
                 "lang": "$SUBTITLE_LANGUAGE",
                 "url": "${mediaUrl(
-                    "${media.high}/subtitle.vtt?signature=screen-test&scenario=$scenarioToken",
-                )}"
+                    "${media.high}/subtitle_full.vtt?signature=screen-test&scenario=$scenarioToken",
+                )}",
+                "embed": true,
+                "forced": false,
+                "file": "${media.high}/subtitle_full.m3u8"
               }],
               "watching": {"time": $watchingTime, "duration": 4, "status": 0}
             }]
@@ -1225,6 +1364,11 @@ private class PlayerE2EFixture(
     private fun fixtureText(fixture: FixtureId): String =
         PlayerTestFixtures.readBytes(fixture, context).toString(Charsets.UTF_8)
 
+    private fun subtitleVariantMasterResponse(): ResponsePlan = HermeticTestServer.text(
+        body = subtitleVariantMaster("scenario=$scenarioToken"),
+        contentType = HLS_CONTENT_TYPE,
+    )
+
     private fun mediaUrl(path: String): String =
         server.url(path).replace("http://localhost:", "http://127.0.0.1:")
 
@@ -1265,6 +1409,8 @@ private const val ENGLISH_AUDIO_LABEL = "English"
 private const val SPANISH_AUDIO_LABEL = "Español"
 private const val SPANISH_LANGUAGE = "es"
 private const val SUBTITLE_LANGUAGE = "en"
+private const val FULL_SUBTITLE_PICKER_LABEL = "Английский"
+private const val FORCED_SUBTITLE_PICKER_LABEL = "Английский · частичные"
 private const val HIGH_QUALITY_LABEL = "720p"
 private const val LOW_QUALITY_LABEL = "360p"
 private const val EPISODE_ONE_ID_OFFSET = 11
