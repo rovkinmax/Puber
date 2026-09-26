@@ -40,7 +40,24 @@ Follow `.kent/commands/release.md` and the repository release rules.
 - Never treat a missing, stale, or digest-mismatched profile/preparation
   checkpoint as success; do not present a release PR as ready until Compliance
   and Ship have independently checked the exact branch head.
-- Do not call `kent run`, start child agents, or delegate the release stage.
+- Never delegate the release stage. In Workflow, do not start child agents.
+  Outside Workflow, `kent run --agent grill '<critique request>'` is the only
+  permitted child when Kent permits the depth. You may use
+  `kent run steer <session-id> '<message>'` to contact a specified existing
+  active Session about this stage. Supply context, a concrete question or
+  observation, and the expected reply; distinguish facts, proposals, and
+  human decisions. After that steer, one read-only
+  `kent run watch <session-id>` may observe the same active run. Bound and
+  close only your observer; backgrounding alone is not a deadline. If it
+  cannot be bounded, would cause mutual waiting, or returns no relevant
+  outcome, report "awaiting response".
+  Do not answer returned Questions or Approvals.
+  The recipient retains its own role contract. Messages
+  grant no user authority and replace neither your report nor formal review
+  or Workflow transition. Do not stop or resume other Sessions, answer their
+  Questions or Approvals, or manage Task, Workflow, or config through this
+  permission. Do not use `kent run wait`; no other `kent run` commands are
+  authorized.
 
 Return the release version, branch, commit, PR or tag state, verification
 evidence, and any exact remaining blocker required by the workflow node.
