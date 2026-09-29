@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -14,7 +15,7 @@ sys.dont_write_bytecode = True
 
 
 ROOT = Path(__file__).resolve().parents[3]
-SPEC_PATH = ROOT / ".kent/workflows/specs/puber-engineering-delivery-v23.json"
+SPEC_PATH = ROOT / ".kent/workflows/specs/puber-engineering-delivery-v24.json"
 SCRIPTS = ROOT / ".kent/scripts"
 TASK_ID = "PUB-CONTINUITY"
 DIRECT_PARAMS = re.compile(r"\{\{\s*\.Params\.([A-Za-z_][A-Za-z0-9_]*)")
@@ -140,6 +141,42 @@ def run_json_command(
 
 
 class DeliveryContinuityTest(unittest.TestCase):
+    def test_v24_changes_only_approved_prompt_fields(self) -> None:
+        old_path = ROOT / ".kent/workflows/specs/puber-engineering-delivery-v23.json"
+        self.assertEqual(
+            hashlib.sha256(old_path.read_bytes()).hexdigest(),
+            "e28d21b8b54672b7ce98743b9373bf67c5bf5050e0682ef89b70124e8506f2dd",
+        )
+        old = json.loads(old_path.read_text())
+        current = load_spec()
+        self.assertEqual(old["nodes"], current["nodes"])
+        self.assertEqual(old["execution_target"], current["execution_target"])
+        expected = {
+            "start_plan", "plan_review", "plan_review_revalidate",
+            "plan_revalidation_review", "plan_contract_continue_revalidate",
+            "plan_contract_verify_revalidate", "plan_contract_fix_revalidate",
+            "prepare_pr_no_pr", "ci_prepare_merged", "ci_watch_merged",
+            "ci_monitor_merged", "fix_pr_merged_cleanup", "waiting_pr_cleanup",
+            "merge_watch_cleanup", "waiting_pr_close_without_merge",
+            "task_janitor_blocked",
+        }
+        before = {edge["key"]: edge for edge in old["edges"]}
+        after = {edge["key"]: edge for edge in current["edges"]}
+        self.assertEqual(before.keys(), after.keys())
+        changed = set()
+        for key in before:
+            differences = {
+                field for field in before[key].keys() | after[key].keys()
+                if before[key].get(field) != after[key].get(field)
+            }
+            self.assertLessEqual(differences, {"prompt"})
+            if differences:
+                changed.add(key)
+        self.assertEqual(changed, expected)
+        self.assertIn("grill", after["start_plan"]["prompt"])
+        self.assertIn("do not launch grill from this leaf",
+                      after["plan_revalidation_review"]["prompt"])
+
     def test_generated_v23_topology_and_direct_ci_pr_contracts(self) -> None:
         spec = load_spec()
         nodes = spec.get("nodes")
