@@ -271,6 +271,7 @@ internal class PlaybackController(
 
     override fun switchStream(stream: StreamSource, subtitles: List<SubtitleLink>?) {
         val player = exoPlayer ?: return
+        disableSubtitlesForSourceReplacement(player)
         bindCallbackSession(player)
         val engine = ExoPlayerPlaybackEngine(player)
         PlaybackTransitions.switchStream(
@@ -279,6 +280,15 @@ internal class PlaybackController(
             subtitles = subtitles,
         )
         notifyPlaybackState()
+    }
+
+    private fun disableSubtitlesForSourceReplacement(player: ExoPlayer) {
+        pendingSubtitleTrack = null
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            .build()
     }
 
     private fun bindCallbackSession(player: ExoPlayer) {
@@ -668,6 +678,7 @@ internal class PlaybackController(
                     formatId = format.id,
                     formatLabel = format.label,
                     language = format.language,
+                    isForced = format.selectionFlags and C.SELECTION_FLAG_FORCED != 0,
                 )
             }
         }

@@ -92,6 +92,51 @@ internal class SubtitleTrackSelectorTest {
         assertEquals(candidates[1], selector.select(row, candidates))
     }
 
+    @Test
+    fun select_rejectsReusedCoordinatesAndIds_withDifferentLanguage() {
+        val row = manifestTrack(
+            groupId = "reused-group",
+            trackIndex = 0,
+            formatId = "reused-format",
+            url = "",
+            groupIndex = 0,
+        ).copy(language = "en", isForced = false)
+        val candidates = listOf(
+            PlayerTextTrack(
+                groupId = "reused-group",
+                groupIndex = 0,
+                trackIndex = 0,
+                formatId = "reused-format",
+                language = "es",
+                isForced = false,
+            ),
+        )
+
+        assertNull(selector.select(row, candidates))
+    }
+
+    @Test
+    fun select_rejectsForcedTrack_forFullSubtitleRow() {
+        val row = manifestTrack(
+            groupId = "reused-group",
+            trackIndex = 0,
+            formatId = "reused-format",
+            url = "",
+        ).copy(isForced = false)
+        val candidates = listOf(
+            PlayerTextTrack(
+                groupId = "reused-group",
+                groupIndex = 0,
+                trackIndex = 0,
+                formatId = "reused-format",
+                language = "rus",
+                isForced = true,
+            ),
+        )
+
+        assertNull(selector.select(row, candidates))
+    }
+
     private fun manifestTrack(
         groupId: String,
         trackIndex: Int,

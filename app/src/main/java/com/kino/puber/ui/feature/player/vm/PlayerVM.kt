@@ -230,6 +230,9 @@ internal class PlayerVM(
                     preferredPlayerGroupIndex = selectedTrack.playerGroupIndex,
                     preferredPlayerTrackIndex = selectedTrack.playerTrackIndex,
                     preferredPlayerTrackGroupId = selectedTrack.playerTrackGroupId,
+                    preferredIsForced = selectedTrack.isForced,
+                    preferredDescriptiveLabel = selectedTrack.readableDescriptiveLabel(),
+                    allowPositionFallback = true,
                 )
             }?.takeIf { it >= 0 } ?: 0
             updateContent {
@@ -360,7 +363,7 @@ internal class PlayerVM(
             !subtitleTracksDiscovered -> subtitleToRestore
             else -> (stateValue as? PlayerViewState.Content)?.content?.let { content ->
                 content.subtitleTracks.getOrNull(content.selectedSubtitleIndex)?.takeUnless { it.isOff }
-            }
+            } ?: subtitleToRestore
         }
         tracksRestoredForCurrentMedia = false
         audioRestoredForCurrentMedia = false
@@ -455,25 +458,30 @@ internal class PlayerVM(
         content: PlayerContentState,
         hasDiscoveredSubtitleTracks: Boolean,
     ): Boolean {
-        val subtitleLang = interactor.getPreferredSubtitleLang(params.itemId)
-        val subtitleUrl = interactor.getPreferredSubtitleUrl(params.itemId)
+        val savedPreference = interactor.getPreferredSubtitlePreference(params.itemId)
         val previousSubtitle = subtitleToRestore
         val hasSubtitlePreference = previousSubtitle != null ||
-            !subtitleLang.isNullOrEmpty() || !subtitleUrl.isNullOrEmpty()
+            !savedPreference.language.isNullOrEmpty() || !savedPreference.url.isNullOrEmpty() ||
+            savedPreference.isForced != null || !savedPreference.descriptiveLabel.isNullOrEmpty()
         if (!hasSubtitlePreference) return true
         if (!hasDiscoveredSubtitleTracks) return false
 
         val subtitleIndex = audioTrackPreferenceResolver.findSubtitleTrackIndex(
             tracks = content.subtitleTracks,
-            preferredLang = previousSubtitle?.language ?: subtitleLang,
-            preferredUrl = previousSubtitle?.let { it.url.ifEmpty { it.playerTrackUri.orEmpty() } } ?: subtitleUrl,
-            preferredPlayerTrackId = previousSubtitle?.playerTrackId,
-            preferredPlayerTrackGroupId = previousSubtitle?.playerTrackGroupId,
-            preferredPlayerTrackIndex = previousSubtitle?.playerTrackIndex,
+            preferredLang = previousSubtitle?.language ?: savedPreference.language,
+            preferredUrl = previousSubtitle?.let { it.url.ifEmpty { it.playerTrackUri.orEmpty() } }
+                ?: savedPreference.url,
+            preferredIsForced = previousSubtitle?.isForced ?: savedPreference.isForced,
+            preferredDescriptiveLabel = previousSubtitle?.readableDescriptiveLabel()
+                ?: savedPreference.descriptiveLabel,
         )
         if (subtitleIndex >= 0) {
             applySubtitleSelection(subtitleIndex, persist = false)
             subtitleToRestore = null
+        } else {
+            content.subtitleTracks.indexOfFirst { it.isOff }
+                .takeIf { it >= 0 }
+                ?.let { applySubtitleSelection(it, persist = false) }
         }
         return true
     }
@@ -1461,21 +1469,26 @@ internal class PlayerVM(
         val state = (stateValue as? PlayerViewState.Content)?.content ?: return
         val audioTrack = state.audioTracks.getOrNull(state.selectedAudioTrackIndex)
         val subtitle = state.subtitleTracks.getOrNull(state.selectedSubtitleIndex)
+        val preferenceTrack = subtitle?.takeUnless { it.isOff }
+            ?: subtitleToRestore.takeUnless { subtitleSelectionExplicit }
         // Before the player reports its text tracks the picker holds nothing but "off",
-        // so persisting it would silently drop the preference we still have to restore.
-        val subtitleLang = if (subtitleTracksDiscovered || subtitleSelectionExplicit) {
-            subtitle?.language?.takeIf { it.isNotEmpty() }
+        // and a missing rendition also presents as "off". Neither state may silently drop
+        // the semantic preference that can reappear in another quality.
+        val preserveStoredPreference = !subtitleSelectionExplicit && preferenceTrack == null
+        val storedPreference = if (preserveStoredPreference) {
+            interactor.getPreferredSubtitlePreference(params.itemId)
         } else {
-            interactor.getPreferredSubtitleLang(params.itemId)
+            null
         }
-        val subtitleUrl = if (subtitleTracksDiscovered || subtitleSelectionExplicit) {
-            subtitle?.url?.takeIf { it.isNotEmpty() }
-                // HLS rendition group names survive quality-specific paths and recreation.
-                ?: subtitle?.playerTrackGroupId?.takeIf { it.isNotEmpty() && subtitle.playerTrackUri != null }
-                ?: subtitle?.playerTrackUri?.takeIf { it.isNotEmpty() }
-                ?: subtitle?.playerTrackId?.takeIf { it.isNotEmpty() }
-        } else {
-            interactor.getPreferredSubtitleUrl(params.itemId)
+        val subtitleLang = when {
+            preferenceTrack != null -> preferenceTrack.language.takeIf { it.isNotEmpty() }
+            preserveStoredPreference -> storedPreference?.language
+            else -> null
+        }
+        val subtitleUrl = when {
+            preferenceTrack != null -> preferenceTrack.preferenceKey()
+            preserveStoredPreference -> storedPreference?.url
+            else -> null
         }
         interactor.saveTrackPreferences(
             itemId = params.itemId,
@@ -1483,8 +1496,26 @@ internal class PlayerVM(
             audioLabel = audioTrack?.label?.takeIf { it.isNotEmpty() },
             subtitleLang = subtitleLang,
             subtitleUrl = subtitleUrl,
+            subtitleIsForced = if (subtitleSelectionExplicit || preferenceTrack != null) {
+                preferenceTrack?.isForced
+            } else {
+                storedPreference?.isForced
+            },
+            subtitleDescriptiveLabel = if (subtitleSelectionExplicit || preferenceTrack != null) {
+                preferenceTrack?.readableDescriptiveLabel()
+            } else {
+                storedPreference?.descriptiveLabel
+            },
         )
     }
+
+    private fun SubtitleTrackUIState.preferenceKey(): String? =
+        url.takeIf { it.isNotEmpty() }
+            ?: sourceFile?.takeIf { it.isNotEmpty() }
+            // Manifest group names are stable across quality-specific rendition paths.
+            ?: playerTrackGroupId?.takeIf { it.isNotEmpty() && playerTrackUri != null }
+            ?: playerTrackUri?.takeIf { it.isNotEmpty() }
+            ?: playerTrackId?.takeIf { it.isNotEmpty() }
 
     private fun markContentChanged(type: ContentChangeType) {
         contentChanges = contentChanges.merge(ContentChange(params.itemId, type))

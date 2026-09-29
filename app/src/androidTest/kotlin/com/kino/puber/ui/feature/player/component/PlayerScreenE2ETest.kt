@@ -139,10 +139,7 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
                 }
                 assertEquals(null, preferredSubtitleLanguage())
                 assertEquals(null, preferredSubtitleUrl())
-                robot.press(PlayerRemoteKey.PlayPause)
-                assertFocusedPlayPause()
-                robot.press(PlayerRemoteKey.Right)
-                robot.press(PlayerRemoteKey.Right)
+                assertFocusedTag(PlayerScreenTestTags.AudioSubtitles, "restored audio/subtitle button")
                 robot.press(PlayerRemoteKey.Select)
                 assertSelectedPanelItem("subtitle", 0)
                 robot.pressBack()
@@ -256,6 +253,15 @@ internal class PlayerScreenE2ETest : PlayerComposeInstrumentationTestCase() {
                 robot.press(PlayerRemoteKey.Left)
                 assertFocusedTag(PlayerScreenTestTags.MarkWatched, "mark-watched button")
                 robot.press(PlayerRemoteKey.Left)
+                assertFocusedPlayPause()
+                // The four-second fixture may be near its end after the earlier remote checks.
+                robot.press(PlayerRemoteKey.Up)
+                assertFocusedSeekBar()
+                robot.press(PlayerRemoteKey.Left)
+                awaitPlayerCondition("rewind gives the selected cue a full playback window") {
+                    playerPosition() == 0L && !playerIsPlaying()
+                }
+                robot.press(PlayerRemoteKey.Down)
                 assertFocusedPlayPause()
                 robot.press(PlayerRemoteKey.Select)
                 awaitPlayerCondition("selected forced subtitle renders its own cue") {

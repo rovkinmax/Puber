@@ -17,6 +17,7 @@ internal data class PlayerTextTrack(
     val formatId: String? = null,
     val formatLabel: String? = null,
     val language: String? = null,
+    val isForced: Boolean? = null,
 )
 
 /**
@@ -33,10 +34,26 @@ internal class SubtitleTrackSelector {
         candidates: List<PlayerTextTrack>,
     ): PlayerTextTrack? {
         if (candidates.isEmpty()) return null
-        return matchByTrackGroupId(track, candidates)
-            ?: matchByFormatId(track, candidates)
-            ?: matchByCoordinates(track, candidates)
-            ?: matchByLanguage(track, candidates)
+        val compatibleCandidates = candidates.filter { candidate ->
+            candidate.isSemanticallyCompatibleWith(track)
+        }
+        return matchByTrackGroupId(track, compatibleCandidates)
+            ?: matchByFormatId(track, compatibleCandidates)
+            ?: matchByCoordinates(track, compatibleCandidates)
+            ?: matchByLanguage(track, compatibleCandidates)
+    }
+
+    private fun PlayerTextTrack.isSemanticallyCompatibleWith(
+        track: SubtitleTrackUIState,
+    ): Boolean {
+        val languageMatches = track.language.isBlank() ||
+            language?.let { sameSubtitleLanguage(it, track.language) } == true
+        val forcedMatches = track.isForced == null || isForced == track.isForced
+        val preferredLabel = track.readableDescriptiveLabel()?.normalizedSubtitleLabel()
+        val candidateLabel = formatLabel?.normalizedSubtitleLabel()
+        val labelMatches = preferredLabel == null || candidateLabel == null ||
+            preferredLabel == candidateLabel
+        return languageMatches && forcedMatches && labelMatches
     }
 
     /** Exact and order independent: survives track groups being added or reordered. */
@@ -83,3 +100,5 @@ internal class SubtitleTrackSelector {
             .singleOrNull()
     }
 }
+
+private fun String.normalizedSubtitleLabel(): String = trim().lowercase()

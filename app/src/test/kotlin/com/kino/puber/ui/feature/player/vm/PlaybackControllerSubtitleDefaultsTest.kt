@@ -18,6 +18,7 @@ import io.mockk.every
 import io.mockk.mockk
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -58,6 +59,38 @@ internal class PlaybackControllerSubtitleDefaultsTest {
                 arrayOf(renderer), groups, MediaSource.MediaPeriodId(Any()), Timeline.EMPTY,
             )
             assertNull(result.selections[0])
+        } finally {
+            controller.release()
+        }
+    }
+
+    @Test
+    fun switchStream_invalidatesPendingSubtitleAndDisablesTextUntilFreshRestore() {
+        val context = RuntimeEnvironment.getApplication()
+        val controller = PlaybackController(
+            context, OkHttpClient(), mockk<Cache>(relaxed = true), PlayerPreferencesRepository(context),
+        )
+        try {
+            controller.prepare(StreamSource("file:///first.mp4", isHls = false), null, null)
+            controller.selectSubtitle(
+                SubtitleTrackUIState(
+                    label = "English",
+                    language = "en",
+                    url = "https://test/subtitle.vtt",
+                ),
+            )
+
+            controller.switchStream(StreamSource("file:///second.mp4", isHls = false), null)
+
+            val pending = PlaybackController::class.java.getDeclaredField("pendingSubtitleTrack").run {
+                isAccessible = true
+                get(controller)
+            }
+            assertNull(pending)
+            assertTrue(
+                controller.player?.trackSelectionParameters?.disabledTrackTypes
+                    ?.contains(C.TRACK_TYPE_TEXT) == true,
+            )
         } finally {
             controller.release()
         }
