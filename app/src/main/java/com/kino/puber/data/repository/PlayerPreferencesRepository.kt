@@ -4,6 +4,13 @@ import android.content.Context
 import com.kino.puber.domain.model.SubtitleSize
 import com.kino.puber.ui.feature.player.model.BufferPreset
 
+data class SubtitlePreference(
+    val language: String?,
+    val url: String?,
+    val isForced: Boolean?,
+    val descriptiveLabel: String?,
+)
+
 class PlayerPreferencesRepository(context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -20,6 +27,16 @@ class PlayerPreferencesRepository(context: Context) {
         return prefs.getString("${KEY_SUBTITLE_URL_PREFIX}$itemId", null)
     }
 
+    fun getPreferredSubtitlePreference(itemId: Int): SubtitlePreference {
+        val key = "${KEY_SUBTITLE_FORCED_PREFIX}$itemId"
+        return SubtitlePreference(
+            language = getPreferredSubtitleLang(itemId),
+            url = getPreferredSubtitleUrl(itemId),
+            isForced = if (prefs.contains(key)) prefs.getBoolean(key, false) else null,
+            descriptiveLabel = prefs.getString("${KEY_SUBTITLE_LABEL_PREFIX}$itemId", null),
+        )
+    }
+
     fun getPreferredAudioLabel(itemId: Int): String? {
         return prefs.getString("${KEY_AUDIO_LABEL_PREFIX}$itemId", null)
     }
@@ -30,6 +47,8 @@ class PlayerPreferencesRepository(context: Context) {
         audioLabel: String?,
         subtitleLang: String?,
         subtitleUrl: String?,
+        subtitleIsForced: Boolean? = null,
+        subtitleDescriptiveLabel: String? = null,
     ) {
         prefs.edit().apply {
             if (audioLang != null) {
@@ -51,6 +70,16 @@ class PlayerPreferencesRepository(context: Context) {
                 putString("${KEY_SUBTITLE_URL_PREFIX}$itemId", subtitleUrl)
             } else {
                 remove("${KEY_SUBTITLE_URL_PREFIX}$itemId")
+            }
+            if (subtitleIsForced != null) {
+                putBoolean("${KEY_SUBTITLE_FORCED_PREFIX}$itemId", subtitleIsForced)
+            } else {
+                remove("${KEY_SUBTITLE_FORCED_PREFIX}$itemId")
+            }
+            if (subtitleDescriptiveLabel != null) {
+                putString("${KEY_SUBTITLE_LABEL_PREFIX}$itemId", subtitleDescriptiveLabel)
+            } else {
+                remove("${KEY_SUBTITLE_LABEL_PREFIX}$itemId")
             }
             apply()
         }
@@ -114,6 +143,8 @@ class PlayerPreferencesRepository(context: Context) {
         const val KEY_AUDIO_LABEL_PREFIX = "audio_label_"
         const val KEY_SUBTITLE_LANG_PREFIX = "subtitle_lang_"
         const val KEY_SUBTITLE_URL_PREFIX = "subtitle_url_"
+        const val KEY_SUBTITLE_FORCED_PREFIX = "subtitle_forced_"
+        const val KEY_SUBTITLE_LABEL_PREFIX = "subtitle_label_"
         const val KEY_SUBTITLE_SIZE = "subtitle_size"
         const val KEY_SKIP_INTRO = "skip_intro_enabled"
         const val KEY_SKIP_RECAP = "skip_recap_enabled"

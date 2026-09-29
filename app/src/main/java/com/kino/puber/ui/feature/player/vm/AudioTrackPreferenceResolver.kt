@@ -30,25 +30,43 @@ internal class AudioTrackPreferenceResolver {
         preferredPlayerGroupIndex: Int? = null,
         preferredPlayerTrackIndex: Int? = null,
         preferredPlayerTrackGroupId: String? = null,
+        preferredIsForced: Boolean? = null,
+        preferredDescriptiveLabel: String? = null,
+        allowPositionFallback: Boolean = false,
     ): Int {
+        if (preferredLang != null && preferredLang.isEmpty()) {
+            return tracks.indexOfFirst { it.isOff }
+        }
+        val compatibleTracks = tracks.withIndex().filter { (_, track) ->
+            track.isOff || track.isSemanticallyCompatibleWith(
+                preferredLang = preferredLang,
+                preferredIsForced = preferredIsForced,
+                preferredDescriptiveLabel = preferredDescriptiveLabel,
+            )
+        }
         val matchers = listOf(
-            { subtitleIdentityMatch(tracks, preferredUrl) },
-            { subtitleIdentityMatch(tracks, preferredPlayerTrackId) },
+            { subtitleIdentityMatch(compatibleTracks, preferredUrl) },
+            { subtitleIdentityMatch(compatibleTracks, preferredPlayerTrackId) },
             {
-                tracks.withIndex().filter { (_, track) ->
+                compatibleTracks.filter { (_, track) ->
                     !preferredPlayerTrackGroupId.isNullOrEmpty() &&
                         track.playerTrackGroupId == preferredPlayerTrackGroupId &&
                         track.playerTrackIndex == preferredPlayerTrackIndex
                 }.singleOrNull()?.index ?: NO_MATCH
             },
             {
-                playerCoordinatesMatch(
-                    tracks,
-                    preferredPlayerGroupIndex,
-                    preferredPlayerTrackIndex,
-                )
+                if (allowPositionFallback) {
+                    playerCoordinatesMatch(
+                        compatibleTracks,
+                        preferredPlayerGroupIndex,
+                        preferredPlayerTrackIndex,
+                    )
+                } else {
+                    NO_MATCH
+                }
             },
-            { subtitleLanguageMatch(tracks, preferredLang) },
+            { subtitleDescriptiveLabelMatch(compatibleTracks, preferredDescriptiveLabel) },
+            { subtitleLanguageMatch(compatibleTracks, preferredLang) },
         )
         return matchers.firstNotNullOfOrNull { matcher ->
             matcher().takeIf { it >= 0 }
@@ -56,22 +74,32 @@ internal class AudioTrackPreferenceResolver {
     }
 
     private fun subtitleIdentityMatch(
-        tracks: List<SubtitleTrackUIState>,
+        tracks: List<IndexedValue<SubtitleTrackUIState>>,
         preferredIdentity: String?,
     ): Int {
         if (preferredIdentity.isNullOrEmpty()) return NO_MATCH
-        return tracks.withIndex().filter { (_, track) ->
+        return tracks.filter { (_, track) ->
             track.identities.any { identity -> sameSubtitleIdentity(identity, preferredIdentity) }
         }.singleOrNull()?.index ?: NO_MATCH
     }
 
+    private fun subtitleDescriptiveLabelMatch(
+        tracks: List<IndexedValue<SubtitleTrackUIState>>,
+        preferredLabel: String?,
+    ): Int {
+        val normalizedLabel = preferredLabel?.normalizedPreferenceLabel() ?: return NO_MATCH
+        return tracks.filter { (_, track) ->
+            track.readableDescriptiveLabel()?.normalizedPreferenceLabel() == normalizedLabel
+        }.singleOrNull()?.index ?: NO_MATCH
+    }
+
     private fun playerCoordinatesMatch(
-        tracks: List<SubtitleTrackUIState>,
+        tracks: List<IndexedValue<SubtitleTrackUIState>>,
         preferredGroupIndex: Int?,
         preferredTrackIndex: Int?,
     ): Int {
         if (preferredGroupIndex == null || preferredTrackIndex == null) return NO_MATCH
-        return tracks.withIndex().filter { (_, track) ->
+        return tracks.filter { (_, track) ->
             track.playerGroupIndex == preferredGroupIndex &&
                 track.playerTrackIndex == preferredTrackIndex
         }.singleOrNull()?.index ?: NO_MATCH
@@ -115,12 +143,11 @@ internal class AudioTrackPreferenceResolver {
     }
 
     private fun subtitleLanguageMatch(
-        tracks: List<SubtitleTrackUIState>,
+        tracks: List<IndexedValue<SubtitleTrackUIState>>,
         preferredLang: String?,
     ): Int {
         if (preferredLang == null) return NO_MATCH
-        if (preferredLang.isEmpty()) return tracks.indexOfFirst { it.isOff }
-        val matches = tracks.withIndex().filter {
+        val matches = tracks.filter {
             sameSubtitleLanguage(it.value.language, preferredLang)
         }
         val manifestMatches = matches.filter { it.value.playerTrackId != null }
@@ -143,6 +170,23 @@ internal class AudioTrackPreferenceResolver {
         val NUMBER_PREFIX_REGEX = Regex("""^\d+\.\s*""")
     }
 }
+
+private fun SubtitleTrackUIState.isSemanticallyCompatibleWith(
+    preferredLang: String?,
+    preferredIsForced: Boolean?,
+    preferredDescriptiveLabel: String?,
+): Boolean {
+    val languageMatches = preferredLang.isNullOrEmpty() ||
+        sameSubtitleLanguage(language, preferredLang)
+    val forcedMatches = preferredIsForced == null || isForced == preferredIsForced
+    val preferredLabel = preferredDescriptiveLabel?.normalizedPreferenceLabel()
+    val candidateLabel = readableDescriptiveLabel()?.normalizedPreferenceLabel()
+    val labelMatches = preferredLabel == null || preferredLabel == candidateLabel
+    return languageMatches && forcedMatches && labelMatches
+}
+
+private fun String.normalizedPreferenceLabel(): String? =
+    trim().lowercase().takeIf { it.isNotEmpty() }
 
 private val SubtitleTrackUIState.identities: List<String>
     get() = listOfNotNull(url, sourceFile, playerTrackUri, playerTrackId, playerTrackGroupId)

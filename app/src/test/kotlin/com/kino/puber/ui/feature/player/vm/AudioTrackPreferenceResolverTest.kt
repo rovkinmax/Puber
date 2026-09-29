@@ -95,7 +95,7 @@ internal class AudioTrackPreferenceResolverTest {
     }
 
     @Test
-    fun findSubtitleTrackIndex_usesPlayerCoordinates_whenSelectedFormatLosesItsId() {
+    fun findSubtitleTrackIndex_doesNotUseCoordinatesAcrossMediaSources() {
         val tracks = listOf(
             subtitleTrack(index = 0, language = "", url = ""),
             subtitleTrack(index = 1, language = "eng", url = "", groupIndex = 5),
@@ -108,8 +108,62 @@ internal class AudioTrackPreferenceResolverTest {
             preferredLang = "eng",
             preferredUrl = "",
             preferredPlayerTrackId = "manifest-id-that-disappeared",
-            preferredPlayerGroupIndex = 6,
             preferredPlayerTrackIndex = 0,
+        )
+
+        assertEquals(-1, result)
+    }
+
+    @Test
+    fun findSubtitleTrackIndex_rejectsReusedIdentityWithDifferentLanguage() {
+        val tracks = listOf(
+            subtitleTrack(index = 0, language = "", url = ""),
+            subtitleTrack(index = 1, language = "spa", url = "", playerTrackId = "reused-id"),
+        )
+
+        val result = resolver.findSubtitleTrackIndex(
+            tracks = tracks,
+            preferredLang = "eng",
+            preferredUrl = "reused-id",
+        )
+
+        assertEquals(-1, result)
+    }
+
+    @Test
+    fun findSubtitleTrackIndex_rejectsForcedOnlyReplacementForFullPreference() {
+        val tracks = listOf(
+            subtitleTrack(index = 0, language = "", url = ""),
+            subtitleTrack(index = 1, language = "eng", url = "", playerTrackId = "reused-id")
+                .copy(isForced = true),
+        )
+
+        val result = resolver.findSubtitleTrackIndex(
+            tracks = tracks,
+            preferredLang = "eng",
+            preferredUrl = "reused-id",
+            preferredIsForced = false,
+        )
+
+        assertEquals(-1, result)
+    }
+
+    @Test
+    fun findSubtitleTrackIndex_usesMeaningfulLabelToResolveSameLanguageVariants() {
+        val tracks = listOf(
+            subtitleTrack(index = 0, language = "", url = ""),
+            subtitleTrack(index = 1, language = "eng", url = "", playerTrackId = "reused")
+                .copy(isForced = false, descriptiveLabel = "English SDH"),
+            subtitleTrack(index = 2, language = "eng", url = "", playerTrackId = "reused")
+                .copy(isForced = false, descriptiveLabel = "English Commentary"),
+        )
+
+        val result = resolver.findSubtitleTrackIndex(
+            tracks = tracks,
+            preferredLang = "eng",
+            preferredUrl = "reused",
+            preferredIsForced = false,
+            preferredDescriptiveLabel = "English Commentary",
         )
 
         assertEquals(2, result)

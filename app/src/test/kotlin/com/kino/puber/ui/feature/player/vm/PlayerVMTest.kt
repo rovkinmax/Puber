@@ -18,6 +18,7 @@ import com.kino.puber.ui.feature.player.model.PlayerAction
 import com.kino.puber.ui.feature.player.model.PlayerScreenParams
 import com.kino.puber.ui.feature.player.model.PlayerViewState
 import com.kino.puber.ui.feature.player.model.SkipSegmentUIState
+import com.kino.puber.ui.feature.player.model.isOff
 import com.kino.puber.util.FakeResourceProvider
 import com.kino.puber.util.MainDispatcherExtension
 import io.ktor.client.plugins.HttpRequestTimeoutException
@@ -262,7 +263,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
     @Test
     fun selectTrack_savesLangToPrefs() {
         startedVM().onAction(PlayerAction.SelectAudioTrack(1))
-        verify { interactor.saveTrackPreferences(42, "rus", any(), any(), any()) }
+        verify { interactor.saveTrackPreferences(42, "rus", any(), any(), any(), any(), any()) }
     }
 
     // endregion
@@ -735,8 +736,7 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
 
     @Test
     fun tracksUpdated_restoresPreferredSubtitleByUrl_beforeLanguage() {
-        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns "https://test/subtitles/rus-forced.vtt"
+        stubPreferredSubtitle("rus", "https://test/subtitles/rus-forced.vtt")
         val vm = startedVM()
 
         val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
@@ -748,9 +748,10 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
 
     @Test
     fun tracksUpdated_restoresPreferredSubtitleByStableUrl_whenSignedUrlChanges() {
-        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns
-                "https://old-cdn.example/pd/expired-token/subtitles/rus-forced.vtt?e=1"
+        stubPreferredSubtitle(
+            "rus",
+            "https://old-cdn.example/pd/expired-token/subtitles/rus-forced.vtt?e=1",
+        )
         val vm = startedVM()
 
         val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
@@ -762,22 +763,21 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
 
     @Test
     fun tracksUpdated_doesNotRestoreAmbiguousSubtitleLanguage_whenUrlIsMissing() {
-        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns null
+        stubPreferredSubtitle("rus", null)
         val vm = startedVM()
 
         val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
         callbackSlot.captured.onTracksUpdated(tracks, 0, testDiscoveredSubtitleTracks)
 
-        verify(exactly = 0) { playbackController.selectSubtitle(any()) }
+        verify { playbackController.selectSubtitle(match { it.isOff }) }
+        verify(exactly = 0) { playbackController.selectSubtitle(match { !it.isOff }) }
         assertEquals(0, contentState(vm).selectedSubtitleIndex)
     }
 
     @Test
     fun tracksUpdated_restoreDoesNotRewritePreferencesFromIntermediateState() {
         every { interactor.getPreferredAudioLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns "https://test/subtitles/rus-forced.vtt"
+        stubPreferredSubtitle("rus", "https://test/subtitles/rus-forced.vtt")
         val vm = startedVM()
 
         val tracks = listOf(AudioTrackUIState(0, "English", "eng"), AudioTrackUIState(1, "Russian", "rus"))
@@ -785,7 +785,9 @@ internal class PlayerVMTest : PlayerVMTestFixture() {
 
         verify { playbackController.selectAudioTrack(1) }
         verify { playbackController.selectSubtitle(contentState(vm).subtitleTracks[2]) }
-        verify(exactly = 0) { interactor.saveTrackPreferences(any(), any(), any(), any(), any()) }
+        verify(exactly = 0) {
+            interactor.saveTrackPreferences(any(), any(), any(), any(), any(), any(), any())
+        }
         assertEquals(1, contentState(vm).selectedAudioTrackIndex)
         assertEquals(2, contentState(vm).selectedSubtitleIndex)
     }

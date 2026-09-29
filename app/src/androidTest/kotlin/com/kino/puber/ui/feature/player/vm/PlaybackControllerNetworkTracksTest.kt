@@ -298,7 +298,7 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
     }
 
     @Test
-    fun hlsSwitch_preservesPositionIntentTracks_andLastStreamWins() = run {
+    fun hlsSwitch_preservesPositionIntentAndAudio_butWaitsForFreshSubtitleRestore() = run {
         lateinit var lowUrl: String
         lateinit var highUrl: String
         lateinit var subtitle: SubtitleLink
@@ -336,7 +336,7 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
             }
         }
 
-        step("Pause and switch to high quality with position, intent, and tracks preserved") {
+        step("Pause and switch to high quality with text disabled until its tracks are resolved") {
             runOnPlayer { controller.pause() }
             awaitCondition("paused switch source") { !isPlaying() }
             pausedPosition = currentPosition()
@@ -347,8 +347,9 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
                 currentMediaPath() == "/media/hls/quality-high.m3u8" &&
                     playbackState() == Player.STATE_READY
             }
-            assertFalse(textTracksDisabled())
-            assertTrue(selectedTextTrack())
+            awaitCondition("subtitle selection invalidated for the replacement source") {
+                textTracksDisabled() && !selectedTextTrack()
+            }
             assertFalse(isPlaying())
             assertEquals(PlaybackIntent.Paused, playbackIntent())
             assertTrue(currentPosition() in (pausedPosition - 800L)..(pausedPosition + 800L))
@@ -371,6 +372,7 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
                 currentMediaPath() == "/media/hls/quality-low.m3u8" &&
                     playbackIntent() == PlaybackIntent.PlayRequested
             }
+            assertTrue(textTracksDisabled())
         }
 
         step("Verify both quality requests and the final error-free state") {
@@ -386,7 +388,7 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
     }
 
     @Test
-    fun progressiveSwitch_restoresSelectedSubtitleAndPausedIntent() = run {
+    fun progressiveSwitch_keepsPausedIntentAndRequiresFreshSubtitleRestore() = run {
         lateinit var subtitleUrl: String
         lateinit var subtitle: SubtitleTrackUIState
         lateinit var first: PlayerProbe
@@ -432,13 +434,101 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
             )
         }
 
-        step("Restore then disable the selected subtitle on the new source") {
-            awaitCondition("subtitle selection restored after progressive switch") {
+        step("Restore explicitly then disable the selected subtitle on the new source") {
+            awaitCondition("subtitle remains disabled after progressive switch") {
+                textTracksDisabled() && !selectedTextTrack()
+            }
+            runOnPlayer { controller.selectSubtitle(subtitle) }
+            awaitCondition("fresh subtitle row restores after progressive switch") {
                 !textTracksDisabled() && selectedTextTrack()
             }
             runOnPlayer { controller.selectSubtitle(null) }
             awaitCondition("subtitle disabled after progressive switch") { textTracksDisabled() }
         }
+    }
+
+    @Test
+    fun qualitySwitch_missingPreferredLanguage_staysOffAtReusedCoordinates() = run {
+        val spanishLabel = "Spanish Only"
+        val spanishCue = "Distinct Spanish quality cue"
+        val spanishMaster = subtitleVariantMaster().lineSequence()
+            .filterNot { it.contains("TYPE=SUBTITLES") && it.contains("FORCED=YES") }
+            .joinToString("\n") { line ->
+                if (line.contains("TYPE=SUBTITLES")) {
+                    line.replace(FULL_SUBTITLE_MANIFEST_LABEL, spanishLabel)
+                        .replace("LANGUAGE=\"en\"", "LANGUAGE=\"es\"")
+                        .replace("DEFAULT=YES", "DEFAULT=NO")
+                        .replace("AUTOSELECT=YES", "AUTOSELECT=NO")
+                        .replace("subtitle_full.m3u8", "subtitle_spanish.m3u8")
+                } else {
+                    line
+                }
+            }
+        val spanishRoutes = listOf(
+            server.route(
+                id = "spanish-playlist",
+                path = "/media/hls/subtitle_spanish.m3u8",
+                response = HermeticTestServer.text(
+                    body = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:4\n" +
+                        "#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:4.000,\nsubtitle_spanish.vtt\n#EXT-X-ENDLIST",
+                    contentType = HLS_CONTENT_TYPE,
+                ),
+            ),
+            server.route(
+                id = "spanish-cue",
+                path = "/media/hls/subtitle_spanish.vtt",
+                response = HermeticTestServer.text(
+                    body = "WEBVTT\n\n00:00:00.000 --> 00:00:04.000\n$spanishCue\n",
+                    contentType = "text/vtt",
+                ),
+            ),
+        )
+        server.reset(
+            commonHlsRoutes(
+                masterBody = subtitleVariantMaster(),
+                qualityLowMasterBody = spanishMaster,
+                extraRoutes = server.subtitleVariantRoutes("/media/hls") + spanishRoutes,
+            ),
+        )
+        val probe = prepare("/media/hls/master.m3u8")
+        awaitReady(probe)
+        runOnPlayer { controller.pause() }
+        awaitCondition("English full and forced discovered") {
+            trackProbe.subtitleTracks.get().size == 2
+        }
+        val english = trackProbe.subtitleTracks.get().single {
+            it.playerTrackId?.contains(FULL_SUBTITLE_MANIFEST_LABEL) == true
+        }
+        runOnPlayer {
+            controller.selectSubtitle(english)
+            controller.seekTo(SUBTITLE_CUE_POSITION_MS)
+            controller.play()
+        }
+        awaitCondition("English full cue before quality switch") {
+            currentCueTexts() == listOf(FULL_SUBTITLE_CUE)
+        }
+
+        runOnPlayer {
+            controller.pause()
+            controller.switchStream(
+                StreamSource(loopbackUrl("/media/hls/quality-low.m3u8"), isHls = true),
+                null,
+            )
+        }
+        awaitCondition("Spanish-only tracks discovered") {
+            trackProbe.subtitleTracks.get().singleOrNull()?.language == "es"
+        }
+        val spanish = trackProbe.subtitleTracks.get().single()
+        assertEquals(english.playerGroupIndex, spanish.playerGroupIndex)
+        assertEquals(english.playerTrackIndex, spanish.playerTrackIndex)
+        assertFalse(english.playerTrackGroupId == spanish.playerTrackGroupId)
+        assertFalse(english.playerTrackId == spanish.playerTrackId)
+        awaitCondition("replacement source stays explicitly off") {
+            textTracksDisabled() && !selectedTextTrack() && currentCueTexts().isEmpty()
+        }
+        assertEquals(0, server.requestJournal.entries.count { it.path.endsWith("subtitle_spanish.vtt") })
+        assertEquals(null, probe.error.get())
+        assertEquals(0, server.requestJournal.unknownRequests.size)
     }
 
     @Test

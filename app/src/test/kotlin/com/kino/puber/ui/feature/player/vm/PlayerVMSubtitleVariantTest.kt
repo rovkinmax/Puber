@@ -47,14 +47,15 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
                 "English",
                 "uk",
                 "https://cdn.test/subtitle/ukrainian.vtt",
+                null,
+                null,
             )
         }
     }
 
     @Test
     fun tracksUpdated_defersUrlLessLanguagePreference_untilManifestTracksAppear() {
-        every { interactor.getPreferredSubtitleLang(42) } returns "ukr"
-        every { interactor.getPreferredSubtitleUrl(42) } returns ""
+        stubPreferredSubtitle("ukr", "")
         val vm = startedVM()
         val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
         val manifestTrack = testSubtitleTracks.first().copy(
@@ -78,8 +79,7 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
 
     @Test
     fun tracksUpdated_restoresForcedManifestSubtitleBySavedIdentity() {
-        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns "hls-russian-forced"
+        stubPreferredSubtitle("rus", "hls-russian-forced")
         val vm = startedVM()
         val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
         val manifestTracks = listOf(
@@ -169,8 +169,7 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
     @Test
     fun tracksUpdated_restoresSubtitle_whenTrackAppearsAfterElevenEmptyUpdates() {
         every { interactor.getPreferredAudioLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns "hls-russian-forced"
+        stubPreferredSubtitle("rus", "hls-russian-forced")
         val vm = startedVM()
         val audioTracks = listOf(
             AudioTrackUIState(0, "English", "eng"),
@@ -211,8 +210,7 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
         vm.onAction(PlayerAction.SelectSubtitle(2))
         every { interactor.getPreferredAudioLabel(42) } returns "Spanish"
         every { interactor.getPreferredAudioLang(42) } returns "es"
-        every { interactor.getPreferredSubtitleLang(42) } returns "en"
-        every { interactor.getPreferredSubtitleUrl(42) } returns "hls-english-forced"
+        stubPreferredSubtitle("en", "hls-english-forced")
 
         callbackSlot.captured.onError("Network error")
         vm.onAction(PlayerAction.RetryPlayback)
@@ -229,8 +227,7 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
     @Test
     fun tracksUpdated_appliesAudioRestoreOnce_andLetsLaterUserChoiceStand() {
         every { interactor.getPreferredAudioLang(42) } returns "eng"
-        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns ""
+        stubPreferredSubtitle("rus", "")
         val vm = startedVM()
         val audioTracks = listOf(
             AudioTrackUIState(0, "English", "eng"),
@@ -248,8 +245,7 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
 
     @Test
     fun audioSelection_keepsStoredSubtitlePreference_whileSubtitleTracksAreUnknown() {
-        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns "https://api.test/subtitles/rus.srt"
+        stubPreferredSubtitle("rus", "https://api.test/subtitles/rus.srt")
         val vm = startedVM()
         val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
         callbackSlot.captured.onTracksUpdated(audioTracks, 0, emptyList())
@@ -263,21 +259,22 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
                 "English",
                 "rus",
                 "https://api.test/subtitles/rus.srt",
+                null,
+                null,
             )
         }
     }
 
     @Test
     fun subtitleSelection_persistsOffChoice_onceSubtitleTracksAreKnown() {
-        every { interactor.getPreferredSubtitleLang(42) } returns "rus"
-        every { interactor.getPreferredSubtitleUrl(42) } returns "https://api.test/subtitles/rus.srt"
+        stubPreferredSubtitle("rus", "https://api.test/subtitles/rus.srt")
         val vm = startedVM()
         val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))
         callbackSlot.captured.onTracksUpdated(audioTracks, 0, testDiscoveredSubtitleTracks)
 
         vm.onAction(PlayerAction.SelectSubtitle(0))
 
-        verify { interactor.saveTrackPreferences(42, "eng", "English", null, null) }
+        verify { interactor.saveTrackPreferences(42, "eng", "English", null, null, null, null) }
     }
 
     private fun manifestTrack(

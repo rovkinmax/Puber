@@ -10,6 +10,7 @@ import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.Season
+import com.kino.puber.data.repository.SubtitlePreference
 import com.kino.puber.domain.interactor.player.PlayerInteractor
 import com.kino.puber.domain.interactor.player.ResolvedMedia
 import com.kino.puber.domain.interactor.player.SkipSegmentInteractor
@@ -72,13 +73,20 @@ internal abstract class PlayerVMTestFixture {
         every { interactor.selectStreamUrl(any(), any()) } returns testStream
         every { interactor.getPreferredAudioLabel(any()) } returns null
         every { interactor.getPreferredAudioLang(any()) } returns null
-        every { interactor.getPreferredSubtitleLang(any()) } returns null
-        every { interactor.getPreferredSubtitleUrl(any()) } returns null
+        every { interactor.getPreferredSubtitlePreference(any()) } returns
+            SubtitlePreference(
+                language = null,
+                url = null,
+                isForced = null,
+                descriptiveLabel = null,
+            )
         every { interactor.isDebugOverlayEnabled() } returns false
         every { interactor.getSubtitleSize() } returns SubtitleSize.MEDIUM
         every { interactor.getBufferPreset() } returns BufferPreset.AUTO
         every { interactor.isFastDnsEnabled() } returns true
-        every { interactor.saveTrackPreferences(any(), any(), any(), any(), any()) } returns Unit
+        every {
+            interactor.saveTrackPreferences(any(), any(), any(), any(), any(), any(), any())
+        } returns Unit
         every { interactor.findNextEpisode(any(), any(), any()) } returns null
         every { interactor.findPreviousEpisode(any(), any(), any()) } returns null
         coEvery { skipSegmentInteractor.loadSegments(any(), any(), any()) } returns emptyList()
@@ -117,6 +125,20 @@ internal abstract class PlayerVMTestFixture {
     ).also(createdViewModels::add)
 
     protected fun startedVM(): PlayerVM = createVM().also { it.testOnStart() }
+
+    protected fun stubPreferredSubtitle(
+        language: String?,
+        url: String?,
+        isForced: Boolean? = null,
+        descriptiveLabel: String? = null,
+    ) {
+        every { interactor.getPreferredSubtitlePreference(42) } returns SubtitlePreference(
+            language = language,
+            url = url,
+            isForced = isForced,
+            descriptiveLabel = descriptiveLabel,
+        )
+    }
 
     protected fun contentState(vm: PlayerVM) = (vm.testStateValue as PlayerViewState.Content).content
 
