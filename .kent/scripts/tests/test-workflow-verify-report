@@ -19,7 +19,7 @@ EXPECTED_VERIFY_SHA256 = (
     "fb9a886537873d90ea1a763d9e96999ab8797bd77b28869594a3227a60b80217"
 )
 EXPECTED_CHILD_SHA256 = (
-    "bc342644325925eae39bfbbe489d1be1681f46b4e434cceceac5bb399b5b005c"
+    "24efc0072b0994439083d9a9a08861cb7f44a8a18f90a2da76dba6ac2fa56196"
 )
 TASK = ":app:compileDevDebugKotlin"
 BLOCKED_STDOUT = b'{"transition":"blocked"}\n'
@@ -460,6 +460,18 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
                 {"_kent": {"task_id": None, "opaque": {"nested": True}}},
                 {"_kent": {}},
                 {"_kent": {"unknown": 1.25, "node_id": []}},
+                {"delivery_context": json.dumps({
+                    "schema": "workflow-delivery-context-v1", "phase": "pre_pr",
+                }, separators=(",", ":"))},
+                {"delivery_context": json.dumps({
+                    "schema": "workflow-delivery-context-v1",
+                    "phase": "post_pr",
+                    "pr_url": "https://github.com/example/project/pull/1",
+                    "branch_name": "fixture-branch",
+                    "merge_strategy": "rebase",
+                    "pr_feedback_cursor": "uninitialized",
+                }, separators=(",", ":")), "_kent": runtime_metadata()},
+                {"delivery_context": "private-opaque-delivery-transport"},
             ):
                 marker.unlink()
                 actual_carrier, actual_report, actual_framed = run_wrapper(
@@ -471,6 +483,8 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
                 assert actual_report["code"] == expected_code
                 assert_same_invocation(json.loads(marker.read_text()), invocation)
                 assert b"private-transport-commentary" not in actual_framed
+                if "delivery_context" in transport:
+                    assert transport["delivery_context"].encode() not in actual_framed
 
             marker.unlink()
             runtime_carrier, runtime_report, runtime_framed = run_wrapper(
@@ -596,6 +610,18 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
     invalid_inputs += tuple(
         json.dumps({**business, "commentary": value}).encode()
         for value in (None, [], {}, True, 1, "\ud800", "x" * (1024 * 1024))
+    )
+    invalid_inputs += tuple(
+        json.dumps({**business, "delivery_context": value}).encode()
+        for value in (None, [], {}, True, 1, "", "\ud800", "x" * (1024 * 1024))
+    )
+    invalid_inputs += (
+        valid_payload(direct_root)[:-1]
+        + b',"delivery_context":"one","delivery_context":"two"}',
+        json.dumps({
+            **business, "delivery_context": "opaque", "extra": "still-rejected",
+        }).encode(),
+        valid_payload(direct_root)[:-1] + b',"delivery_context":"\xff"}',
     )
     runtime_payload = json.dumps({**business, "_kent": runtime_metadata()}).encode()
     admission, descriptor = open_admission_directory(direct_root)

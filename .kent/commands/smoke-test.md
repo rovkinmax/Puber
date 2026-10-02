@@ -17,15 +17,21 @@ Runs smoke test for a feature via MCP mobile.
 
 ## Evidence Safety
 
+- Smoke lease/device execution is blocked until separately approved adoption
+  and source proof of a compatible adapter implementing the KEN-6 mobile Smoke
+  contract/template pinned at Kit commit
+  `0ba82a89e7b38a1f70defe6ec286e33dd7f6ba8d`. The currently tracked Puber
+  adapter is not compatible or ready; this source-only change does not install,
+  qualify, or roll out a replacement. Stop before lease status/acquisition,
+  emulator discovery, or device work. The examples describe the target
+  contract; deterministic tests use synthetic stubs only.
 - Use `.kent/scripts/workflow-checkpoint` to maintain the canonical ignored
-  `.kent/runtime/<TASK-ID>/smoke-checkpoint.json`. Reconcile it before repeating
-  build, install, launch, navigation, mutation, or evidence work, and persist it
-  before every workflow transition. On resume, if the checkpoint retains an
-  exact resource serial and lock token, call the adapter's `resume` operation
-  for that pair before device discovery or fresh acquisition. A partial or
-  inconsistent retained lock blocks the run; do not acquire a replacement or
-  switch serial. If the checkpoint records that no lock has yet been acquired,
-  follow the fresh-acquisition procedure below.
+  `.kent/runtime/<TASK-ID>/smoke-checkpoint.json`. Reconcile and persist its
+  complete state before repeating build, install, launch, navigation, mutation,
+  or evidence work, and before every workflow transition. Keep the verified
+  Task binding and lease fields together in `stage_data`; on handoff pass only
+  the ignored checkpoint path, never its JSON or token. A later Session must
+  repeat native identity readback and checkpoint validation before resuming.
 - Store only the minimum evidence required for the Smoke decision.
 - On the locked test emulator, bounded semantic or visual inspection and safe
   navigation of the already-authenticated app UI are allowed without another
@@ -59,60 +65,379 @@ Runs smoke test for a feature via MCP mobile.
 ## What it does
 
 1. Reads the MCP Mobile Testing section in `AGENTS.md` to understand the process
-2. **Resume the retained lock or acquire a fresh emulator resource lock**
-   - On a resumed run with a checkpointed resource serial and token, resume that
-     exact lock first:
+2. **Establish Task ownership and reconcile a lease before device work**
+   - The adoption gate in Evidence Safety applies before adapter status,
+     acquisition, emulator discovery, or any other device operation. The
+     checked-in Puber adapter is not compatible; do not execute the examples
+     against it or describe this change as adapter adoption.
+   - Resolve identity from the Task short ID rendered for this Smoke invocation.
+     Do not infer Task or Session identity from environment variables. In
+     particular, `KENT_TASK_ID` and `KENT_SESSION_ID` are adapter inputs, not
+     assumed Kent exports. Capture only the required fields; never print or
+     persist the full native Task response:
      ```bash
-     .kent/adapters/mobile/emulator-resource-lock.sh resume \
-       "$LOCK_RESOURCE" "$LOCK_TOKEN"
+     # smoke-lease-case: identity
+     set -euo pipefail
+     TASK_SHORT_ID="${SMOKE_TASK_SHORT_ID:?Set this to the Task short ID rendered for this Smoke run}"
+     [[ "$TASK_SHORT_ID" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]
+     TASK_FIELDS="$(kent task show "$TASK_SHORT_ID" --json |
+       jq -er '
+         [.summary.id, .summary.short_id]
+         | if all(.[]; type == "string" and length > 0)
+           then @tsv
+           else error("native Task identity is incomplete")
+           end
+       ')"
+     IFS=$'\t' read -r TASK_NATIVE_ID VERIFIED_SHORT_ID <<<"$TASK_FIELDS"
+     [[ -n "$TASK_NATIVE_ID" && -n "$VERIFIED_SHORT_ID" ]]
+     [[ "$VERIFIED_SHORT_ID" == "$TASK_SHORT_ID" ]]
+     SESSION_ID="$(kent session-id)"
+     [[ "$SESSION_ID" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]
+     unset KENT_TASK_ID KENT_SESSION_ID
+     export KENT_TASK_ID="$VERIFIED_SHORT_ID" KENT_SESSION_ID="$SESSION_ID"
+     LOCK_ADAPTER=".kent/adapters/mobile/emulator-resource-lock.sh"
+     CHECKPOINT_TOOL=".kent/scripts/workflow-checkpoint"
+     CHECKPOINT_JSON="$("$CHECKPOINT_TOOL" read --stage smoke --task "$TASK_SHORT_ID")"
+     jq -e --arg short "$TASK_SHORT_ID" --arg native "$TASK_NATIVE_ID" '
+       .task_short_id == $short
+       and ((.stage_data // {}) | type == "object")
+       and (.stage_data.task_short_id == null or .stage_data.task_short_id == $short)
+       and (.stage_data.task_native_id == null or .stage_data.task_native_id == $native)
+       and (.stage_data.lease_owner_id == null
+         or .stage_data.lease_owner_id == $short
+         or .stage_data.lease_owner_id == $native)
+       and ((.stage_data.lock_resource // "") | type == "string")
+       and ((.stage_data.lock_token // "") | type == "string")
+     ' <<<"$CHECKPOINT_JSON" >/dev/null
+     LOCK_RESOURCE="$(jq -r '.stage_data.lock_resource // ""' <<<"$CHECKPOINT_JSON")"
+     LOCK_TOKEN="$(jq -r '.stage_data.lock_token // ""' <<<"$CHECKPOINT_JSON")"
+     LOCK_OWNER_ID="$(jq -r '.stage_data.lease_owner_id // ""' <<<"$CHECKPOINT_JSON")"
+     [[ -n "$LOCK_RESOURCE" || -z "$LOCK_TOKEN" ]]
+     [[ -z "$LOCK_RESOURCE" || "$LOCK_RESOURCE" =~ ^[A-Za-z0-9._=-]+$ ]]
+     [[ -z "$LOCK_TOKEN" || "$LOCK_TOKEN" =~ ^[A-Za-z0-9._=-]+$ ]]
+
+     parse_bare_token() {
+       local raw="$1" token
+       [[ "$raw" == *$'\n' ]] || return 1
+       token="${raw%$'\n'}"
+       [[ -n "$token" && "$token" != *$'\n'* && "$token" != *$'\r'* ]]
+       [[ "$token" =~ ^[A-Za-z0-9._=-]+$ ]] || return 1
+       printf '%s' "$token"
+     }
+
+     persist_lease() {
+       local state="$1" owner="$2" resource="$3" token="$4" next_action="$5"
+       local current payload
+       current="$("$CHECKPOINT_TOOL" read --stage smoke --task "$TASK_SHORT_ID")"
+       payload="$(jq -ce \
+         --arg native "$TASK_NATIVE_ID" \
+         --arg short "$TASK_SHORT_ID" \
+         --arg owner "$owner" \
+         --arg resource "$resource" \
+         --arg token "$token" \
+         --arg state "$state" \
+         --arg next "$next_action" '
+           if .task_short_id != $short then error("checkpoint Task mismatch") else . end
+           | if ((.stage_data // {}) | type) != "object" then error("checkpoint stage_data invalid") else . end
+           | if (.stage_data.task_native_id != null and .stage_data.task_native_id != $native) then error("checkpoint native Task mismatch") else . end
+           | if (.stage_data.task_short_id != null and .stage_data.task_short_id != $short) then error("checkpoint short Task mismatch") else . end
+           | if (.stage_data.lease_owner_id != null and .stage_data.lease_owner_id != $owner) then error("checkpoint lease owner mismatch") else . end
+           | if (.stage_data.lock_resource != null and .stage_data.lock_resource != "" and .stage_data.lock_resource != $resource) then error("checkpoint resource mismatch") else . end
+           | if (.stage_data.lock_token != null and .stage_data.lock_token != "" and .stage_data.lock_token != $token) then error("checkpoint token mismatch") else . end
+           | if ($owner != $short and $owner != $native) then error("lease owner is not the verified Task") else . end
+           | .stage_data = ((.stage_data // {}) + {
+               task_native_id: $native,
+               task_short_id: $short,
+               lease_owner_id: $owner,
+               lock_resource: $resource,
+               lock_token: $token,
+               lease_state: $state
+             })
+           | .next_action = $next
+         ' <<<"$current")"
+       printf '%s\n' "$payload" |
+         "$CHECKPOINT_TOOL" write --stage smoke --task "$TASK_SHORT_ID" >/dev/null
+     }
+
+     read_status_owner() {
+       local resource="$1" raw status owner status_resource status_token
+       raw="$("$LOCK_ADAPTER" status "$resource" && printf '\034')" || return 3
+       raw="${raw%$'\034'}"
+       [[ "$raw" == $'unlocked\n' ]] && return 2
+       [[ "$raw" == locked$'\n'* && "$raw" == *$'\n' ]] || return 1
+       status="${raw%$'\n'}"
+       [[ "$status" != *$'\n\n'* ]] || return 1
+       [[ "${status: -1}" != $'\n' ]] || return 1
+       owner="$(sed -n 's/^  task_id=//p' <<<"$status")"
+       status_resource="$(sed -n 's/^  resource=//p' <<<"$status")"
+       status_token="$(sed -n 's/^  token=//p' <<<"$status")"
+       [[ -n "$owner" && "$owner" != *$'\n'* ]] || return 1
+       [[ "$status_resource" == "$resource" ]] || return 1
+       [[ "$status_token" == "<redacted>" ]] || return 1
+       [[ "$owner" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ||
+          "$owner" =~ ^task-[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] || return 1
+       printf '%s' "$owner"
+     }
      ```
-     Continue only if the adapter confirms ownership. A serial/token mismatch
-     blocks the run; never fall through to discovery, `acquire-any`, or another
-     target.
-   - If the checkpoint contains only one member of the serial/token pair, block
-     rather than treating the inconsistent retained state as fresh.
-   - For a fresh run, or a checkpoint that records no lock has yet been
-     acquired, discover and acquire a free emulator-specific lock as follows.
-   - Physical devices, including a real TV, are forbidden unless the task/user explicitly provides permission and an
-     explicit serial for that physical device. Never rely on adb's default target selection.
-   - Prefer already-running healthy emulators. Discover them with:
+     The same cleanup handler must be installed before any device work, but
+     only after a lease is held and checkpointed:
      ```bash
-     EMULATORS=($(.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators tv))
+     # smoke-lease-case: release
+     cleanup_lease() {
+       [[ "${LEASE_HELD:-false}" == true ]] || return 0
+       local release_status=0 status_raw
+       if "$LOCK_ADAPTER" release "$LOCK_RESOURCE" "$LOCK_TOKEN" >/dev/null; then
+         :
+       else
+         release_status=$?
+       fi
+       if ! status_raw="$("$LOCK_ADAPTER" status "$LOCK_RESOURCE" && printf '\034')"; then
+         persist_lease held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+           "Resolve Smoke lease cleanup; status readback failed" || true
+         echo "Smoke lease cleanup unresolved: status readback failed" >&2
+         return 1
+       fi
+       status_raw="${status_raw%$'\034'}"
+       if [[ "$status_raw" != $'unlocked\n' ]]; then
+         persist_lease held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+           "Resolve Smoke lease cleanup; do not continue" || true
+         echo "Smoke lease cleanup unresolved: resource is not verified unlocked" >&2
+         return 1
+       fi
+       if ! persist_lease released "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+         "Continue only after verified lease release"; then
+         echo "Smoke lease cleanup unresolved: checkpoint update failed" >&2
+         return 1
+       fi
+       LEASE_HELD=false
+       if (( release_status != 0 )); then
+         echo "Release command failed, but exact-resource readback is unlocked" >&2
+       fi
+     }
+
+     on_smoke_exit() {
+       local smoke_status=$?
+       trap - EXIT
+       if cleanup_lease; then
+         exit "$smoke_status"
+       fi
+       exit 1
+     }
      ```
-   - If one or more emulators are already running, acquire any free emulator-specific lock:
+     A fresh Smoke run must first have a valid canonical checkpoint initialized
+     from its actual completed/remaining checklist and next action. If the
+     checkpoint is missing, malformed, bound to another Task, or internally
+     conflicting, stop; do not replace it with an empty checkpoint or acquire
+     a lease.
+   - Extend only the existing checkpoint `stage_data`, preserving its other
+     fields and top-level `task_short_id`. Store
+     `task_native_id`, `task_short_id`, `lease_owner_id`, `lock_resource`, and
+     `lock_token` together. Reject conflicting identity or owner fields.
+     Enrich missing legacy Task identity fields only after the native readback
+     above matches the checkpoint's existing short ID. New leases use the
+     verified short ID as owner. Accept a legacy native-ID owner only when
+     redacted status proves that exact native-ID/short-ID mapping; retain that
+     owner ID unchanged for resume and release.
+   - Reconcile before every acquisition or resume:
+     - **Resource and token both present:** inspect redacted status for that
+       exact resource. A locked record must have one valid owner/resource record
+       for this Task. Resume only that pair with `resume`; require its single
+       bare-token response to equal the checkpoint token. A foreign, malformed,
+       duplicate, or mismatched record, failed resume, or wrong token blocks.
+       Do not fall through to discovery or switch targets. The pinned contract's
+       identity-bound behavior for `resume` when the lock is absent remains in
+       force.
+     - **Known resource, missing token (including discarded acquisition
+       stdout):** inspect that exact resource with `status`. Only one valid
+       redacted owner record for the verified Task permits `resume-owned`.
+       Require one valid bare-token response, then immediately persist it.
+       A foreign, malformed, duplicate, resource-mismatched, or unlocked status
+       blocks this known-resource recovery.
+     - **No resource and no token:** inventory only the eligible resources for
+       this Smoke form factor and inspect each with redacted `status`. Recover
+       only when exactly one candidate proves the same Task; use
+       `resume-owned`, then immediately persist the returned token. Multiple
+       same-Task candidates are ambiguous and block. Zero proven same-Task
+       candidates proceeds to ordinary fresh acquisition. Foreign, malformed,
+       or duplicate ownership is never proof; a sole occupied resource is not
+       adoptable.
+     - **Token without resource:** inconsistent checkpoint; block.
+   - For a retained resource/token pair, resume exactly that pair after the
+     current Task and Session identity is verified:
      ```bash
-     LOCK_OUTPUT="$(.kent/adapters/mobile/emulator-resource-lock.sh acquire-any "${EMULATORS[@]}" -- 900 7200)"
-     LOCK_RESOURCE="$(printf '%s\n' "$LOCK_OUTPUT" | sed -n 's/^resource=//p')"
-     LOCK_TOKEN="$(printf '%s\n' "$LOCK_OUTPUT" | sed -n 's/^token=//p')"
-     DEVICE_SERIAL="$LOCK_RESOURCE"
-     trap '.kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"' EXIT
+     # smoke-lease-case: resume
+     if [[ -n "$LOCK_RESOURCE" && -n "$LOCK_TOKEN" ]]; then
+       if STATUS_OWNER="$(read_status_owner "$LOCK_RESOURCE")"; then
+         [[ "$STATUS_OWNER" == "$TASK_SHORT_ID" || "$STATUS_OWNER" == "$TASK_NATIVE_ID" ]]
+         [[ -z "$LOCK_OWNER_ID" || "$LOCK_OWNER_ID" == "$STATUS_OWNER" ]]
+         LOCK_OWNER_ID="$STATUS_OWNER"
+       else
+         STATUS_RESULT=$?
+         [[ "$STATUS_RESULT" -eq 2 ]] || exit 1
+         LOCK_OWNER_ID="${LOCK_OWNER_ID:-$TASK_SHORT_ID}"
+       fi
+       export KENT_TASK_ID="$LOCK_OWNER_ID" KENT_SESSION_ID="$SESSION_ID"
+       LOCK_OUTPUT="$("$LOCK_ADAPTER" resume "$LOCK_RESOURCE" "$LOCK_TOKEN" && printf '\034')"
+       LOCK_OUTPUT="${LOCK_OUTPUT%$'\034'}"
+       RESUMED_TOKEN="$(parse_bare_token "$LOCK_OUTPUT")"
+       [[ "$RESUMED_TOKEN" == "$LOCK_TOKEN" ]]
+       persist_lease held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+         "Continue Smoke on the retained resource"
+       LEASE_HELD=true
+       DEVICE_SERIAL="$LOCK_RESOURCE"
+       trap on_smoke_exit EXIT
+     fi
      ```
-   - If no emulator is running, do not run `adb` without `-s`. Either block, or start an emulator only when the task/user
-     explicitly allows starting one. After the emulator appears in `adb devices`, acquire its emulator-specific lock and
-     set `DEVICE_SERIAL` to that serial.
-   - Use a physical device only with explicit user permission and an explicit serial:
+     If the exact pair cannot be proven or resumed, stop; never fall through
+     to discovery or fresh acquisition.
+   - For a known resource with a missing token, or an interruption that lost
+     acquire stdout, recover only from a valid same-Task status record:
      ```bash
-     LOCK_RESOURCE="<explicit-physical-serial>"
-     LOCK_TOKEN="$(.kent/adapters/mobile/emulator-resource-lock.sh acquire "$LOCK_RESOURCE" 900 7200)"
-     DEVICE_SERIAL="$LOCK_RESOURCE"
-     trap '.kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"' EXIT
+     # smoke-lease-case: recovery
+     if [[ -n "$LOCK_RESOURCE" && -z "$LOCK_TOKEN" ]]; then
+       STATUS_OWNER="$(read_status_owner "$LOCK_RESOURCE")"
+       [[ "$STATUS_OWNER" == "$TASK_SHORT_ID" || "$STATUS_OWNER" == "$TASK_NATIVE_ID" ]]
+       [[ -z "$LOCK_OWNER_ID" || "$LOCK_OWNER_ID" == "$STATUS_OWNER" ]]
+       LOCK_OWNER_ID="$STATUS_OWNER"
+       export KENT_TASK_ID="$LOCK_OWNER_ID" KENT_SESSION_ID="$SESSION_ID"
+       LOCK_OUTPUT="$("$LOCK_ADAPTER" resume-owned "$LOCK_RESOURCE" && printf '\034')"
+       LOCK_OUTPUT="${LOCK_OUTPUT%$'\034'}"
+       LOCK_TOKEN="$(parse_bare_token "$LOCK_OUTPUT")"
+       persist_lease held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+         "Continue Smoke after owned-resource recovery"
+       LEASE_HELD=true
+       DEVICE_SERIAL="$LOCK_RESOURCE"
+       trap on_smoke_exit EXIT
+     elif [[ -z "$LOCK_RESOURCE" && -z "$LOCK_TOKEN" ]]; then
+       declare -A SEEN_EMULATORS=()
+       EMULATORS=()
+       if [[ -n "${AUTHORIZED_PHYSICAL_SERIAL:-}" ]]; then
+         [[ "$AUTHORIZED_PHYSICAL_SERIAL" =~ ^[A-Za-z0-9._=-]+$ ]]
+         EMULATORS=("$AUTHORIZED_PHYSICAL_SERIAL")
+       else
+         EMULATOR_OUTPUT="$("$LOCK_ADAPTER" adb-emulators tv)"
+         if [[ -n "$EMULATOR_OUTPUT" ]]; then
+           mapfile -t EMULATORS <<<"$EMULATOR_OUTPUT"
+         fi
+       fi
+       for candidate in "${EMULATORS[@]}"; do
+         [[ "$candidate" =~ ^[A-Za-z0-9._=-]+$ && -z "${SEEN_EMULATORS[$candidate]+x}" ]]
+         SEEN_EMULATORS["$candidate"]=1
+       done
+       SAME_TASK_RESOURCES=()
+       SAME_TASK_OWNERS=()
+       for candidate in "${EMULATORS[@]}"; do
+         if STATUS_OWNER="$(read_status_owner "$candidate")"; then
+           if [[ "$STATUS_OWNER" == "$TASK_SHORT_ID" || "$STATUS_OWNER" == "$TASK_NATIVE_ID" ]]; then
+             SAME_TASK_RESOURCES+=("$candidate")
+             SAME_TASK_OWNERS+=("$STATUS_OWNER")
+           fi
+         else
+           STATUS_RESULT=$?
+           [[ "$STATUS_RESULT" -eq 1 || "$STATUS_RESULT" -eq 2 ]] || exit 1
+         fi
+       done
+       if (( ${#SAME_TASK_RESOURCES[@]} > 1 )); then
+         echo "Smoke lease recovery is ambiguous: multiple same-Task resources" >&2
+         exit 1
+       elif (( ${#SAME_TASK_RESOURCES[@]} == 1 )); then
+         LOCK_RESOURCE="${SAME_TASK_RESOURCES[0]}"
+         LOCK_OWNER_ID="${SAME_TASK_OWNERS[0]}"
+         export KENT_TASK_ID="$LOCK_OWNER_ID" KENT_SESSION_ID="$SESSION_ID"
+         LOCK_OUTPUT="$("$LOCK_ADAPTER" resume-owned "$LOCK_RESOURCE" && printf '\034')"
+         LOCK_OUTPUT="${LOCK_OUTPUT%$'\034'}"
+         LOCK_TOKEN="$(parse_bare_token "$LOCK_OUTPUT")"
+         persist_lease held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+           "Continue Smoke after same-Task resource recovery"
+         LEASE_HELD=true
+         DEVICE_SERIAL="$LOCK_RESOURCE"
+         trap on_smoke_exit EXIT
+       fi
+     elif [[ -z "$LOCK_RESOURCE" || -z "$LOCK_TOKEN" ]]; then
+       echo "Smoke lease checkpoint contains an inconsistent resource/token pair" >&2
+       exit 1
+     fi
      ```
-   - Keep the token until smoke testing is fully reported. The `trap` releases it on normal exit or failure; explicit
-     release is also fine after the report:
+     A zero-match inventory leaves the resource unset for fresh acquisition.
+     Malformed/foreign metadata is never adopted; a valid foreign owner is a
+     non-match, and an ambiguous multiple same-Task match blocks.
+   - Retained-resource and no-resource recovery both use the current Session
+     ID obtained above. On interruption before checkpoint persistence, a later
+     Session re-resolves identity and uses the bounded status inventory; it
+     never guesses from sole occupancy. Before a workflow handoff, reconcile
+     and persist the complete checkpoint and next action. Carry only the
+     canonical ignored checkpoint reference; never put the token or checkpoint
+     JSON in comments, transition text, or reports.
+   - Preserve the KEN-6 caller-TTL contract exactly: at equality (`age <= TTL`)
+     a competing lock remains busy; replacement is allowed only when age is
+     **strictly greater** than the acquiring caller's explicit TTL. TTL is not
+     stored in owner metadata. Exact-owner `resume` and `resume-owned` may
+     refresh a still-present lease even after that age threshold. The first
+     guarded operation wins: resume-first refreshes; replacement-first makes
+     old owner/token recovery fail. `resume-owned` never creates an absent lock
+     or reclaims a foreign/unknown owner.
+   - Output contracts are distinct: `acquire` returns one bare token;
+     `acquire-any` returns exactly `resource=...` followed by `token=...`.
+     Filter emulator candidates by TV form factor first, reject empty,
+     duplicate, malformed, or unexpected inventory, and pass only eligible
+     resources to `acquire-any`. Reject missing, empty, duplicate, malformed,
+     or extra output records, and verify its selected resource is eligible.
+     Persist the selected resource and token immediately, before setting the
+     device target or performing device work:
      ```bash
-     .kent/adapters/mobile/emulator-resource-lock.sh release "$LOCK_RESOURCE" "$LOCK_TOKEN"
+     # smoke-lease-case: acquire
+     if [[ "${LEASE_HELD:-false}" != true ]]; then
+       if [[ -n "${AUTHORIZED_PHYSICAL_SERIAL:-}" ]]; then
+         # Set only after explicit task/user authorization naming this serial.
+         LOCK_RESOURCE="$AUTHORIZED_PHYSICAL_SERIAL"
+         [[ "$LOCK_RESOURCE" =~ ^[A-Za-z0-9._=-]+$ ]]
+         LOCK_OUTPUT="$("$LOCK_ADAPTER" acquire "$LOCK_RESOURCE" 900 7200 && printf '\034')"
+         LOCK_OUTPUT="${LOCK_OUTPUT%$'\034'}"
+         LOCK_TOKEN="$(parse_bare_token "$LOCK_OUTPUT")"
+       else
+         if [[ ${#EMULATORS[@]} -eq 0 ]]; then
+           echo "No eligible TV emulator is available; do not use an implicit target" >&2
+           exit 1
+         fi
+         LOCK_OUTPUT="$("$LOCK_ADAPTER" acquire-any "${EMULATORS[@]}" -- 900 7200 && printf '\034')"
+         LOCK_OUTPUT="${LOCK_OUTPUT%$'\034'}"
+         [[ "$LOCK_OUTPUT" == *$'\n' ]]
+         ACQUIRE_RECORDS="${LOCK_OUTPUT%$'\n'}"
+         [[ "$ACQUIRE_RECORDS" == *$'\n'* ]]
+         RESOURCE_RECORD="${ACQUIRE_RECORDS%%$'\n'*}"
+         TOKEN_RECORD="${ACQUIRE_RECORDS#*$'\n'}"
+         [[ "$TOKEN_RECORD" != *$'\n'* ]]
+         [[ "$RESOURCE_RECORD" == resource=* && "$TOKEN_RECORD" == token=* ]]
+         LOCK_RESOURCE="${RESOURCE_RECORD#resource=}"
+         LOCK_TOKEN="${TOKEN_RECORD#token=}"
+         [[ "$LOCK_RESOURCE" =~ ^[A-Za-z0-9._=-]+$ ]]
+         [[ "$LOCK_TOKEN" =~ ^[A-Za-z0-9._=-]+$ ]]
+         [[ -n "${SEEN_EMULATORS[$LOCK_RESOURCE]+x}" ]]
+       fi
+       LOCK_OWNER_ID="$TASK_SHORT_ID"
+       persist_lease held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+         "Use the acquired Smoke resource"
+       LEASE_HELD=true
+       DEVICE_SERIAL="$LOCK_RESOURCE"
+       trap on_smoke_exit EXIT
+     fi
      ```
-   - Before any install, launch, log, or shell command, verify `DEVICE_SERIAL` is non-empty and pass `adb -s
-     "$DEVICE_SERIAL"`. If `DEVICE_SERIAL` is empty, complete with `needs_user_action` instead of running adb.
-   - If all running emulators are busy, inspect lock owners with:
-     ```bash
-     .kent/adapters/mobile/emulator-resource-lock.sh status <emulator-serial>
-     ```
-   - Start a second emulator only when the task/user explicitly allows parallel device usage and a suitable AVD/host
-     capacity is available. If a second emulator is used, acquire a distinct lock name such as
-     `emulator-5556` or `avd-<name>-<port>` before starting or using it.
-   - If no device can be safely acquired, complete the workflow with `needs_user_action` and explain who/what holds the
-     resource.
+     `persist_lease` must re-read and validate the checkpoint, merge only the
+     lease fields into `stage_data`, and pipe the resulting complete JSON object
+     to `.kent/scripts/workflow-checkpoint write --stage smoke --task
+     "$TASK_SHORT_ID"`; do not log its input or output. Apply the same strict
+     single bare-token parser to `acquire` (explicit serial only),
+     `resume`, and `resume-owned`; never parse bare `acquire` as acquire-any
+     records. A physical serial requires explicit task/user authorization and
+     an explicit serial. Starting an additional emulator requires explicit
+     permission and suitable capacity. With no safe eligible target, return
+     `needs_user_action` and explain the unavailable or occupied resource;
+     never use adb's default target.
+   - Keep tokens only in the ignored checkpoint and process memory; do not
+     echo them, enable shell tracing, or copy them to evidence. Before any
+     device operation, require a non-empty `DEVICE_SERIAL` equal to the
+     persisted resource and always pass it explicitly as `adb -s
+     "$DEVICE_SERIAL"`.
 3. **Builds and preservation-installs a fresh `devDebug` APK before device testing**
    - An initial Smoke run always builds a fresh APK. A resumed run first reads
      the checkpoint. If it proves a successful install of the same APK SHA-256
@@ -186,7 +511,33 @@ Runs smoke test for a feature via MCP mobile.
 6. Navigates to feature
 7. Goes through main screens
 8. Audits the evidence directory and outputs a sanitized report
-9. Releases the mobile resource lock
+9. **Releases and verifies the exact resource**
+   - Use the same cleanup function for explicit release and the exit trap.
+     Capture release success/failure without exposing the token, then always
+     read back `status` for the exact resource. Only one exact `unlocked`
+     status line proves cleanup; command success by itself does not. If the
+     status command fails or reports locked/malformed output, cleanup is
+     unresolved even when release returned success: preserve the held
+     checkpoint and token, do not mark released, do not switch resources, and
+     do not report Smoke success. Reconcile the same resource under the
+     separately approved compatible adapter before any later action.
+   - After verified unlocked readback, mark `lease_state=released` in
+     `stage_data` and persist before the next workflow transition. Keep the
+     token only in that ignored checkpoint until Smoke is fully reported.
+   - The exit trap is registered immediately after acquire/resume and checkpoint
+     persistence, before any device work. Explicit release later calls the same
+     cleanup function and disables the trap only after verified release:
+     ```bash
+     # smoke-lease-case: explicit-release
+     if ! cleanup_lease; then
+       exit 1
+     fi
+     trap - EXIT
+     ```
+     The cleanup trap preserves the original Smoke exit status after verified
+     cleanup; unresolved cleanup returns failure without deleting the held
+     checkpoint. A successful release followed by locked or failed status
+     remains unresolved.
 
 ## Testing Strategy
 

@@ -1,0 +1,8 @@
+{
+  "eligible_resources": [
+    "emulator-5554",
+    "emulator-5556"
+  ],
+  "selected_resource": "emulator-5554",
+  "synthetic_token": "token-synthetic-pub83"
+}

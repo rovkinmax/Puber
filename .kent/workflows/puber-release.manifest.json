@@ -117,7 +117,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-verify-report=51968e4ce86a0177c4b239d5797cec81965186cb7af7c290b784bd682b8b5355",
+      "key": ".kent/scripts/tests/test-workflow-verify-report=a0348a5a5e24435bf7676648323ed8e09210d2fe5eabfeab5803562c8dfffadd",
       "runtime_digest_required": true
     },
     {
@@ -127,7 +127,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-compile-verify=bc342644325925eae39bfbbe489d1be1681f46b4e434cceceac5bb399b5b005c",
+      "key": ".kent/scripts/workflow-compile-verify=24efc0072b0994439083d9a9a08861cb7f44a8a18f90a2da76dba6ac2fa56196",
       "runtime_digest_required": true
     },
     {

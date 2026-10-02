@@ -1,0 +1,668 @@
+#!/usr/bin/env python3
+"""Exercise Smoke lease examples with isolated synthetic Kent and adapter stubs."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import unittest
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = ROOT / "tools/fixtures/smoke-lease"
+SOURCE = ROOT / ".kent/commands/smoke-test.md"
+LEASE_STOP = "3. **Builds"
+NATIVE_ID = "task-00000000-0000-4000-8000-000000000083"
+TASK_SHORT_ID = "PUB-83"
+SESSION_ID = "00000000-0000-4000-8000-000000000084"
+TOKEN = "token-synthetic-pub83"
+RESOURCE = "emulator-5554"
+RESOURCES = [RESOURCE, "emulator-5556"]
+
+
+ADAPTER_STUB = r'''#!/usr/bin/env python3
+import json, os, sys
+config_path = os.environ["SMOKE_LEASE_CONFIG"]
+with open(config_path, encoding="utf-8") as stream:
+    config = json.load(stream)
+args = sys.argv[1:]
+if not args:
+    raise SystemExit(97)
+op, arguments = args[0], args[1:]
+def record():
+    item = {
+        "kind": "adapter", "op": op, "args": arguments,
+        "task": os.environ.get("KENT_TASK_ID", ""),
+        "session": os.environ.get("KENT_SESSION_ID", ""),
+    }
+    with open(os.environ["SMOKE_LEASE_TRACE"], "a", encoding="utf-8") as stream:
+        stream.write(json.dumps(item) + "\n")
+def result_for(key, default=""):
+    result = config.get("outputs", {}).get(key, default)
+    if isinstance(result, str):
+        return result, 0
+    return result.get("stdout", ""), int(result.get("code", 0))
+record()
+if op == "adb-emulators":
+    output, code = result_for("adb-emulators", "\n".join(config["eligible_resources"]) + "\n")
+elif op == "status":
+    resource = arguments[0] if arguments else ""
+    item = config.get("statuses", {}).get(resource, {"stdout": "unlocked\n"})
+    if isinstance(item, str):
+        output, code = item, 0
+    else:
+        output, code = item.get("stdout", ""), int(item.get("code", 0))
+elif op == "acquire-any":
+    selected = config.get("selected_resource", "")
+    output, code = result_for(op, f"resource={selected}\ntoken={config['token']}\n")
+elif op == "acquire":
+    output, code = result_for(op, config["token"] + "\n")
+elif op in ("resume", "resume-owned"):
+    output, code = result_for(op, config["token"] + "\n")
+elif op == "release":
+    output, code = result_for(op, "")
+    if code == 0 and config.get("release_unlocks") and arguments:
+        config.setdefault("statuses", {})[arguments[0]] = "unlocked\n"
+        with open(config_path, "w", encoding="utf-8") as stream:
+            json.dump(config, stream)
+else:
+    print("unexpected fake adapter operation", file=sys.stderr)
+    raise SystemExit(97)
+sys.stdout.write(output)
+raise SystemExit(code)
+'''
+
+
+KENT_STUB = r'''#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+if not args:
+    raise SystemExit(98)
+op = "task" if args[0] == "task" else args[0]
+with open(os.environ["SMOKE_LEASE_TRACE"], "a", encoding="utf-8") as stream:
+    stream.write(json.dumps({"kind": "kent", "op": op, "args": args}) + "\n")
+config = json.load(open(os.environ["SMOKE_LEASE_CONFIG"], encoding="utf-8"))
+if args == ["task", "show", os.environ["SMOKE_TASK_SHORT_ID"], "--json"]:
+    print(json.dumps(config["native_task"]))
+elif args == ["session-id"]:
+    print(config["session_id"])
+else:
+    print("unexpected fake Kent command", file=sys.stderr)
+    raise SystemExit(98)
+'''
+
+
+CHECKPOINT_STUB = r'''#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+if not args:
+    raise SystemExit(99)
+op = args[0]
+with open(os.environ["SMOKE_LEASE_TRACE"], "a", encoding="utf-8") as stream:
+    stream.write(json.dumps({"kind": "checkpoint", "op": op}) + "\n")
+config = json.load(open(os.environ["SMOKE_LEASE_CONFIG"], encoding="utf-8"))
+path = os.environ["SMOKE_LEASE_CHECKPOINT"]
+if op in ("read", "show"):
+    sys.stdout.write(open(path, encoding="utf-8").read())
+elif op in ("write", "update", "persist"):
+    if config.get("checkpoint_write_fail"):
+        raise SystemExit(75)
+    payload = json.load(sys.stdin)
+    with open(path, "w", encoding="utf-8") as stream:
+        json.dump(payload, stream)
+        stream.write("\n")
+else:
+    print("unexpected fake checkpoint operation", file=sys.stderr)
+    raise SystemExit(99)
+'''
+
+
+@dataclass
+class Outcome:
+    returncode: int
+    stdout: str
+    stderr: str
+    calls: list[dict[str, Any]]
+    checkpoint: dict[str, Any]
+
+
+
+def tagged_blocks(text: str) -> dict[str, str]:
+    blocks: dict[str, str] = {}
+    for match in re.finditer(r"```bash(?:[ \t]+[^\n]+)?\n(.*?)```", text, re.S):
+        body = match.group(1)
+        tag = re.search(r"(?m)^[ \t]*# smoke-lease-case: ([a-z0-9-]+)\s*$", body)
+        if tag:
+            name = tag.group(1)
+            if name in blocks:
+                raise AssertionError(f"Duplicate source example tag: {name}")
+            blocks[name] = body
+    return blocks
+
+
+def protected_build_install_auth(text: str) -> bytes:
+    start = text.index(LEASE_STOP)
+    suffix = text[start:]
+    release = re.search(r"(?m)^9\.", suffix)
+    if not release:
+        raise AssertionError("Could not locate the Smoke release section boundary")
+    return suffix[: release.start()].encode()
+
+
+def locked_status(owner: str, resource: str) -> str:
+    return (
+        "locked\n"
+        f"  task_id={owner}\n"
+        f"  resource={resource}\n"
+        "  token=<redacted>\n"
+    )
+
+
+def checkpoint_for(
+    *, resource: str = "", token: str = "", owner: str = "", native_id: str = NATIVE_ID,
+    short_id: str = TASK_SHORT_ID,
+) -> dict[str, Any]:
+    stage: dict[str, str] = {}
+    if native_id:
+        stage["task_native_id"] = native_id
+    if short_id:
+        stage["task_short_id"] = short_id
+    if owner:
+        stage["lease_owner_id"] = owner
+    if resource:
+        stage["lock_resource"] = resource
+    if token:
+        stage["lock_token"] = token
+    return {
+        "task_short_id": short_id,
+        "completed_items": ["identity verified"],
+        "remaining_items": ["Smoke target"],
+        "next_action": "Reconcile the synthetic lease",
+        "stage_data": stage,
+    }
+
+
+def default_config(
+    *, eligible: list[str] | None = None, selected: str = RESOURCE,
+    session_id: str = SESSION_ID, native_task: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "eligible_resources": list(eligible or RESOURCES),
+        "selected_resource": selected,
+        "token": TOKEN,
+        "session_id": session_id,
+        "native_task": native_task or json.loads((FIXTURES / "native-task.json").read_text()),
+        "statuses": {},
+        "outputs": {},
+        "checkpoint_write_fail": False,
+    }
+
+
+def install_stubs(
+    sandbox: Path, config: dict[str, Any], checkpoint: dict[str, Any]
+) -> tuple[Path, Path, Path]:
+    bin_dir = sandbox / "bin"
+    adapter = sandbox / ".kent/adapters/mobile/emulator-resource-lock.sh"
+    checkpoint_tool = sandbox / ".kent/scripts/workflow-checkpoint"
+    bin_dir.mkdir(parents=True)
+    adapter.parent.mkdir(parents=True)
+    checkpoint_tool.parent.mkdir(parents=True)
+    trace = sandbox / "trace.jsonl"
+    config_path = sandbox / "config.json"
+    checkpoint_path = sandbox / "checkpoint.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    checkpoint_path.write_text(json.dumps(checkpoint), encoding="utf-8")
+    adapter.write_text(ADAPTER_STUB, encoding="utf-8")
+    adapter.chmod(0o755)
+    (bin_dir / "kent").write_text(KENT_STUB, encoding="utf-8")
+    (bin_dir / "kent").chmod(0o755)
+    checkpoint_tool.write_text(CHECKPOINT_STUB, encoding="utf-8")
+    checkpoint_tool.chmod(0o755)
+    adb = bin_dir / "adb"
+    adb.write_text(
+        "#!/bin/sh\n"
+        "printf '{\"kind\":\"adb\"}\\n' >>\"$SMOKE_LEASE_TRACE\"\n"
+        "echo 'unexpected adb command in synthetic procedure test' >&2\n"
+        "exit 96\n",
+        encoding="utf-8",
+    )
+    adb.chmod(0o755)
+    jq = shutil.which("jq")
+    if not jq:
+        raise RuntimeError("jq is required for the source examples")
+    (bin_dir / "jq").symlink_to(jq)
+    return trace, config_path, checkpoint_path
+
+
+def run_scenario(
+    blocks: dict[str, str], *, cases: list[str],
+    checkpoint: dict[str, Any] | None = None,
+    config: dict[str, Any] | None = None,
+    prelude: str = "", epilogue: str = "",
+    short_id: str = TASK_SHORT_ID,
+    disable_exit_trap: bool = True,
+) -> Outcome:
+    with tempfile.TemporaryDirectory(prefix="puber-smoke-lease-") as temp:
+        sandbox = Path(temp)
+        scenario_config = config or default_config()
+        initial_checkpoint = checkpoint or checkpoint_for(resource=RESOURCE, token=TOKEN, owner=TASK_SHORT_ID)
+        trace, config_path, checkpoint_path = install_stubs(sandbox, scenario_config, initial_checkpoint)
+        if any(name not in blocks for name in cases):
+            raise AssertionError("A requested source-bound lease example is missing")
+        body_parts = [
+            blocks["identity"], prelude,
+            *(blocks[name] for name in cases if name != "identity"),
+        ]
+        if disable_exit_trap:
+            body_parts.append("trap - EXIT")
+        body_parts.append(epilogue)
+        body = "\n".join(body_parts)
+        env = os.environ.copy()
+        env.update({
+            "PATH": f"{sandbox / 'bin'}:{os.environ.get('PATH', '')}",
+            "SMOKE_TASK_SHORT_ID": short_id,
+            "SMOKE_LEASE_TRACE": str(trace),
+            "SMOKE_LEASE_CONFIG": str(config_path),
+            "SMOKE_LEASE_CHECKPOINT": str(checkpoint_path),
+            "KENT_TASK_ID": "untrusted-env-value",
+            "KENT_SESSION_ID": "untrusted-env-value",
+        })
+        result = subprocess.run(
+            ["bash", "-euo", "pipefail", "-c", body],
+            cwd=sandbox, env=env, capture_output=True, text=True, timeout=10,
+        )
+        calls = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
+        saved = json.loads(checkpoint_path.read_text())
+        return Outcome(result.returncode, result.stdout, result.stderr, calls, saved)
+
+
+def ops(outcome: Outcome, kind: str | None = None) -> list[str]:
+    return [
+        str(call["op"])
+        for call in outcome.calls
+        if kind is None or call.get("kind") == kind
+    ]
+
+
+def assert_order(test: unittest.TestCase, outcome: Outcome, *wanted: tuple[str, str]) -> None:
+    positions = []
+    for kind, operation in wanted:
+        position = next(
+            (index for index, call in enumerate(outcome.calls)
+             if call.get("kind") == kind and call.get("op") == operation),
+            None,
+        )
+        test.assertIsNotNone(position, f"missing {kind}/{operation} operation")
+        positions.append(int(position))
+    test.assertEqual(positions, sorted(positions), "lease procedure operation order changed")
+
+
+def assert_persisted(test: unittest.TestCase, outcome: Outcome, *, owner: str, resource: str, token: str, state: str = "held") -> None:
+    stage = outcome.checkpoint.get("stage_data", {})
+    test.assertEqual(outcome.checkpoint.get("task_short_id"), TASK_SHORT_ID)
+    test.assertEqual(stage.get("task_native_id"), NATIVE_ID)
+    test.assertEqual(stage.get("task_short_id"), TASK_SHORT_ID)
+    test.assertEqual(stage.get("lease_owner_id"), owner)
+    test.assertEqual(stage.get("lock_resource"), resource)
+    test.assertEqual(stage.get("lock_token"), token)
+    if state:
+        test.assertEqual(stage.get("lease_state"), state)
+
+
+class SmokeLeaseProcedureTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.text = SOURCE.read_text(encoding="utf-8")
+        cls.baseline = json.loads((FIXTURES / "baseline.json").read_text(encoding="utf-8"))
+        cls.fixture = json.loads((FIXTURES / "eligible-resources.json").read_text(encoding="utf-8"))
+        cls.blocks = tagged_blocks(cls.text)
+        cls.required = {"identity", "resume", "recovery", "acquire", "release", "explicit-release"}
+
+    def test_source_contract_and_protected_package_policy(self) -> None:
+        missing = self.required - self.blocks.keys()
+        self.assertFalse(missing, f"missing source-bound examples: {sorted(missing)}")
+        self.assertIn("kent task show", self.text)
+        self.assertIn("kent session-id", self.text)
+        self.assertIn("summary.id", self.text)
+        self.assertIn("summary.short_id", self.text)
+        self.assertIn("resume-owned", self.text)
+        self.assertIn("lease_owner_id", self.text)
+        self.assertIn("task_native_id", self.text)
+        self.assertIn("strictly greater", self.text.lower())
+        self.assertIn("equality", self.text.lower())
+        self.assertIn("resume-first refreshes; replacement-first", self.text.lower())
+        self.assertIn("separately approved", self.text.lower())
+        self.assertEqual(
+            hashlib.sha256(protected_build_install_auth(self.text)).hexdigest(),
+            self.baseline["protected_build_install_auth_sha256"],
+            "build/install/auth policy changed outside the approved lease sections",
+        )
+
+    def test_native_identity_is_read_back_and_environment_values_replaced(self) -> None:
+        result = run_scenario(self.blocks, cases=["identity"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(ops(result, "adapter"), [])
+        self.assertEqual(ops(result, "kent"), ["task", "session-id"])
+        self.assertFalse(any(call.get("kind") == "adb" for call in result.calls))
+
+        mismatched = default_config(native_task={"summary": {"id": NATIVE_ID, "short_id": "PUB-84"}})
+        rejected = run_scenario(self.blocks, cases=["identity"], config=mismatched)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertEqual(ops(rejected, "adapter"), [])
+
+    def test_retained_pair_resumes_exact_owner_resource_token_and_session(self) -> None:
+        config = default_config()
+        config["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE)
+        result = run_scenario(
+            self.blocks, cases=["resume"],
+            checkpoint=checkpoint_for(resource=RESOURCE, token=TOKEN, owner=TASK_SHORT_ID),
+            config=config,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(ops(result, "adapter"), ["status", "resume"])
+        resume = next(call for call in result.calls if call.get("op") == "resume")
+        self.assertEqual(resume["args"], [RESOURCE, TOKEN])
+        self.assertEqual(resume["task"], TASK_SHORT_ID)
+        self.assertEqual(resume["session"], SESSION_ID)
+        assert_persisted(self, result, owner=TASK_SHORT_ID, resource=RESOURCE, token=TOKEN)
+        assert_order(self, result, ("adapter", "status"), ("adapter", "resume"), ("checkpoint", "write"))
+        self.assertNotIn(TOKEN, result.stdout + result.stderr)
+
+    def test_native_id_alias_is_verified_and_retained(self) -> None:
+        config = default_config(session_id="00000000-0000-4000-8000-000000009999")
+        config["statuses"][RESOURCE] = locked_status(NATIVE_ID, RESOURCE)
+        result = run_scenario(
+            self.blocks, cases=["recovery"],
+            checkpoint=checkpoint_for(resource=RESOURCE, owner=NATIVE_ID), config=config,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(ops(result, "adapter"), ["status", "resume-owned"])
+        recovery = next(call for call in result.calls if call.get("op") == "resume-owned")
+        self.assertEqual(recovery["task"], NATIVE_ID)
+        self.assertEqual(recovery["session"], config["session_id"])
+        assert_persisted(self, result, owner=NATIVE_ID, resource=RESOURCE, token=TOKEN)
+
+    def test_partial_checkpoint_lost_stdout_recovers_only_proven_owner(self) -> None:
+        config = default_config()
+        config["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE)
+        success = run_scenario(
+            self.blocks, cases=["recovery"],
+            checkpoint=checkpoint_for(resource=RESOURCE), config=config,
+        )
+        self.assertEqual(success.returncode, 0, success.stderr)
+        self.assertEqual(ops(success, "adapter"), ["status", "resume-owned"])
+        assert_persisted(self, success, owner=TASK_SHORT_ID, resource=RESOURCE, token=TOKEN)
+        assert_order(self, success, ("adapter", "resume-owned"), ("checkpoint", "write"))
+
+        for label, status in (
+            ("foreign", locked_status("KEN-99", RESOURCE)),
+            ("duplicate-owner", locked_status(TASK_SHORT_ID, RESOURCE).replace(
+                f"  task_id={TASK_SHORT_ID}\n", f"  task_id={TASK_SHORT_ID}\n  task_id={TASK_SHORT_ID}\n")),
+            ("missing-token", f"locked\n  task_id={TASK_SHORT_ID}\n  resource={RESOURCE}\n"),
+            ("wrong-resource", locked_status(TASK_SHORT_ID, "emulator-9999")),
+            ("unlocked", "unlocked\n"),
+        ):
+            with self.subTest(status=label):
+                blocked_config = default_config()
+                blocked_config["statuses"][RESOURCE] = status
+                blocked = run_scenario(
+                    self.blocks, cases=["recovery"],
+                    checkpoint=checkpoint_for(resource=RESOURCE), config=blocked_config,
+                )
+                self.assertNotEqual(blocked.returncode, 0)
+                self.assertNotIn("resume-owned", ops(blocked, "adapter"))
+
+    def test_pub70_returned_token_cannot_prove_unknown_owner(self) -> None:
+        config = default_config()
+        config["statuses"][RESOURCE] = locked_status("KEN-99", RESOURCE)
+        result = run_scenario(
+            self.blocks, cases=["recovery"],
+            checkpoint=checkpoint_for(resource=RESOURCE), config=config,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("resume-owned", ops(result, "adapter"))
+        self.assertEqual(result.checkpoint["stage_data"].get("lock_token", ""), "")
+        self.assertNotIn(TOKEN, result.stdout + result.stderr)
+
+    def test_conflicting_or_token_only_checkpoint_blocks_before_adapter(self) -> None:
+        checkpoints = [
+            checkpoint_for(token=TOKEN),
+            checkpoint_for(resource=RESOURCE, token=TOKEN, owner="KEN-99"),
+            checkpoint_for(resource=RESOURCE, token=TOKEN, native_id="task-00000000-0000-4000-8000-000000000099"),
+            checkpoint_for(resource=RESOURCE, token=TOKEN, short_id="PUB-84"),
+        ]
+        for index, checkpoint in enumerate(checkpoints):
+            with self.subTest(checkpoint=index):
+                result = run_scenario(self.blocks, cases=["resume"], checkpoint=checkpoint)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(ops(result, "adapter"), [])
+                self.assertNotIn("write", ops(result, "checkpoint"))
+
+    def test_retained_resume_refuses_foreign_malformed_wrong_and_stale_evidence(self) -> None:
+        cases: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+        foreign = default_config()
+        foreign["statuses"][RESOURCE] = locked_status("KEN-99", RESOURCE)
+        cases.append(("foreign owner", foreign, {}))
+        malformed = default_config()
+        malformed["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE).replace("token=<redacted>", "token=secret")
+        cases.append(("unredacted token", malformed, {}))
+        duplicate = default_config()
+        duplicate["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE).replace(
+            f"  resource={RESOURCE}\n", f"  resource={RESOURCE}\n  resource={RESOURCE}\n"
+        )
+        cases.append(("duplicate resource", duplicate, {}))
+        wrong = default_config()
+        wrong["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE)
+        wrong["outputs"]["resume"] = "token-synthetic-wrong\n"
+        cases.append(("wrong returned token", wrong, {}))
+        stale = default_config()
+        stale["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE)
+        stale["outputs"]["resume"] = {"stdout": "", "code": 75}
+        cases.append(("stale token", stale, {}))
+        for label, config, _unused in cases:
+            with self.subTest(reason=label):
+                result = run_scenario(
+                    self.blocks, cases=["resume"],
+                    checkpoint=checkpoint_for(resource=RESOURCE, token=TOKEN, owner=TASK_SHORT_ID),
+                    config=config,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("write", ops(result, "checkpoint"))
+
+    def test_later_session_inventory_recovers_exactly_one_candidate(self) -> None:
+        later_session = "00000000-0000-4000-8000-000000009999"
+        config = default_config(session_id=later_session)
+        config["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE)
+        result = run_scenario(
+            self.blocks, cases=["recovery"], checkpoint=checkpoint_for(), config=config,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(ops(result, "adapter"), ["adb-emulators", "status", "status", "resume-owned"])
+        recovery = next(call for call in result.calls if call.get("op") == "resume-owned")
+        self.assertEqual(recovery["session"], later_session)
+        self.assertEqual(recovery["args"], [RESOURCE])
+        assert_persisted(self, result, owner=TASK_SHORT_ID, resource=RESOURCE, token=TOKEN)
+        assert_order(self, result, ("adapter", "resume-owned"), ("checkpoint", "write"))
+        self.assertFalse(any(call.get("kind") == "adb" for call in result.calls))
+
+    def test_multiple_same_task_candidates_block_and_foreign_owner_is_never_adopted(self) -> None:
+        multiple = default_config()
+        for resource in RESOURCES:
+            multiple["statuses"][resource] = locked_status(TASK_SHORT_ID, resource)
+        ambiguous = run_scenario(self.blocks, cases=["recovery"], checkpoint=checkpoint_for(), config=multiple)
+        self.assertNotEqual(ambiguous.returncode, 0)
+        self.assertNotIn("resume-owned", ops(ambiguous, "adapter"))
+
+        foreign = default_config()
+        foreign["statuses"][RESOURCE] = locked_status("KEN-99", RESOURCE)
+        foreign["statuses"][RESOURCES[1]] = locked_status("PUB-84", RESOURCES[1])
+        no_match = run_scenario(self.blocks, cases=["recovery"], checkpoint=checkpoint_for(), config=foreign)
+        self.assertEqual(no_match.returncode, 0, no_match.stderr)
+        self.assertNotIn("resume-owned", ops(no_match, "adapter"))
+        self.assertNotIn("acquire-any", ops(no_match, "adapter"))
+
+    def test_zero_inventory_performs_fresh_acquire_any_after_status(self) -> None:
+        config = default_config()
+        result = run_scenario(
+            self.blocks, cases=["recovery", "acquire"], checkpoint=checkpoint_for(), config=config,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        call = next(call for call in result.calls if call.get("op") == "acquire-any")
+        self.assertEqual(call["args"], [*RESOURCES, "--", "900", "7200"])
+        self.assertEqual(call["task"], TASK_SHORT_ID)
+        assert_persisted(self, result, owner=TASK_SHORT_ID, resource=RESOURCE, token=TOKEN)
+        assert_order(self, result, ("adapter", "status"), ("adapter", "acquire-any"), ("checkpoint", "write"))
+        self.assertNotIn(TOKEN, result.stdout + result.stderr)
+
+    def test_inventory_duplicates_and_malformed_candidate_lists_block(self) -> None:
+        for output in (f"{RESOURCE}\n{RESOURCE}\n", "bad resource\n"):
+            with self.subTest(inventory=output.splitlines()):
+                config = default_config()
+                config["outputs"]["adb-emulators"] = output
+                result = run_scenario(self.blocks, cases=["recovery"], checkpoint=checkpoint_for(), config=config)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("status", ops(result, "adapter"))
+                self.assertNotIn("acquire-any", ops(result, "adapter"))
+
+    def test_acquire_any_parser_is_strict_and_ttl_arguments_are_forwarded(self) -> None:
+        valid = run_scenario(self.blocks, cases=["recovery", "acquire"], checkpoint=checkpoint_for())
+        self.assertEqual(valid.returncode, 0, valid.stderr)
+        call = next(call for call in valid.calls if call.get("op") == "acquire-any")
+        self.assertEqual(call["args"], [*RESOURCES, "--", "900", "7200"])
+        assert_persisted(self, valid, owner=TASK_SHORT_ID, resource=RESOURCE, token=TOKEN)
+        self.assertNotIn(TOKEN, valid.stdout + valid.stderr)
+
+        malformed_outputs = (
+            f"resource={RESOURCE}\ntoken={TOKEN}",
+            f"resource={RESOURCE}\n",
+            f"resource={RESOURCE}\ntoken={TOKEN}\nextra=x\n",
+            f"token={TOKEN}\nresource={RESOURCE}\n",
+            f"resource={RESOURCE}\ntoken={TOKEN}\ntoken={TOKEN}\n",
+            "resource=\ntoken=synthetic-token\n",
+            f"resource={RESOURCE}\ntoken=bad token\n",
+            f"resource=emulator-9999\ntoken={TOKEN}\n",
+        )
+        for output in malformed_outputs:
+            with self.subTest(parser="acquire-any"):
+                config = default_config()
+                config["outputs"]["acquire-any"] = output
+                result = run_scenario(
+                    self.blocks, cases=["recovery", "acquire"], checkpoint=checkpoint_for(), config=config,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("write", ops(result, "checkpoint"))
+
+    def test_bare_acquire_parser_is_distinct_and_ttl_arguments_are_forwarded(self) -> None:
+        valid_config = default_config()
+        valid = run_scenario(
+            self.blocks, cases=["acquire"], checkpoint=checkpoint_for(), config=valid_config,
+            prelude=f'AUTHORIZED_PHYSICAL_SERIAL="{RESOURCE}"',
+        )
+        self.assertEqual(valid.returncode, 0, valid.stderr)
+        call = next(call for call in valid.calls if call.get("op") == "acquire")
+        self.assertEqual(call["args"], [RESOURCE, "900", "7200"])
+        assert_persisted(self, valid, owner=TASK_SHORT_ID, resource=RESOURCE, token=TOKEN)
+        self.assertNotIn(TOKEN, valid.stdout + valid.stderr)
+
+        malformed_outputs = (TOKEN, TOKEN + "\nextra\n", "", "bad token\n")
+        for output in malformed_outputs:
+            with self.subTest(parser="bare-token"):
+                config = default_config()
+                config["outputs"]["acquire"] = output
+                result = run_scenario(
+                    self.blocks, cases=["acquire"], checkpoint=checkpoint_for(), config=config,
+                    prelude=f'AUTHORIZED_PHYSICAL_SERIAL="{RESOURCE}"',
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("write", ops(result, "checkpoint"))
+
+    def test_release_readback_controls_checkpoint_state(self) -> None:
+        held = checkpoint_for(resource=RESOURCE, token=TOKEN, owner=TASK_SHORT_ID)
+        prelude = "LEASE_HELD=true"
+        locked = default_config()
+        locked["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE)
+        unresolved = run_scenario(
+            self.blocks, cases=["release"], checkpoint=held, config=locked,
+            prelude=prelude, epilogue="if cleanup_lease; then exit 0; else exit 41; fi",
+        )
+        self.assertEqual(unresolved.returncode, 41)
+        self.assertEqual(unresolved.checkpoint["stage_data"]["lease_state"], "held")
+        assert_order(self, unresolved, ("adapter", "release"), ("adapter", "status"))
+
+        failed_status = default_config()
+        failed_status["statuses"][RESOURCE] = {"stdout": "", "code": 70}
+        no_readback = run_scenario(
+            self.blocks, cases=["release"], checkpoint=held, config=failed_status,
+            prelude=prelude, epilogue="if cleanup_lease; then exit 0; else exit 41; fi",
+        )
+        self.assertEqual(no_readback.returncode, 41)
+        self.assertEqual(no_readback.checkpoint["stage_data"]["lease_state"], "held")
+
+        unlocked = default_config()
+        unlocked["statuses"][RESOURCE] = "unlocked\n"
+        released = run_scenario(
+            self.blocks, cases=["release"], checkpoint=held, config=unlocked,
+            prelude=prelude, epilogue="if cleanup_lease; then exit 0; else exit 41; fi",
+        )
+        self.assertEqual(released.returncode, 0, released.stderr)
+        self.assertEqual(released.checkpoint["stage_data"]["lease_state"], "released")
+        assert_order(self, released, ("adapter", "release"), ("adapter", "status"), ("checkpoint", "write"))
+
+        release_failed_but_unlocked = default_config()
+        release_failed_but_unlocked["outputs"]["release"] = {"stdout": "", "code": 75}
+        release_failed_but_unlocked["statuses"][RESOURCE] = "unlocked\n"
+        verified = run_scenario(
+            self.blocks, cases=["release"], checkpoint=held, config=release_failed_but_unlocked,
+            prelude=prelude, epilogue="if cleanup_lease; then exit 0; else exit 41; fi",
+        )
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+        self.assertEqual(verified.checkpoint["stage_data"]["lease_state"], "released")
+
+    def test_explicit_release_uses_same_handler_and_clears_trap(self) -> None:
+        config = default_config()
+        config["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE)
+        config["release_unlocks"] = True
+        result = run_scenario(
+            self.blocks, cases=["resume", "release", "explicit-release"],
+            checkpoint=checkpoint_for(resource=RESOURCE, token=TOKEN, owner=TASK_SHORT_ID),
+            config=config, disable_exit_trap=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.checkpoint["stage_data"]["lease_state"], "released")
+        self.assertEqual(ops(result, "adapter"), ["status", "resume", "release", "status"])
+        self.assertNotIn(TOKEN, result.stdout + result.stderr)
+
+    def test_exit_trap_preserves_smoke_status_only_after_verified_release(self) -> None:
+        checkpoint = checkpoint_for(resource=RESOURCE, token=TOKEN, owner=TASK_SHORT_ID)
+        unlocked_on_release = default_config()
+        unlocked_on_release["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE)
+        unlocked_on_release["release_unlocks"] = True
+        success = run_scenario(
+            self.blocks, cases=["release", "resume"], checkpoint=checkpoint,
+            config=unlocked_on_release, epilogue="exit 23", disable_exit_trap=False,
+        )
+        self.assertEqual(success.returncode, 23)
+        self.assertEqual(success.checkpoint["stage_data"]["lease_state"], "released")
+        self.assertEqual(ops(success, "adapter"), ["status", "resume", "release", "status"])
+
+        unresolved_config = default_config()
+        unresolved_config["statuses"][RESOURCE] = locked_status(TASK_SHORT_ID, RESOURCE)
+        unresolved = run_scenario(
+            self.blocks, cases=["release", "resume"], checkpoint=checkpoint,
+            config=unresolved_config, epilogue="exit 23", disable_exit_trap=False,
+        )
+        self.assertEqual(unresolved.returncode, 1)
+        self.assertEqual(unresolved.checkpoint["stage_data"]["lease_state"], "held")
+        self.assertEqual(ops(unresolved, "adapter"), ["status", "resume", "release", "status"])
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

@@ -1,0 +1,10 @@
+{
+  "task_short_id": "PUB-83",
+  "stage_data": {
+    "task_native_id": "task-00000000-0000-4000-8000-000000000083",
+    "task_short_id": "PUB-83",
+    "lease_owner_id": "PUB-83",
+    "lock_resource": "emulator-5554",
+    "lock_token": "token-synthetic-pub83"
+  }
+}
