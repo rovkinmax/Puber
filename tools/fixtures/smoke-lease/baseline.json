@@ -1,0 +1,10 @@
+{
+  "baseline_head": "18d3e34dae2df2e2ab78f4208ec6cc0a15711ab9",
+  "smoke_procedure_sha256": "1bdee0c7b3822a7bde60db56664fa5d89895117e74d2b082e457004bf988b6ea",
+  "protected_build_install_auth_sha256": "4631bdeae4ce759ecdb726af22dd7c962c33e36e2d3ee8cf516121b40e672e68",
+  "expected_baseline_red": [
+    "identity_setup",
+    "same_task_recovery",
+    "verified_release_readback"
+  ]
+}

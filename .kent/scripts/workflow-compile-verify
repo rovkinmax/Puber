@@ -68,7 +68,7 @@ except (RecursionError, UnicodeError, ValueError):
 if (
     not isinstance(payload, dict)
     or not {"workspace_path", "review_context"} <= set(payload)
-    or set(payload) - {"workspace_path", "review_context", "_kent", "commentary"}
+    or set(payload) - {"workspace_path", "review_context", "_kent", "commentary", "delivery_context"}
 ):
     block("compile verifier input is invalid")
 
@@ -76,7 +76,10 @@ if "_kent" in payload and not isinstance(payload["_kent"], dict):
     block("compile verifier input is invalid")
 if "commentary" in payload and payload["commentary"] != "" and not valid_field(payload["commentary"]):
     block("compile verifier input is invalid")
+if "delivery_context" in payload and not valid_field(payload["delivery_context"]):
+    block("compile verifier input is invalid")
 
+# Delivery state is opaque transport, never a compile input or command argument.
 payload = {key: payload[key] for key in ("workspace_path", "review_context")}
 if any(not valid_field(value) for value in payload.values()):
     block("compile verifier input is invalid")
