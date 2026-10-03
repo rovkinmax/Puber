@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bookmark_picker_title">Закладки</string>
+    <string name="bookmark_picker_empty">Папок пока нет.</string>
+    <string name="bookmark_picker_add_folder">Добавить…</string>
+    <string name="bookmark_picker_new_folder_title">Новая папка</string>
+    <string name="bookmark_picker_new_folder_hint">Название папки</string>
+    <string name="bookmark_picker_create">Создать</string>
+    <string name="bookmark_picker_creating">Создание…</string>
+    <string name="bookmark_picker_cancel">Отмена</string>
+    <string name="bookmark_picker_close">Закрыть</string>
+    <string name="bookmark_picker_retry">Повторить</string>
+</resources>

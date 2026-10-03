@@ -25,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.kino.puber.R
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.core.ui.uikit.model.TvContextMenuAction
@@ -35,6 +36,7 @@ private const val ACTION_WATCH = "watch"
 private const val ACTION_DETAILS = "details"
 private const val ACTION_ADD_TO_SAVED = "add_to_saved"
 private const val ACTION_REMOVE_FROM_SAVED = "remove_from_saved"
+private const val ACTION_MANAGE_BOOKMARKS = "manage_bookmarks"
 private const val ACTION_REFRESH_TAB = "refresh_tab"
 private const val ACTION_MARK_EPISODE_WATCHED = "mark_episode_watched"
 private const val ACTION_MARK_EPISODE_UNWATCHED = "mark_episode_unwatched"
@@ -191,9 +193,8 @@ internal fun VideoItemContextMenuDialog(
             }
         ),
     )
-    TvContextMenuDialog(
-        title = item.title,
-        actions = listOf(
+    val actions = buildList {
+        add(
             TvContextMenuAction(
                 id = ACTION_WATCH,
                 title = stringResource(
@@ -203,14 +204,29 @@ internal fun VideoItemContextMenuDialog(
                         R.string.context_menu_watch_movie
                     }
                 ),
-            ),
-            savedAction,
-        ),
+            )
+        )
+        if (item.bookmarkMode == BookmarkMode.Simple || item.isSeriesLike) {
+            add(savedAction)
+        }
+        if (item.bookmarkMode == BookmarkMode.Extended) {
+            add(
+                TvContextMenuAction(
+                    id = ACTION_MANAGE_BOOKMARKS,
+                    title = stringResource(R.string.context_menu_manage_bookmarks),
+                )
+            )
+        }
+    }
+    TvContextMenuDialog(
+        title = item.title,
+        actions = actions,
         onAction = { action ->
             when (action.id) {
                 ACTION_WATCH -> onAction(CommonAction.ItemPlayed(item))
                 ACTION_ADD_TO_SAVED -> onAction(CommonAction.ItemSavedChanged(item, true))
                 ACTION_REMOVE_FROM_SAVED -> onAction(CommonAction.ItemSavedChanged(item, false))
+                ACTION_MANAGE_BOOKMARKS -> onAction(CommonAction.ItemBookmarksRequested(item))
             }
         },
         onDismiss = onDismiss,

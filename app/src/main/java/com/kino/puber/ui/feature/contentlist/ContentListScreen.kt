@@ -42,7 +42,7 @@ internal class ContentListScreen(
         scope(named(scopeId)) {
             scopedOf(::ContentListInteractor)
             scopedOf(::ContentListRefreshCoordinator)
-            scoped { VideoItemUIMapper(get(), get()) }
+            scoped { VideoItemUIMapper(get(), get(), get()) }
             viewModel {
                 ContentListVM(
                     router = get(),

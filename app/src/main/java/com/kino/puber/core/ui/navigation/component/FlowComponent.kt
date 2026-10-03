@@ -12,6 +12,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,7 @@ import com.kino.puber.core.logger.log
 import com.kino.puber.core.ui.navigation.AppLauncher
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.Command
+import com.kino.puber.core.ui.navigation.OverlayPuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreen
 import com.kino.puber.core.ui.navigation.PuberScreenActivity
 import com.kino.puber.core.ui.navigation.RootPuberScreen
@@ -440,19 +442,37 @@ private suspend fun LazyListState.awaitRestoredFocusScrollSettled() {
 }
 
 @Composable
-private fun CurrentScreen(key: String) {
+private fun CurrentScreen(keyPrefix: String) {
     val navigator = LocalNavigator.currentOrThrow
-    val currentScreen = navigator.lastItem
-    val screenKey = screenCompositionKey(key, currentScreen.key)
+    val screens = navigator.items.map { it as PuberScreen }
 
-    CompositionLocalProvider(
-        LocalScreenKey provides screenKey,
-        LocalPuberScopePrefix provides screenKey,
-    ) {
-        navigator.saveableState(screenKey) {
-            currentScreen.Content()
+    Box {
+        resolveVisibleScreenLayers(screens).forEach { screen ->
+            val screenKey = screenCompositionKey(keyPrefix, screen.key)
+            key(screenKey) {
+                CompositionLocalProvider(
+                    LocalScreenKey provides screenKey,
+                    LocalPuberScopePrefix provides screenKey,
+                ) {
+                    // Pass the layer's own screen: saveableState derives its state key
+                    // from it, and defaulting to lastItem would re-key every lower
+                    // layer whenever an overlay is pushed, tearing down its DI scope.
+                    navigator.saveableState(screenKey, screen) {
+                        screen.Content()
+                    }
+                }
+            }
         }
     }
+}
+
+internal fun resolveVisibleScreenLayers(screens: List<PuberScreen>): List<PuberScreen> {
+    if (screens.isEmpty()) return emptyList()
+    var firstVisibleIndex = screens.lastIndex
+    while (firstVisibleIndex > 0 && screens[firstVisibleIndex] is OverlayPuberScreen) {
+        firstVisibleIndex--
+    }
+    return screens.subList(firstVisibleIndex, screens.size)
 }
 
 private fun screenCompositionKey(prefix: String, screenKey: ScreenKey): String = prefix + screenKey

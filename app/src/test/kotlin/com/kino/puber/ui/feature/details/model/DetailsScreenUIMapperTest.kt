@@ -2,6 +2,7 @@ package com.kino.puber.ui.feature.details.model
 
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.R
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.data.api.models.Audio
 import com.kino.puber.data.api.models.Episode
 import com.kino.puber.data.api.models.Item
@@ -10,6 +11,7 @@ import com.kino.puber.data.api.models.Season
 import com.kino.puber.data.api.models.TmdbCastMember
 import com.kino.puber.data.api.models.Trailer
 import com.kino.puber.data.api.models.Video
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.util.FakeResourceProvider
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -19,15 +21,17 @@ class DetailsScreenUIMapperTest {
     private val mapper = DetailsScreenUIMapper(
         resources = FakeResourceProvider(),
         itemMapper = VideoItemUIMapper(FakeResourceProvider()),
+        bookmarkPreferencesRepository = BookmarkPreferencesRepository(),
     )
 
     @Test
-    fun map_movieButtons_includeTrailerWatchlistAndWatchedActions() {
+    fun map_movieButtons_includeTrailerBookmarkAndWatchedActions() {
         val state = mapper.map(movie(trailer = Trailer(url = "https://trailer")))
 
         assertEquals(1, state.buttons.count<DetailsButtonUIState.TextButton>(DetailsAction.PlayClicked))
         assertEquals(1, state.buttons.count<DetailsButtonUIState.TextButton>(DetailsAction.TrailerClicked))
-        assertEquals(1, state.buttons.count<DetailsButtonUIState.WatchlistToggle>(DetailsAction.WatchlistToggleClicked))
+        assertEquals(0, state.buttons.count<DetailsButtonUIState.WatchlistToggle>(DetailsAction.WatchlistToggleClicked))
+        assertEquals(1, state.buttons.count<DetailsButtonUIState.BookmarkToggle>(DetailsAction.BookmarkToggleClicked))
         assertEquals(1, state.buttons.count<DetailsButtonUIState.WatchedToggle>(DetailsAction.WatchedToggleClicked))
     }
 
@@ -40,7 +44,33 @@ class DetailsScreenUIMapperTest {
         assertEquals(0, state.buttons.count<DetailsButtonUIState.TextButton>(DetailsAction.ScheduleClicked))
         assertEquals(1, state.buttons.count<DetailsButtonUIState.IconOnly>(DetailsAction.TrailerClicked))
         assertEquals(1, state.buttons.count<DetailsButtonUIState.WatchlistToggle>(DetailsAction.WatchlistToggleClicked))
+        assertEquals(0, state.buttons.count<DetailsButtonUIState.BookmarkToggle>(DetailsAction.BookmarkToggleClicked))
         assertEquals(0, state.buttons.count<DetailsButtonUIState.WatchedToggle>(DetailsAction.WatchedToggleClicked))
+    }
+
+    @Test
+    fun map_extendedSeriesIncludesIndependentWatchlistAndBookmarkActions() {
+        val extendedMapper = DetailsScreenUIMapper(
+            resources = FakeResourceProvider(),
+            itemMapper = VideoItemUIMapper(FakeResourceProvider()),
+            bookmarkPreferencesRepository = BookmarkPreferencesRepository(BookmarkMode.Extended),
+        )
+
+        val state = extendedMapper.map(series(trailer = null))
+
+        assertEquals(
+            1,
+            state.buttons.count<DetailsButtonUIState.WatchlistToggle>(
+                DetailsAction.WatchlistToggleClicked
+            ),
+        )
+        assertEquals(
+            1,
+            state.buttons.count<DetailsButtonUIState.BookmarkToggle>(
+                DetailsAction.BookmarkToggleClicked
+            ),
+        )
+        assertEquals(BookmarkMode.Extended, state.bookmarkMode)
     }
 
     @Test
@@ -277,6 +307,7 @@ class DetailsScreenUIMapperTest {
                 is DetailsButtonUIState.TextButton -> button.action == action
                 is DetailsButtonUIState.IconOnly -> button.action == action
                 is DetailsButtonUIState.WatchlistToggle -> button.action == action
+                is DetailsButtonUIState.BookmarkToggle -> button.action == action
                 is DetailsButtonUIState.WatchedToggle -> button.action == action
             }
         }

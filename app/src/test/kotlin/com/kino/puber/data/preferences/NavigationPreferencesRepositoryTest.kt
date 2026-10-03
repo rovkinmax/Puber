@@ -2,6 +2,7 @@ package com.kino.puber.data.preferences
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.ui.feature.main.model.TabType
 import io.mockk.every
@@ -137,6 +138,27 @@ internal class NavigationPreferencesRepositoryTest {
     }
 
     @Test
+    fun storedBookmarkFromPreviousBranchIsDerivedByMode() {
+        val fixture = fixture(
+            storedTabs = "Home,Bookmarks,Movies,Series",
+            storedTopTabsSchemaVersion = 1,
+        )
+
+        val simpleTabs = fixture.repository.getVisibleTabs(NavigationMode.TopTabs, BookmarkMode.Simple)
+        val extendedTabs = fixture.repository.getVisibleTabs(NavigationMode.TopTabs, BookmarkMode.Extended)
+
+        assertEquals(
+            listOf(TabType.Home, TabType.Movies, TabType.Series),
+            simpleTabs,
+        )
+        assertEquals(
+            listOf(TabType.Home, TabType.Bookmarks, TabType.Movies, TabType.Series),
+            extendedTabs,
+        )
+        assertTrue(fixture.preferences.transactions.isEmpty())
+    }
+
+    @Test
     fun migrationRunsOnlyOnceAcrossRepeatedReads() {
         val fixture = fixture(storedTabs = "Movies,Collections")
 
@@ -267,6 +289,26 @@ internal class NavigationPreferencesRepositoryTest {
     }
 
     @Test
+    fun fixedConfiguration_isReturnedVerbatimRegardlessOfTogglesAndBookmarkMode() {
+        val fixedTabs = listOf(TabType.Home, TabType.Bookmarks, TabType.Cartoons, TabType.Movies)
+        val repository = NavigationPreferencesRepository(
+            navigationMode = NavigationMode.TopTabs,
+            visibleTabs = fixedTabs,
+            contentPreferences = ContentPreferences(
+                showCartoonsTab = false,
+                showAnimeTab = false,
+                showAnime = false,
+            ),
+        )
+
+        // Deriving would drop Cartoons (its toggle is off) and Bookmarks (Simple mode); a pinned
+        // configuration is the whole answer.
+        assertEquals(fixedTabs, repository.getVisibleTabs(NavigationMode.TopTabs, BookmarkMode.Simple))
+        assertEquals(fixedTabs, repository.getVisibleTabs(NavigationMode.TopTabs, BookmarkMode.Extended))
+        assertEquals(fixedTabs, repository.getVisibleTabs(NavigationMode.SideDrawer))
+    }
+
+    @Test
     fun optionalTabs_areInsertedCanonicallyInBothNavigationModes() {
         val fixture = fixture(
             storedTabs = "Home,Movies,Series,Collections,History",
@@ -338,7 +380,13 @@ internal class NavigationPreferencesRepositoryTest {
         )
 
         assertEquals(
-            listOf(TabType.Home, TabType.Movies, TabType.Series, TabType.Collections, TabType.History),
+            listOf(
+                TabType.Home,
+                TabType.Movies,
+                TabType.Series,
+                TabType.Collections,
+                TabType.History,
+            ),
             fixture.repository.getVisibleTabs(NavigationMode.TopTabs),
         )
         assertEquals(
@@ -359,18 +407,69 @@ internal class NavigationPreferencesRepositoryTest {
         )
 
         assertEquals(
-            listOf(TabType.Favourites, TabType.Movies, TabType.Anime, TabType.Collections, TabType.Settings),
+            listOf(
+                TabType.Favourites,
+                TabType.Movies,
+                TabType.Anime,
+                TabType.Collections,
+                TabType.Settings,
+            ),
             moviesFixture.repository.getVisibleTabs(NavigationMode.SideDrawer),
         )
         assertEquals(
-            listOf(TabType.Favourites, TabType.Cartoons, TabType.History, TabType.Settings),
+            listOf(
+                TabType.Favourites,
+                TabType.Cartoons,
+                TabType.History,
+                TabType.Settings,
+            ),
             boundaryFixture.repository.getVisibleTabs(NavigationMode.SideDrawer),
+        )
+    }
+
+    @Test
+    fun extendedMode_insertsBookmarksAtStablePositionsWithoutPersistingIt() {
+        val fixture = fixture(
+            storedTabs = "Home,Movies,Series,History",
+            storedDrawerTabs = "Movies,Favourites,History,Settings",
+            storedTopTabsSchemaVersion = HISTORY_SCHEMA_VERSION,
+        )
+
+        assertEquals(
+            listOf(TabType.Home, TabType.Bookmarks, TabType.Movies, TabType.Series, TabType.History),
+            fixture.repository.getVisibleTabs(NavigationMode.TopTabs, BookmarkMode.Extended),
+        )
+        assertEquals(
+            listOf(TabType.Movies, TabType.Favourites, TabType.Bookmarks, TabType.History, TabType.Settings),
+            fixture.repository.getVisibleTabs(NavigationMode.SideDrawer, BookmarkMode.Extended),
+        )
+        assertTrue(fixture.preferences.transactions.isEmpty())
+    }
+
+    @Test
+    fun extendedMode_keepsBookmarksAfterHome_whenTheDrawerHasNoFavouritesTab() {
+        val fixture = fixture(storedDrawerTabs = "Home,Movies,History,Settings")
+
+        assertEquals(
+            listOf(TabType.Home, TabType.Bookmarks, TabType.Movies, TabType.History, TabType.Settings),
+            fixture.repository.getVisibleTabs(NavigationMode.SideDrawer, BookmarkMode.Extended),
+        )
+    }
+
+    @Test
+    fun extendedMode_putsBookmarksBeforeSettings_whenNoAnchorTabIsVisible() {
+        val fixture = fixture(storedDrawerTabs = "Movies,History,Settings")
+
+        assertEquals(
+            listOf(TabType.Movies, TabType.History, TabType.Bookmarks, TabType.Settings),
+            fixture.repository.getVisibleTabs(NavigationMode.SideDrawer, BookmarkMode.Extended),
         )
     }
 
     private fun fixture(
         storedTabs: String? = null,
         storedDrawerTabs: String? = null,
+        storedTopTabsSchemaVersion: Int? = null,
         showCartoonsTab: Boolean? = null,
         showAnimeTab: Boolean? = null,
         showAnime: Boolean? = null,
@@ -378,6 +477,7 @@ internal class NavigationPreferencesRepositoryTest {
         val preferences = TestPreferences()
         storedTabs?.let { preferences.values[TOP_TABS_KEY] = it }
         storedDrawerTabs?.let { preferences.values[SIDE_DRAWER_KEY] = it }
+        storedTopTabsSchemaVersion?.let { preferences.values[TOP_TABS_SCHEMA_VERSION_KEY] = it }
         showCartoonsTab?.let { preferences.values[SHOW_CARTOONS_TAB_KEY] = it }
         showAnimeTab?.let { preferences.values[SHOW_ANIME_TAB_KEY] = it }
         showAnime?.let { preferences.values[SHOW_ANIME_KEY] = it }

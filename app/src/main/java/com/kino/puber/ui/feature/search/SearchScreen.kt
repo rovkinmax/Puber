@@ -38,7 +38,7 @@ internal class SearchScreen(
         scope(named(scopeId)) {
             scoped { params }
             scopedOf(::SearchInteractor)
-            scoped { VideoItemUIMapper(get(), get()) }
+            scoped { VideoItemUIMapper(get(), get(), get()) }
             viewModelOf(::SearchVM)
         }
     }

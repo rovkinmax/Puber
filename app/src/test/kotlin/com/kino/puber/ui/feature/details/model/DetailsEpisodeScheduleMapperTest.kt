@@ -1,6 +1,7 @@
 package com.kino.puber.ui.feature.details.model
 
 import com.kino.puber.core.ui.model.VideoItemUIMapper
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoGridItemUIState
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemPresentation
 import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
@@ -23,6 +24,7 @@ internal class DetailsEpisodeScheduleMapperTest {
     private val mapper = DetailsScreenUIMapper(
         resources = FakeResourceProvider(),
         itemMapper = VideoItemUIMapper(FakeResourceProvider()),
+        bookmarkPreferencesRepository = BookmarkPreferencesRepository(),
     )
 
     @Test

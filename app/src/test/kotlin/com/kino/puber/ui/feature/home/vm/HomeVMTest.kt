@@ -3,6 +3,7 @@ package com.kino.puber.ui.feature.home.vm
 import com.kino.puber.core.content.ContentChangeSet
 import com.kino.puber.core.content.ContentChangeType
 import com.kino.puber.core.error.ErrorHandler
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.ui.model.VideoItemUIMapper
 import com.kino.puber.core.ui.navigation.AppRouter
 import com.kino.puber.core.ui.navigation.PuberScreen
@@ -12,13 +13,15 @@ import com.kino.puber.core.ui.uikit.component.moviesList.VideoItemUIState
 import com.kino.puber.core.ui.uikit.model.CommonAction
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.domain.interactor.api.ApiDomainAutoResolveResult
 import com.kino.puber.domain.interactor.api.ApiDomainInteractor
 import com.kino.puber.domain.interactor.api.ApiDomainState
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.home.HomeInteractor
-import com.kino.puber.ui.feature.home.model.HomeUIMapper
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
 import com.kino.puber.ui.feature.home.model.HomeSectionType
+import com.kino.puber.ui.feature.home.model.HomeUIMapper
 import com.kino.puber.util.FakeResourceProvider
 import com.kino.puber.util.MainDispatcherExtension
 import io.mockk.coEvery
@@ -47,6 +50,7 @@ class HomeVMTest {
     private lateinit var videoItemMapper: VideoItemUIMapper
     private lateinit var apiDomainInteractor: ApiDomainInteractor
     private lateinit var savedItemInteractor: SavedItemInteractor
+    private lateinit var bookmarkPreferencesRepository: BookmarkPreferencesRepository
     private lateinit var errorHandler: ErrorHandler
 
     @BeforeEach
@@ -59,6 +63,7 @@ class HomeVMTest {
         videoItemMapper = mockk(relaxed = true)
         apiDomainInteractor = mockk(relaxed = true)
         savedItemInteractor = mockk(relaxed = true)
+        bookmarkPreferencesRepository = BookmarkPreferencesRepository()
         errorHandler = mockk { every { proceed(any()) } returns { } }
 
         coEvery { apiDomainInteractor.autoResolveWorkingDomain() } returns ApiDomainAutoResolveResult.Success(
@@ -158,6 +163,65 @@ class HomeVMTest {
         verify { mapper.mapItemSection(listOf(personalWatchingItem), HomeSectionType.ContinueWatching) }
     }
 
+    @Test
+    fun extendedMode_keepsWatchingSectionButDoesNotLoadLegacyWatchLaterSection() {
+        bookmarkPreferencesRepository.setMode(BookmarkMode.Extended)
+        val watchingItem = item(2)
+        coEvery { interactor.getWatchingItems() } returns Result.success(listOf(watchingItem))
+        val vm = createVM()
+
+        vm.testOnStart()
+        mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { interactor.getWatchingItems() }
+        coVerify(exactly = 0) { interactor.getWatchLaterItems() }
+        coVerify(exactly = 0) { interactor.getGenericBookmarkItems() }
+        verify { mapper.mapItemSection(listOf(watchingItem), HomeSectionType.ContinueWatching) }
+        verify(exactly = 0) { mapper.mapItemSection(any(), HomeSectionType.WatchLater) }
+        verify(exactly = 0) { mapper.mapItemSection(any(), HomeSectionType.Bookmarks) }
+    }
+
+    @Test
+    fun simpleMode_loadsLegacyWatchLaterSection() {
+        val watchLaterItem = item(3)
+        coEvery { interactor.getWatchLaterItems() } returns Result.success(listOf(watchLaterItem))
+        val vm = createVM()
+
+        vm.testOnStart()
+        mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { interactor.getWatchLaterItems() }
+        verify { mapper.mapItemSection(listOf(watchLaterItem), HomeSectionType.WatchLater) }
+    }
+
+    @Test
+    fun simpleMode_loadsTheOtherFoldersSection() {
+        // Simple mode shows neither the Bookmarks tab nor the folder picker, so this row is the
+        // only way an account's other folders stay reachable.
+        val bookmarkItem = item(4)
+        coEvery { interactor.getGenericBookmarkItems() } returns Result.success(listOf(bookmarkItem))
+        val vm = createVM()
+
+        vm.testOnStart()
+        mainDispatcher.dispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { interactor.getGenericBookmarkItems() }
+        verify { mapper.mapItemSection(listOf(bookmarkItem), HomeSectionType.Bookmarks) }
+    }
+
+    @Test
+    fun itemBookmarksRequested_opensTheBookmarkPickerForThatItem() {
+        val screen = mockk<PuberScreen>()
+        every {
+            screens.bookmarkPicker(itemId = 42, resultCode = any())
+        } returns screen
+        val vm = createVM()
+
+        vm.onAction(CommonAction.ItemBookmarksRequested(videoItem(42)))
+
+        verify { router.navigateForResult<BookmarkPickerResult>(screen, any(), any()) }
+    }
+
     private fun createVM() = HomeVM(
         router = router,
         interactor = interactor,
@@ -165,6 +229,7 @@ class HomeVMTest {
         videoItemMapper = videoItemMapper,
         apiDomainInteractor = apiDomainInteractor,
         savedItemInteractor = savedItemInteractor,
+        bookmarkPreferencesRepository = bookmarkPreferencesRepository,
         resources = FakeResourceProvider(),
         errorHandler = errorHandler,
     )
