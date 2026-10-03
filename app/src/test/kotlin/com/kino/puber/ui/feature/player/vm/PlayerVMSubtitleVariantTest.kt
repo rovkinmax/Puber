@@ -21,6 +21,38 @@ internal class PlayerVMSubtitleVariantTest : PlayerVMTestFixture() {
     }
 
     @Test
+    fun tracksUpdated_preservesSelectedLanguageLessTrackOnRepeatedAndReorderedCallbacks() {
+        val vm = startedVM()
+        val unknown = SubtitleTrackUIState(
+            label = "Unknown",
+            language = "",
+            url = "",
+            playerTrackId = "unknown",
+            playerTrackGroupId = "unknown-group",
+            playerGroupIndex = 0,
+            playerTrackIndex = 0,
+            isForced = false,
+        )
+        val other = unknown.copy(
+            playerTrackId = "other",
+            playerTrackGroupId = "other-group",
+            playerGroupIndex = 1,
+        )
+        callbackSlot.captured.onTracksUpdated(emptyList(), 0, listOf(unknown, other))
+        vm.onAction(PlayerAction.SelectSubtitle(1))
+
+        for (tracks in listOf(listOf(unknown, other), listOf(other, unknown))) {
+            callbackSlot.captured.onTracksUpdated(emptyList(), 0, tracks)
+            val content = contentState(vm)
+            assertEquals("unknown", content.subtitleTracks[content.selectedSubtitleIndex].playerTrackId)
+        }
+
+        vm.onAction(PlayerAction.SelectSubtitle(0))
+        callbackSlot.captured.onTracksUpdated(emptyList(), 0, listOf(other, unknown))
+        assertEquals(0, contentState(vm).selectedSubtitleIndex)
+    }
+
+    @Test
     fun tracksUpdated_addsAndSelectsManifestOnlySubtitle_withLanguagePreference() {
         val vm = startedVM()
         val audioTracks = listOf(AudioTrackUIState(0, "English", "eng"))

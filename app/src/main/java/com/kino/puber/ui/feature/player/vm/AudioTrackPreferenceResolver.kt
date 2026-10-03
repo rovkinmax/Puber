@@ -34,7 +34,11 @@ internal class AudioTrackPreferenceResolver {
         preferredDescriptiveLabel: String? = null,
         allowPositionFallback: Boolean = false,
     ): Int {
-        if (preferredLang != null && preferredLang.isEmpty()) {
+        // Empty language means Off only when there is no actual track identity.
+        val hasIdentity = listOf(preferredUrl, preferredPlayerTrackId, preferredPlayerTrackGroupId)
+            .any { !it.isNullOrEmpty() }
+        val hasCoordinates = preferredPlayerGroupIndex != null || preferredPlayerTrackIndex != null
+        if (preferredLang == "" && !hasIdentity && !hasCoordinates) {
             return tracks.indexOfFirst { it.isOff }
         }
         val compatibleTracks = tracks.withIndex().filter { (_, track) ->
@@ -146,7 +150,7 @@ internal class AudioTrackPreferenceResolver {
         tracks: List<IndexedValue<SubtitleTrackUIState>>,
         preferredLang: String?,
     ): Int {
-        if (preferredLang == null) return NO_MATCH
+        if (preferredLang.isNullOrEmpty()) return NO_MATCH
         val matches = tracks.filter {
             sameSubtitleLanguage(it.value.language, preferredLang)
         }

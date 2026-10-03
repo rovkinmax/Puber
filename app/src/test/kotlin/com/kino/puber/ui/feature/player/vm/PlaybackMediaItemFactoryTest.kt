@@ -1,9 +1,11 @@
 package com.kino.puber.ui.feature.player.vm
 
 import android.app.Application
+import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
 import com.kino.puber.data.api.models.SubtitleLink
 import com.kino.puber.domain.interactor.player.StreamSource
+import com.kino.puber.ui.feature.player.model.SubtitleTrackUIState
 import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
 import org.junit.Test
@@ -15,6 +17,72 @@ import org.robolectric.RobolectricTestRunner
 internal class PlaybackMediaItemFactoryTest {
 
     private val factory = PlaybackMediaItemFactory()
+
+    @Test
+    fun build_preservesForcedFlagWithoutMarkingFullSubtitlesDefault() {
+        for (isHls in listOf(true, false)) {
+            val item = factory.build(
+                stream = StreamSource("https://test/video", isHls = isHls),
+                subtitles = listOf(
+                    SubtitleLink(lang = "eng", url = "https://test/full.vtt", forced = false),
+                    SubtitleLink(lang = "eng", url = "https://test/forced.vtt", forced = true),
+                    SubtitleLink(lang = "spa", url = "https://test/unknown.vtt", forced = null),
+                ),
+            )
+
+            assertEquals(
+                listOf(0, C.SELECTION_FLAG_FORCED, 0),
+                item.localConfiguration?.subtitleConfigurations.orEmpty().map { it.selectionFlags },
+            )
+        }
+    }
+
+    @Test
+    fun build_forcedApiFallbackRemainsSelectableAfterMergingWithPlayerTracks() {
+        val subtitle = SubtitleLink(lang = "eng", url = "https://test/forced.vtt", forced = true)
+        val config = factory.build(StreamSource("https://test/master.m3u8", isHls = true), listOf(subtitle))
+            .localConfiguration!!.subtitleConfigurations.single()
+        val playerTrack = SubtitleTrackUIState(
+            label = config.label.orEmpty(),
+            language = config.language.orEmpty(),
+            url = "",
+            playerTrackId = config.id,
+            playerTrackGroupId = "1:forced",
+            playerTrackUri = config.uri.toString(),
+            playerGroupIndex = 1,
+            playerTrackIndex = 0,
+            isForced = config.selectionFlags and C.SELECTION_FLAG_FORCED != 0,
+        )
+        val merged = SubtitleTrackMerger(
+            SubtitleLabeler(
+                displayLanguageTag = "en",
+                aiGeneratedLabel = "AI generated",
+                forcedQualifier = "forced",
+                variantLabel = { label, ordinal -> "$label ($ordinal)" },
+                unknownLabel = { position -> "Track $position" },
+            ),
+        ).merge(
+            listOf(
+                SubtitleTrackUIState("Off", "", ""),
+                SubtitleTrackUIState("Forced", subtitle.lang, subtitle.url, isForced = subtitle.forced),
+            ),
+            listOf(playerTrack),
+        )
+        val candidate = PlayerTextTrack(
+            groupId = "1:forced",
+            groupIndex = 1,
+            trackIndex = 0,
+            formatId = config.id,
+            formatLabel = config.label,
+            language = config.language,
+            isForced = playerTrack.isForced,
+        )
+
+        assertEquals(
+            candidate,
+            SubtitleTrackSelector().select(merged.single { it.isForced == true }, listOf(candidate)),
+        )
+    }
 
     @Test
     fun build_preservesStreamAndBuildsStableSubtitleConfigurations() {
