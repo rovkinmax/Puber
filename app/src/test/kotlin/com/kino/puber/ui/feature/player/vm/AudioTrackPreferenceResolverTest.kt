@@ -10,6 +10,51 @@ internal class AudioTrackPreferenceResolverTest {
     private val resolver = AudioTrackPreferenceResolver()
 
     @Test
+    fun findSubtitleTrackIndex_preservesLanguageLessTrackByIdentity() {
+        val off = subtitleTrack(index = 0, language = "", url = "")
+        val cases = listOf(
+            subtitleTrack(index = 1, language = "", url = "https://test/unknown.vtt"),
+            subtitleTrack(index = 1, language = "", url = "", playerTrackId = "unknown"),
+            subtitleTrack(index = 1, language = "", url = "", groupIndex = 4)
+                .copy(playerTrackGroupId = "unknown-group"),
+            subtitleTrack(index = 1, language = "", url = "", groupIndex = 4),
+        )
+        for (track in cases) {
+            assertEquals(
+                1,
+                resolver.findSubtitleTrackIndex(
+                    tracks = listOf(off, track),
+                    preferredLang = "",
+                    preferredUrl = track.url,
+                    preferredPlayerTrackId = track.playerTrackId,
+                    preferredPlayerTrackGroupId = track.playerTrackGroupId,
+                    preferredPlayerGroupIndex = track.playerGroupIndex,
+                    preferredPlayerTrackIndex = track.playerTrackIndex,
+                    allowPositionFallback = true,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun findSubtitleTrackIndex_doesNotRestoreOffWhenLanguageLessIdentityDisappears() {
+        val tracks = listOf(
+            subtitleTrack(index = 0, language = "", url = ""),
+            subtitleTrack(index = 1, language = "", url = "", playerTrackId = "other"),
+        )
+
+        assertEquals(
+            -1,
+            resolver.findSubtitleTrackIndex(
+                tracks = tracks,
+                preferredLang = "",
+                preferredUrl = "",
+                preferredPlayerTrackId = "missing",
+            ),
+        )
+    }
+
+    @Test
     fun findAudioTrackIndex_prefersExactThenNormalizedLabel() {
         val tracks = listOf(
             AudioTrackUIState(0, "01. Original (ENG)", "eng"),

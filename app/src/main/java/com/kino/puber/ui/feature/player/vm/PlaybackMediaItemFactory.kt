@@ -1,6 +1,7 @@
 package com.kino.puber.ui.feature.player.vm
 
 import androidx.core.net.toUri
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import com.kino.puber.data.api.models.SubtitleLink
@@ -22,6 +23,7 @@ internal class PlaybackMediaItemFactory {
             MediaItem.SubtitleConfiguration.Builder(subtitle.url.toUri())
                 .setMimeType(subtitleMimeType(subtitle.url))
                 .setLanguage(subtitle.lang)
+                .setSelectionFlags(if (subtitle.forced == true) C.SELECTION_FLAG_FORCED else 0)
                 .setLabel(stableKey)
                 .setId(stableKey)
                 .build()

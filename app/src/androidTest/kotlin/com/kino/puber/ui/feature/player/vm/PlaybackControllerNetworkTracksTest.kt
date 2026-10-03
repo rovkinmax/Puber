@@ -132,6 +132,64 @@ internal class PlaybackControllerNetworkTracksTest : PlayerInstrumentationTestCa
     }
 
     @Test
+    fun hlsTracks_selectsForcedApiFallbackAndRendersItsCue() = run {
+        val cue = "API forced fallback cue"
+        val subtitleUrl = loopbackUrl("/media/api-forced.vtt")
+        val apiSubtitle = SubtitleLink(lang = "en", url = subtitleUrl, forced = true, embed = true)
+        server.reset(
+            commonHlsRoutes(
+                masterBody = singleVariantMaster("video_720.m3u8"),
+                extraRoutes = listOf(
+                    server.route(
+                        id = "api-forced-cue",
+                        path = "/media/api-forced.vtt",
+                        response = HermeticTestServer.text(
+                            body = "WEBVTT\n\n00:00:00.000 --> 00:00:04.000\n$cue\n",
+                            contentType = "text/vtt",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val probe = prepare("/media/hls/master.m3u8", subtitles = listOf(apiSubtitle))
+        awaitReady(probe)
+        runOnPlayer { controller.pause() }
+        awaitCondition("API fallback discovered") {
+            trackProbe.subtitleTracks.get().any { it.playerTrackId == "api-forced.vtt" }
+        }
+        val mergedTracks = SubtitleTrackMerger(
+            SubtitleLabeler(
+                displayLanguageTag = "en",
+                aiGeneratedLabel = "AI generated",
+                forcedQualifier = "forced",
+                variantLabel = { label, ordinal -> "$label ($ordinal)" },
+                unknownLabel = { position -> "Track $position" },
+            ),
+        ).merge(
+            apiTracks = listOf(
+                SubtitleTrackUIState("Off", "", ""),
+                SubtitleTrackUIState("English forced", "en", subtitleUrl, isForced = true),
+            ),
+            playerTracks = trackProbe.subtitleTracks.get(),
+        )
+        val forced = mergedTracks.single { it.isForced == true }
+        assertEquals("api-forced.vtt", forced.playerTrackId)
+        awaitCondition("subtitles initially off") { textTracksDisabled() && !selectedTextTrack() }
+        runOnPlayer {
+            controller.selectSubtitle(forced)
+            controller.seekTo(SUBTITLE_CUE_POSITION_MS)
+            controller.play()
+        }
+        awaitCondition("forced API track selected") {
+            selectedTextTrackLabel() == "api-forced.vtt" && !textTracksDisabled()
+        }
+        awaitCondition("forced API cue rendered") { currentCueTexts() == listOf(cue) }
+        runOnPlayer { controller.selectSubtitle(null) }
+        awaitCondition("forced API track disabled") { textTracksDisabled() && !selectedTextTrack() }
+        assertEquals(null, probe.error.get())
+    }
+
+    @Test
     fun hlsTracks_discoversManifestVariants_deduplicatesApiCopyAndSelectsExactCues() = run {
         lateinit var probe: PlayerProbe
         lateinit var apiSubtitle: SubtitleLink
