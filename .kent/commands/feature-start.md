@@ -104,6 +104,15 @@ Determine if this is a **visual feature** (has UI design) or a **code-only chang
   explicit workspace path.
 - Follow its codebase-analysis and plan-generation rules directly; do not invoke `/prompt:feature-plan` or start another
   prompt flow.
+- When behavior or fixtures change, follow `.kent/commands/mock-scenario-policy.md`
+  while building the plan. Inventory each behavior with a stable behavior ID,
+  anticipated source paths, applicability and rationale. For applicable
+  behavior, include the mock seam, selected test IDs, assertion/fixture paths,
+  concrete assertions and fixed harness reference. For non-applicable behavior,
+  record the concrete harness limitation and suitable alternative-check test
+  IDs. Keep results pending until implementation evidence records the actual
+  execution result; implementation reconciles this inventory against the final
+  source delta.
 - **Verification checkpoint** after the planning procedure completes:
   - `.todo/<feature>/plan.md` exists
   - If missing → report error and stop

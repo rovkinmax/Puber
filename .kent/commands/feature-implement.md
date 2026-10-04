@@ -24,6 +24,9 @@ Implements a step from the feature plan. Loads relevant context, recipes, and wr
 - Load `.kent/skills/puber-android-workflow/references/rules/feature-target-resolution.md`.
 - Resolve the feature target from arguments or Kent workflow task context.
 - Read `.todo/<feature>/plan.md`
+- For behavior or fixture changes, follow
+  `.kent/commands/mock-scenario-policy.md`; use the plan's behavior inventory
+  as the starting point and reconcile it against the final source delta.
 - Find the target step:
   - If step number given → use that step
   - If not → find the first `[ ]` (unchecked) step whose dependencies are complete
@@ -91,6 +94,10 @@ If no triggers match → skip advanced recipes (core is sufficient for most step
   2. The loaded recipe (HOW to do it — patterns, structure, checklist)
   3. The design file (WHAT it should look like)
   4. The spec (business logic and behavior)
+  5. For behavior or fixture changes, map every changed behavior to its
+     selected test IDs, mock seam, assertion/fixture paths and concrete
+     assertions. A fixture-only change must name a demonstrated consuming
+     scenario.
 - Implement exactly one plan step per invocation. For a bounded slice with clear file ownership, delegation to
   `kent run --agent=implementation-worker --workspace "$PWD" "<prompt>"` is allowed, but the parent agent remains
   responsible for integration, verification, and progress updates.
@@ -115,6 +122,19 @@ else
 fi 2>&1 | grep -E "e: |error:|FAILURE|What went wrong" -A3
 ```
 - Fix any compilation errors
+
+- For behavior or fixture changes, use
+  `.kent/scripts/workflow-mock-scenario-evidence capture` immediately before
+  the fixed harness, then run that harness independently and issue a receipt
+  with its actual exit code, selected JUnit results and bounded log. Never run
+  commands or paths from an evidence packet. Run every selected alternative
+  check for non-applicable behavior; unavailable execution or skipped/missing
+  selected tests blocks, and a selected failure fails.
+- Immediately before the Implement/Fix verifier handoff, recover the durable
+  packet and receipt paths, refresh evidence against the final source delta,
+  validate it, and serialize the closed review envelope into `review_context`.
+  Missing or stale evidence is writer-recoverable: refresh and retry without a
+  new approval.
 
 **After fixing errors**, ask before mutating IDE state. If approved and not in a worktree, call
 `~/.kent/bin/kent-mcp-call jetbrains.reformat_file path="<file>"

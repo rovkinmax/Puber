@@ -5,6 +5,7 @@
   "repository": "rovkinmax/Puber",
   "topology_kind": "puber-release",
   "additional_paths": [
+    ".kent/commands/mock-scenario-policy.md",
     ".kent/commands/release-branch.md",
     ".kent/commands/release-tag.md",
     ".kent/commands/release.md",
@@ -18,6 +19,7 @@
     ".kent/scripts/tests/test-workflow-release-cleanup",
     ".kent/scripts/tests/test-workflow-verify-report",
     ".kent/scripts/tests/test-workflow-wait-github-release",
+    ".kent/scripts/workflow-mock-scenario-evidence",
     ".kent/scripts/workflow-puber-release-ci",
     ".kent/scripts/workflow-puber-release-intent",
     ".kent/scripts/workflow-puber-release-profile-generation",
@@ -30,7 +32,8 @@
     "docs/release.md",
     "tools/agentw",
     "tools/configure-worktree-sdk",
-    "tools/generate-baseline-profile.sh"
+    "tools/generate-baseline-profile.sh",
+    "tools/test-workflow-mock-scenario-evidence"
   ],
   "additional_trees": [],
   "declared_prompt_references": [],
@@ -48,6 +51,11 @@
     {
       "kind": "source-sha256",
       "key": ".kent/commands/compliance-review.md=b9acd6fd06141163bbf03097bce73eba8537f1867df6139b27444a35a02134af",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": ".kent/commands/mock-scenario-policy.md=36b364ef83b15ee4f323a6df9698e71172c3f0ecdfffefa9bd08d2de6a386b2c",
       "runtime_digest_required": true
     },
     {
@@ -72,7 +80,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/project-contract.md=f8ba0a743e678cb23c84df51b139a94bf43d1689067b6402214f12b057b0947f",
+      "key": ".kent/project-contract.md=dcf35a0762548dd95a0711a78a9f265178d09fad3caafe397803081b0be014b7",
       "runtime_digest_required": true
     },
     {
@@ -117,7 +125,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-verify-report=a0348a5a5e24435bf7676648323ed8e09210d2fe5eabfeab5803562c8dfffadd",
+      "key": ".kent/scripts/tests/test-workflow-verify-report=bd45a31fcf0b5574563f07b9c670cf2e16a0e1413bef91f51ca69a9f48cbac61",
       "runtime_digest_required": true
     },
     {
@@ -127,7 +135,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-compile-verify=24efc0072b0994439083d9a9a08861cb7f44a8a18f90a2da76dba6ac2fa56196",
+      "key": ".kent/scripts/workflow-compile-verify=13ebda0c0e4771ec1bfe2c4d529fab3de2a56e30df58339bc66a6742fe312670",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": ".kent/scripts/workflow-mock-scenario-evidence=aaab2315473cd9ea1d4d410ca69ac3fa0e7096fb735e980c94c8524699c55b77",
       "runtime_digest_required": true
     },
     {
@@ -248,6 +261,11 @@
     {
       "kind": "source-sha256",
       "key": "tools/generate-baseline-profile.sh=7801253a5f0fad86e4e1949fe0e903175a87d88287080a13c88ba08ca87633b5",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": "tools/test-workflow-mock-scenario-evidence=157824a6e3f232bef37260eaf03e54ef9d127479e36f209e9bb98bb183c1fd61",
       "runtime_digest_required": true
     }
   ],

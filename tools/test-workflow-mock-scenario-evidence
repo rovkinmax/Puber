@@ -1,0 +1,1467 @@
+#!/usr/bin/env python3
+"""Portable synthetic acceptance suite; historical audit is explicitly opt-in."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.util
+from importlib.machinery import SourceFileLoader
+import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import time
+import unittest
+from unittest import mock
+import xml.etree.ElementTree as ET
+import sys
+
+
+ROOT = Path(__file__).resolve().parents[1]
+TASK_SHORT_ID = "PUB-84"
+FIXED_POINT = "f640524f31696592f8532bda1162953601b9fa9f"
+PRE_EDIT_REPORT = ROOT / "build/kent-workflow/PUB-84/pre-edit-red.json"
+PRE_EDIT_LOG = ROOT / "build/kent-workflow/PUB-84/pre-edit-red.log"
+HELPER_PATH = ROOT / ".kent/scripts/workflow-mock-scenario-evidence"
+MANIFEST_BOUND_SOURCES = (
+    ".kent/commands/mock-scenario-policy.md",
+    ".kent/scripts/workflow-mock-scenario-evidence",
+    "tools/test-workflow-mock-scenario-evidence",
+    ".kent/scripts/workflow-compile-verify",
+    ".kent/scripts/tests/test-workflow-verify-report",
+)
+
+sys.dont_write_bytecode = True
+loader = SourceFileLoader("mock_scenario_evidence", str(HELPER_PATH))
+spec = importlib.util.spec_from_loader("mock_scenario_evidence", loader)
+assert spec is not None and spec.loader is not None
+evidence = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(evidence)
+
+
+def run_git(root: Path, *arguments: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), *arguments],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=10,
+    )
+    return result.stdout.strip()
+
+
+def digest(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def manifest_binding_errors(manifest: dict, root: Path) -> list[str]:
+    """Task-owned required-pin inventory; the generic builder checks supplied pins."""
+    errors = []
+    for relative in MANIFEST_BOUND_SOURCES:
+        bindings = [
+            item for item in manifest["external_roots"]
+            if item["kind"] == "source-sha256"
+            and item["key"].split("=", 1)[0] == relative
+        ]
+        if len(bindings) != 1:
+            errors.append(f"missing or duplicate task source binding: {relative}")
+        elif (
+            bindings[0]["key"] != f"{relative}={digest((root / relative).read_bytes())}"
+            or bindings[0]["runtime_digest_required"] is not True
+        ):
+            errors.append(f"task source binding mismatch: {relative}")
+    return errors
+
+
+def junit_xml(test_id: str, outcome: str = "passed") -> bytes:
+    classname, name = test_id.split("#", 1)
+    suite = ET.Element("testsuite", tests="1", failures="0", errors="0", skipped="0")
+    case = ET.SubElement(suite, "testcase", classname=classname, name=name)
+    if outcome == "failed":
+        ET.SubElement(case, "failure", message="expected assertion failure")
+        suite.set("failures", "1")
+    elif outcome == "skipped":
+        ET.SubElement(case, "skipped", message="disabled test")
+        suite.set("skipped", "1")
+    return ET.tostring(suite, encoding="utf-8", xml_declaration=True)
+
+
+class SyntheticRepository:
+    def __init__(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="pub-84-evidence-")
+        self.root = Path(self.temporary.name).resolve()
+        subprocess.run(
+            ["git", "init", "--quiet", str(self.root)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+        )
+        run_git(self.root, "config", "user.name", "PUB-84 synthetic test")
+        run_git(self.root, "config", "user.email", "pub-84@example.invalid")
+        (self.root / "src").mkdir()
+        (self.root / "tests").mkdir()
+        (self.root / "src/behavior.py").write_text(
+            "def behavior(): return 'before'\n", encoding="utf-8"
+        )
+        (self.root / "tests/test_behavior.py").write_text(
+            "def test_behavior(): assert True\n", encoding="utf-8"
+        )
+        run_git(self.root, "add", "src/behavior.py", "tests/test_behavior.py")
+        run_git(self.root, "commit", "--quiet", "-m", "synthetic baseline")
+        self.baseline = run_git(self.root, "rev-parse", "HEAD")
+        (self.root / "src/behavior.py").write_text(
+            "def behavior(): return 'after'\n", encoding="utf-8"
+        )
+        (self.root / "tests/test_behavior.py").write_text(
+            "def test_behavior(): assert behavior() == 'after'\n",
+            encoding="utf-8",
+        )
+        self.task = "TEST-1"
+        self.work_kind = "feature"
+        self.case_id = "SyntheticPolicyTest#test_selected_behavior"
+        self.relative_dir = "build/kent-workflow/TEST-1"
+        self.packet_path = f"{self.relative_dir}/packet.json"
+        self.capture_path = f"{self.relative_dir}/capture.json"
+        self.results_dir = f"{self.relative_dir}/junit"
+        self.log_path = f"{self.relative_dir}/runner.log"
+        self.receipt_path = f"{self.relative_dir}/execution.json"
+
+    def close(self) -> None:
+        self.temporary.cleanup()
+
+    def packet(self, test_ids: list[str] | None = None) -> dict[str, object]:
+        source_digest, delta_entries = evidence.source_delta(self.root, self.baseline)
+        changed_paths = [
+            item["path"] for item in delta_entries if item["state"] == "present"
+        ]
+        return {
+            "schema": evidence.PACKET_SCHEMA,
+            "task_short_id": self.task,
+            "work_kind": self.work_kind,
+            "baseline": self.baseline,
+            "source_delta_sha256": source_digest,
+            "behaviors": [
+                {
+                    "id": "behavior-change",
+                    "source_paths": changed_paths,
+                    "applicability": "applicable",
+                    "rationale": "A user-visible behavior change has a mock-backed seam.",
+                    "mock_seam": "synthetic repository fixture",
+                    "selected_test_ids": test_ids or [self.case_id],
+                    "assertion_paths": ["tests/test_behavior.py"],
+                    "assertions": ["The selected scenario observes the changed value."],
+                    "harness_ref": "python -m unittest SyntheticPolicyTest",
+                    "result": "pending",
+                    "alternative_checks": [],
+                }
+            ],
+        }
+
+    def write_packet(self, packet: dict[str, object] | None = None) -> None:
+        value = packet or self.packet()
+        path = self.root / self.packet_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def capture(
+        self, packet: dict[str, object] | None = None
+    ) -> dict[str, object]:
+        self.write_packet(packet)
+        return evidence.capture(
+            self.root,
+            task=self.task,
+            work_kind=self.work_kind,
+            baseline=self.baseline,
+            packet_path=self.packet_path,
+            results_dir=self.results_dir,
+            log_path=self.log_path,
+            output_path=self.capture_path,
+        )
+
+    def write_run(self, test_id: str | None = None, outcome: str = "passed") -> None:
+        result_dir = self.root / self.results_dir
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "TEST-results.xml").write_bytes(
+            junit_xml(test_id or self.case_id, outcome)
+        )
+        log = self.root / self.log_path
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(f"selected harness completed: {outcome}\n", encoding="utf-8")
+
+    def receipt(self, exit_code: int = 0) -> dict[str, object]:
+        return evidence.issue_receipt(
+            self.root,
+            capture_path=self.capture_path,
+            packet_path=self.packet_path,
+            results_dir=self.results_dir,
+            log_path=self.log_path,
+            output_path=self.receipt_path,
+            exit_code=exit_code,
+        )
+
+    def envelope(self) -> dict[str, object]:
+        return evidence.serialize_review_context(
+            self.root,
+            task=self.task,
+            work_kind=self.work_kind,
+            baseline=self.baseline,
+            packet_path=self.packet_path,
+            execution_path=self.receipt_path,
+            narrative="Synthetic selected scenarios completed with fresh source-bound output.",
+        )
+
+
+class HistoricalAuditTest(unittest.TestCase):
+    """Local audit of preserved RED artifacts, not a clean-checkout requirement."""
+
+    def test_locked_baseline_wrongful_pass_is_preserved(self) -> None:
+        report = json.loads(PRE_EDIT_REPORT.read_text(encoding="utf-8"))
+        log = PRE_EDIT_LOG.read_bytes()
+        self.assertEqual(report["schema"], "mock-scenario-pre-edit-red-v1")
+        self.assertEqual(report["task_short_id"], TASK_SHORT_ID)
+        self.assertEqual(report["fixed_point"], FIXED_POINT)
+        self.assertEqual(report["expected_transition"], "blocked")
+        self.assertEqual(report["observed_transition"], "passed")
+        self.assertEqual(report["verdict"], "RED")
+        self.assertTrue(report["fixed_compile"]["stub"])
+        self.assertEqual(report["log_sha256"], digest(log))
+
+
+class MockScenarioEvidenceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.repo = SyntheticRepository()
+
+    def tearDown(self) -> None:
+        self.repo.close()
+
+    def test_duplicate_json_keys_and_unknown_packet_keys_reject(self) -> None:
+        with self.assertRaises(evidence.EvidenceError):
+            evidence._load_json_bytes(b'{"schema":"x","schema":"y"}', "duplicate")
+        with self.assertRaisesRegex(evidence.EvidenceError, "exceeds"):
+            evidence._load_json_bytes(
+                b" " * (evidence.MAX_JSON_BYTES + 1),
+                "oversized packet",
+            )
+        packet = self.repo.packet()
+        packet["unexpected"] = "closed schema rejects this"
+        with self.assertRaisesRegex(evidence.EvidenceError, "keys mismatch"):
+            evidence._validate_packet_object(
+                self.repo.root,
+                packet,
+                expected_task=self.repo.task,
+                expected_work_kind=self.repo.work_kind,
+                expected_baseline=self.repo.baseline,
+                allow_pending=True,
+            )
+        packet = self.repo.packet()
+        packet["schema"] = "mock-scenario-evidence-v0"
+        with self.assertRaisesRegex(evidence.EvidenceError, "unsupported"):
+            evidence._validate_packet_object(
+                self.repo.root,
+                packet,
+                expected_baseline=self.repo.baseline,
+                allow_pending=True,
+            )
+
+    def test_unsupported_kind_duplicate_ids_and_escape_reject(self) -> None:
+        packet = self.repo.packet()
+        packet["work_kind"] = "unsupported"
+        with self.assertRaisesRegex(evidence.EvidenceError, "unsupported work_kind"):
+            evidence._validate_packet_object(
+                self.repo.root,
+                packet,
+                expected_baseline=self.repo.baseline,
+                allow_pending=True,
+            )
+        packet = self.repo.packet()
+        packet["behaviors"][0]["applicability"] = "unknown"
+        with self.assertRaisesRegex(evidence.EvidenceError, "invalid applicability"):
+            evidence._validate_packet_object(
+                self.repo.root,
+                packet,
+                expected_baseline=self.repo.baseline,
+                allow_pending=True,
+            )
+        packet = self.repo.packet()
+        packet["behaviors"][0]["result"] = "not_run"
+        with self.assertRaisesRegex(evidence.EvidenceError, "must be pending"):
+            evidence._validate_packet_object(
+                self.repo.root,
+                packet,
+                expected_baseline=self.repo.baseline,
+                allow_pending=True,
+            )
+        packet = self.repo.packet([self.repo.case_id, self.repo.case_id])
+        with self.assertRaisesRegex(evidence.EvidenceError, "duplicate"):
+            evidence._validate_packet_object(
+                self.repo.root,
+                packet,
+                expected_baseline=self.repo.baseline,
+                allow_pending=True,
+            )
+        with self.assertRaisesRegex(evidence.EvidenceError, "contained relative"):
+            evidence._relative_path("../outside.json", "packet")
+
+    def test_valid_fresh_execution_serializes_closed_envelope(self) -> None:
+        self.repo.capture()
+        self.repo.write_run()
+        receipt = self.repo.receipt()
+        self.assertEqual(receipt["schema"], evidence.EXECUTION_SCHEMA)
+        self.assertEqual(receipt["completion"], "passed")
+        packet = json.loads((self.repo.root / self.repo.packet_path).read_text())
+        self.assertEqual(packet["behaviors"][0]["result"], "passed")
+        envelope = self.repo.envelope()
+        self.assertEqual(envelope["schema"], evidence.REVIEW_SCHEMA)
+        self.assertEqual(envelope["packet"]["path"], self.repo.packet_path)
+        self.assertEqual(
+            evidence.validate_review_context(
+                self.repo.root,
+                envelope,
+                expected_task=self.repo.task,
+                expected_work_kind=self.repo.work_kind,
+            ),
+            envelope,
+        )
+
+    def test_cli_commands_round_trip_source_bound_evidence(self) -> None:
+        self.repo.write_packet()
+        common = [
+            "--workspace",
+            str(self.repo.root),
+            "--task",
+            self.repo.task,
+            "--work-kind",
+            self.repo.work_kind,
+            "--baseline",
+            self.repo.baseline,
+            "--packet",
+            self.repo.packet_path,
+        ]
+
+        def invoke(*arguments: str, input_bytes: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.run(
+                ["python3", str(HELPER_PATH), *arguments],
+                input=input_bytes,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=10,
+                check=False,
+            )
+
+        validated = invoke("validate-packet", *common)
+        self.assertEqual(validated.returncode, 0, validated.stderr.decode())
+        self.assertEqual(json.loads(validated.stdout)["transition"], "passed")
+
+        capture = invoke(
+            "capture",
+            *common,
+            "--results-dir",
+            self.repo.results_dir,
+            "--log",
+            self.repo.log_path,
+            "--output",
+            self.repo.capture_path,
+        )
+        self.assertEqual(capture.returncode, 0, capture.stderr.decode())
+        self.assertEqual(json.loads(capture.stdout)["transition"], "passed")
+        self.repo.write_run()
+
+        receipt = invoke(
+            "receipt",
+            "--workspace",
+            str(self.repo.root),
+            "--capture",
+            self.repo.capture_path,
+            "--packet",
+            self.repo.packet_path,
+            "--results-dir",
+            self.repo.results_dir,
+            "--log",
+            self.repo.log_path,
+            "--exit-code",
+            "0",
+            "--output",
+            self.repo.receipt_path,
+        )
+        self.assertEqual(receipt.returncode, 0, receipt.stderr.decode())
+        self.assertEqual(json.loads(receipt.stdout)["transition"], "passed")
+
+        envelope = invoke(
+            "serialize-envelope",
+            *common,
+            "--execution",
+            self.repo.receipt_path,
+            "--narrative",
+            "CLI-generated evidence is fresh, source-bound, and passing.",
+        )
+        self.assertEqual(envelope.returncode, 0, envelope.stderr.decode())
+        envelope_bytes = envelope.stdout
+        checked = invoke(
+            "validate-envelope",
+            "--workspace",
+            str(self.repo.root),
+            "--task",
+            self.repo.task,
+            "--work-kind",
+            self.repo.work_kind,
+            input_bytes=envelope_bytes,
+        )
+        self.assertEqual(checked.returncode, 0, checked.stderr.decode())
+        self.assertEqual(json.loads(checked.stdout), json.loads(envelope_bytes))
+
+    def test_not_applicable_behavior_requires_receipted_alternative(self) -> None:
+        run_git(self.repo.root, "restore", "tests/test_behavior.py")
+        packet = self.repo.packet()
+        self.assertEqual(packet["behaviors"][0]["source_paths"], ["src/behavior.py"])
+        behavior = packet["behaviors"][0]
+        behavior["applicability"] = "not_applicable"
+        behavior["rationale"] = (
+            "The Android UI instrumentation harness cannot exercise Python "
+            "workflow packet admission; selected synthetic parser checks "
+            "exercise this tooling change instead."
+        )
+        behavior["mock_seam"] = None
+        behavior["assertion_paths"] = []
+        behavior["alternative_checks"] = [self.repo.case_id]
+        self.repo.capture(packet)
+        self.repo.write_run()
+        receipt = self.repo.receipt()
+        self.assertEqual(receipt["completion"], "passed")
+        final_packet = json.loads(
+            (self.repo.root / self.repo.packet_path).read_text(encoding="utf-8")
+        )
+        self.assertEqual(final_packet["behaviors"][0]["result"], "passed")
+        self.assertEqual(self.repo.envelope()["schema"], evidence.REVIEW_SCHEMA)
+
+    def test_applicable_behavior_still_requires_changed_assertion_paths(self) -> None:
+        packet = self.repo.packet()
+        packet["behaviors"][0]["assertion_paths"] = []
+        with self.assertRaisesRegex(evidence.EvidenceError, "assertion_paths"):
+            self.repo.capture(packet)
+        run_git(self.repo.root, "restore", "tests/test_behavior.py")
+        packet = self.repo.packet()
+        with self.assertRaisesRegex(evidence.EvidenceError, "changed source path"):
+            self.repo.capture(packet)
+
+    def test_not_applicable_without_alternative_proof_blocks(self) -> None:
+        run_git(self.repo.root, "restore", "tests/test_behavior.py")
+        packet = self.repo.packet()
+        behavior = packet["behaviors"][0]
+        behavior.update(
+            applicability="not_applicable",
+            rationale=(
+                "Android UI instrumentation cannot exercise Python packet "
+                "admission; selected synthetic parser checks cover it."
+            ),
+            mock_seam=None,
+            assertion_paths=[],
+            alternative_checks=[],
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "alternative_checks"):
+            self.repo.capture(packet)
+        behavior["alternative_checks"] = [self.repo.case_id]
+        self.repo.capture(packet)
+        self.repo.write_run(test_id="SyntheticPolicyTest#unselected_case")
+        with self.assertRaisesRegex(evidence.EvidenceError, "absent or disabled"):
+            self.repo.receipt()
+        self.assertFalse((self.repo.root / self.repo.receipt_path).exists())
+
+    def test_packet_harness_reference_is_never_executed(self) -> None:
+        marker = self.repo.root / "must-not-execute"
+        packet = self.repo.packet()
+        packet["behaviors"][0]["harness_ref"] = f"touch {marker}"
+        self.repo.write_packet(packet)
+        result = evidence._load_packet(
+            self.repo.root,
+            self.repo.packet_path,
+            expected_task=self.repo.task,
+            expected_work_kind=self.repo.work_kind,
+            expected_baseline=self.repo.baseline,
+            allow_pending=True,
+        )
+        self.assertIsNotNone(result)
+        self.assertFalse(marker.exists())
+
+    def test_not_applicable_alternatives_must_be_selected_test_ids(self) -> None:
+        packet = self.repo.packet()
+        behavior = packet["behaviors"][0]
+        behavior["applicability"] = "not_applicable"
+        behavior["rationale"] = (
+            "No app mock seam applies; a selected synthetic check is the "
+            "suitable alternative."
+        )
+        behavior["mock_seam"] = None
+        behavior["alternative_checks"] = ["Describe the alternative in prose."]
+        with self.assertRaisesRegex(evidence.EvidenceError, "invalid reference"):
+            evidence._validate_packet_object(
+                self.repo.root,
+                packet,
+                expected_baseline=self.repo.baseline,
+                allow_pending=True,
+            )
+        behavior["alternative_checks"] = ["SyntheticPolicyTest#other_case"]
+        with self.assertRaisesRegex(evidence.EvidenceError, "match selected_test_ids"):
+            evidence._validate_packet_object(
+                self.repo.root,
+                packet,
+                expected_baseline=self.repo.baseline,
+                allow_pending=True,
+            )
+
+    def test_execution_cannot_add_unmapped_selected_test_ids(self) -> None:
+        self.repo.capture()
+        result_dir = self.repo.root / self.repo.results_dir
+        result_dir.mkdir(parents=True, exist_ok=True)
+        suite = ET.Element(
+            "testsuite", tests="2", failures="0", errors="0", skipped="0"
+        )
+        for test_id in (self.repo.case_id, "SyntheticPolicyTest#unmapped"):
+            classname, name = test_id.split("#", 1)
+            ET.SubElement(suite, "testcase", classname=classname, name=name)
+        (result_dir / "TEST-results.xml").write_bytes(
+            ET.tostring(suite, encoding="utf-8", xml_declaration=True)
+        )
+        log = self.repo.root / self.repo.log_path
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("both test cases completed\n", encoding="utf-8")
+        self.repo.receipt()
+
+        receipt_path = self.repo.root / self.repo.receipt_path
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        unmapped_id = "SyntheticPolicyTest#unmapped"
+        receipt["selected_test_ids"].append(unmapped_id)
+        receipt["test_results"].append(
+            {"test_id": unmapped_id, "result": "passed"}
+        )
+        receipt_path.write_text(
+            json.dumps(receipt, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            evidence.EvidenceError, "do not match the packet's selected test IDs"
+        ):
+            evidence._validate_execution(
+                self.repo.root,
+                self.repo.receipt_path,
+                expected_packet_path=self.repo.packet_path,
+                expected_packet_bytes=(
+                    self.repo.root / self.repo.packet_path
+                ).read_bytes(),
+                expected_task=self.repo.task,
+                expected_work_kind=self.repo.work_kind,
+                expected_baseline=self.repo.baseline,
+            )
+
+    def test_unchanged_old_junit_cannot_issue_receipt(self) -> None:
+        result_dir = self.repo.root / self.repo.results_dir
+        result_dir.mkdir(parents=True)
+        xml = junit_xml(self.repo.case_id)
+        (result_dir / "TEST-results.xml").write_bytes(xml)
+        log = self.repo.root / self.repo.log_path
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("old run\n", encoding="utf-8")
+        self.repo.capture()
+        log.write_text("new run with same old XML\n", encoding="utf-8")
+        with self.assertRaisesRegex(evidence.EvidenceError, "unchanged prior XML"):
+            self.repo.receipt()
+
+    def test_byte_identical_xml_passes_with_fresh_file_identity(self) -> None:
+        result_dir = self.repo.root / self.repo.results_dir
+        result_dir.mkdir(parents=True)
+        xml_path = result_dir / "TEST-results.xml"
+        xml = junit_xml(self.repo.case_id)
+        xml_path.write_bytes(xml)
+        log = self.repo.root / self.repo.log_path
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("before run\n", encoding="utf-8")
+        before = xml_path.stat().st_ino
+        self.repo.capture()
+        replacement = result_dir / "fresh.xml"
+        replacement.write_bytes(xml)
+        os.replace(replacement, xml_path)
+        log.write_text("fresh run completed\n", encoding="utf-8")
+        self.assertNotEqual(xml_path.stat().st_ino, before)
+        self.assertEqual(self.repo.receipt()["completion"], "passed")
+
+    def test_selected_failure_is_a_failure_not_a_pass(self) -> None:
+        self.repo.capture()
+        self.repo.write_run(outcome="failed")
+        receipt = self.repo.receipt(exit_code=0)
+        self.assertEqual(receipt["completion"], "failed")
+        packet = json.loads((self.repo.root / self.repo.packet_path).read_text())
+        self.assertEqual(packet["behaviors"][0]["result"], "failed")
+        envelope = self.repo.envelope()
+        self.assertEqual(
+            evidence.validate_review_context(
+                self.repo.root,
+                envelope,
+                expected_task=self.repo.task,
+                expected_work_kind=self.repo.work_kind,
+            ),
+            envelope,
+        )
+
+    def _install_compile_fixture(self) -> None:
+        helper = self.repo.root / ".kent/scripts/workflow-mock-scenario-evidence"
+        helper.parent.mkdir(parents=True)
+        helper.write_bytes(HELPER_PATH.read_bytes())
+        helper.chmod(0o700)
+        command = self.repo.root / "gradlew"
+        command.write_text(
+            "#!/bin/sh\n"
+            'test "$#" = 1 && test "$1" = ":app:compileDevDebugKotlin" || exit 7\n'
+            "mkdir -p build/kent-workflow\n"
+            ": > build/kent-workflow/compile-ran\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        command.chmod(0o700)
+
+    def _helper_cli(self, *arguments: str, input_bytes: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            [sys.executable, str(HELPER_PATH), *arguments],
+            input=input_bytes,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+
+    def _compile_cli(self, envelope: object) -> dict[str, object]:
+        with tempfile.TemporaryDirectory(prefix="pub-84-compile-") as directory:
+            tmp = Path(directory).resolve()
+            tmp.chmod(0o700)
+            result = subprocess.run(
+                [str(ROOT / ".kent/scripts/workflow-compile-verify")],
+                cwd=self.repo.root,
+                env={**os.environ, "TMPDIR": str(tmp)},
+                input=json.dumps({
+                    "workspace_path": str(self.repo.root),
+                    "review_context": json.dumps(envelope),
+                }).encode(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=20,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        return json.loads(result.stdout)
+
+    def test_selected_failure_cli_reaches_compile_as_failed(self) -> None:
+        self._install_compile_fixture()
+        self.repo.capture()
+        self.repo.write_run(outcome="failed")
+        receipt = self._helper_cli(
+            "receipt", "--workspace", str(self.repo.root),
+            "--capture", self.repo.capture_path, "--packet", self.repo.packet_path,
+            "--results-dir", self.repo.results_dir, "--log", self.repo.log_path,
+            "--exit-code", "1", "--output", self.repo.receipt_path,
+        )
+        self.assertEqual(receipt.returncode, 1, receipt.stdout.decode())
+        self.assertEqual(json.loads(receipt.stdout)["transition"], "failed")
+        serialized = self._helper_cli(
+            "serialize-envelope", "--workspace", str(self.repo.root),
+            "--task", self.repo.task, "--work-kind", self.repo.work_kind,
+            "--baseline", self.repo.baseline, "--packet", self.repo.packet_path,
+            "--execution", self.repo.receipt_path,
+            "--narrative", "Fresh selected scenario failed; compile success cannot erase it.",
+        )
+        self.assertEqual(serialized.returncode, 1, serialized.stdout.decode())
+        envelope = json.loads(serialized.stdout)
+        self.assertEqual(envelope["schema"], evidence.REVIEW_SCHEMA)
+        validated = self._helper_cli(
+            "validate-envelope", "--workspace", str(self.repo.root),
+            "--task", self.repo.task, "--work-kind", self.repo.work_kind,
+            input_bytes=serialized.stdout,
+        )
+        self.assertEqual(validated.returncode, 1, validated.stdout.decode())
+        self.assertEqual(json.loads(validated.stdout), envelope)
+        self.assertEqual(self._compile_cli(envelope), {"transition": "failed"})
+        self.assertFalse((self.repo.root / "build/kent-workflow/compile-ran").exists())
+
+    def test_passing_scenarios_still_run_successful_compile(self) -> None:
+        self._install_compile_fixture()
+        self.repo.capture()
+        self.repo.write_run()
+        self.repo.receipt()
+        self.assertEqual(self._compile_cli(self.repo.envelope()), {"transition": "passed"})
+        self.assertTrue((self.repo.root / "build/kent-workflow/compile-ran").exists())
+
+    def test_failure_evidence_invalid_stale_or_unavailable_still_blocks(self) -> None:
+        self._install_compile_fixture()
+        self.repo.capture()
+        self.repo.write_run(outcome="failed")
+        self.repo.receipt(exit_code=1)
+        envelope = self.repo.envelope()
+        for label, invalid in (
+            ("missing", {}),
+            ("invalid", {**envelope, "unexpected": True}),
+            ("stale", {**envelope, "source_delta_sha256": "0" * 64}),
+        ):
+            with self.subTest(label=label):
+                self.assertEqual(self._compile_cli(invalid), {"transition": "blocked"})
+        packet_path = self.repo.root / self.repo.packet_path
+        packet_bytes = packet_path.read_bytes()
+        packet_path.unlink()
+        self.assertEqual(self._compile_cli(envelope), {"transition": "blocked"})
+        packet_path.write_bytes(packet_bytes)
+        self.assertEqual(self._compile_cli(envelope), {"transition": "failed"})
+        (self.repo.root / "src/behavior.py").write_text("source drift\n")
+        self.assertEqual(self._compile_cli(envelope), {"transition": "blocked"})
+        self.assertFalse((self.repo.root / "build/kent-workflow/compile-ran").exists())
+
+    def test_skipped_or_missing_selected_case_blocks(self) -> None:
+        for observed, expected in (
+            ("skipped", "skipped or disabled"),
+            ("other", "absent or disabled"),
+        ):
+            with self.subTest(observed=observed):
+                repo = SyntheticRepository()
+                try:
+                    repo.capture()
+                    repo.write_run(
+                        test_id=(
+                            repo.case_id
+                            if observed == "skipped"
+                            else "SyntheticPolicyTest#other_case"
+                        ),
+                        outcome=observed if observed == "skipped" else "passed",
+                    )
+                    with self.assertRaisesRegex(evidence.EvidenceError, expected):
+                        repo.receipt()
+                finally:
+                    repo.close()
+
+    def test_source_drift_between_capture_and_receipt_blocks(self) -> None:
+        self.repo.capture()
+        (self.repo.root / "src/behavior.py").write_text(
+            "def behavior(): return 'drifted'\n", encoding="utf-8"
+        )
+        self.repo.write_run()
+        with self.assertRaisesRegex(evidence.EvidenceError, "stale"):
+            self.repo.receipt()
+
+    def test_source_drift_before_capture_blocks(self) -> None:
+        packet = self.repo.packet()
+        self.repo.write_packet(packet)
+        (self.repo.root / "src/behavior.py").write_text(
+            "def behavior(): return 'changed before capture'\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "stale"):
+            evidence.capture(
+                self.repo.root,
+                task=self.repo.task,
+                work_kind=self.repo.work_kind,
+                baseline=self.repo.baseline,
+                packet_path=self.repo.packet_path,
+                results_dir=self.repo.results_dir,
+                log_path=self.repo.log_path,
+                output_path=self.repo.capture_path,
+            )
+
+    def test_source_drift_after_receipt_invalidates_envelope(self) -> None:
+        self.repo.capture()
+        self.repo.write_run()
+        self.repo.receipt()
+        (self.repo.root / "src/behavior.py").write_text(
+            "def behavior(): return 'changed after receipt'\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "source delta digest is stale"):
+            self.repo.envelope()
+
+    def test_new_untracked_source_and_file_mode_are_in_source_identity(self) -> None:
+        before, _ = evidence.source_delta(self.repo.root, self.repo.baseline)
+        new_source = self.repo.root / "tests/new-fixture.json"
+        new_source.write_text('{"scenario":"new"}\n', encoding="utf-8")
+        with_mode_644, _ = evidence.source_delta(self.repo.root, self.repo.baseline)
+        self.assertNotEqual(before, with_mode_644)
+        new_source.chmod(0o755)
+        with_mode_755, entries = evidence.source_delta(
+            self.repo.root, self.repo.baseline
+        )
+        self.assertNotEqual(with_mode_644, with_mode_755)
+        entry = next(item for item in entries if item["path"] == "tests/new-fixture.json")
+        self.assertEqual(entry["mode"], "100755")
+
+    def test_symlink_junit_is_rejected(self) -> None:
+        self.repo.capture()
+        result_dir = self.repo.root / self.repo.results_dir
+        target = self.repo.root / self.repo.relative_dir / "external.xml"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(junit_xml(self.repo.case_id))
+        (result_dir / "TEST-results.xml").symlink_to(target)
+        log = self.repo.root / self.repo.log_path
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("run output\n", encoding="utf-8")
+        with self.assertRaisesRegex(evidence.EvidenceError, "symlink"):
+            self.repo.receipt()
+
+    def test_source_delta_bounds_growth_during_read(self) -> None:
+        source = self.repo.root / "src/behavior.py"
+        source.write_bytes(b"x")
+        (self.repo.root / "tests/test_behavior.py").write_bytes(b"x")
+        original_read = os.read
+        original_path_read = Path.read_bytes
+        sizes: list[int] = []
+        source_identity = (source.stat().st_dev, source.stat().st_ino)
+
+        def growing_read(descriptor: int, size: int) -> bytes:
+            metadata = os.fstat(descriptor)
+            if (metadata.st_dev, metadata.st_ino) == source_identity:
+                source.write_bytes(b"x" * 4096)
+                sizes.append(size)
+            return original_read(descriptor, size)
+
+        def growing_path_read(path: Path) -> bytes:
+            if path == source:
+                source.write_bytes(b"x" * 4096)
+            return original_path_read(path)
+
+        with mock.patch.object(evidence, "MAX_DELTA_FILE_BYTES", 8):
+            with mock.patch.object(evidence.os, "read", side_effect=growing_read):
+                with mock.patch.object(Path, "read_bytes", new=growing_path_read):
+                    with self.assertRaisesRegex(evidence.EvidenceError, "limit"):
+                        evidence.source_delta(self.repo.root, self.repo.baseline)
+        self.assertTrue(sizes)
+        self.assertLessEqual(max(sizes), 9)
+
+    def test_source_delta_enforces_remaining_aggregate_budget_during_read(self) -> None:
+        (self.repo.root / "src/behavior.py").write_bytes(b"x")
+        source = self.repo.root / "tests/test_behavior.py"
+        source.write_bytes(b"x")
+        original_read = os.read
+        original_open = os.open
+        second_descriptor: int | None = None
+        sizes: list[int] = []
+
+        def track_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+            nonlocal second_descriptor
+            descriptor = original_open(path, flags, *args, **kwargs)
+            if path == source.name:
+                second_descriptor = descriptor
+            return descriptor
+
+        def growing_read(descriptor: int, size: int) -> bytes:
+            if descriptor == second_descriptor:
+                source.write_bytes(b"x" * 4096)
+                sizes.append(size)
+            return original_read(descriptor, size)
+
+        with mock.patch.object(evidence, "MAX_DELTA_TOTAL_BYTES", 3):
+            with mock.patch.object(evidence.os, "open", side_effect=track_open):
+                with mock.patch.object(evidence.os, "read", side_effect=growing_read):
+                    with self.assertRaisesRegex(evidence.EvidenceError, "limit"):
+                        evidence.source_delta(self.repo.root, self.repo.baseline)
+        self.assertTrue(sizes)
+        self.assertLessEqual(max(sizes), 3)  # two bytes remaining plus overflow sentinel
+
+    def test_source_delta_rejects_file_and_parent_symlink_swaps(self) -> None:
+        for parent_swap in (False, True):
+            with self.subTest(parent_swap=parent_swap):
+                repo = SyntheticRepository()
+                try:
+                    with tempfile.TemporaryDirectory() as temporary:
+                        outside = Path(temporary)
+                        (outside / "behavior.py").write_bytes(b"benign outside")
+                        source = repo.root / "src/behavior.py"
+                        original_open = os.open
+                        original_path_read = Path.read_bytes
+                        swapped = False
+
+                        def swap() -> None:
+                            nonlocal swapped
+                            if swapped:
+                                return
+                            swapped = True
+                            if parent_swap:
+                                (repo.root / "src").rename(repo.root / "saved-src")
+                                (repo.root / "src").symlink_to(outside, target_is_directory=True)
+                            else:
+                                source.unlink()
+                                source.symlink_to(outside / "behavior.py")
+
+                        def race_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+                            if path == ("src" if parent_swap else source.name):
+                                swap()
+                            return original_open(path, flags, *args, **kwargs)
+
+                        def race_path_read(path: Path) -> bytes:
+                            if path == source:
+                                swap()
+                            return original_path_read(path)
+
+                        with mock.patch.object(evidence.os, "open", side_effect=race_open):
+                            with mock.patch.object(Path, "read_bytes", new=race_path_read):
+                                with self.assertRaisesRegex(evidence.EvidenceError, "cannot safely read"):
+                                    evidence.source_delta(repo.root, repo.baseline)
+                        self.assertTrue(swapped)
+                finally:
+                    repo.close()
+
+    def test_source_delta_tracks_log_and_build_named_fixtures_and_stale_receipts(self) -> None:
+        paths = ("tests/fixtures/player.log", "tests/fixtures/build/response.json")
+        for relative in paths:
+            fixture = self.repo.root / relative
+            fixture.parent.mkdir(parents=True, exist_ok=True)
+            fixture.write_bytes(b"baseline fixture")
+        run_git(self.repo.root, "add", *paths)
+        run_git(self.repo.root, "commit", "--quiet", "-m", "baseline fixtures")
+        self.repo.baseline = run_git(self.repo.root, "rev-parse", "HEAD")
+        # Preserve an applicable changed assertion alongside the fixture changes.
+        (self.repo.root / "tests/test_behavior.py").write_bytes(b"changed assertion")
+        for relative in paths:
+            (self.repo.root / relative).write_bytes(b"first changed fixture")
+        before, entries = evidence.source_delta(self.repo.root, self.repo.baseline)
+        self.assertTrue(set(paths).issubset({item["path"] for item in entries}))
+        self.repo.capture()
+        self.repo.write_run()
+        self.repo.receipt()
+        self.repo.envelope()
+        for relative in paths:
+            with self.subTest(relative=relative):
+                fixture = self.repo.root / relative
+                fixture.write_bytes(b"second changed fixture")
+                after, _ = evidence.source_delta(self.repo.root, self.repo.baseline)
+                self.assertNotEqual(before, after)
+                with self.assertRaisesRegex(evidence.EvidenceError, "stale"):
+                    self.repo.envelope()
+                fixture.write_bytes(b"first changed fixture")
+
+    def test_source_delta_excludes_generated_and_evidence_outputs(self) -> None:
+        before, _ = evidence.source_delta(self.repo.root, self.repo.baseline)
+        for relative in (
+            "build/generated/output.log",
+            "build/kent-workflow/TEST-1/output.json",
+            "app/build/generated/output.json",
+            "baselineprofile/build/output.json",
+            ".gradle/output",
+        ):
+            output = self.repo.root / relative
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"generated output")
+        after, _ = evidence.source_delta(self.repo.root, self.repo.baseline)
+        self.assertEqual(before, after)
+
+    def test_read_file_rejects_symlink_replaced_before_open(self) -> None:
+        workspace = self.repo.root / "workspace"
+        relative = self.repo.packet_path
+        packet = workspace / relative
+        outside = self.repo.root / "outside-benign.json"
+        packet.parent.mkdir(parents=True)
+        packet.write_text('{"fixture":"original"}\n', encoding="utf-8")
+        outside.write_text(
+            '{"fixture":"benign outside the workspace"}\n', encoding="utf-8"
+        )
+        original_open = os.open
+        original_read_bytes = Path.read_bytes
+        swapped = False
+
+        def swap_to_outside_symlink() -> None:
+            nonlocal swapped
+            if not swapped:
+                packet.unlink()
+                packet.symlink_to(outside)
+                swapped = True
+
+        def race_open(
+            path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+            flags: int,
+            mode: int = 0o777,
+            *,
+            dir_fd: int | None = None,
+        ) -> int:
+            if path == packet.name and dir_fd is not None:
+                swap_to_outside_symlink()
+            return original_open(path, flags, mode, dir_fd=dir_fd)
+
+        def race_read_bytes(path: Path) -> bytes:
+            if path == packet:
+                swap_to_outside_symlink()
+            return original_read_bytes(path)
+
+        with mock.patch.object(evidence.os, "open", side_effect=race_open):
+            with mock.patch.object(Path, "read_bytes", new=race_read_bytes):
+                with self.assertRaisesRegex(evidence.EvidenceError, "cannot safely read"):
+                    evidence._read_file(workspace, relative, limit=1024)
+
+        self.assertTrue(swapped)
+        self.assertTrue(packet.is_symlink())
+
+    def test_read_file_bounds_content_growth_after_open(self) -> None:
+        workspace = self.repo.root / "growth-workspace"
+        relative = self.repo.packet_path
+        packet = workspace / relative
+        packet.parent.mkdir(parents=True)
+        packet.write_bytes(b"x")
+        original_open_read = Path.read_bytes
+        original_os_read = os.read
+        read_sizes: list[int] = []
+        grew = False
+        limit = 8
+
+        def race_path_read(path: Path) -> bytes:
+            if path == packet:
+                packet.write_bytes(b"x" * 4096)
+                content = original_open_read(path)
+                read_sizes.append(len(content))
+                return content
+            return original_open_read(path)
+
+        def grow_before_descriptor_read(descriptor: int, size: int) -> bytes:
+            nonlocal grew
+            if not grew:
+                packet.write_bytes(b"x" * 4096)
+                grew = True
+            read_sizes.append(size)
+            return original_os_read(descriptor, size)
+
+        with mock.patch.object(evidence.os, "read", side_effect=grow_before_descriptor_read):
+            with mock.patch.object(Path, "read_bytes", new=race_path_read):
+                with self.assertRaisesRegex(
+                    evidence.EvidenceError,
+                    f"file exceeds its {limit}-byte limit",
+                ):
+                    evidence._read_file(workspace, relative, limit=limit)
+
+        self.assertTrue(read_sizes)
+        self.assertLessEqual(max(read_sizes), limit + 1)
+
+    def test_post_receipt_log_mutation_invalidates_envelope(self) -> None:
+        self.repo.capture()
+        self.repo.write_run()
+        self.repo.receipt()
+        self.repo.envelope()
+        (self.repo.root / self.repo.log_path).write_text(
+            "later modification\n", encoding="utf-8"
+        )
+        with self.assertRaisesRegex(evidence.EvidenceError, "runner log changed"):
+            self.repo.envelope()
+
+    def _manifest_builder(self):
+        path = ROOT / ".kent/workflows/builders/puber_release.py"
+        loader = SourceFileLoader("pub84_manifest_builder", str(path))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        builder = importlib.util.module_from_spec(spec)
+        loader.exec_module(builder)
+        return builder
+
+    def test_manifest_binds_final_task_sources(self) -> None:
+        manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text())
+        self.assertEqual(manifest_binding_errors(manifest, ROOT), [])
+        # Baseline debt is neither repaired nor waived by task closure.
+        self.assertEqual(
+            self._manifest_builder().check_manifest(),
+            ["source digest binding drifted: .kent/workflows/README.md"],
+        )
+        baseline_readme = subprocess.run(
+            ["git", "-C", str(ROOT), "show", f"{FIXED_POINT}:.kent/workflows/README.md"],
+            check=True, capture_output=True,
+        ).stdout
+        self.assertEqual((ROOT / ".kent/workflows/README.md").read_bytes(), baseline_readme)
+
+    def test_manifest_missing_required_bindings_reject(self) -> None:
+        original = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text())
+        for relative in MANIFEST_BOUND_SOURCES:
+            with self.subTest(source=relative):
+                manifest = json.loads(json.dumps(original))
+                manifest["external_roots"] = [
+                    item for item in manifest["external_roots"]
+                    if item["key"].split("=", 1)[0] != relative
+                ]
+                self.assertIn(
+                    f"missing or duplicate task source binding: {relative}",
+                    manifest_binding_errors(manifest, ROOT),
+                )
+
+    def test_manifest_mismatched_bindings_reject_in_builder(self) -> None:
+        original = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text())
+        builder = self._manifest_builder()
+        for relative in MANIFEST_BOUND_SOURCES:
+            with self.subTest(source=relative):
+                manifest = json.loads(json.dumps(original))
+                for item in manifest["external_roots"]:
+                    if item["key"].split("=", 1)[0] == relative:
+                        item["key"] = f"{relative}={'0' * 64}"
+                self.assertIn(
+                    f"task source binding mismatch: {relative}",
+                    manifest_binding_errors(manifest, ROOT),
+                )
+                original_load = builder.load_object
+                with mock.patch.object(
+                    builder, "load_object",
+                    side_effect=lambda path: manifest if path == builder.MANIFEST else original_load(path),
+                ):
+                    self.assertEqual(
+                        builder.check_manifest(),
+                        [
+                            f"source digest binding drifted: {relative}",
+                            "source digest binding drifted: .kent/workflows/README.md",
+                        ] if relative != "tools/test-workflow-mock-scenario-evidence" else [
+                            "source digest binding drifted: .kent/workflows/README.md",
+                            f"source digest binding drifted: {relative}",
+                        ],
+                    )
+
+    def test_manifest_missing_task_files_reject_in_builder(self) -> None:
+        builder = self._manifest_builder()
+        original_is_file = Path.is_file
+        for relative in MANIFEST_BOUND_SOURCES:
+            with self.subTest(source=relative):
+                with mock.patch.object(
+                    Path, "is_file",
+                    new=lambda path: False if path == ROOT / relative else original_is_file(path),
+                ):
+                    errors = builder.check_manifest()
+                self.assertIn(f"source digest binding drifted: {relative}", errors)
+                self.assertIn("source digest binding drifted: .kent/workflows/README.md", errors)
+                if relative in json.loads(builder.MANIFEST.read_text())["additional_paths"]:
+                    self.assertIn(f"manifest source is missing or unsafe: {relative}", errors)
+
+    def test_feature_and_bugfix_procedures_enforce_policy_stages(self) -> None:
+        plan_inventory = {
+            ".kent/commands/feature-start.md": (
+                "stable behavior ID",
+                "source paths",
+                "applicability",
+                "mock seam",
+                "selected test IDs",
+                "assertion/fixture paths",
+                "fixed harness reference",
+                "alternative-check test IDs",
+            ),
+            ".kent/commands/bugfix-start.md": (
+                "stable behavior ID",
+                "source paths",
+                "applicability",
+                "mock seam",
+                "selected regression test IDs",
+                "assertion/fixture paths",
+                "fixed harness reference",
+                "alternative-check test IDs",
+            ),
+        }
+        implementation_evidence = (
+            ".kent/commands/mock-scenario-policy.md",
+            "capture",
+            "receipt",
+            "selected JUnit results",
+            "final source delta",
+            "review_context",
+            "stale",
+            "retry",
+            "new approval",
+            "fixture-only",
+            "alternative",
+        )
+        implementation_procedures = (
+            ".kent/commands/feature-implement.md",
+            ".kent/commands/bugfix-implement.md",
+        )
+
+        for relative_path, requirements in plan_inventory.items():
+            with self.subTest(procedure=relative_path):
+                content = " ".join(
+                    (ROOT / relative_path)
+                    .read_text(encoding="utf-8")
+                    .split()
+                ).casefold()
+                self.assertIn(".kent/commands/mock-scenario-policy.md", content)
+                for requirement in requirements:
+                    with self.subTest(requirement=requirement):
+                        self.assertIn(requirement.casefold(), content)
+
+        for relative_path in implementation_procedures:
+            with self.subTest(procedure=relative_path):
+                content = " ".join(
+                    (ROOT / relative_path)
+                    .read_text(encoding="utf-8")
+                    .split()
+                ).casefold()
+                for requirement in implementation_evidence:
+                    with self.subTest(requirement=requirement):
+                        self.assertIn(requirement.casefold(), content)
+
+    def test_non_feature_work_kinds_enforce_policy_and_reentry(self) -> None:
+        plan_procedures = (
+            ".kent/commands/refactor-start.md",
+            ".kent/commands/migration-start.md",
+            ".kent/commands/dependency-update.md",
+            ".kent/commands/test-coverage.md",
+        )
+        plan_requirements = (
+            ".kent/commands/mock-scenario-policy.md",
+            "behavior or fixture changes",
+            "full behavior inventory",
+            "results pending",
+            "final source delta",
+        )
+        execution_requirements = (
+            "capture",
+            "receipt",
+            "fixed harness",
+            "selected alternative check",
+            "immediately before verifier handoff",
+            "recover durable packet and receipt paths",
+            "refresh and validate",
+            "final source delta",
+            "review_context",
+            "writer-recoverable",
+            "retry without a new approval",
+        )
+
+        for relative_path in plan_procedures:
+            with self.subTest(procedure=relative_path):
+                content = " ".join(
+                    (ROOT / relative_path)
+                    .read_text(encoding="utf-8")
+                    .split()
+                ).casefold()
+                for requirement in plan_requirements:
+                    with self.subTest(requirement=requirement):
+                        self.assertIn(requirement.casefold(), content)
+                for requirement in execution_requirements:
+                    with self.subTest(requirement=requirement):
+                        self.assertIn(requirement.casefold(), content)
+
+
+class RecordingResult(unittest.TextTestResult):
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.started: list[unittest.case.TestCase] = []
+
+    def startTest(self, test: unittest.case.TestCase) -> None:
+        self.started.append(test)
+        super().startTest(test)
+
+
+def _test_result_map(result: RecordingResult) -> dict[str, str]:
+    failed = {test.id() for test, _ in result.failures}
+    failed.update(test.id() for test, _ in result.errors)
+    skipped = {test.id() for test, _ in result.skipped}
+    output: dict[str, str] = {}
+    for test in result.started:
+        identifier = test.id()
+        output[identifier] = (
+            "failed" if identifier in failed else "skipped" if identifier in skipped else "passed"
+        )
+    return output
+
+
+def _sample_paths() -> tuple[str, str, str, str, str]:
+    run_dir = f"build/kent-workflow/{TASK_SHORT_ID}/focused-{time.time_ns()}"
+    return (
+        f"{run_dir}/packet.json",
+        f"{run_dir}/capture.json",
+        f"{run_dir}/junit",
+        f"{run_dir}/runner.log",
+        f"{run_dir}/execution.json",
+    )
+
+
+def _iter_cases(suite: unittest.TestSuite) -> list[unittest.case.TestCase]:
+    output: list[unittest.case.TestCase] = []
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            output.extend(_iter_cases(item))
+        else:
+            output.append(item)
+    return output
+
+
+def _junit_test_id(identifier: str) -> str:
+    classname, method = identifier.rsplit(".", 1)
+    return f"{classname}#{method}"
+
+
+def _prepare_local_sample(suite: unittest.TestSuite) -> dict[str, object]:
+    source_digest, entries = evidence.source_delta(ROOT, FIXED_POINT)
+    paths = [str(item["path"]) for item in entries if item["state"] == "present"]
+    if not paths:
+        raise RuntimeError("local source delta unexpectedly empty")
+    test_ids = [_junit_test_id(test.id()) for test in _iter_cases(suite)]
+    if not test_ids:
+        raise RuntimeError("focused suite produced no selected tests")
+    packet_path, capture_path, results_dir, log_path, receipt_path = _sample_paths()
+    packet = {
+        "schema": evidence.PACKET_SCHEMA,
+        "task_short_id": TASK_SHORT_ID,
+        "work_kind": "feature",
+        "baseline": FIXED_POINT,
+        "source_delta_sha256": source_digest,
+        "behaviors": [
+            {
+                "id": "mock-scenario-policy-enforcement",
+                "source_paths": paths,
+                "applicability": "not_applicable",
+                "rationale": (
+                    "The tooling change has no app behavior; its synthetic "
+                    "policy scenarios are the suitable alternative checks."
+                ),
+                "mock_seam": None,
+                "selected_test_ids": test_ids,
+                "assertion_paths": ["tools/test-workflow-mock-scenario-evidence"],
+                "assertions": [
+                    "Malformed, stale, unsafe, failed, skipped, and fresh evidence transitions are distinguished."
+                ],
+                "harness_ref": "python3 tools/test-workflow-mock-scenario-evidence",
+                "result": "pending",
+                "alternative_checks": test_ids,
+            }
+        ],
+    }
+    packet_file = ROOT / packet_path
+    packet_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    packet_file.write_text(
+        json.dumps(packet, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    evidence.capture(
+        ROOT,
+        task=TASK_SHORT_ID,
+        work_kind="feature",
+        baseline=FIXED_POINT,
+        packet_path=packet_path,
+        results_dir=results_dir,
+        log_path=log_path,
+        output_path=capture_path,
+    )
+    return {
+        "source_delta_sha256": source_digest,
+        "packet_path": packet_path,
+        "capture_path": capture_path,
+        "results_dir": results_dir,
+        "log_path": log_path,
+        "receipt_path": receipt_path,
+        "test_ids": test_ids,
+        "packet_file": packet_file,
+    }
+
+
+def _write_local_sample(
+    result: RecordingResult,
+    summary: str,
+    prepared: dict[str, object],
+) -> dict[str, object]:
+    source_digest = prepared["source_delta_sha256"]
+    packet_path = str(prepared["packet_path"])
+    capture_path = str(prepared["capture_path"])
+    results_dir = str(prepared["results_dir"])
+    log_path = str(prepared["log_path"])
+    receipt_path = str(prepared["receipt_path"])
+    packet_file = prepared["packet_file"]
+    test_ids = list(prepared["test_ids"])
+    result_map = _test_result_map(result)
+    observed_ids = [_junit_test_id(identifier) for identifier in result_map]
+    if observed_ids != test_ids:
+        raise RuntimeError("test selection changed after pre-run source capture")
+    results = ROOT / results_dir
+    results.mkdir(mode=0o700, parents=True, exist_ok=True)
+    suite = ET.Element(
+        "testsuite",
+        tests=str(len(result_map)),
+        failures=str(sum(value == "failed" for value in result_map.values())),
+        errors="0",
+        skipped=str(sum(value == "skipped" for value in result_map.values())),
+    )
+    for identifier, outcome in result_map.items():
+        module_and_class, method = identifier.rsplit(".", 1)
+        case = ET.SubElement(
+            suite, "testcase", classname=module_and_class, name=method
+        )
+        if outcome == "failed":
+            ET.SubElement(case, "failure", message="focused test failed")
+        elif outcome == "skipped":
+            ET.SubElement(case, "skipped", message="focused test skipped")
+    (results / "focused-suite.xml").write_bytes(
+        ET.tostring(suite, encoding="utf-8", xml_declaration=True)
+    )
+    log_file = ROOT / log_path
+    log_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    log_file.write_text(summary[:16 * 1024] or "focused suite completed\n", encoding="utf-8")
+    receipt = evidence.issue_receipt(
+        ROOT,
+        capture_path=capture_path,
+        packet_path=packet_path,
+        results_dir=results_dir,
+        log_path=log_path,
+        output_path=receipt_path,
+        exit_code=0 if result.wasSuccessful() else 1,
+    )
+    output: dict[str, object] = {
+        "transition": receipt["completion"],
+        "packet": packet_path,
+        "execution": receipt_path,
+        "source_delta_sha256": source_digest,
+        "selected_test_count": len(test_ids),
+    }
+    if receipt["completion"] == "passed":
+        envelope = evidence.serialize_review_context(
+            ROOT,
+            task=TASK_SHORT_ID,
+            work_kind="feature",
+            baseline=FIXED_POINT,
+            packet_path=packet_path,
+            execution_path=receipt_path,
+            narrative="Focused synthetic policy/helper scenarios passed.",
+        )
+        envelope_path = packet_file.parent / "review-context.json"
+        envelope_path.write_text(
+            json.dumps(envelope, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        output["review_context"] = envelope_path.relative_to(ROOT).as_posix()
+    return output
+
+
+def run_suite() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--historical-audit",
+        action="store_true",
+        help="also verify preserved local pre-edit RED artifacts (requires ignored audit files)",
+    )
+    arguments = parser.parse_args()
+    stream = io.StringIO()
+    suite = unittest.defaultTestLoader.loadTestsFromTestCase(MockScenarioEvidenceTest)
+    if arguments.historical_audit:
+        suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(HistoricalAuditTest))
+    runner = unittest.TextTestRunner(
+        stream=stream,
+        verbosity=2,
+        resultclass=RecordingResult,
+    )
+    prepared = _prepare_local_sample(suite)
+    result = runner.run(suite)
+    summary = stream.getvalue()
+    artifacts = _write_local_sample(result, summary, prepared)
+    log_path = ROOT / "build/kent-workflow/PUB-84/focused-suite.log"
+    log_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    bounded_summary = (
+        "command=python3 tools/test-workflow-mock-scenario-evidence"
+        f"{' --historical-audit' if arguments.historical_audit else ''}\n"
+        f"result={'passed' if result.wasSuccessful() else 'failed'}\n"
+        f"tests_run={result.testsRun}\n"
+        f"failure_count={len(result.failures) + len(result.errors)}\n"
+        f"sample_transition={artifacts['transition']}\n"
+        f"sample_packet={artifacts['packet']}\n"
+        f"sample_execution={artifacts['execution']}\n"
+    ).encode("utf-8")
+    if len(bounded_summary) > 16 * 1024:
+        raise RuntimeError("focused suite result log exceeded its bound")
+    log_path.write_bytes(bounded_summary)
+    print(bounded_summary.decode("utf-8"), end="")
+    return 0 if result.wasSuccessful() and artifacts["transition"] == "passed" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_suite())
