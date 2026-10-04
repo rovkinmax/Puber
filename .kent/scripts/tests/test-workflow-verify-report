@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import stat
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -15,16 +16,27 @@ RUNTIME = ROOT / ".kent/scripts/workflow_runtime_contracts.py"
 CHILD = ROOT / ".kent/scripts/workflow-compile-verify"
 COMPILE_REPORT = ROOT / ".kent/scripts/workflow-compile-report"
 MANIFEST = ROOT / ".kent/workflows/puber-release.manifest.json"
+EVIDENCE_HELPER = ROOT / ".kent/scripts/workflow-mock-scenario-evidence"
 EXPECTED_VERIFY_SHA256 = (
     "fb9a886537873d90ea1a763d9e96999ab8797bd77b28869594a3227a60b80217"
 )
 EXPECTED_CHILD_SHA256 = (
-    "24efc0072b0994439083d9a9a08861cb7f44a8a18f90a2da76dba6ac2fa56196"
+    "13ebda0c0e4771ec1bfe2c4d529fab3de2a56e30df58339bc66a6742fe312670"
 )
 TASK = ":app:compileDevDebugKotlin"
+EVIDENCE_TASK = "PUB-84"
+EVIDENCE_WORK_KIND = "feature"
+EVIDENCE_PACKET = "build/kent-workflow/mock-scenario/packet.json"
+EVIDENCE_CAPTURE = "build/kent-workflow/mock-scenario/capture.json"
+EVIDENCE_EXECUTION = "build/kent-workflow/mock-scenario/execution.json"
+EVIDENCE_RESULTS = "build/kent-workflow/mock-scenario/results"
+EVIDENCE_LOG = "build/kent-workflow/mock-scenario/runner.log"
+EVIDENCE_CONTEXT = "build/kent-workflow/mock-scenario/review-context.json"
+EVIDENCE_TEST_ID = "WorkflowVerifierFixture#acceptsFreshEvidenceEnvelope"
 BLOCKED_STDOUT = b'{"transition":"blocked"}\n'
 INVALID_INPUT = b"compile verifier input is invalid\n"
 INVALID_WORKSPACE = b"compile verifier workspace is invalid\n"
+INVALID_EVIDENCE = b"mock-scenario evidence is invalid\n"
 INFRASTRUCTURE_UNAVAILABLE = b"compile verifier infrastructure is unavailable\n"
 INTERRUPTED = b"compile verifier execution was interrupted\n"
 
@@ -69,7 +81,15 @@ def install_verifier(root: Path, wrapper: bytes | None = None) -> None:
     )
     write_executable(scripts / "workflow-compile-verify", CHILD.read_bytes())
     (scripts / "workflow_runtime_contracts.py").write_bytes(RUNTIME.read_bytes())
-    (root / ".gitignore").write_text("/build/\n", encoding="utf-8")
+    write_executable(
+        scripts / EVIDENCE_HELPER.name,
+        EVIDENCE_HELPER.read_bytes(),
+    )
+    (root / ".gitignore").write_text(
+        "/build/\n/gradlew\n/tools/agentw\n/command-marker\n"
+        "/admission\n/admission-moved\n/unsafe-admission\n",
+        encoding="utf-8",
+    )
     if (root / ".git").is_dir():
         (root / ".git/info").mkdir(parents=True, exist_ok=True)
         (root / ".git/info/exclude").write_text("/build/\n", encoding="utf-8")
@@ -78,6 +98,143 @@ def install_verifier(root: Path, wrapper: bytes | None = None) -> None:
 def initialize_repository(root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+
+
+def evidence_command(root: Path, *arguments: str, expected_exit: int = 0) -> dict[str, object]:
+    result = subprocess.run(
+        [sys.executable, "-I", str(root / ".kent/scripts" / EVIDENCE_HELPER.name), *arguments],
+        cwd=root,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == expected_exit, (arguments, result.stdout, result.stderr)
+    return json.loads(result.stdout)
+
+
+def prepare_evidence_fixture(root: Path, *, failed: bool = False) -> str:
+    git("config", "user.name", "PUB-84 synthetic fixture", cwd=root)
+    git("config", "user.email", "pub-84-fixture@example.invalid", cwd=root)
+    git("add", "-A", cwd=root)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "synthetic verifier baseline"],
+        cwd=root,
+        check=True,
+    )
+    baseline = git("rev-parse", "HEAD", cwd=root).stdout.decode().strip()
+
+    source_path = "src/Scenario.kt"
+    source = root / source_path
+    source.parent.mkdir(parents=True)
+    source.write_text("synthetic compile scenario fixture\n", encoding="utf-8")
+    source_records = [
+        {
+            "mode": "100644",
+            "path": source_path,
+            "sha256": sha256(source.read_bytes()),
+            "state": "present",
+        }
+    ]
+    source_delta_sha256 = sha256(
+        json.dumps(
+            source_records,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    packet = {
+        "schema": "mock-scenario-evidence-v1",
+        "task_short_id": EVIDENCE_TASK,
+        "work_kind": EVIDENCE_WORK_KIND,
+        "baseline": baseline,
+        "source_delta_sha256": source_delta_sha256,
+        "behaviors": [
+            {
+                "id": "verifier-evidence-admission",
+                "source_paths": [source_path],
+                "applicability": "not_applicable",
+                "rationale": (
+                    "Synthetic verifier admission tests workflow tooling, "
+                    "not application behavior."
+                ),
+                "mock_seam": None,
+                "selected_test_ids": [EVIDENCE_TEST_ID],
+                "assertion_paths": [source_path],
+                "assertions": [
+                    "The child verifier admits only a fresh valid evidence envelope."
+                ],
+                "harness_ref": "fixed synthetic compile verifier fixture",
+                "result": "pending",
+                "alternative_checks": [EVIDENCE_TEST_ID],
+            }
+        ],
+    }
+    packet_file = root / EVIDENCE_PACKET
+    packet_file.parent.mkdir(parents=True, exist_ok=True)
+    packet_file.write_text(
+        json.dumps(packet, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    captured = evidence_command(
+        root,
+        "capture",
+        "--workspace", str(root),
+        "--task", EVIDENCE_TASK,
+        "--work-kind", EVIDENCE_WORK_KIND,
+        "--baseline", baseline,
+        "--packet", EVIDENCE_PACKET,
+        "--results-dir", EVIDENCE_RESULTS,
+        "--log", EVIDENCE_LOG,
+        "--output", EVIDENCE_CAPTURE,
+    )
+    assert captured["transition"] == "passed", captured
+
+    result_file = root / EVIDENCE_RESULTS / "TEST-workflow-verifier.xml"
+    result_file.parent.mkdir(parents=True, exist_ok=True)
+    result_file.write_text(
+        f'<testsuite tests="1" failures="{int(failed)}" errors="0" skipped="0">'
+        '<testcase classname="WorkflowVerifierFixture" '
+        'name="acceptsFreshEvidenceEnvelope">'
+        + ('<failure message="selected assertion failed"/>' if failed else "")
+        + "</testcase></testsuite>\n",
+        encoding="utf-8",
+    )
+    (root / EVIDENCE_LOG).write_text(
+        "synthetic fixed harness completed the selected scenario\n",
+        encoding="utf-8",
+    )
+    receipt = evidence_command(
+        root,
+        "receipt",
+        "--workspace", str(root),
+        "--capture", EVIDENCE_CAPTURE,
+        "--packet", EVIDENCE_PACKET,
+        "--results-dir", EVIDENCE_RESULTS,
+        "--log", EVIDENCE_LOG,
+        "--exit-code", "1" if failed else "0",
+        "--output", EVIDENCE_EXECUTION,
+        expected_exit=int(failed),
+    )
+    assert receipt["transition"] == ("failed" if failed else "passed"), receipt
+    envelope = evidence_command(
+        root,
+        "serialize-envelope",
+        "--workspace", str(root),
+        "--task", EVIDENCE_TASK,
+        "--work-kind", EVIDENCE_WORK_KIND,
+        "--baseline", baseline,
+        "--packet", EVIDENCE_PACKET,
+        "--execution", EVIDENCE_EXECUTION,
+        "--narrative", "Synthetic wrapper safety fixture with fresh scenario evidence.",
+        expected_exit=int(failed),
+    )
+    assert envelope["schema"] == "mock-scenario-review-context-v1", envelope
+    context = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+    (root / EVIDENCE_CONTEXT).write_text(context, encoding="utf-8")
+    return context
 
 
 def initialize_real_worktree(parent: Path, worktree: Path) -> None:
@@ -234,12 +391,14 @@ def assert_same_invocation(actual: dict[str, object], expected: dict[str, object
 
 def run_wrapper(
     root: Path,
-    review_context: str = "PUB-78 focused verification",
+    review_context: str | None = None,
     *,
     runtime: bool = False,
     branch: bool = True,
     transport: dict[str, object] | None = None,
 ) -> tuple[dict[str, object], dict[str, object], bytes]:
+    if review_context is None:
+        review_context = (root / EVIDENCE_CONTEXT).read_text(encoding="utf-8")
     result = subprocess.run(
         [str(root / ".kent/scripts/workflow-verify-report")],
         cwd=root,
@@ -292,7 +451,9 @@ def direct_child(
     )
 
 
-def valid_payload(root: Path, review_context: object = "focused") -> bytes:
+def valid_payload(root: Path, review_context: object | None = None) -> bytes:
+    if review_context is None:
+        review_context = (root / EVIDENCE_CONTEXT).read_text(encoding="utf-8")
     return json.dumps(
         {"workspace_path": str(root), "review_context": review_context},
         separators=(",", ":"),
@@ -420,6 +581,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
                 fixture.mkdir()
                 initialize_repository(fixture)
             install_verifier(fixture)
+            prepare_evidence_fixture(fixture)
             marker = fixture / "command-marker"
             fake_command(
                 fixture / relative_command,
@@ -516,9 +678,32 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
             for value in runtime_metadata(branch=False).values():
                 assert value.encode() not in omitted_framed
 
+    for git_shape, relative_command in (
+        ("worktree", Path("tools/agentw")),
+        ("primary", Path("gradlew")),
+    ):
+        fixture_parent = scratch / f"{git_shape}-selected-failure"
+        fixture_parent.mkdir()
+        fixture = fixture_parent / "checkout"
+        if git_shape == "worktree":
+            initialize_real_worktree(fixture_parent, fixture)
+        else:
+            initialize_repository(fixture)
+        install_verifier(fixture)
+        prepare_evidence_fixture(fixture, failed=True)
+        marker = fixture / "command-marker"
+        fake_command(fixture / relative_command, marker, exit_code=0, output_bytes=16)
+        carrier, report, framed = run_wrapper(fixture)
+        assert carrier["verification_status"] == "needs_changes", (carrier, report, framed)
+        assert report["code"] == "verification_failed", report
+        assert report["exit_code"] == 0, report
+        assert not marker.exists(), "selected failure must stop before compile"
+
     direct_root = scratch / "direct"
     direct_root.mkdir()
     initialize_repository(direct_root)
+    install_verifier(direct_root)
+    prepare_evidence_fixture(direct_root)
     marker = direct_root / "command-marker"
     admission, descriptor = open_admission_directory(direct_root)
     try:
@@ -549,6 +734,27 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
     assert invocation["descriptor_closed"] is True
     assert not poison_marker.exists()
     marker.unlink()
+
+    missing_envelope = valid_payload(
+        direct_root,
+        json.dumps({"narrative": "ordinary verification prose"}),
+    )
+    admission, descriptor = open_admission_directory(direct_root)
+    try:
+        missing_result = direct_child(
+            direct_root,
+            missing_envelope,
+            tmpdir=str(admission.resolve()),
+            descriptor=descriptor,
+        )
+    finally:
+        os.close(descriptor)
+    assert (missing_result.returncode, missing_result.stdout, missing_result.stderr) == (
+        0,
+        BLOCKED_STDOUT,
+        INVALID_EVIDENCE,
+    )
+    assert not marker.exists()
 
     grandchild_marker = direct_root / "grandchild-marker"
     grandchild_command(direct_root / "gradlew", grandchild_marker)
@@ -886,6 +1092,7 @@ with tempfile.TemporaryDirectory(prefix="pub78-verifier-") as temporary:
         fixture.mkdir()
         initialize_repository(fixture)
         install_verifier(fixture, replacement)
+        prepare_evidence_fixture(fixture)
         marker = fixture / "command-marker"
         fake_command(
             fixture / "gradlew",

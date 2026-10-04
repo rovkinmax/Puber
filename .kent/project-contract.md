@@ -39,6 +39,14 @@ trigger matches the current node and task.
 - Worktree SDK setup writes only `sdk.dir`; KinoPub/TMDB credentials are never
   copied.
 - Deterministic workflow verification uses the command selected by the profile.
+- Tasks changing behavior or scenario fixtures follow
+  `.kent/commands/mock-scenario-policy.md`. Before an Implement/Fix verifier
+  handoff, recover the durable evidence paths, refresh the packet and execution
+  receipt against the final source delta, then serialize the closed review
+  envelope into `review_context`. Missing or stale evidence is writer-recoverable:
+  refresh it and retry without a new approval. The compile verifier validates
+  the envelope before running the fixed compile command; invalid or unavailable
+  evidence blocks rather than admitting compile success.
 
 ## Android TV Smoke
 

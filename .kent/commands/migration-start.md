@@ -88,6 +88,11 @@ Generate `.todo/migration-<name>/plan.md`:
 - Never break compilation between steps
 - Cleanup (remove old deps) is always last
 
+For every behavior or fixture change, follow
+`.kent/commands/mock-scenario-policy.md`. Add its full behavior inventory to
+the plan, keep results pending, and reconcile the inventory against the final
+source delta during implementation.
+
 ### Phase 3b: Self-review (MANDATORY before presenting)
 
 Before showing the plan to the user, review it as if you were an agent with NO conversation context:
@@ -136,6 +141,15 @@ For each step:
 3. If fails → fix (migration-specific issues are expected)
 4. Mark `[x]` in plan.md
 5. Do not mirror step or lifecycle progress into `meta.json`
+
+For behavior or fixture changes, follow the policy's execution stage: use
+`capture` and `receipt` around the fixed harness, and run every selected
+alternative check for non-applicable behavior.
+
+Immediately before verifier handoff, recover durable packet and receipt paths,
+refresh and validate evidence against the final source delta, then serialize
+the closed review envelope into `review_context`. Missing or stale evidence is
+writer-recoverable: refresh and retry without a new approval.
 
 **After all steps:**
 1. Full project compile:

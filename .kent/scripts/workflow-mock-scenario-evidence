@@ -1,0 +1,1620 @@
+#!/usr/bin/env python3
+"""Validate bounded mock-scenario evidence and fresh JUnit execution receipts."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import xml.etree.ElementTree as ET
+
+
+MAX_JSON_BYTES = 256 * 1024
+MAX_JUNIT_FILE_BYTES = 2 * 1024 * 1024
+MAX_JUNIT_TOTAL_BYTES = 16 * 1024 * 1024
+MAX_JUNIT_FILES = 256
+MAX_DELTA_FILE_BYTES = 8 * 1024 * 1024
+MAX_DELTA_TOTAL_BYTES = 32 * 1024 * 1024
+MAX_OUTPUT_BYTES = 1024 * 1024
+BUILD_ROOT = PurePosixPath("build/kent-workflow")
+SUPPORTED_WORK_KINDS = {
+    "feature",
+    "bugfix",
+    "refactor",
+    "migration",
+    "dependency",
+    "test",
+}
+SUPPORTS_DIR_FD_OPEN = os.open in getattr(os, "supports_dir_fd", set())
+TASK_PATTERN = re.compile(r"[A-Z][A-Z0-9]*-[0-9]+\Z")
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
+COMMIT_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
+BEHAVIOR_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+TEST_ID_PATTERN = re.compile(
+    r"[^#\x00\r\n]{1,256}#[^#\x00\r\n]{1,256}\Z"
+)
+
+PACKET_SCHEMA = "mock-scenario-evidence-v1"
+EXECUTION_SCHEMA = "mock-scenario-execution-v1"
+CAPTURE_SCHEMA = "mock-scenario-capture-v1"
+REVIEW_SCHEMA = "mock-scenario-review-context-v1"
+PACKET_KEYS = {
+    "schema",
+    "task_short_id",
+    "work_kind",
+    "baseline",
+    "source_delta_sha256",
+    "behaviors",
+}
+BEHAVIOR_KEYS = {
+    "id",
+    "source_paths",
+    "applicability",
+    "rationale",
+    "mock_seam",
+    "selected_test_ids",
+    "assertion_paths",
+    "assertions",
+    "harness_ref",
+    "result",
+    "alternative_checks",
+}
+CAPTURE_KEYS = {
+    "schema",
+    "task_short_id",
+    "work_kind",
+    "baseline",
+    "source_delta_sha256",
+    "packet_path",
+    "packet_intent_sha256",
+    "results_dir",
+    "results_before",
+    "log_path",
+    "log_before",
+    "captured_at_ns",
+}
+EXECUTION_KEYS = {
+    "schema",
+    "task_short_id",
+    "work_kind",
+    "baseline",
+    "source_delta_sha256",
+    "packet_path",
+    "packet_sha256",
+    "capture_path",
+    "capture_sha256",
+    "results_dir",
+    "log_path",
+    "runner_log",
+    "exit_code",
+    "completion",
+    "selected_test_ids",
+    "test_results",
+    "junit",
+    "completed_at_ns",
+}
+REVIEW_KEYS = {
+    "schema",
+    "task_short_id",
+    "work_kind",
+    "baseline",
+    "source_delta_sha256",
+    "packet",
+    "execution",
+    "narrative",
+}
+REFERENCE_KEYS = {"path", "sha256"}
+IDENTITY_KEYS = {"device", "inode", "size", "mtime_ns", "ctime_ns"}
+
+
+class EvidenceError(Exception):
+    """A bounded, user-correctable evidence validation failure."""
+
+
+def _fail(message: str) -> None:
+    raise EvidenceError(message)
+
+
+def _canonical(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _sha256(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _pairs_no_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            _fail(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _load_json_bytes(content: bytes, description: str) -> object:
+    if len(content) > MAX_JSON_BYTES:
+        _fail(f"{description} exceeds the {MAX_JSON_BYTES}-byte limit")
+    try:
+        return json.loads(
+            content.decode("utf-8"),
+            object_pairs_hook=_pairs_no_duplicates,
+            parse_constant=lambda value: _fail(f"invalid JSON number: {value}"),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
+        _fail(f"{description} is not valid UTF-8 JSON: {error}")
+
+
+def _dict(value: object, keys: set[str], label: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        _fail(f"{label} must be a JSON object")
+    actual = set(value)
+    if actual != keys:
+        missing = sorted(keys - actual)
+        unknown = sorted(actual - keys)
+        _fail(f"{label} keys mismatch (missing={missing}, unknown={unknown})")
+    return value
+
+
+def _text(value: object, label: str, maximum: int = 2048) -> str:
+    if not isinstance(value, str) or not value.strip():
+        _fail(f"{label} must be non-empty text")
+    if len(value.encode("utf-8")) > maximum or "\x00" in value:
+        _fail(f"{label} exceeds its text bound")
+    return value
+
+
+def _string_list(
+    value: object,
+    label: str,
+    *,
+    minimum: int = 0,
+    maximum: int = 128,
+    pattern: re.Pattern[str] | None = None,
+) -> list[str]:
+    if not isinstance(value, list) or not minimum <= len(value) <= maximum:
+        _fail(f"{label} must contain {minimum}..{maximum} strings")
+    output: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        item = _text(item, label, maximum=1024)
+        if pattern is not None and pattern.fullmatch(item) is None:
+            _fail(f"{label} contains an invalid reference: {item}")
+        if item in seen:
+            _fail(f"{label} contains a duplicate: {item}")
+        seen.add(item)
+        output.append(item)
+    return output
+
+
+def _relative_path(value: object, label: str) -> str:
+    item = _text(value, label, maximum=1024)
+    if "\\" in item:
+        _fail(f"{label} must use relative POSIX separators")
+    raw_parts = item.split("/")
+    path = PurePosixPath(item)
+    if (
+        path.is_absolute()
+        or not path.parts
+        or any(part in ("", ".", "..") for part in raw_parts)
+        or re.match(r"^[A-Za-z]:", item)
+    ):
+        _fail(f"{label} must be a contained relative path")
+    return path.as_posix()
+
+
+def _ensure_relative_to(path: Path, root: Path, label: str) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        _fail(f"{label} escapes the workspace")
+
+
+def _workspace(path: str) -> Path:
+    root = Path(path).absolute()
+    if root.is_symlink() or not root.is_dir():
+        _fail("workspace must be an existing non-symlink directory")
+    return root.resolve(strict=True)
+
+
+def _check_components(root: Path, relative: str, *, allow_missing: bool) -> Path:
+    relative = _relative_path(relative, "path")
+    current = root
+    parts = PurePosixPath(relative).parts
+    for index, part in enumerate(parts):
+        current = current / part
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            if allow_missing:
+                for remainder in parts[index + 1 :]:
+                    current = current / remainder
+                return current
+            _fail(f"path does not exist: {relative}")
+        if stat.S_ISLNK(metadata.st_mode):
+            _fail(f"symlink path is not allowed: {relative}")
+        if index != len(parts) - 1 and not stat.S_ISDIR(metadata.st_mode):
+            _fail(f"non-directory path component: {relative}")
+    return current
+
+
+def _evidence_path(root: Path, relative: str, *, allow_missing: bool) -> Path:
+    normalized = _relative_path(relative, "evidence path")
+    if not PurePosixPath(normalized).is_relative_to(BUILD_ROOT):
+        _fail("evidence files must be under build/kent-workflow/")
+    path = _check_components(root, normalized, allow_missing=allow_missing)
+    _ensure_relative_to(path.absolute(), root, "evidence path")
+    return path
+
+
+def _read_file(root: Path, relative: str, *, limit: int) -> bytes:
+    content, _ = _read_file_with_metadata(root, relative, limit=limit)
+    return content
+
+
+def _read_file_with_metadata(
+    root: Path, relative: str, *, limit: int
+) -> tuple[bytes, os.stat_result]:
+    """Read bounded bytes and mode from the same no-follow file descriptor."""
+    relative = _relative_path(relative, "file path")
+    if limit < 0:
+        _fail("file read limit must not be negative")
+    nofollow_flag = getattr(os, "O_NOFOLLOW", 0)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    if (
+        not nofollow_flag
+        or not directory_flag
+        or not SUPPORTS_DIR_FD_OPEN
+    ):
+        _fail("platform does not support safe descriptor-relative file reads")
+
+    directory_flags = (
+        os.O_RDONLY
+        | directory_flag
+        | nofollow_flag
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    file_flags = (
+        os.O_RDONLY
+        | nofollow_flag
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    directory_descriptors: list[int] = []
+    file_descriptor: int | None = None
+    try:
+        directory_descriptor = os.open(root, directory_flags)
+        directory_descriptors.append(directory_descriptor)
+        if not stat.S_ISDIR(os.fstat(directory_descriptor).st_mode):
+            _fail("workspace root is not a directory")
+
+        parts = PurePosixPath(relative).parts
+        if not parts:
+            _fail("file path must not be empty")
+        for part in parts[:-1]:
+            directory_descriptor = os.open(
+                part,
+                directory_flags,
+                dir_fd=directory_descriptor,
+            )
+            directory_descriptors.append(directory_descriptor)
+            if not stat.S_ISDIR(os.fstat(directory_descriptor).st_mode):
+                _fail(f"non-directory path component: {relative}")
+
+        file_descriptor = os.open(
+            parts[-1],
+            file_flags,
+            dir_fd=directory_descriptor,
+        )
+        metadata = os.fstat(file_descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            _fail(f"expected a regular file: {relative}")
+        if metadata.st_size > limit:
+            _fail(f"file exceeds its {limit}-byte limit: {relative}")
+        content = bytearray()
+        while len(content) <= limit:
+            remaining = limit + 1 - len(content)
+            chunk = os.read(file_descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            content.extend(chunk)
+        if len(content) > limit:
+            _fail(f"file exceeds its {limit}-byte limit: {relative}")
+        return bytes(content), metadata
+    except OSError as error:
+        _fail(f"cannot safely read {relative}: {error}")
+    finally:
+        if file_descriptor is not None:
+            try:
+                os.close(file_descriptor)
+            except OSError:
+                pass
+        for descriptor in reversed(directory_descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _identity(path: Path) -> dict[str, int]:
+    metadata = path.stat()
+    if not stat.S_ISREG(metadata.st_mode):
+        _fail(f"expected a regular file: {path}")
+    return {
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+        "size": metadata.st_size,
+        "mtime_ns": metadata.st_mtime_ns,
+        "ctime_ns": metadata.st_ctime_ns,
+    }
+
+
+def _identity_changed(before: object, after: object) -> bool:
+    if before is None:
+        return True
+    return before != after
+
+
+def _git(root: Path, *arguments: str) -> bytes:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), *arguments],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        _fail(f"git source identity command failed: {error}")
+    return result.stdout
+
+
+def _validate_baseline(root: Path, baseline: object) -> str:
+    baseline = _text(baseline, "baseline", maximum=64)
+    if COMMIT_PATTERN.fullmatch(baseline) is None:
+        _fail("baseline must be a full lowercase git commit ID")
+    resolved = _git(root, "rev-parse", "--verify", f"{baseline}^{{commit}}")
+    canonical = resolved.decode("ascii", errors="strict").strip()
+    if canonical != baseline:
+        _fail("baseline must use the full canonical commit ID")
+    return canonical
+
+
+def _excluded_source_path(path: str) -> bool:
+    parts = PurePosixPath(path).parts
+    # Exclude known output roots, not fixture names or arbitrary .log suffixes.
+    if parts[0] in {".git", ".todo", ".gradle", "build"}:
+        return True
+    if len(parts) > 1 and parts[:2] in {
+        ("app", "build"), ("baselineprofile", "build"),
+        ("app", ".gradle"), ("baselineprofile", ".gradle"),
+    }:
+        return True
+    if path == "local.properties":
+        return True
+    if any(part.startswith(".env") for part in parts):
+        return True
+    return False
+
+
+def _baseline_modes(root: Path, baseline: str) -> dict[str, str]:
+    entries = _git(root, "ls-tree", "-r", "-z", baseline).split(b"\0")
+    modes: dict[str, str] = {}
+    for entry in entries:
+        if not entry:
+            continue
+        metadata, raw_path = entry.split(b"\t", 1)
+        mode = metadata.split(b" ", 1)[0].decode("ascii")
+        path = raw_path.decode("utf-8", errors="strict")
+        modes[path] = mode
+    return modes
+
+
+def source_delta(root: Path, baseline: str) -> tuple[str, list[dict[str, object]]]:
+    """Hash changed/new source bytes and modes relative to the immutable commit."""
+    baseline_modes = _baseline_modes(root, baseline)
+    tracked = _git(
+        root, "diff", "--name-only", "-z", "--no-renames", baseline, "--"
+    ).split(b"\0")
+    untracked = _git(
+        root, "ls-files", "--others", "--exclude-standard", "-z"
+    ).split(b"\0")
+    paths = {
+        entry.decode("utf-8", errors="strict")
+        for entry in (*tracked, *untracked)
+        if entry
+    }
+    entries: list[dict[str, object]] = []
+    total = 0
+    for relative in sorted(paths):
+        if _excluded_source_path(relative):
+            continue
+        path = _check_components(root, relative, allow_missing=True)
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            entries.append(
+                {
+                    "path": relative,
+                    "state": "deleted",
+                    "mode": baseline_modes.get(relative, "100644"),
+                    "sha256": None,
+                }
+            )
+            continue
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            _fail(f"changed source must be a regular non-symlink file: {relative}")
+        content, metadata = _read_file_with_metadata(
+            root,
+            relative,
+            limit=min(MAX_DELTA_FILE_BYTES, MAX_DELTA_TOTAL_BYTES - total),
+        )
+        total += len(content)
+        if total > MAX_DELTA_TOTAL_BYTES:
+            _fail("changed source exceeds the total digest input limit")
+        executable = bool(metadata.st_mode & 0o111)
+        entries.append(
+            {
+                "path": relative,
+                "state": "present",
+                "mode": "100755" if executable else "100644",
+                "sha256": _sha256(content),
+            }
+        )
+    entries.sort(key=lambda entry: str(entry["path"]).encode("utf-8"))
+    return _sha256(_canonical(entries)), entries
+
+
+def _assert_reference_paths(
+    root: Path,
+    values: list[str],
+    delta_entries: list[dict[str, object]],
+    label: str,
+    *,
+    allow_deleted: bool = False,
+) -> None:
+    delta_paths = {str(item["path"]): item for item in delta_entries}
+    for relative in values:
+        item = delta_paths.get(relative)
+        if item is None:
+            _fail(f"{label} does not reference a changed source path: {relative}")
+        if item["state"] == "deleted":
+            if allow_deleted:
+                continue
+            _fail(f"{label} references a deleted path: {relative}")
+        _check_components(root, relative, allow_missing=False)
+
+
+def _validate_packet_object(
+    root: Path,
+    packet: object,
+    *,
+    expected_task: str | None = None,
+    expected_work_kind: str | None = None,
+    expected_baseline: str | None = None,
+    allow_pending: bool,
+) -> tuple[dict[str, object], list[dict[str, object]], str]:
+    packet = _dict(packet, PACKET_KEYS, "packet")
+    if packet["schema"] != PACKET_SCHEMA:
+        _fail("unsupported mock-scenario packet schema")
+    task = _text(packet["task_short_id"], "task_short_id", maximum=32)
+    if TASK_PATTERN.fullmatch(task) is None:
+        _fail("invalid task_short_id")
+    if expected_task is not None and task != expected_task:
+        _fail("packet task_short_id does not match the current task")
+    work_kind = _text(packet["work_kind"], "work_kind", maximum=32)
+    if work_kind not in SUPPORTED_WORK_KINDS:
+        _fail("unsupported work_kind")
+    if expected_work_kind is not None and work_kind != expected_work_kind:
+        _fail("packet work_kind does not match the current task")
+    baseline = _validate_baseline(root, packet["baseline"])
+    if expected_baseline is not None and baseline != expected_baseline:
+        _fail("packet baseline does not match the immutable task baseline")
+    digest = _text(packet["source_delta_sha256"], "source_delta_sha256", 64)
+    if SHA256_PATTERN.fullmatch(digest) is None:
+        _fail("source_delta_sha256 must be a lowercase SHA-256 digest")
+    current_digest, delta_entries = source_delta(root, baseline)
+    if digest != current_digest:
+        _fail("packet source delta digest is stale")
+    behaviors = packet["behaviors"]
+    if not isinstance(behaviors, list) or not 1 <= len(behaviors) <= 128:
+        _fail("behaviors must contain 1..128 entries")
+    behavior_ids: set[str] = set()
+    selected_ids: set[str] = set()
+    for index, value in enumerate(behaviors):
+        behavior = _dict(value, BEHAVIOR_KEYS, f"behaviors[{index}]")
+        behavior_id = _text(behavior["id"], f"behaviors[{index}].id", 64)
+        if BEHAVIOR_PATTERN.fullmatch(behavior_id) is None:
+            _fail(f"invalid behavior ID: {behavior_id}")
+        if behavior_id in behavior_ids:
+            _fail(f"duplicate behavior ID: {behavior_id}")
+        behavior_ids.add(behavior_id)
+        source_paths = [
+            _relative_path(item, "source_paths")
+            for item in _string_list(
+                behavior["source_paths"], "source_paths", minimum=1
+            )
+        ]
+        _assert_reference_paths(
+            root, source_paths, delta_entries, "source_paths", allow_deleted=True
+        )
+        applicability = behavior["applicability"]
+        if not isinstance(applicability, str):
+            _fail(f"invalid applicability for behavior {behavior_id}")
+        if applicability not in {"applicable", "not_applicable"}:
+            _fail(f"invalid applicability for behavior {behavior_id}")
+        tests = _string_list(
+            behavior["selected_test_ids"],
+            f"{behavior_id}.selected_test_ids",
+            minimum=1,
+            maximum=128,
+            pattern=TEST_ID_PATTERN,
+        )
+        for test_id in tests:
+            if test_id in selected_ids:
+                _fail(f"selected test ID is duplicated: {test_id}")
+            selected_ids.add(test_id)
+        rationale = _text(
+            behavior["rationale"], f"{behavior_id}.rationale", maximum=2048
+        )
+        if len(rationale.strip()) < 12:
+            _fail(f"{behavior_id}.rationale must be concrete")
+        seam = behavior["mock_seam"]
+        harness_ref = behavior["harness_ref"]
+        if applicability == "applicable":
+            _text(seam, f"{behavior_id}.mock_seam", maximum=512)
+            _text(harness_ref, f"{behavior_id}.harness_ref", maximum=512)
+            if behavior["alternative_checks"] != []:
+                _fail(f"{behavior_id} applicable entry cannot use alternative_checks")
+        else:
+            if seam is not None:
+                _fail(f"{behavior_id} not_applicable entry must null its mock seam")
+            _text(harness_ref, f"{behavior_id}.harness_ref", maximum=512)
+            alternatives = _string_list(
+                behavior["alternative_checks"],
+                f"{behavior_id}.alternative_checks",
+                minimum=1,
+                maximum=128,
+                pattern=TEST_ID_PATTERN,
+            )
+            if alternatives != tests:
+                _fail(
+                    f"{behavior_id} alternative_checks must match "
+                    "selected_test_ids exactly"
+                )
+        assertion_paths = [
+            _relative_path(item, "assertion_paths")
+            for item in _string_list(
+                behavior["assertion_paths"],
+                f"{behavior_id}.assertion_paths",
+                minimum=1 if applicability == "applicable" else 0,
+            )
+        ]
+        _assert_reference_paths(
+            root, assertion_paths, delta_entries, "assertion_paths"
+        )
+        assertions = _string_list(
+            behavior["assertions"],
+            f"{behavior_id}.assertions",
+            minimum=1,
+            maximum=64,
+        )
+        if any(len(assertion) > 512 for assertion in assertions):
+            _fail(f"{behavior_id} has an assertion that exceeds its text bound")
+        result = behavior["result"]
+        if allow_pending:
+            if result != "pending":
+                _fail(f"{behavior_id} must be pending before receipt capture")
+        elif result not in {"passed", "failed"}:
+            _fail(f"{behavior_id} has no final result")
+    intent = {
+        **packet,
+        "behaviors": [
+            {**behavior, "result": "pending"}
+            for behavior in behaviors
+        ],
+    }
+    return packet, delta_entries, _sha256(_canonical(intent))
+
+
+def _load_packet(
+    root: Path,
+    relative: str,
+    *,
+    expected_task: str | None = None,
+    expected_work_kind: str | None = None,
+    expected_baseline: str | None = None,
+    allow_pending: bool,
+) -> tuple[dict[str, object], list[dict[str, object]], str, bytes]:
+    path = _evidence_path(root, relative, allow_missing=False)
+    content = _read_file(root, relative, limit=MAX_JSON_BYTES)
+    packet = _load_json_bytes(content, "packet")
+    validated, entries, intent = _validate_packet_object(
+        root,
+        packet,
+        expected_task=expected_task,
+        expected_work_kind=expected_work_kind,
+        expected_baseline=expected_baseline,
+        allow_pending=allow_pending,
+    )
+    if not stat.S_ISREG(path.lstat().st_mode):
+        _fail("packet must be a regular file")
+    return validated, entries, intent, content
+
+
+def _new_output(root: Path, relative: str) -> Path:
+    path = _evidence_path(root, relative, allow_missing=True)
+    parent = root
+    for component in PurePosixPath(relative).parts[:-1]:
+        parent = parent / component
+        try:
+            metadata = parent.lstat()
+        except FileNotFoundError:
+            parent.mkdir(mode=0o700)
+        else:
+            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+                _fail(f"unsafe evidence output directory: {parent}")
+    if path.exists() or path.is_symlink():
+        _fail(f"evidence output already exists: {relative}")
+    return path
+
+
+def _write_json(root: Path, relative: str, value: object) -> bytes:
+    path = _new_output(root, relative)
+    content = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode(
+        "utf-8"
+    )
+    if len(content) > MAX_OUTPUT_BYTES:
+        _fail("generated evidence exceeds its output bound")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".mock-scenario-", dir=str(path.parent)
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except OSError as error:
+        try:
+            temporary.unlink(missing_ok=True)
+        finally:
+            _fail(f"cannot write evidence file {relative}: {error}")
+    return content
+
+
+def _atomic_replace(root: Path, relative: str, content: bytes) -> None:
+    path = _evidence_path(root, relative, allow_missing=False)
+    if not stat.S_ISREG(path.lstat().st_mode):
+        _fail("refusing to replace a non-regular packet")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".mock-scenario-", dir=str(path.parent)
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, stat.S_IMODE(path.stat().st_mode))
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except OSError as error:
+        try:
+            temporary.unlink(missing_ok=True)
+        finally:
+            _fail(f"cannot update packet {relative}: {error}")
+
+
+def _safe_result_files(root: Path, relative: str, *, create: bool) -> list[Path]:
+    directory = _check_components(root, relative, allow_missing=create)
+    if not directory.exists() and create:
+        directory.mkdir(mode=0o700, parents=True)
+    if directory.is_symlink() or not directory.is_dir():
+        _fail("results_dir must be a contained non-symlink directory")
+    output: list[Path] = []
+    total = 0
+    for current, dirs, files in os.walk(directory, followlinks=False):
+        current_path = Path(current)
+        for name in dirs:
+            item = current_path / name
+            if item.is_symlink():
+                _fail("symlink directory in JUnit results")
+        for name in files:
+            item = current_path / name
+            if item.is_symlink():
+                _fail("symlink file in JUnit results")
+            if not item.is_file():
+                _fail("non-regular file in JUnit results")
+            if item.suffix.lower() != ".xml":
+                continue
+            size = item.stat().st_size
+            if size > MAX_JUNIT_FILE_BYTES:
+                _fail("JUnit XML exceeds its per-file limit")
+            total += size
+            if total > MAX_JUNIT_TOTAL_BYTES:
+                _fail("JUnit XML exceeds its total size limit")
+            output.append(item)
+            if len(output) > MAX_JUNIT_FILES:
+                _fail("too many JUnit XML files")
+    return sorted(output, key=lambda item: item.relative_to(root).as_posix())
+
+
+def _snapshot_xml(root: Path, relative: str) -> list[dict[str, object]]:
+    output: list[dict[str, object]] = []
+    for path in _safe_result_files(root, relative, create=True):
+        rel = path.relative_to(root).as_posix()
+        content = _read_file(root, rel, limit=MAX_JUNIT_FILE_BYTES)
+        output.append(
+            {
+                "path": rel,
+                "sha256": _sha256(content),
+                "identity": _identity(path),
+            }
+        )
+    return output
+
+
+def _log_snapshot(root: Path, relative: str) -> dict[str, object] | None:
+    path = _check_components(root, relative, allow_missing=True)
+    if not path.exists():
+        return None
+    if path.is_symlink() or not path.is_file():
+        _fail("runner log must be a regular non-symlink file")
+    content = _read_file(root, relative, limit=MAX_JUNIT_FILE_BYTES)
+    return {"sha256": _sha256(content), "identity": _identity(path)}
+
+
+def _parse_junit(path: Path, root: Path) -> tuple[list[dict[str, str]], dict[str, object]]:
+    relative = path.relative_to(root).as_posix()
+    content = _read_file(root, relative, limit=MAX_JUNIT_FILE_BYTES)
+    upper = content.upper()
+    if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
+        _fail(f"DTD/entity declarations are forbidden in JUnit XML: {relative}")
+    try:
+        document = ET.fromstring(content)
+    except ET.ParseError as error:
+        _fail(f"invalid JUnit XML {relative}: {error}")
+    if document.tag not in {"testsuite", "testsuites"}:
+        _fail(f"unsupported JUnit XML root in {relative}")
+    cases: list[dict[str, str]] = []
+    for case in document.iter("testcase"):
+        classname = case.attrib.get("classname", "")
+        name = case.attrib.get("name", "")
+        if not classname or not name:
+            _fail(f"JUnit testcase lacks classname/name in {relative}")
+        test_id = f"{classname}#{name}"
+        if TEST_ID_PATTERN.fullmatch(test_id) is None:
+            _fail(f"invalid JUnit test ID: {test_id}")
+        if any(child.tag in {"failure", "error"} for child in case):
+            result = "failed"
+        elif any(child.tag == "skipped" for child in case) or (
+            case.attrib.get("disabled", "").lower() in {"true", "1"}
+        ):
+            result = "skipped"
+        else:
+            result = "passed"
+        cases.append({"test_id": test_id, "result": result})
+    if not cases:
+        _fail(f"JUnit XML contains no test cases: {relative}")
+    file_record = {
+        "path": relative,
+        "sha256": _sha256(content),
+        "identity": _identity(path),
+        "test_ids": [case["test_id"] for case in cases],
+    }
+    return cases, file_record
+
+
+def _validate_capture_object(value: object) -> dict[str, object]:
+    capture = _dict(value, CAPTURE_KEYS, "capture")
+    if capture["schema"] != CAPTURE_SCHEMA:
+        _fail("unsupported capture schema")
+    task = _text(capture["task_short_id"], "capture.task_short_id", maximum=32)
+    if TASK_PATTERN.fullmatch(task) is None:
+        _fail("invalid capture task_short_id")
+    work_kind = _text(capture["work_kind"], "capture.work_kind", maximum=32)
+    if work_kind not in SUPPORTED_WORK_KINDS:
+        _fail("invalid capture work_kind")
+    baseline = _text(capture["baseline"], "capture.baseline", maximum=64)
+    if COMMIT_PATTERN.fullmatch(baseline) is None:
+        _fail("invalid capture baseline")
+    for key in ("source_delta_sha256", "packet_intent_sha256"):
+        if SHA256_PATTERN.fullmatch(str(capture[key])) is None:
+            _fail(f"invalid capture digest: {key}")
+    for key in ("packet_path", "results_dir", "log_path"):
+        relative = _relative_path(capture[key], f"capture.{key}")
+        if not PurePosixPath(relative).is_relative_to(BUILD_ROOT):
+            _fail(f"capture.{key} must be under build/kent-workflow/")
+        capture[key] = relative
+    if not isinstance(capture["results_before"], list):
+        _fail("capture results_before must be a list")
+    if len(capture["results_before"]) > MAX_JUNIT_FILES:
+        _fail("capture contains too many prior JUnit files")
+    previous_paths: set[str] = set()
+    for item in capture["results_before"]:
+        item = _dict(item, {"path", "sha256", "identity"}, "results_before item")
+        item_path = _relative_path(item["path"], "results_before.path")
+        if not PurePosixPath(item_path).is_relative_to(
+            PurePosixPath(str(capture["results_dir"]))
+        ):
+            _fail("prior JUnit path is outside results_dir")
+        if item_path in previous_paths:
+            _fail("duplicate prior JUnit path")
+        previous_paths.add(item_path)
+        _check_identity(item["identity"], "results_before.identity")
+        if SHA256_PATTERN.fullmatch(str(item["sha256"])) is None:
+            _fail("invalid prior JUnit digest")
+    if capture["log_before"] is not None:
+        log_before = _dict(
+            capture["log_before"], {"sha256", "identity"}, "log_before"
+        )
+        if SHA256_PATTERN.fullmatch(str(log_before["sha256"])) is None:
+            _fail("invalid prior runner log digest")
+        _check_identity(log_before["identity"], "log_before.identity")
+    if (
+        not isinstance(capture["captured_at_ns"], int)
+        or isinstance(capture["captured_at_ns"], bool)
+        or capture["captured_at_ns"] <= 0
+    ):
+        _fail("invalid capture timestamp")
+    return capture
+
+
+def _check_identity(value: object, label: str) -> dict[str, int]:
+    identity = _dict(value, IDENTITY_KEYS, label)
+    if any(
+        not isinstance(identity[key], int)
+        or isinstance(identity[key], bool)
+        or identity[key] < 0
+        for key in IDENTITY_KEYS
+    ):
+        _fail(f"{label} contains an invalid file identity")
+    return identity
+
+
+def capture(
+    root: Path,
+    *,
+    task: str,
+    work_kind: str,
+    baseline: str,
+    packet_path: str,
+    results_dir: str,
+    log_path: str,
+    output_path: str,
+) -> dict[str, object]:
+    if TASK_PATTERN.fullmatch(task) is None:
+        _fail("invalid task_short_id")
+    if work_kind not in SUPPORTED_WORK_KINDS:
+        _fail("unsupported work_kind")
+    baseline = _validate_baseline(root, baseline)
+    packet, _, intent, _ = _load_packet(
+        root,
+        packet_path,
+        expected_task=task,
+        expected_work_kind=work_kind,
+        expected_baseline=baseline,
+        allow_pending=True,
+    )
+    digest, _ = source_delta(root, baseline)
+    if packet["source_delta_sha256"] != digest:
+        _fail("source changed before execution capture")
+    results_dir = _relative_path(results_dir, "results_dir")
+    _evidence_path(root, results_dir, allow_missing=True)
+    results_path = _check_components(root, results_dir, allow_missing=True)
+    if not results_path.exists():
+        results_path.mkdir(mode=0o700, parents=True)
+    if results_path.is_symlink() or not results_path.is_dir():
+        _fail("results_dir must be a non-symlink directory")
+    log_path = _relative_path(log_path, "log_path")
+    _evidence_path(root, log_path, allow_missing=True)
+    _evidence_path(root, output_path, allow_missing=True)
+    log_before = _log_snapshot(root, log_path)
+    output = {
+        "schema": CAPTURE_SCHEMA,
+        "task_short_id": task,
+        "work_kind": work_kind,
+        "baseline": baseline,
+        "source_delta_sha256": digest,
+        "packet_path": _relative_path(packet_path, "packet_path"),
+        "packet_intent_sha256": intent,
+        "results_dir": results_dir,
+        "results_before": _snapshot_xml(root, results_dir),
+        "log_path": log_path,
+        "log_before": log_before,
+        "captured_at_ns": time.time_ns(),
+    }
+    if set(output) != CAPTURE_KEYS:
+        raise AssertionError("capture schema implementation mismatch")
+    _write_json(root, output_path, output)
+    return output
+
+
+def _evaluate_execution(
+    root: Path,
+    capture_obj: dict[str, object],
+    packet: dict[str, object],
+    *,
+    exit_code: int,
+) -> tuple[list[dict[str, str]], list[dict[str, object]], dict[str, object], str]:
+    before = {
+        item["path"]: item for item in capture_obj["results_before"]
+    }
+    after_files = _safe_result_files(root, str(capture_obj["results_dir"]), create=False)
+    all_cases: dict[str, str] = {}
+    junit_records: list[dict[str, object]] = []
+    fresh_case_ids: set[str] = set()
+    for path in after_files:
+        cases, record = _parse_junit(path, root)
+        previous = before.get(record["path"])
+        fresh = previous is None or _identity_changed(
+            previous["identity"], record["identity"]
+        )
+        if previous is not None and previous["sha256"] != record["sha256"]:
+            fresh = True
+        if fresh:
+            fresh_case_ids.update(case["test_id"] for case in cases)
+        for case in cases:
+            test_id = case["test_id"]
+            if test_id in all_cases:
+                _fail(f"duplicate JUnit case across result files: {test_id}")
+            all_cases[test_id] = case["result"]
+        junit_records.append(record)
+    selected = [
+        test_id
+        for behavior in packet["behaviors"]
+        for test_id in behavior["selected_test_ids"]
+    ]
+    missing = [test_id for test_id in selected if test_id not in all_cases]
+    if missing:
+        _fail(f"selected test cases are absent or disabled: {missing}")
+    not_fresh = [test_id for test_id in selected if test_id not in fresh_case_ids]
+    if not_fresh:
+        _fail(f"selected cases came only from unchanged prior XML: {not_fresh}")
+    test_results = [
+        {"test_id": test_id, "result": all_cases[test_id]}
+        for test_id in selected
+    ]
+    failed = [item["test_id"] for item in test_results if item["result"] == "failed"]
+    skipped = [item["test_id"] for item in test_results if item["result"] == "skipped"]
+    if failed:
+        completion = "failed"
+    elif skipped:
+        _fail(f"selected test cases were skipped or disabled: {skipped}")
+    elif exit_code != 0:
+        _fail(f"harness exited {exit_code} without a selected test failure")
+    else:
+        completion = "passed"
+
+    path = _check_components(root, str(capture_obj["log_path"]), allow_missing=False)
+    if path.is_symlink() or not path.is_file():
+        _fail("runner log is not a regular file")
+    log_content = _read_file(
+        root, str(capture_obj["log_path"]), limit=MAX_JUNIT_FILE_BYTES
+    )
+    if not log_content.strip():
+        _fail("runner log is empty")
+    runner_log = {
+        "path": capture_obj["log_path"],
+        "sha256": _sha256(log_content),
+        "identity": _identity(path),
+    }
+    if not _identity_changed(capture_obj["log_before"], {
+        "sha256": runner_log["sha256"],
+        "identity": runner_log["identity"],
+    }):
+        _fail("runner log was not freshly produced")
+    return test_results, junit_records, runner_log, completion
+
+
+def issue_receipt(
+    root: Path,
+    *,
+    capture_path: str,
+    packet_path: str,
+    results_dir: str,
+    log_path: str,
+    output_path: str,
+    exit_code: int,
+) -> dict[str, object]:
+    if type(exit_code) is not int:
+        _fail("harness exit_code must be an integer")
+    capture_path = _relative_path(capture_path, "capture_path")
+    _evidence_path(root, capture_path, allow_missing=False)
+    capture_bytes = _read_file(root, capture_path, limit=MAX_JSON_BYTES)
+    capture_obj = _validate_capture_object(
+        _load_json_bytes(capture_bytes, "capture")
+    )
+    packet_path = _relative_path(packet_path, "packet_path")
+    packet, _, intent, packet_bytes = _load_packet(
+        root,
+        packet_path,
+        expected_task=str(capture_obj["task_short_id"]),
+        expected_work_kind=str(capture_obj["work_kind"]),
+        expected_baseline=str(capture_obj["baseline"]),
+        allow_pending=True,
+    )
+    if packet_path != capture_obj["packet_path"]:
+        _fail("packet path differs from execution capture")
+    if intent != capture_obj["packet_intent_sha256"]:
+        _fail("packet behavior mapping changed after execution capture")
+    if results_dir != capture_obj["results_dir"] or log_path != capture_obj["log_path"]:
+        _fail("results/log paths differ from execution capture")
+    _evidence_path(root, results_dir, allow_missing=False)
+    _evidence_path(root, log_path, allow_missing=False)
+    _evidence_path(root, output_path, allow_missing=True)
+    if len({capture_path, packet_path, output_path}) != 3:
+        _fail("packet, capture, and receipt paths must be distinct")
+    if (root / output_path).exists() or (root / output_path).is_symlink():
+        _fail(f"evidence output already exists: {output_path}")
+    current_digest, _ = source_delta(root, str(capture_obj["baseline"]))
+    if current_digest != capture_obj["source_delta_sha256"]:
+        _fail("source drifted between capture and execution receipt")
+    test_results, junit_records, runner_log, completion = _evaluate_execution(
+        root, capture_obj, packet, exit_code=exit_code
+    )
+    result_by_test = {item["test_id"]: item["result"] for item in test_results}
+    finalized_behaviors: list[dict[str, object]] = []
+    for behavior in packet["behaviors"]:
+        updated = dict(behavior)
+        if behavior["applicability"] == "applicable":
+            outcomes = [result_by_test[item] for item in behavior["selected_test_ids"]]
+            updated["result"] = (
+                "failed" if "failed" in outcomes else "passed"
+            )
+        else:
+            outcomes = [result_by_test[item] for item in behavior["selected_test_ids"]]
+            updated["result"] = (
+                "failed" if "failed" in outcomes else "passed"
+            )
+        finalized_behaviors.append(updated)
+    final_packet = {**packet, "behaviors": finalized_behaviors}
+    packet_content = (
+        json.dumps(final_packet, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    ).encode("utf-8")
+    if len(packet_content) > MAX_JSON_BYTES:
+        _fail("final packet exceeds the input bound")
+
+    source_digest, _ = source_delta(root, str(capture_obj["baseline"]))
+    if source_digest != capture_obj["source_delta_sha256"]:
+        _fail("source drifted while issuing execution receipt")
+    _atomic_replace(root, packet_path, packet_content)
+    receipt = {
+        "schema": EXECUTION_SCHEMA,
+        "task_short_id": capture_obj["task_short_id"],
+        "work_kind": capture_obj["work_kind"],
+        "baseline": capture_obj["baseline"],
+        "source_delta_sha256": source_digest,
+        "packet_path": packet_path,
+        "packet_sha256": _sha256(packet_content),
+        "capture_path": capture_path,
+        "capture_sha256": _sha256(capture_bytes),
+        "results_dir": capture_obj["results_dir"],
+        "log_path": capture_obj["log_path"],
+        "runner_log": runner_log,
+        "exit_code": exit_code,
+        "completion": completion,
+        "selected_test_ids": [
+            item["test_id"] for item in test_results
+        ],
+        "test_results": test_results,
+        "junit": junit_records,
+        "completed_at_ns": time.time_ns(),
+    }
+    if set(receipt) != EXECUTION_KEYS:
+        raise AssertionError("execution receipt schema implementation mismatch")
+    _write_json(root, output_path, receipt)
+    return receipt
+
+
+def _validate_execution(
+    root: Path,
+    relative: str,
+    *,
+    expected_packet_path: str,
+    expected_packet_bytes: bytes,
+    expected_task: str,
+    expected_work_kind: str,
+    expected_baseline: str,
+) -> tuple[dict[str, object], bytes]:
+    _evidence_path(root, relative, allow_missing=False)
+    content = _read_file(root, relative, limit=MAX_JSON_BYTES)
+    receipt = _dict(
+        _load_json_bytes(content, "execution receipt"),
+        EXECUTION_KEYS,
+        "execution receipt",
+    )
+    if receipt["schema"] != EXECUTION_SCHEMA:
+        _fail("unsupported execution receipt schema")
+    for key, expected in (
+        ("task_short_id", expected_task),
+        ("work_kind", expected_work_kind),
+        ("baseline", expected_baseline),
+        ("packet_path", expected_packet_path),
+    ):
+        if receipt[key] != expected:
+            _fail(f"execution receipt {key} mismatch")
+    if receipt["packet_sha256"] != _sha256(expected_packet_bytes):
+        _fail("execution receipt packet digest mismatch")
+    source_digest, _ = source_delta(root, expected_baseline)
+    if receipt["source_delta_sha256"] != source_digest:
+        _fail("execution receipt source digest is stale")
+    capture_path = _relative_path(receipt["capture_path"], "capture_path")
+    _evidence_path(root, capture_path, allow_missing=False)
+    capture_bytes = _read_file(root, capture_path, limit=MAX_JSON_BYTES)
+    if _sha256(capture_bytes) != receipt["capture_sha256"]:
+        _fail("execution receipt capture digest mismatch")
+    capture_obj = _validate_capture_object(
+        _load_json_bytes(capture_bytes, "capture")
+    )
+    packet_value = _load_json_bytes(expected_packet_bytes, "packet")
+    packet_obj, _, packet_intent = _validate_packet_object(
+        root,
+        packet_value,
+        expected_task=expected_task,
+        expected_work_kind=expected_work_kind,
+        expected_baseline=expected_baseline,
+        allow_pending=False,
+    )
+    for key, expected in (
+        ("task_short_id", expected_task),
+        ("work_kind", expected_work_kind),
+        ("baseline", expected_baseline),
+    ):
+        if capture_obj[key] != expected:
+            _fail(f"execution capture {key} mismatch")
+    if capture_obj["packet_intent_sha256"] != packet_intent:
+        _fail("execution capture packet intent mismatch")
+    results_dir = _relative_path(receipt["results_dir"], "execution.results_dir")
+    log_path = _relative_path(receipt["log_path"], "execution.log_path")
+    _evidence_path(root, results_dir, allow_missing=False)
+    _evidence_path(root, log_path, allow_missing=False)
+    if (
+        capture_obj["source_delta_sha256"] != source_digest
+        or capture_obj["packet_path"] != expected_packet_path
+        or capture_obj["results_dir"] != results_dir
+        or capture_obj["log_path"] != log_path
+    ):
+        _fail("execution receipt does not match its pre-run capture")
+    if not isinstance(receipt["completion"], str) or receipt["completion"] not in {
+        "passed",
+        "failed",
+    }:
+        _fail("invalid execution completion")
+    if not isinstance(receipt["exit_code"], int) or isinstance(
+        receipt["exit_code"], bool
+    ):
+        _fail("execution exit_code is invalid")
+    if (
+        not isinstance(receipt["completed_at_ns"], int)
+        or isinstance(receipt["completed_at_ns"], bool)
+        or receipt["completed_at_ns"] <= capture_obj["captured_at_ns"]
+    ):
+        _fail("execution receipt completion timestamp is invalid")
+    result_map: dict[str, str] = {}
+    if not isinstance(receipt["test_results"], list):
+        _fail("execution test_results must be a list")
+    for item in receipt["test_results"]:
+        item = _dict(item, {"test_id", "result"}, "test result")
+        test_id = _text(item["test_id"], "test result ID", maximum=512)
+        result = item["result"]
+        if result not in {"passed", "failed", "skipped"} or test_id in result_map:
+            _fail("invalid or duplicate execution test result")
+        result_map[test_id] = result
+    if not isinstance(receipt["selected_test_ids"], list) or (
+        receipt["selected_test_ids"] != list(result_map)
+    ):
+        _fail("selected test list does not match actual test results")
+    expected_selected = [
+        test_id
+        for behavior in packet_obj["behaviors"]
+        for test_id in behavior["selected_test_ids"]
+    ]
+    if receipt["selected_test_ids"] != expected_selected:
+        _fail("execution results do not match the packet's selected test IDs")
+    if receipt["completion"] == "passed" and (
+        receipt["exit_code"] != 0 or any(value != "passed" for value in result_map.values())
+    ):
+        _fail("passed execution has failed, skipped, or incomplete results")
+    if receipt["completion"] == "failed" and not any(
+        value == "failed" for value in result_map.values()
+    ):
+        _fail("failed execution lacks a failed selected case")
+    if not isinstance(receipt["junit"], list) or not receipt["junit"]:
+        _fail("execution receipt has no JUnit XML records")
+    before = {item["path"]: item for item in capture_obj["results_before"]}
+    actual_cases: dict[str, str] = {}
+    actual_junit_paths: set[str] = set()
+    fresh_case_ids: set[str] = set()
+    for item in receipt["junit"]:
+        item = _dict(item, {"path", "sha256", "identity", "test_ids"}, "JUnit record")
+        path = _relative_path(item["path"], "JUnit path")
+        if not PurePosixPath(path).is_relative_to(PurePosixPath(results_dir)):
+            _fail("JUnit output is outside results_dir")
+        if path in actual_junit_paths:
+            _fail("execution receipt contains duplicate JUnit paths")
+        actual_junit_paths.add(path)
+        _check_identity(item["identity"], "JUnit identity")
+        if SHA256_PATTERN.fullmatch(str(item["sha256"])) is None:
+            _fail("invalid JUnit digest")
+        current = _check_components(root, path, allow_missing=False)
+        if current.is_symlink() or not current.is_file():
+            _fail("JUnit output is no longer a regular file")
+        content_now = _read_file(root, path, limit=MAX_JUNIT_FILE_BYTES)
+        if (
+            _sha256(content_now) != item["sha256"]
+            or _identity(current) != item["identity"]
+        ):
+            _fail("JUnit output changed after receipt")
+        cases, actual_record = _parse_junit(current, root)
+        if (
+            actual_record["test_ids"] != item["test_ids"]
+            or actual_record["sha256"] != item["sha256"]
+            or actual_record["identity"] != item["identity"]
+        ):
+            _fail("execution JUnit record does not match the produced XML")
+        previous = before.get(path)
+        fresh = previous is None or _identity_changed(
+            previous["identity"], actual_record["identity"]
+        )
+        if previous is not None and previous["sha256"] != actual_record["sha256"]:
+            fresh = True
+        for case in cases:
+            test_id = case["test_id"]
+            if test_id in actual_cases:
+                _fail(f"duplicate JUnit case across result files: {test_id}")
+            actual_cases[test_id] = case["result"]
+            if fresh:
+                fresh_case_ids.add(test_id)
+    current_xml = {
+        path.relative_to(root).as_posix()
+        for path in _safe_result_files(root, str(receipt["results_dir"]), create=False)
+    }
+    if current_xml != actual_junit_paths:
+        _fail("JUnit result set changed after receipt")
+    if not isinstance(receipt["selected_test_ids"], list):
+        _fail("selected_test_ids must be a list")
+    for test_id in receipt["selected_test_ids"]:
+        if not isinstance(test_id, str) or TEST_ID_PATTERN.fullmatch(test_id) is None:
+            _fail("invalid selected test ID in execution receipt")
+        observed = actual_cases.get(test_id)
+        if observed is None:
+            _fail(f"selected case missing from current JUnit XML: {test_id}")
+        if test_id not in fresh_case_ids:
+            _fail(f"selected case is not fresh since capture: {test_id}")
+        if result_map.get(test_id) != observed:
+            _fail(f"execution result differs from current JUnit XML: {test_id}")
+    runner = _dict(receipt["runner_log"], {"path", "sha256", "identity"}, "runner_log")
+    runner_path = _relative_path(runner["path"], "runner log path")
+    if runner_path != log_path:
+        _fail("execution runner-log path mismatch")
+    _check_identity(runner["identity"], "runner log identity")
+    log_file = _check_components(root, runner_path, allow_missing=False)
+    log_content = _read_file(root, runner_path, limit=MAX_JUNIT_FILE_BYTES)
+    if (
+        _sha256(log_content) != runner["sha256"]
+        or _identity(log_file) != runner["identity"]
+    ):
+        _fail("runner log changed after receipt")
+    prior_log = capture_obj["log_before"]
+    current_log_identity = {
+        "sha256": runner["sha256"],
+        "identity": runner["identity"],
+    }
+    if prior_log is not None and not _identity_changed(prior_log, current_log_identity):
+        _fail("runner log was not freshly produced")
+    behavior_results: dict[str, str] = {}
+    for behavior in packet_obj["behaviors"]:
+        behavior_result = behavior["result"]
+        if behavior_result not in {"passed", "failed"}:
+            _fail("packet behavior has no final result")
+        if behavior["applicability"] == "applicable":
+            outcomes = [result_map.get(test_id) for test_id in behavior["selected_test_ids"]]
+            if None in outcomes:
+                _fail("execution receipt omits a mapped selected test")
+            observed = "failed" if "failed" in outcomes else (
+                "passed" if all(value == "passed" for value in outcomes) else "unavailable"
+            )
+            if behavior_result != observed:
+                _fail("packet result differs from selected execution results")
+            behavior_results[behavior["id"]] = observed
+        else:
+            outcomes = [result_map.get(test_id) for test_id in behavior["selected_test_ids"]]
+            if None in outcomes:
+                _fail("execution receipt omits an alternative-check test")
+            observed = "failed" if "failed" in outcomes else (
+                "passed" if all(value == "passed" for value in outcomes) else "unavailable"
+            )
+            if behavior_result != observed:
+                _fail("alternative-check result differs from execution")
+            behavior_results[behavior["id"]] = observed
+    if receipt["completion"] == "passed" and any(
+        result != "passed" for result in behavior_results.values()
+    ):
+        _fail("passing receipt has a non-passing behavior")
+    return receipt, content
+
+
+def _validated_review_context(
+    root: Path,
+    envelope_value: object,
+    *,
+    expected_task: str,
+    expected_work_kind: str,
+) -> tuple[dict[str, object], str]:
+    envelope = _dict(envelope_value, REVIEW_KEYS, "review context")
+    if envelope["schema"] != REVIEW_SCHEMA:
+        _fail("unsupported review-context schema")
+    if envelope["task_short_id"] != expected_task:
+        _fail("review-context task mismatch")
+    if envelope["work_kind"] != expected_work_kind:
+        _fail("review-context work_kind mismatch")
+    if expected_work_kind not in SUPPORTED_WORK_KINDS:
+        _fail("unsupported work_kind")
+    baseline = _validate_baseline(root, envelope["baseline"])
+    narrative = _text(envelope["narrative"], "review-context narrative", 8192)
+    digest, _ = source_delta(root, baseline)
+    if envelope["source_delta_sha256"] != digest:
+        _fail("review-context source digest is stale")
+    packet_ref = _dict(envelope["packet"], REFERENCE_KEYS, "packet reference")
+    execution_ref = _dict(envelope["execution"], REFERENCE_KEYS, "execution reference")
+    packet_path = _relative_path(packet_ref["path"], "packet reference path")
+    execution_path = _relative_path(execution_ref["path"], "execution reference path")
+    _evidence_path(root, packet_path, allow_missing=False)
+    _evidence_path(root, execution_path, allow_missing=False)
+    for reference in (packet_ref, execution_ref):
+        if SHA256_PATTERN.fullmatch(str(reference["sha256"])) is None:
+            _fail("review-context reference has invalid SHA-256")
+    packet, _, _, packet_bytes = _load_packet(
+        root,
+        packet_path,
+        expected_task=expected_task,
+        expected_work_kind=expected_work_kind,
+        expected_baseline=baseline,
+        allow_pending=False,
+    )
+    if _sha256(packet_bytes) != packet_ref["sha256"]:
+        _fail("review-context packet digest mismatch")
+    receipt, receipt_bytes = _validate_execution(
+        root,
+        execution_path,
+        expected_packet_path=packet_path,
+        expected_packet_bytes=packet_bytes,
+        expected_task=expected_task,
+        expected_work_kind=expected_work_kind,
+        expected_baseline=baseline,
+    )
+    if _sha256(receipt_bytes) != execution_ref["sha256"]:
+        _fail("review-context execution digest mismatch")
+    _ = narrative, packet
+    return envelope, receipt["completion"]
+
+
+def validate_review_context(
+    root: Path,
+    envelope_value: object,
+    *,
+    expected_task: str,
+    expected_work_kind: str,
+) -> dict[str, object]:
+    envelope, _ = _validated_review_context(
+        root,
+        envelope_value,
+        expected_task=expected_task,
+        expected_work_kind=expected_work_kind,
+    )
+    return envelope
+
+
+def serialize_review_context(
+    root: Path,
+    *,
+    task: str,
+    work_kind: str,
+    baseline: str,
+    packet_path: str,
+    execution_path: str,
+    narrative: str,
+) -> dict[str, object]:
+    baseline = _validate_baseline(root, baseline)
+    digest, _ = source_delta(root, baseline)
+    packet_path = _relative_path(packet_path, "packet_path")
+    execution_path = _relative_path(execution_path, "execution_path")
+    _evidence_path(root, packet_path, allow_missing=False)
+    _evidence_path(root, execution_path, allow_missing=False)
+    packet, _, _, packet_bytes = _load_packet(
+        root,
+        packet_path,
+        expected_task=task,
+        expected_work_kind=work_kind,
+        expected_baseline=baseline,
+        allow_pending=False,
+    )
+    receipt, receipt_bytes = _validate_execution(
+        root,
+        execution_path,
+        expected_packet_path=packet_path,
+        expected_packet_bytes=packet_bytes,
+        expected_task=task,
+        expected_work_kind=work_kind,
+        expected_baseline=baseline,
+    )
+    envelope = {
+        "schema": REVIEW_SCHEMA,
+        "task_short_id": task,
+        "work_kind": work_kind,
+        "baseline": baseline,
+        "source_delta_sha256": digest,
+        "packet": {"path": packet_path, "sha256": _sha256(packet_bytes)},
+        "execution": {"path": execution_path, "sha256": _sha256(receipt_bytes)},
+        "narrative": _text(narrative, "review-context narrative", 8192),
+    }
+    validate_review_context(
+        root,
+        envelope,
+        expected_task=task,
+        expected_work_kind=work_kind,
+    )
+    return envelope
+
+
+def _emit(value: object) -> None:
+    content = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    if len(content.encode("utf-8")) > MAX_OUTPUT_BYTES:
+        _fail("command output exceeds its bound")
+    print(content)
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    validate = commands.add_parser("validate-packet")
+    validate.add_argument("--workspace", required=True)
+    validate.add_argument("--task", required=True)
+    validate.add_argument("--work-kind", required=True)
+    validate.add_argument("--baseline", required=True)
+    validate.add_argument("--packet", required=True)
+
+    capture_parser = commands.add_parser("capture")
+    capture_parser.add_argument("--workspace", required=True)
+    capture_parser.add_argument("--task", required=True)
+    capture_parser.add_argument("--work-kind", required=True)
+    capture_parser.add_argument("--baseline", required=True)
+    capture_parser.add_argument("--packet", required=True)
+    capture_parser.add_argument("--results-dir", required=True)
+    capture_parser.add_argument("--log", required=True)
+    capture_parser.add_argument("--output", required=True)
+
+    receipt_parser = commands.add_parser("receipt")
+    receipt_parser.add_argument("--workspace", required=True)
+    receipt_parser.add_argument("--capture", required=True)
+    receipt_parser.add_argument("--packet", required=True)
+    receipt_parser.add_argument("--results-dir", required=True)
+    receipt_parser.add_argument("--log", required=True)
+    receipt_parser.add_argument("--exit-code", required=True, type=int)
+    receipt_parser.add_argument("--output", required=True)
+
+    serialize = commands.add_parser("serialize-envelope")
+    serialize.add_argument("--workspace", required=True)
+    serialize.add_argument("--task", required=True)
+    serialize.add_argument("--work-kind", required=True)
+    serialize.add_argument("--baseline", required=True)
+    serialize.add_argument("--packet", required=True)
+    serialize.add_argument("--execution", required=True)
+    serialize.add_argument("--narrative", required=True)
+
+    validate_envelope = commands.add_parser("validate-envelope")
+    validate_envelope.add_argument("--workspace", required=True)
+    validate_envelope.add_argument("--task", required=True)
+    validate_envelope.add_argument("--work-kind", required=True)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    try:
+        root = _workspace(args.workspace)
+        if args.command == "validate-packet":
+            packet, entries, _, content = _load_packet(
+                root,
+                args.packet,
+                expected_task=args.task,
+                expected_work_kind=args.work_kind,
+                expected_baseline=args.baseline,
+                allow_pending=True,
+            )
+            _emit(
+                {
+                    "transition": "passed",
+                    "task_short_id": packet["task_short_id"],
+                    "source_delta_sha256": packet["source_delta_sha256"],
+                    "source_paths": len(entries),
+                    "packet_sha256": _sha256(content),
+                }
+            )
+        elif args.command == "capture":
+            value = capture(
+                root,
+                task=args.task,
+                work_kind=args.work_kind,
+                baseline=args.baseline,
+                packet_path=args.packet,
+                results_dir=args.results_dir,
+                log_path=args.log,
+                output_path=args.output,
+            )
+            _emit(
+                {
+                    "transition": "passed",
+                    "capture_path": args.output,
+                    "source_delta_sha256": value["source_delta_sha256"],
+                }
+            )
+        elif args.command == "receipt":
+            value = issue_receipt(
+                root,
+                capture_path=args.capture,
+                packet_path=args.packet,
+                results_dir=args.results_dir,
+                log_path=args.log,
+                output_path=args.output,
+                exit_code=args.exit_code,
+            )
+            _emit(
+                {
+                    "transition": value["completion"],
+                    "execution_path": args.output,
+                    "selected_test_count": len(value["selected_test_ids"]),
+                }
+            )
+            return 1 if value["completion"] == "failed" else 0
+        elif args.command == "serialize-envelope":
+            value = serialize_review_context(
+                root,
+                task=args.task,
+                work_kind=args.work_kind,
+                baseline=args.baseline,
+                packet_path=args.packet,
+                execution_path=args.execution,
+                narrative=args.narrative,
+            )
+        else:
+            content = sys.stdin.buffer.read(MAX_JSON_BYTES + 1)
+            value = _load_json_bytes(content, "review context")
+        if args.command in {"serialize-envelope", "validate-envelope"}:
+            envelope, completion = _validated_review_context(
+                root,
+                value,
+                expected_task=args.task,
+                expected_work_kind=args.work_kind,
+            )
+            _emit(envelope)
+            return 1 if completion == "failed" else 0
+        return 0
+    except EvidenceError as error:
+        _emit({"transition": "blocked", "reason": str(error)[:1024]})
+        return 2
+    except (OSError, UnicodeError, ValueError, TypeError) as error:
+        _emit({"transition": "blocked", "reason": str(error)[:1024]})
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
