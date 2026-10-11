@@ -231,11 +231,30 @@ approval fields; source revision 91 adds the exact 21 business-only
 native proposal version is 94, but no live graph, metadata, Task target, or
 default is changed here. Runtime Kit K is pinned to clean commit
 `3020962feffa870c8f064e7a0b2657d316a8ec1b` through
-`KENT_ENGINEERING_KIT_ROOT`. Source-generation qualification remains bound to
-the separate immutable generator commit `5af04089844c10c66dcaa692c36f42f738b9b302`,
-supplied only through the test-only `PUBER_STAGE_A_GENERATOR_KIT_ROOT`; it is
-not a production runtime input or dynamic resolver. Project source commit C
-remains unknown, and the candidate filename is not a runtime pin.
+`KENT_ENGINEERING_KIT_ROOT` when that variable is present. An explicit value
+always takes precedence; an empty, invalid, dirty, wrong-revision, or
+import-escaping Kit fails closed without profile fallback. When the variable
+is absent, the runtime obtains its root only from the validated
+`[puber_runtime.kit_source]` table from `.kent/workflow-profile.toml`:
+
+```toml
+[puber_runtime.kit_source]
+schema_version = 1
+root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/restart-readiness-20261011-82ece821"
+```
+
+The profile file must be a bounded, regular, nonsymlink file owned by the
+current user and not group/world writable. The `puber_runtime` and
+`kit_source` tables accept no extra fields; the root must be an existing
+canonical absolute directory. Kit-root selection does not probe `HOME` or
+`PATH`, discover another checkout, or alter process environment.
+`KIT_COMMIT` remains the sole Kit revision pin; the profile supplies only the
+root. Source-generation qualification remains bound to the separate immutable
+generator commit `5af04089844c10c66dcaa692c36f42f738b9b302`, supplied only
+through the test-only `PUBER_STAGE_A_GENERATOR_KIT_ROOT`; it is not a
+production runtime input or dynamic resolver. The project profile does not
+self-pin a Puber source commit, and the candidate filename is not a runtime
+pin.
 
 The profile-generation Script binds native Task/project/workflow/node/root,
 execution base/controller, and release-operation/source identities through the

@@ -5,6 +5,7 @@ import importlib.util
 import hashlib
 import json
 import os
+import stat
 import sys
 sys.dont_write_bytecode = True
 from importlib.machinery import SourceFileLoader
@@ -32,7 +33,8 @@ subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=ROOT
 subprocess.run(["git", "config", "user.name", "Puber Test"], cwd=ROOT, check=True)
 subprocess.run(["git", "add", "-f", "."], cwd=ROOT, check=True)
 subprocess.run(["git", "commit", "--quiet", "-m", "candidate source fixture"], cwd=ROOT, check=True)
-KIT = Path(os.environ.get("PUBER_STAGE_A_KIT_ROOT", "/Users/rovkinmax/.kent/worktrees/--json")).resolve()
+KIT = Path(os.environ["KENT_ENGINEERING_KIT_ROOT"]).resolve()
+GENERATOR_KIT = Path(os.environ["PUBER_STAGE_A_GENERATOR_KIT_ROOT"]).resolve()
 result = subprocess.run([str(ROOT / ".kent/scripts/workflow-puber-release-intent")], cwd=ROOT, input="{}", text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 assert result.returncode != 0 and "error" in result.stderr
 
@@ -288,6 +290,221 @@ with tempfile.TemporaryDirectory() as checkpoint_directory:
             pass
         else:
             raise AssertionError(f"foreign checkpoint {key} was accepted")
+
+def _kit_profile_text(root_value=None, *, schema="1", parent_extra="", source_extra=""):
+    root_value = str(KIT) if root_value is None else root_value
+    parent = f"[puber_runtime]\n{parent_extra}\n" if parent_extra else ""
+    return (
+        f'{parent}[puber_runtime.kit_source]\n'
+        f"schema_version = {schema}\n"
+        f"root = {json.dumps(root_value)}\n"
+        f"{source_extra}"
+    )
+
+def _expect_kit_rejection(label):
+    try:
+        mod._kit_modules()
+    except mod.ContractError:
+        return
+    raise AssertionError(f"invalid Kit source was accepted: {label}")
+
+def _expect_bad_profile(
+    label,
+    content,
+    *,
+    profile_symlink=False,
+    mode=None,
+    wrong_owner=False,
+    not_regular=False,
+    fifo=False,
+):
+    with tempfile.TemporaryDirectory(prefix="puber-kit-profile-") as directory:
+        fixture_root = Path(directory)
+        profile_path = fixture_root / ".kent/workflow-profile.toml"
+        content = content(fixture_root) if callable(content) else content
+        if fifo:
+            profile_path.parent.mkdir(parents=True)
+            os.mkfifo(profile_path, 0o600)
+        elif content is not None:
+            profile_path.parent.mkdir(parents=True)
+            if profile_symlink:
+                target = fixture_root / "profile-target.toml"
+                target.write_bytes(content)
+                profile_path.symlink_to(target)
+            else:
+                profile_path.write_bytes(content)
+                if mode is not None:
+                    profile_path.chmod(mode)
+        with patch.object(mod, "ROOT", fixture_root), patch.dict(os.environ):
+            os.environ.pop("KENT_ENGINEERING_KIT_ROOT", None)
+            if wrong_owner or not_regular:
+                profile_stat = os.lstat(profile_path)
+                fake_stat = SimpleNamespace(
+                    st_mode=(
+                        stat.S_IFDIR | 0o700
+                        if not_regular
+                        else profile_stat.st_mode
+                    ),
+                    st_uid=(
+                        os.getuid() + 1
+                        if wrong_owner
+                        else os.getuid()
+                    ),
+                    st_size=profile_stat.st_size,
+                )
+                with patch.object(os, "fstat", return_value=fake_stat):
+                    _expect_kit_rejection(label)
+            else:
+                _expect_kit_rejection(label)
+
+with patch.object(mod, "ROOT", ROOT), patch.dict(os.environ):
+    os.environ.pop("KENT_ENGINEERING_KIT_ROOT", None)
+    mod._kit_modules()
+    actual_import = Path(importlib.import_module("workflowkit").__file__).resolve()
+    assert actual_import.is_relative_to(KIT), actual_import
+
+with tempfile.TemporaryDirectory(prefix="puber-kit-explicit-") as directory:
+    explicit_root = Path(directory)
+    explicit_profile = explicit_root / ".kent/workflow-profile.toml"
+    explicit_profile.parent.mkdir()
+    explicit_profile.write_text("not valid TOML = [", encoding="utf-8")
+    with patch.object(mod, "ROOT", explicit_root), patch.dict(os.environ):
+        os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
+        mod._kit_modules()
+
+with tempfile.TemporaryDirectory(prefix="puber-kit-no-fallback-") as directory:
+    fallback_root = Path(directory)
+    profile_path = fallback_root / ".kent/workflow-profile.toml"
+    profile_path.parent.mkdir()
+    profile_path.write_text(_kit_profile_text(), encoding="utf-8")
+    with patch.object(mod, "ROOT", fallback_root), patch.dict(os.environ):
+        for invalid_override in ("", str(GENERATOR_KIT)):
+            os.environ["KENT_ENGINEERING_KIT_ROOT"] = invalid_override
+            _expect_kit_rejection(f"explicit override {invalid_override!r}")
+
+_expect_bad_profile("missing profile", None)
+_expect_bad_profile("malformed TOML", b"[puber_runtime\n")
+_expect_bad_profile("invalid UTF-8", b"\xff")
+_expect_bad_profile(
+    "profile symlink",
+    _kit_profile_text().encode(),
+    profile_symlink=True,
+)
+_expect_bad_profile(
+    "non-regular profile",
+    _kit_profile_text().encode(),
+    not_regular=True,
+)
+_expect_bad_profile("FIFO profile", None, fifo=True)
+_expect_bad_profile(
+    "group writable profile",
+    _kit_profile_text().encode(),
+    mode=0o620,
+)
+_expect_bad_profile(
+    "world writable profile",
+    _kit_profile_text().encode(),
+    mode=0o602,
+)
+_expect_bad_profile(
+    "profile exceeds 1 MiB",
+    b"x" * (1024 * 1024 + 1),
+)
+_expect_bad_profile(
+    "profile owned by another user",
+    _kit_profile_text().encode(),
+    wrong_owner=True,
+)
+_expect_bad_profile("missing profile table", b"[policies]\nsmoke='conditional'\n")
+_expect_bad_profile(
+    "parent table has extra field",
+    _kit_profile_text(parent_extra="unexpected = true").encode(),
+)
+_expect_bad_profile(
+    "parent table has wrong type",
+    b'[puber_runtime]\nkit_source = "not a table"\n',
+)
+_expect_bad_profile(
+    "Kit source table is missing schema_version",
+    f'[puber_runtime.kit_source]\nroot = {json.dumps(str(KIT))}\n'.encode(),
+)
+_expect_bad_profile(
+    "Kit source table is missing root",
+    b"[puber_runtime.kit_source]\nschema_version = 1\n",
+)
+_expect_bad_profile(
+    "Kit source table has extra field",
+    _kit_profile_text(source_extra='commit = "5af04089844c10c66dcaa692c36f42f738b9b302"\n').encode(),
+)
+_expect_bad_profile(
+    "boolean schema is not integer 1",
+    _kit_profile_text(schema="true").encode(),
+)
+_expect_bad_profile(
+    "unsupported schema",
+    _kit_profile_text(schema="2").encode(),
+)
+_expect_bad_profile(
+    "root has wrong type",
+    b"[puber_runtime.kit_source]\nschema_version = 1\nroot = 12\n",
+)
+_expect_bad_profile(
+    "empty root",
+    _kit_profile_text(root_value="").encode(),
+)
+_expect_bad_profile(
+    "relative root",
+    _kit_profile_text(root_value="relative/kit").encode(),
+)
+_expect_bad_profile(
+    "tilde root",
+    _kit_profile_text(root_value="~/worktrees/kent-engineering-kit").encode(),
+)
+_expect_bad_profile(
+    "noncanonical root",
+    _kit_profile_text(root_value=str(KIT) + "/.").encode(),
+)
+_expect_bad_profile(
+    "missing root directory",
+    lambda fixture_root: _kit_profile_text(
+        root_value=str(fixture_root / "missing-kit")
+    ).encode(),
+)
+def _symlink_root_profile(fixture_root):
+    link = fixture_root / "kit-alias"
+    link.symlink_to(KIT, target_is_directory=True)
+    return _kit_profile_text(root_value=str(link)).encode()
+
+_expect_bad_profile("symlink root alias", _symlink_root_profile)
+
+with tempfile.TemporaryDirectory(prefix="puber-kit-dirty-") as directory:
+    dirty_kit = Path(directory) / "kit"
+    subprocess.run(
+        ["git", "clone", "--quiet", "--shared", str(KIT), str(dirty_kit)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    (dirty_kit / "dirty-fixture").write_text("fixture\n", encoding="utf-8")
+    with patch.dict(os.environ):
+        os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(dirty_kit)
+        _expect_kit_rejection("dirty exact-HEAD Kit")
+
+before_import_path = list(sys.path)
+try:
+    with patch.dict(os.environ):
+        os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
+        with patch.object(
+            mod.importlib,
+            "import_module",
+            return_value=SimpleNamespace(__file__="/tmp/escaped/workflowkit.py"),
+        ):
+            _expect_kit_rejection("escaped Kit import")
+finally:
+    sys.path[:] = before_import_path
+
+print("puber-kit-source-selection: passed explicit precedence, closed profile validation, exact Kit and import guards")
+
 os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
 kit = mod._kit_modules()
 profile = kit["ProjectProfile"].from_toml(ROOT, (ROOT / ".kent/workflow-profile.toml").read_text(), source="profile", check_files=False)

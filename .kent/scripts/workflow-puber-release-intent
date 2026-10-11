@@ -679,12 +679,102 @@ def emit_exact(root: Path, transition: str, target_node: str, fields: Mapping[st
     print(json.dumps(output, ensure_ascii=False, sort_keys=True))
 
 def _kit_modules() -> dict[str, Any]:
-    configured = os.environ.get("KENT_ENGINEERING_KIT_ROOT", "")
-    if not configured:
-        raise ContractError("KENT_ENGINEERING_KIT_ROOT is required")
-    kit_root = Path(configured).expanduser().resolve()
-    if git(kit_root, "rev-parse", "HEAD") != KIT_COMMIT or git(kit_root, "status", "--porcelain=v1", "--untracked-files=all") or not (kit_root / "workflowkit").is_dir():
-        raise ContractError("Kent Engineering Kit is not the exact clean published revision")
+    root_key = "KENT_ENGINEERING_KIT_ROOT"
+    if root_key in os.environ:
+        configured = os.environ[root_key]
+        if not configured:
+            raise ContractError("KENT_ENGINEERING_KIT_ROOT is present but empty")
+        try:
+            kit_root = Path(configured).expanduser().resolve()
+        except (OSError, RuntimeError, ValueError) as error:
+            raise ContractError("KENT_ENGINEERING_KIT_ROOT is invalid") from error
+    else:
+        profile_path = ROOT / ".kent/workflow-profile.toml"
+        profile_fd = None
+        try:
+            nofollow = getattr(os, "O_NOFOLLOW", None)
+            nonblocking = getattr(os, "O_NONBLOCK", None)
+            if nofollow is None or nonblocking is None:
+                raise ContractError("safe profile opening is unavailable")
+            profile_fd = os.open(
+                profile_path,
+                os.O_RDONLY | nofollow | nonblocking,
+            )
+            profile_stat = os.fstat(profile_fd)
+            profile_limit = 1024 * 1024
+            if (
+                not stat.S_ISREG(profile_stat.st_mode)
+                or profile_stat.st_uid != os.getuid()
+                or profile_stat.st_mode & 0o022
+            ):
+                raise ContractError("Puber runtime Kit source profile is unsafe")
+            if profile_stat.st_size < 0 or profile_stat.st_size > profile_limit:
+                raise ContractError("Puber runtime Kit source profile exceeds its bound")
+            profile_bytes = bytearray()
+            while len(profile_bytes) <= profile_limit:
+                chunk = os.read(
+                    profile_fd,
+                    min(65536, profile_limit + 1 - len(profile_bytes)),
+                )
+                if not chunk:
+                    break
+                profile_bytes.extend(chunk)
+            if (
+                len(profile_bytes) > profile_limit
+                or len(profile_bytes) != profile_stat.st_size
+            ):
+                raise ContractError(
+                    "Puber runtime Kit source profile changed while reading"
+                )
+            profile_value = tomllib.loads(bytes(profile_bytes).decode("utf-8"))
+            puber_runtime = profile_value.get("puber_runtime")
+            if not isinstance(puber_runtime, dict) or set(puber_runtime) != {
+                "kit_source"
+            }:
+                raise ContractError("Puber runtime Kit source profile table is invalid")
+            kit_source = puber_runtime.get("kit_source")
+            if not isinstance(kit_source, dict) or set(kit_source) != {
+                "schema_version",
+                "root",
+            }:
+                raise ContractError("Puber runtime Kit source fields are invalid")
+            schema_version = kit_source.get("schema_version")
+            if type(schema_version) is not int or schema_version != 1:
+                raise ContractError("Puber runtime Kit source schema is unsupported")
+            configured = kit_source.get("root")
+            if (
+                not isinstance(configured, str)
+                or not configured
+                or configured.strip() != configured
+                or "~" in configured
+            ):
+                raise ContractError("Puber runtime Kit source root is invalid")
+            configured_path = Path(configured)
+            if not configured_path.is_absolute():
+                raise ContractError("Puber runtime Kit source root must be absolute")
+            kit_root = configured_path.resolve(strict=True)
+            if str(kit_root) != configured or not kit_root.is_dir():
+                raise ContractError("Puber runtime Kit source root is not canonical")
+        except ContractError:
+            raise
+        except (OSError, RuntimeError, UnicodeDecodeError, TOMLDecodeError, ValueError) as error:
+            raise ContractError("Puber runtime Kit source profile is invalid") from error
+        finally:
+            if profile_fd is not None:
+                os.close(profile_fd)
+    try:
+        if (
+            git(kit_root, "rev-parse", "HEAD") != KIT_COMMIT
+            or git(kit_root, "status", "--porcelain=v1", "--untracked-files=all")
+            or not (kit_root / "workflowkit").is_dir()
+        ):
+            raise ContractError(
+                "Kent Engineering Kit is not the exact clean published revision"
+            )
+    except ContractError:
+        raise
+    except (OSError, RuntimeError, ValueError) as error:
+        raise ContractError("Kent Engineering Kit root is invalid") from error
     sys.path.insert(0, str(kit_root))
     importlib.invalidate_caches()
     workflowkit = importlib.import_module("workflowkit")

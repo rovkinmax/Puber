@@ -11,11 +11,30 @@ GENERATOR_COMMIT="5af04089844c10c66dcaa692c36f42f738b9b302"
 assert GENERATOR_KIT.is_dir()
 assert subprocess.run(["git","rev-parse","HEAD"],cwd=GENERATOR_KIT,text=True,capture_output=True).stdout.strip()==GENERATOR_COMMIT
 assert subprocess.run(["git","status","--porcelain=v1","--untracked-files=all"],cwd=GENERATOR_KIT,text=True,capture_output=True).stdout==""
-import json, runpy
-pins = runpy.run_path(str(ROOT / ".kent/scripts/workflow-puber-release-intent"))["VALIDATION_SIGNING"]
+import json, runpy, tomllib
+intent_runtime = runpy.run_path(str(ROOT / ".kent/scripts/workflow-puber-release-intent"))
+pins = intent_runtime["VALIDATION_SIGNING"]
+kit_modules = intent_runtime["_kit_modules"]()
 manifest = json.loads((ROOT / ".kent/workflows/puber-release-kit-5af.manifest.json").read_text())
 profile=(ROOT/'.kent/workflow-profile.toml').read_text()
 assert 'runtime_contracts = "2.0.0"' in profile and 'topology_kind = "puber-release"' in profile
+profile_value=tomllib.loads(profile)
+assert profile_value["puber_runtime"] == {
+    "kit_source": {
+        "schema_version": 1,
+        "root": str(KIT),
+    },
+}
+assert ".kent/workflow-profile.toml" in {
+    item["key"].split("=", 1)[0]
+    for item in manifest["external_roots"]
+    if item.get("kind") == "source-sha256"
+}
+assert not any(
+    item.get("kind") in {"kit-commit", "runtime-commit"}
+    for item in manifest["external_roots"]
+)
+kit_modules["ProjectProfile"].from_toml(ROOT, profile, source="profile", check_files=False)
 assert manifest["runtime_attested"] is False
 assert manifest["topology_kind"] == "puber-release"
 source_roots = {}
