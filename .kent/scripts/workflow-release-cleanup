@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import base64
 import json
 import os
 import re
@@ -24,6 +25,9 @@ _spec.loader.exec_module(helper)
 ROOT = helper.ROOT
 SESSION_IDENTITY_KEYS = {"workspace_id", "workspace_name", "workspace_root", "worktree_id", "worktree_name", "worktree_root", "recorded_branch_ref"}
 CI_REPORT_NAME = re.compile(r"ci-report-([0-9a-f]{64})\.json")
+RETENTION_BASENAME = "release-cleanup-retention.json"
+RETENTION_SCHEMA = "puber_release_cleanup_retention_v1"
+RETENTION_LIMIT = 8 * 1024 * 1024
 
 ENTRY_OUTCOMES = {
     "release_release_published": "published", "release_cancel_cleanup": "cancel",
@@ -139,7 +143,10 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
     for entry in runtime_entries:
         if entry.name.startswith(".evidence-cleanup-"):
             if entry.name != expected_name:
-                raise helper.ContractError("terminal evidence has an unexpected cleanup tombstone")
+                raise helper.ContractError(
+                    "terminal evidence has an unexpected cleanup tombstone "
+                    f"(expected {expected_name!r}, found {entry.name!r})"
+                )
             tombstone_names.append(entry)
     if len(tombstone_names) > 1:
         raise helper.ContractError("terminal evidence has duplicate cleanup tombstones")
@@ -195,7 +202,27 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
         raw_lines = ledger.read_text(encoding="utf-8").splitlines()
         if not raw_lines or any(not line.strip() or "\x00" in line for line in raw_lines):
             raise helper.ContractError("terminal evidence ledger contains empty or NUL data")
-        records = [json.loads(line) for line in raw_lines]
+        ledger_path = ROOT / ".kent" / "scripts" / "workflow-evidence-ledger"
+        ledger_spec = importlib.util.spec_from_loader(
+            "cleanup_inventory_evidence_reader",
+            SourceFileLoader("cleanup_inventory_evidence_reader", str(ledger_path)),
+        )
+        ledger_module = importlib.util.module_from_spec(ledger_spec)
+        ledger_spec.loader.exec_module(ledger_module)
+        records = ledger_module.load_entries(
+            io.StringIO("\n".join(raw_lines) + "\n"),
+            task=task_short_id,
+        )
+        has_seal = any(
+            record.get("record_kind") == "terminal_evidence_seal_v1"
+            for record in records
+        )
+        if not has_seal:
+            if marker is not None:
+                raise helper.ContractError(
+                    "terminal marker exists without a terminal seal record"
+                )
+            return None
         readback = kit["validate_terminal_chain"](records, task_short_id=task_short_id)
         references = set()
         for record in records:
@@ -280,7 +307,7 @@ def _sealed_release_digests(marker_line: str, fresh: dict, *, publication_digest
         raise helper.ContractError("preserved release terminal marker preparation digest drifted")
     return sealed["qualification"], sealed["merge"]
 
-def _cleanup_report(state: dict, session: str, session_identity: dict[str, str], payload: dict, *, operation_digest: str, unresolved: bool, blocker: str, fresh: dict, profile_report_digest: str = "", preparation_report_digest: str = "", existing_marker: str | None = None, preserved_prefix: str | None = None, preserved_suffix: str | None = None, recover_seal: bool = False) -> tuple[str, str]:
+def _cleanup_report(state: dict, session: str, session_identity: dict[str, str], payload: dict, *, operation_digest: str, unresolved: bool, blocker: str, fresh: dict, profile_report_digest: str = "", preparation_report_digest: str = "", existing_marker: str | None = None, preserved_prefix: str | None = None, preserved_suffix: str | None = None, recover_seal: bool = False, before_seal=None) -> tuple[str, str]:
     publication = payload.get("publication_report", "")
     release = payload.get("release_report", "")
     notes_path = payload.get("release_notes_path", "")
@@ -296,13 +323,22 @@ def _cleanup_report(state: dict, session: str, session_identity: dict[str, str],
         # authority to manufacture terminal evidence. Independently read the
         # existing chain and bind it to this exact original-edge outcome.
         kit = fresh["kit"]
-        marker = _validate_terminal_marker_ledger(state["task_short_id"], None, kit,
+        if existing_marker is None:
+            raise helper.ContractError(
+                "original cleanup replay is missing its admitted terminal marker"
+            )
+        marker = kit["parse_terminal_marker_line"](existing_marker)
+        readback_marker = _validate_terminal_marker_ledger(state["task_short_id"], marker, kit,
             allow_profile_checkpoint=bool(profile_report_digest or preparation_report_digest))
-        marker_line = kit["terminal_marker_line"](marker)
+        marker_line = kit["terminal_marker_line"](readback_marker)
+        if marker_line != existing_marker:
+            raise helper.ContractError(
+                "original cleanup replay marker differs from the admitted ledger"
+            )
         if marker["operation_report_digests"] != operation_digests:
             raise helper.ContractError("original cleanup proof digests differ from the terminal seal")
         sealed_runtime = next(item["sha256"] for item in marker["operation_report_digests"] if item["kind"] == "runtime_source")
-        if (existing_marker is not None or unresolved or blocker
+        if (unresolved or blocker
             or marker["retention_class"] != "cleanup_report_only"
             or marker["redaction"] != {"status": "passed", "report_sha256": helper.sha256_bytes(encoded.encode("utf-8"))}
             or sealed_runtime != fresh["binding"].runtime_source_envelope_digest):
@@ -353,6 +389,8 @@ def _cleanup_report(state: dict, session: str, session_identity: dict[str, str],
         try:
             kit = fresh["kit"]
             kit["validate_terminal_seal_request"](request)
+            if before_seal is not None:
+                before_seal(encoded, request)
             evidence = fresh["profile"].commands["evidence"]
             if not isinstance(evidence, str) or Path(evidence).is_absolute() or Path(evidence).as_posix() != evidence:
                 raise helper.ContractError("profile evidence command is not project-relative")
@@ -415,6 +453,23 @@ def _read_ledger(state: dict, marker_hint: dict | None = None) -> tuple[list[dic
                 return [], None
             tombstone = ".evidence-cleanup-" + helper._kit_modules()["canonical_sha256"](marker_hint)
             descriptors.append(ledger._open_directory(descriptors[-1], tombstone, create=False))
+        entries = os.listdir(descriptors[-1])
+        allowed = {
+            "evidence-ledger.jsonl",
+            "fix-checkpoint.json",
+            "smoke-checkpoint.json",
+            helper.CHECKPOINT_BASENAME,
+        }
+        if (
+            len(entries) > 68
+            or any(
+                name not in allowed and not CI_REPORT_NAME.fullmatch(name)
+                for name in entries
+            )
+        ):
+            raise helper.ContractError(
+                "cleanup runtime inventory has an unknown entry; preserve all state"
+            )
         # The stock generic checkpoint schema has progress arrays but no
         # authoritative completion/resource-release receipt. Even remaining=[]
         # cannot prove a fix/smoke obligation ended. Only its owning stage may
@@ -445,6 +500,777 @@ def _read_ledger(state: dict, marker_hint: dict | None = None) -> tuple[list[dic
         raise helper.ContractError(f"cleanup ledger cannot be read safely: {error}") from error
     finally:
         for descriptor in reversed(descriptors): os.close(descriptor)
+
+
+def _preflight_cleanup_inventory(
+    state: dict,
+    marker: dict | None,
+) -> None:
+    """Validate existing ledger, cache, checkpoint, and file inventory before seal."""
+    task_dir = ROOT / ".kent" / "runtime" / state["task_short_id"]
+    checkpoint_path = task_dir / helper.CHECKPOINT_BASENAME
+    try:
+        checkpoint_metadata = checkpoint_path.lstat()
+    except FileNotFoundError:
+        checkpoint_present = False
+    except OSError as error:
+        raise helper.ContractError(
+            "profile checkpoint inventory is unreadable"
+        ) from error
+    else:
+        if stat.S_ISLNK(checkpoint_metadata.st_mode) or not stat.S_ISREG(
+            checkpoint_metadata.st_mode
+        ):
+            raise helper.ContractError(
+                "profile checkpoint inventory is unsafe"
+            )
+        checkpoint_present = True
+    kit = helper._kit_modules()
+    observed = _validate_terminal_marker_ledger(
+        state["task_short_id"],
+        marker,
+        kit,
+        allow_profile_checkpoint=checkpoint_present,
+    )
+    if observed != marker:
+        raise helper.ContractError(
+            "terminal evidence history changed during cleanup preflight"
+        )
+
+
+def _retention_open_directory(task_short_id: str, *, create: bool):
+    """Open the fixed ignored receipt directory without following links."""
+    descriptors: list[int] = []
+    try:
+        descriptors.append(os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
+        for name, private in (
+            ("build", False),
+            ("kent-workflow", True),
+            (task_short_id, True),
+        ):
+            try:
+                descriptor = os.open(
+                    name,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=descriptors[-1],
+                )
+            except FileNotFoundError:
+                if not create:
+                    for opened in reversed(descriptors):
+                        os.close(opened)
+                    return None
+                try:
+                    os.mkdir(name, 0o700, dir_fd=descriptors[-1])
+                except FileExistsError:
+                    pass
+                descriptor = os.open(
+                    name,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=descriptors[-1],
+                )
+                if private:
+                    os.fchmod(descriptor, 0o700)
+            metadata = os.fstat(descriptor)
+            mode = stat.S_IMODE(metadata.st_mode)
+            if (
+                not stat.S_ISDIR(metadata.st_mode)
+                or metadata.st_uid != os.getuid()
+                or (mode != 0o700 if private else bool(mode & 0o022))
+            ):
+                os.close(descriptor)
+                raise helper.ContractError("cleanup retention directory is unsafe")
+            descriptors.append(descriptor)
+        return descriptors[-1], descriptors
+    except (OSError, ValueError) as error:
+        for opened in reversed(descriptors):
+            try:
+                os.close(opened)
+            except OSError:
+                pass
+        if isinstance(error, helper.ContractError):
+            raise
+        raise helper.ContractError("cleanup retention directory is unavailable") from error
+
+
+def _retention_read(
+    task_short_id: str,
+    *,
+    allowed_temporary: str | None = None,
+) -> tuple[dict | None, bytes | None, str | None]:
+    opened = _retention_open_directory(task_short_id, create=False)
+    if opened is None:
+        return None, None, None
+    directory, descriptors = opened
+    try:
+        entries = os.listdir(directory)
+        allowed = {RETENTION_BASENAME}
+        if allowed_temporary is not None:
+            if (
+                not re.fullmatch(r"\.release-cleanup-retention-[0-9a-f]{24}\.tmp", allowed_temporary)
+                or allowed_temporary == RETENTION_BASENAME
+            ):
+                raise helper.ContractError("cleanup retention temporary name is invalid")
+            allowed.add(allowed_temporary)
+        if any(name not in allowed for name in entries) or len(entries) > len(allowed):
+            raise helper.ContractError(
+                "cleanup retention directory has unknown entries; preserve all state"
+            )
+        if RETENTION_BASENAME not in entries:
+            return None, None, None
+        descriptor = os.open(
+            RETENTION_BASENAME,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=directory,
+        )
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != os.getuid()
+                or stat.S_IMODE(before.st_mode) != 0o600
+                or before.st_nlink != 1
+                or not 0 < before.st_size <= RETENTION_LIMIT
+            ):
+                raise helper.ContractError("cleanup retention receipt file is unsafe")
+            raw = bytearray()
+            while len(raw) <= RETENTION_LIMIT:
+                chunk = os.read(descriptor, min(65536, RETENTION_LIMIT + 1 - len(raw)))
+                if not chunk:
+                    break
+                raw.extend(chunk)
+            after = os.fstat(descriptor)
+            linked = os.stat(
+                RETENTION_BASENAME, dir_fd=directory, follow_symlinks=False
+            )
+            if (
+                len(raw) != before.st_size
+                or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+                != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+                or (before.st_dev, before.st_ino) != (linked.st_dev, linked.st_ino)
+            ):
+                raise helper.ContractError("cleanup retention receipt changed during read")
+            value = helper._json_one(bytes(raw))
+            if (
+                helper.canonical_bytes(value) + b"\n" != bytes(raw)
+                or value.get("schema") != RETENTION_SCHEMA
+                or value.get("task_short_id") != task_short_id
+            ):
+                raise helper.ContractError("cleanup retention receipt is not canonical")
+            _validate_retention_value(value)
+            raw_bytes = bytes(raw)
+            return value, raw_bytes, helper.sha256_bytes(raw_bytes)
+        finally:
+            os.close(descriptor)
+    finally:
+        for opened in reversed(descriptors):
+            os.close(opened)
+
+
+def _validate_retention_value(value: dict) -> None:
+    expected = {
+        "schema", "phase", "task_id", "task_short_id", "controller_commit",
+        "execution_commit", "incoming_transition", "caller_session_id",
+        "caller_identity", "source_envelope_digest", "operation_digest",
+        "input_json", "input_sha256", "checkpoint_present",
+        "checkpoint_bytes_b64", "checkpoint_sha256", "seal_request",
+        "report_prefix", "report_prefix_sha256", "final_cleanup_report",
+        "final_marker_line", "final_report_sha256",
+    }
+    if set(value) != expected or value.get("schema") != RETENTION_SCHEMA:
+        raise helper.ContractError("cleanup retention receipt fields are not closed")
+    for field in (
+        "task_id", "task_short_id", "controller_commit", "execution_commit",
+        "incoming_transition", "caller_session_id", "source_envelope_digest",
+        "operation_digest", "input_json", "input_sha256",
+        "checkpoint_bytes_b64", "checkpoint_sha256", "report_prefix",
+        "report_prefix_sha256", "final_cleanup_report", "final_marker_line",
+        "final_report_sha256",
+    ):
+        if not isinstance(value.get(field), str):
+            raise helper.ContractError("cleanup retention string field is invalid")
+    if (
+        value["schema"] != RETENTION_SCHEMA
+        or value["phase"] not in {"prepared", "sealed"}
+        or not helper.TASK_ID.fullmatch(value["task_id"])
+        or not helper.TASK_SHORT_ID.fullmatch(value["task_short_id"])
+        or not helper.SHA1.fullmatch(value["controller_commit"])
+        or not helper.SHA1.fullmatch(value["execution_commit"])
+        or value["incoming_transition"] not in ENTRY_OUTCOMES
+        or not helper.HEX64.fullmatch(value["source_envelope_digest"])
+        or not helper.HEX64.fullmatch(value["operation_digest"])
+        or not helper.HEX64.fullmatch(value["input_sha256"])
+        or not helper.HEX64.fullmatch(value["checkpoint_sha256"])
+        or not helper.HEX64.fullmatch(value["report_prefix_sha256"])
+        or not isinstance(value["checkpoint_present"], bool)
+        or not isinstance(value["caller_identity"], dict)
+        or set(value["caller_identity"]) != SESSION_IDENTITY_KEYS
+        or not isinstance(value["seal_request"], dict)
+    ):
+        raise helper.ContractError("cleanup retention receipt identity is invalid")
+    if helper.sha256_bytes(value["input_json"].encode("utf-8")) != value["input_sha256"]:
+        raise helper.ContractError("cleanup retention input digest mismatch")
+    input_value = helper._json_one(value["input_json"].encode("utf-8"))
+    if (
+        helper.canonical_json(input_value) != value["input_json"]
+        or set(input_value) != {"task_id", "incoming_transition", "parameters"}
+        or input_value["task_id"] != value["task_id"]
+        or input_value["incoming_transition"] != value["incoming_transition"]
+        or not isinstance(input_value["parameters"], dict)
+        or any(
+            not isinstance(key, str) or not isinstance(item, str)
+            for key, item in input_value["parameters"].items()
+        )
+    ):
+        raise helper.ContractError("cleanup retention original input is invalid")
+    if (
+        input_value["incoming_transition"] != value["incoming_transition"]
+        or any(
+            not isinstance(item, str)
+            for item in value["caller_identity"].values()
+        )
+        or any(
+            not value["caller_identity"][key].strip()
+            for key in SESSION_IDENTITY_KEYS - {"recorded_branch_ref"}
+        )
+    ):
+        raise helper.ContractError("cleanup retention owner identity is invalid")
+    try:
+        checkpoint = base64.b64decode(value["checkpoint_bytes_b64"], validate=True)
+    except (ValueError, base64.binascii.Error) as error:
+        raise helper.ContractError("cleanup retention checkpoint encoding is invalid") from error
+    if (
+        len(checkpoint) > helper.CHECKPOINT_LIMIT
+        or value["checkpoint_present"] != bool(checkpoint)
+        or helper.sha256_bytes(checkpoint) != value["checkpoint_sha256"]
+        or base64.b64encode(checkpoint).decode("ascii") != value["checkpoint_bytes_b64"]
+    ):
+        raise helper.ContractError("cleanup retention checkpoint bytes differ")
+    prefix = value["report_prefix"]
+    if (
+        len(prefix.encode("utf-8")) > 2 * 1024 * 1024
+        or helper.sha256_bytes(prefix.encode("utf-8")) != value["report_prefix_sha256"]
+        or helper.canonical_json(
+            helper.parse_closed_json(prefix, "puber_cleanup_report_v1", helper.CLEANUP_KEYS)
+        ) != prefix
+    ):
+        raise helper.ContractError("cleanup retention report prefix is invalid")
+    prefix_value = helper.parse_closed_json(
+        prefix, "puber_cleanup_report_v1", helper.CLEANUP_KEYS
+    )
+    kit = helper._kit_modules()
+    try:
+        request = kit["validate_terminal_seal_request"](value["seal_request"])
+    except Exception as error:
+        raise helper.ContractError("cleanup retention seal request is invalid") from error
+    if (
+        helper.canonical_json(request) != helper.canonical_json(value["seal_request"])
+        or request["redaction"]["report_sha256"]
+        != helper.sha256_bytes(prefix.encode("utf-8"))
+        or request["retention_class"] != "cleanup_report_only"
+        or prefix_value["cleanup_session_id"] != value["caller_session_id"]
+        or prefix_value["operation_digest"] != value["operation_digest"]
+        or prefix_value["unresolved"] is not False
+        or prefix_value["blocker_reason"] != ""
+    ):
+        raise helper.ContractError("cleanup retention request/report binding differs")
+    if value["phase"] == "prepared":
+        if value["final_cleanup_report"] or value["final_marker_line"] or value["final_report_sha256"]:
+            raise helper.ContractError("prepared retention receipt contains terminal output")
+    else:
+        report = value["final_cleanup_report"]
+        if (
+            not report
+            or not value["final_marker_line"]
+            or not helper.HEX64.fullmatch(value["final_report_sha256"])
+            or helper.sha256_bytes(report.encode("utf-8")) != value["final_report_sha256"]
+            or report != prefix + "\n" + value["final_marker_line"]
+        ):
+            raise helper.ContractError("sealed retention receipt output is invalid")
+        try:
+            marker = kit["parse_terminal_marker_line"](value["final_marker_line"])
+            kit["validate_cleanup_report"](report)
+        except Exception as error:
+            raise helper.ContractError("sealed retention report is not valid") from error
+        if (
+            marker["task_short_id"] != value["task_short_id"]
+            or marker["operation_report_digests"]
+            != request["operation_report_digests"]
+            or marker["redaction"] != request["redaction"]
+            or marker["retention_class"] != request["retention_class"]
+        ):
+            raise helper.ContractError("sealed retention marker differs from its request")
+
+
+def _retention_write(task_short_id: str, value: dict, *, expected_sha256: str | None) -> str:
+    _validate_retention_value(value)
+    raw = helper.canonical_bytes(value) + b"\n"
+    if len(raw) > RETENTION_LIMIT:
+        raise helper.ContractError("cleanup retention receipt exceeds its bound")
+    current, _current_bytes, current_sha256 = _retention_read(task_short_id)
+    if current_sha256 != expected_sha256:
+        raise helper.ContractError("cleanup retention receipt changed before replacement")
+    opened = _retention_open_directory(task_short_id, create=True)
+    if opened is None:
+        raise helper.ContractError("cleanup retention directory could not be created")
+    directory, descriptors = opened
+    temporary = ".release-cleanup-retention-" + helper.secrets.token_hex(12) + ".tmp"
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory,
+        )
+        os.fchmod(descriptor, 0o600)
+        created = os.fstat(descriptor)
+        created_identity = (
+            created.st_dev,
+            created.st_ino,
+            created.st_uid,
+            created.st_mode,
+            created.st_nlink,
+        )
+        view = memoryview(raw)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise helper.ContractError("cleanup retention receipt write was incomplete")
+            view = view[written:]
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        current, _current_bytes, current_sha256 = _retention_read(
+            task_short_id, allowed_temporary=temporary
+        )
+        if current_sha256 != expected_sha256:
+            raise helper.ContractError("cleanup retention receipt changed before commit")
+        temporary_descriptor = os.open(
+            temporary,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=directory,
+        )
+        try:
+            before = os.fstat(temporary_descriptor)
+            temporary_raw = bytearray()
+            while len(temporary_raw) <= RETENTION_LIMIT:
+                chunk = os.read(
+                    temporary_descriptor,
+                    min(65536, RETENTION_LIMIT + 1 - len(temporary_raw)),
+                )
+                if not chunk:
+                    break
+                temporary_raw.extend(chunk)
+            after = os.fstat(temporary_descriptor)
+            linked = os.stat(
+                temporary, dir_fd=directory, follow_symlinks=False
+            )
+            observed = (
+                before.st_dev,
+                before.st_ino,
+                before.st_uid,
+                before.st_mode,
+                before.st_nlink,
+            )
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != os.getuid()
+                or stat.S_IMODE(before.st_mode) != 0o600
+                or before.st_nlink != 1
+                or observed != created_identity
+                or len(temporary_raw) != before.st_size
+                or bytes(temporary_raw) != raw
+                or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+                != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+                or (before.st_dev, before.st_ino)
+                != (linked.st_dev, linked.st_ino)
+            ):
+                raise helper.ContractError(
+                    "cleanup retention temporary changed before commit"
+                )
+        finally:
+            os.close(temporary_descriptor)
+        os.replace(
+            temporary,
+            RETENTION_BASENAME,
+            src_dir_fd=directory,
+            dst_dir_fd=directory,
+        )
+        os.fsync(directory)
+        result, result_raw, result_sha256 = _retention_read(task_short_id)
+        if result != value or result_raw != raw:
+            raise helper.ContractError("cleanup retention receipt readback differs")
+        return result_sha256
+    except OSError as error:
+        raise helper.ContractError("cleanup retention receipt write failed") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary, dir_fd=directory)
+        except FileNotFoundError:
+            pass
+        for opened_descriptor in reversed(descriptors):
+            os.close(opened_descriptor)
+
+
+def _retention_comment_body(value: dict, digest: str) -> str:
+    return (
+        "PuberCleanupRetentionV1 "
+        f"task={value['task_id']} short={value['task_short_id']} "
+        f"session={value['caller_session_id']} phase={value['phase']} "
+        f"path=build/kent-workflow/{value['task_short_id']}/{RETENTION_BASENAME} "
+        f"sha256={digest}"
+    )
+
+
+def _retention_comment_search(state: dict, body: str) -> bool:
+    command = [
+        helper._kent_bin(ROOT), "task", "search", body,
+        "--include-comments", "--case-sensitive",
+        "--project", helper.PROJECT_ID, "--page-size", "2",
+        "--offset", "0", "--json",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            env=helper.child_env(),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise helper.ContractError("cleanup Task-record readback is UNKNOWN") from error
+    if result.returncode != 0 or result.stderr.strip() or len(result.stdout.encode()) > 2 * 1024 * 1024:
+        raise helper.ContractError("cleanup Task-record search is incomplete")
+    try:
+        result_value = helper._json_one(result.stdout.encode("utf-8"))
+    except (ValueError, UnicodeError) as error:
+        raise helper.ContractError("cleanup Task-record search returned invalid JSON") from error
+    if set(result_value) != {"groups", "mode"} or result_value["mode"] != "literal":
+        raise helper.ContractError("cleanup Task-record search shape is not exact")
+    groups = result_value["groups"]
+    if not isinstance(groups, list):
+        raise helper.ContractError("cleanup Task-record search groups are invalid")
+    if not groups:
+        return False
+    if len(groups) != 1:
+        raise helper.ContractError("cleanup Task-record reference is ambiguous")
+    group = groups[0]
+    expected_group_keys = {
+        "hits", "project_id", "project_key", "short_id", "status", "task_id",
+        "title", "total_hit_count", "workflow_id",
+    }
+    if (
+        not isinstance(group, dict)
+        or set(group) != expected_group_keys
+        or group["task_id"] != state["task_id"]
+        or group["short_id"] != state["task_short_id"]
+        or group["project_id"] != helper.PROJECT_ID
+        or type(group["total_hit_count"]) is not int
+        or group["total_hit_count"] != 1
+        or not isinstance(group["hits"], list)
+        or len(group["hits"]) != 1
+    ):
+        raise helper.ContractError("cleanup Task-record reference identity is not exact")
+    hit = group["hits"][0]
+    if (
+        not isinstance(hit, dict)
+        or set(hit) != {"literal", "ordinal", "source"}
+        or not isinstance(hit["source"], dict)
+        or hit["source"].get("kind") != "comment"
+        or set(hit["source"]) - {"kind", "comment_id"}
+        or not isinstance(hit["literal"], dict)
+        or set(hit["literal"]) != {
+            "after", "before", "left_truncated", "match", "right_truncated",
+        }
+        or hit["literal"]["match"] != body
+        or hit["literal"]["before"] != ""
+        or hit["literal"]["after"] != ""
+        or hit["literal"]["left_truncated"] is not False
+        or hit["literal"]["right_truncated"] is not False
+    ):
+        raise helper.ContractError("cleanup Task-record comment readback is not exact")
+    return True
+
+
+def _retain_task_comment(
+    state: dict,
+    value: dict,
+    digest: str,
+    *,
+    require_existing: bool = False,
+) -> None:
+    body = _retention_comment_body(value, digest)
+    if _retention_comment_search(state, body):
+        return
+    if require_existing:
+        raise helper.ContractError(
+            "sealed cleanup Task-record reference is missing; preserve all state"
+        )
+    command = [
+        helper._kent_bin(ROOT), "task", "comment", "add", state["task_id"],
+        "--project", helper.PROJECT_ID, "--body", body,
+        "--author", "agent", "--author-id", CALLER_SESSION_ID,
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            env=helper.child_env(),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise helper.ContractError("cleanup Task-record retention write is UNKNOWN") from error
+    if (
+        result.returncode != 0
+        or len(result.stdout.encode()) > 64 * 1024
+        or len(result.stderr.encode()) > 64 * 1024
+    ):
+        raise helper.ContractError("cleanup Task-record retention write failed")
+    if not _retention_comment_search(state, body):
+        raise helper.ContractError("cleanup Task-record retention readback is missing")
+
+
+def _preflight_retention(state: dict, marker: dict | None) -> dict | None:
+    value, _raw, digest = _retention_read(state["task_short_id"])
+    if value is None:
+        if marker is not None:
+            raise helper.ContractError(
+                "terminal seal has no retained original cleanup input; preserve all state"
+            )
+        return None
+    if (
+        value["task_id"] != state["task_id"]
+        or value["task_short_id"] != state["task_short_id"]
+        or value["controller_commit"] != state["controller_commit"]
+        or value["execution_commit"] != state["commit"]
+    ):
+        raise helper.ContractError("cleanup retention receipt identity drifted")
+    if value["caller_session_id"] != CALLER_SESSION_ID:
+        if value["phase"] == "sealed":
+            raise helper.ContractError(
+                "sealed cleanup retention receipt belongs to a different owner session"
+            )
+        raise helper.ContractError(
+            "prepared cleanup retention receipt belongs to a different caller session"
+        )
+    checkpoint = helper.read_profile_checkpoint(
+        ROOT,
+        state["task_short_id"],
+        expected={
+            "task_id": state["task_id"],
+            "task_short_id": state["task_short_id"],
+            "release_base_oid": state["commit"],
+            "release_head_oid": state["controller_commit"],
+        },
+        with_receipt=True,
+        with_snapshot=True,
+        missing_ok=True,
+    )
+    if checkpoint is None:
+        checkpoint_raw = b""
+        if value["phase"] != "sealed" or marker is None:
+            raise helper.ContractError(
+                "checkpoint is absent before a complete matching seal; preserve all state"
+            )
+        _retain_task_comment(state, value, digest, require_existing=True)
+    else:
+        _checkpoint_value, _checkpoint_receipt, checkpoint_raw = checkpoint
+        if (
+            not value["checkpoint_present"]
+            or helper.sha256_bytes(checkpoint_raw) != value["checkpoint_sha256"]
+            or base64.b64encode(checkpoint_raw).decode("ascii")
+            != value["checkpoint_bytes_b64"]
+        ):
+            raise helper.ContractError(
+                "profile checkpoint differs from retained original bytes; preserve all state"
+            )
+    if checkpoint_raw and not value["checkpoint_present"]:
+        raise helper.ContractError(
+            "checkpoint presence differs from the retained original state"
+        )
+    if not checkpoint_raw and value["checkpoint_present"] and (
+        value["phase"] != "sealed" or marker is None
+    ):
+        raise helper.ContractError(
+            "original checkpoint is absent before a complete matching seal"
+        )
+    if marker is not None:
+        marker_line = _seal_matches_retention(marker, value)
+        if (
+            value["phase"] == "sealed"
+            and marker_line != value["final_marker_line"]
+        ):
+            raise helper.ContractError(
+                "terminal seal differs from the completed retention receipt"
+            )
+    elif value["phase"] != "prepared":
+        raise helper.ContractError("retention phase conflicts with the absent seal")
+    return value
+
+
+def _retention_for_report(
+    state: dict,
+    raw: dict,
+    session: str,
+    session_identity: dict[str, str],
+    checkpoint_raw: bytes,
+    report_prefix: str,
+    seal_request: dict,
+    operation_digest: str,
+    source_envelope_digest: str,
+) -> dict:
+    prefix_bytes = report_prefix.encode("utf-8")
+    input_json = helper.canonical_json(raw)
+    return {
+        "schema": RETENTION_SCHEMA,
+        "phase": "prepared",
+        "task_id": state["task_id"],
+        "task_short_id": state["task_short_id"],
+        "controller_commit": state["controller_commit"],
+        "execution_commit": state["commit"],
+        "incoming_transition": raw["incoming_transition"],
+        "caller_session_id": session,
+        "caller_identity": dict(session_identity),
+        "source_envelope_digest": source_envelope_digest,
+        "operation_digest": operation_digest,
+        "input_json": input_json,
+        "input_sha256": helper.sha256_bytes(input_json.encode("utf-8")),
+        "checkpoint_present": bool(checkpoint_raw),
+        "checkpoint_bytes_b64": base64.b64encode(checkpoint_raw).decode("ascii"),
+        "checkpoint_sha256": helper.sha256_bytes(checkpoint_raw),
+        "seal_request": dict(seal_request),
+        "report_prefix": report_prefix,
+        "report_prefix_sha256": helper.sha256_bytes(prefix_bytes),
+        "final_cleanup_report": "",
+        "final_marker_line": "",
+        "final_report_sha256": "",
+    }
+
+
+def _seal_matches_retention(marker: dict, value: dict) -> str:
+    kit = helper._kit_modules()
+    marker_line = kit["terminal_marker_line"](marker)
+    request = value["seal_request"]
+    if (
+        marker["task_short_id"] != value["task_short_id"]
+        or marker["operation_report_digests"]
+        != request["operation_report_digests"]
+        or marker["redaction"] != request["redaction"]
+        or marker["retention_class"] != request["retention_class"]
+        or marker["redaction"]["report_sha256"]
+        != value["report_prefix_sha256"]
+    ):
+        raise helper.ContractError(
+            "terminal seal differs from the durable pre-seal retention receipt"
+        )
+    return marker_line
+
+
+def _select_original_input(
+    provided: dict,
+    value: dict | None,
+    marker: dict | None,
+    identity: dict,
+) -> dict:
+    if value is None:
+        if marker is not None:
+            raise helper.ContractError(
+                "sealed cleanup has no retained original input"
+            )
+        return provided
+    original = helper._json_one(value["input_json"].encode("utf-8"))
+    if (
+        original.get("task_id") != value["task_id"]
+        or original.get("incoming_transition") != value["incoming_transition"]
+    ):
+        raise helper.ContractError(
+            "retained original cleanup input identity differs"
+        )
+    if provided == original:
+        return original
+    if (
+        provided.get("task_id") != value["task_id"]
+        or provided.get("incoming_transition") != "task_janitor_blocked"
+        or not isinstance(provided.get("parameters"), dict)
+        or set(provided["parameters"])
+        != {
+            "workspace_path",
+            "operation_id",
+            "branch_name",
+            "cleanup_mode",
+            "cleanup_report",
+        }
+        or any(
+            not isinstance(item, str)
+            for item in provided["parameters"].values()
+        )
+        or marker is None
+    ):
+        raise helper.ContractError(
+            "cleanup retry is not the original input or its exact Janitor replay"
+        )
+    parameters = provided["parameters"]
+    prior, marker_line, _suffix, prefix = _parse_janitor_report(
+        parameters["cleanup_report"], value["task_short_id"]
+    )
+    expected_marker = _seal_matches_retention(marker, value)
+    original_parameters = original["parameters"]
+    expected_workspace_path = (
+        original_parameters["workspace_path"]
+        if "workspace_path" in original_parameters
+        else str(ROOT)
+    )
+    expected_branch_name = (
+        original_parameters["branch_name"]
+        if "branch_name" in original_parameters
+        else identity["branch"]
+    )
+    if (
+        prefix != value["report_prefix"]
+        or marker_line != expected_marker
+        or parameters["workspace_path"] != expected_workspace_path
+        or parameters["branch_name"] != expected_branch_name
+        or parameters["cleanup_mode"] != prior["cleanup_mode"]
+    ):
+        raise helper.ContractError(
+            "Janitor replay differs from retained original cleanup proof"
+        )
+    if not helper.HEX64.fullmatch(parameters["operation_id"]):
+        raise helper.ContractError("Janitor replay operation identity is invalid")
+    expected_operation_id = original_parameters.get("operation_id")
+    if value["checkpoint_present"]:
+        checkpoint = helper._json_one(
+            base64.b64decode(value["checkpoint_bytes_b64"], validate=True)
+        )
+        checkpoint_operation_id = checkpoint.get("operation_id")
+        if not isinstance(checkpoint_operation_id, str):
+            raise helper.ContractError(
+                "retained release checkpoint has no operation identity"
+            )
+        if expected_operation_id and expected_operation_id != checkpoint_operation_id:
+            raise helper.ContractError(
+                "retained original/checkpoint operation identities differ"
+            )
+        expected_operation_id = checkpoint_operation_id
+    if (
+        expected_operation_id is not None
+        and parameters["operation_id"] != expected_operation_id
+    ):
+        raise helper.ContractError(
+            "Janitor replay operation identity differs from retained cleanup"
+        )
+    if value["phase"] != "sealed":
+        raise helper.ContractError(
+            "Janitor replay precedes complete durable cleanup retention"
+        )
+    return original
 
 
 def _api(endpoint: str, *, absent=False):
@@ -657,8 +1483,38 @@ def _admit_sealed_controller(parameters: dict, state: dict) -> None:
         _prior, line, _suffix, _prefix = _parse_janitor_report(parameters["cleanup_report"], state["task_short_id"])
         hint = helper._kit_modules()["parse_terminal_marker_line"](line)
     records, marker = _read_ledger(state, hint)
-    if marker is None:
-        raise helper.ContractError("prepared controller checkpoint and terminal seal are missing")
+    _preflight_cleanup_inventory(state, marker)
+    retention = _preflight_retention(state, marker)
+    checkpoint = helper.read_profile_checkpoint(
+        ROOT,
+        state["task_short_id"],
+        expected={
+            "task_id": state["task_id"],
+            "task_short_id": state["task_short_id"],
+            "release_base_oid": state["commit"],
+            "release_head_oid": state["controller_commit"],
+        },
+        missing_ok=True,
+    )
+    if marker is None and checkpoint is None:
+        raise helper.ContractError(
+            "prepared controller checkpoint and terminal seal are missing"
+        )
+    if checkpoint is not None:
+        if (
+            checkpoint["state"] != "completed"
+            or not checkpoint["release_preparation_report"]
+        ):
+            raise helper.ContractError(
+                "unfinished profile checkpoint cannot enter Cleanup"
+            )
+    if marker is not None and (
+        retention is None
+        or retention["phase"] not in {"prepared", "sealed"}
+    ):
+        raise helper.ContractError(
+            "terminal controller has no admitted original cleanup receipt"
+        )
     helper.release_diff_paths(ROOT, state["commit"], state["controller_commit"])
     if parameters.get("cleanup_report"):
         previous, line, _suffix, _prefix = _parse_janitor_report(parameters["cleanup_report"], state["task_short_id"])
@@ -668,26 +1524,60 @@ def _admit_sealed_controller(parameters: dict, state: dict) -> None:
     # only enough to recompute its observed outcome and exact canonical report;
     # _cleanup_report must match owner/outcome/digests against the existing seal
     # before any effect. This does not manufacture a report or another seal.
-    fresh = helper.attest(ROOT, state, "cleanup", "task_janitor_blocked")
-    if not any(item["kind"] == "runtime_source" and item["sha256"] == fresh["binding"].runtime_source_envelope_digest for item in marker["operation_report_digests"]):
-        raise helper.ContractError("terminal controller source differs from H")
+    if marker is not None:
+        fresh = helper.attest(ROOT, state, "cleanup", "task_janitor_blocked")
+        if not any(
+            item["kind"] == "runtime_source"
+            and item["sha256"]
+            == fresh["binding"].runtime_source_envelope_digest
+            for item in marker["operation_report_digests"]
+        ):
+            raise helper.ContractError(
+                "terminal controller source differs from H"
+            )
 
 
 def main() -> int:
     try:
-        raw = helper.read_zero_argument()
-        if set(raw) != {"task_id","incoming_transition","parameters"} or not isinstance(raw["parameters"], dict):
+        provided = helper.read_zero_argument()
+        if set(provided) != {"task_id","incoming_transition","parameters"} or not isinstance(provided["parameters"], dict):
             raise helper.ContractError("Cleanup Agent input must contain exactly task_id/incoming_transition/parameters; no _kent")
-        payload = raw["parameters"]
-        state = helper.validate_cleanup_agent(ROOT, raw["task_id"], CALLER_SESSION_ID,
-            allowed_notes_path=payload.get("release_notes_path"),
-            cleanup_recovery_admission=lambda state:_admit_sealed_controller(payload,state))
-        identity = _release_identity(state)
+        provided_payload = provided["parameters"]
+        janitor_previous = None
+        if provided["incoming_transition"] == "task_janitor_blocked":
+            if not isinstance(provided_payload.get("cleanup_report"), str):
+                raise helper.ContractError("Janitor recovery is missing its sealed report")
+            task = helper.task_show(ROOT, provided["task_id"])
+            task_short_id = helper._safe_task_short_id(
+                task.get("summary", {}).get("short_id")
+                if isinstance(task.get("summary"), dict)
+                else None
+            )
+            janitor_previous, _marker_line, _suffix, _prefix = _parse_janitor_report(
+                provided_payload["cleanup_report"], task_short_id
+            )
+        allowed_notes_path = provided_payload.get("release_notes_path")
+        if allowed_notes_path is None and janitor_previous is not None:
+            allowed_notes_path = janitor_previous.get("release_notes_path")
+        state = helper.validate_cleanup_agent(
+            ROOT,
+            provided["task_id"],
+            CALLER_SESSION_ID,
+            allowed_notes_path=allowed_notes_path,
+            cleanup_recovery_admission=lambda current_state: _admit_sealed_controller(
+                provided_payload, current_state
+            ),
+        )
         marker_hint = None
-        if payload.get("cleanup_report"):
-            _prior, line, _suffix, _prefix = _parse_janitor_report(payload["cleanup_report"], state["task_short_id"])
+        if provided_payload.get("cleanup_report"):
+            _prior, line, _suffix, _prefix = _parse_janitor_report(provided_payload["cleanup_report"], state["task_short_id"])
             marker_hint = helper._kit_modules()["parse_terminal_marker_line"](line)
         records, marker = _read_ledger(state, marker_hint)
+        _preflight_cleanup_inventory(state, marker)
+        retained = _preflight_retention(state, marker)
+        identity = _release_identity(state)
+        raw = _select_original_input(provided, retained, marker, identity)
+        payload = raw["parameters"]
         prior = None; marker_line = None; suffix = None; prefix = None
         carrier = dict(payload)
         if marker is not None and payload.get("cleanup_report"):
@@ -721,13 +1611,30 @@ def main() -> int:
             if outcome == "closed":
                 carrier.update(pr_url=facts["prs"][0]["html_url"],pr_head_oid=identity["head"],pr_base_oid=facts["prs"][0]["base"].get("sha"))
         publication, release = _verify_outcome(state, identity, facts, outcome, carrier, marker)
-        checkpoint = identity["checkpoint"]; receipt = None
+        checkpoint = identity["checkpoint"]
+        checkpoint_receipt = None
+        checkpoint_raw = b""
         profile_digest = ""; preparation_digest = ""
         if checkpoint is not None:
             if checkpoint["state"] != "completed" or not checkpoint["release_preparation_report"]:
                 raise helper.ContractError("unfinished profile/device/preparation obligation blocks cleanup")
             preparation = helper.validate_preparation_proof(ROOT, {"operation_id":checkpoint["operation_id"],"branch_name":identity["branch"],"release_base_oid":checkpoint["release_base_oid"]}, state, identity["version"], identity["tag"], identity["head"])
-            checkpoint, receipt = helper.read_profile_checkpoint(ROOT,state["task_short_id"],expected={"task_id":state["task_id"],"release_head_oid":identity["head"]},with_receipt=True)
+            checkpoint, checkpoint_receipt, checkpoint_raw = helper.read_profile_checkpoint(
+                ROOT,
+                state["task_short_id"],
+                expected={
+                    "task_id": state["task_id"],
+                    "task_short_id": state["task_short_id"],
+                    "release_base_oid": state["commit"],
+                    "release_head_oid": identity["head"],
+                },
+                with_receipt=True,
+                with_snapshot=True,
+            )
+            if checkpoint != identity["checkpoint"]:
+                raise helper.ContractError(
+                    "profile checkpoint changed after Cleanup admission"
+                )
             profile_digest, preparation_digest = checkpoint["profile_report_digest"], checkpoint["release_preparation_report_digest"]
         elif marker is not None:
             digests = {item["kind"]:item["sha256"] for item in marker["operation_report_digests"]}
@@ -743,23 +1650,144 @@ def main() -> int:
         if confirmed != facts or _read_ledger(state, marker) != (records,marker) or _caller(state,prior) != (session,session_identity):
             raise helper.ContractError("cleanup outcome/owner changed before sealing")
         _verify_outcome(state,identity,confirmed,outcome,carrier,marker)
+        current_records, current_marker = _read_ledger(state, marker)
+        if (current_records, current_marker) != (records, marker):
+            raise helper.ContractError(
+                "cleanup evidence changed before terminal retention"
+            )
+        _preflight_cleanup_inventory(state, marker)
         blocker = prior["blocker_reason"] if prior else ""
+        retention_box = {"value": retained, "digest": None}
+
+        def prepare_retention(report_prefix: str, seal_request: dict) -> None:
+            candidate = _retention_for_report(
+                state,
+                raw,
+                session,
+                session_identity,
+                checkpoint_raw,
+                report_prefix,
+                seal_request,
+                fresh["binding"].provenance_fingerprint,
+                fresh["binding"].runtime_source_envelope_digest,
+            )
+            current, _current_raw, current_digest = _retention_read(
+                state["task_short_id"]
+            )
+            if current is None:
+                if retained is not None:
+                    raise helper.ContractError(
+                        "prepared cleanup receipt disappeared before seal"
+                    )
+                current_digest = _retention_write(
+                    state["task_short_id"],
+                    candidate,
+                    expected_sha256=None,
+                )
+                current = candidate
+            elif current != candidate:
+                raise helper.ContractError(
+                    "prepared cleanup receipt differs from the exact original input"
+                )
+            _retain_task_comment(state, current, current_digest)
+            retention_box.update(value=current, digest=current_digest)
+
         report, _digest = _cleanup_report(state,session,session_identity,carrier,
             operation_digest=fresh["binding"].provenance_fingerprint,unresolved=prior["unresolved"] if prior else False,
             blocker=blocker,fresh=fresh,profile_report_digest=profile_digest,preparation_report_digest=preparation_digest,
-            existing_marker=marker_line,preserved_prefix=prefix,preserved_suffix=suffix,
-            recover_seal=marker is not None and prior is None)
-        if receipt is not None and not blocker and not (prior and prior["unresolved"]):
+            existing_marker=marker_line or (
+                fresh["kit"]["terminal_marker_line"](marker)
+                if marker is not None else None
+            ),preserved_prefix=prefix,preserved_suffix=suffix,
+            recover_seal=marker is not None and prior is None,
+            before_seal=prepare_retention,
+        )
+        retained_value, _retained_raw, retained_digest = _retention_read(
+            state["task_short_id"]
+        )
+        if retained_value is None:
+            raise helper.ContractError(
+                "cleanup report has no complete private retention receipt"
+            )
+        if retained_value["phase"] == "prepared":
+            if (
+                marker is None
+                and retention_box["value"] != retained_value
+                or report.splitlines()[0] != retained_value["report_prefix"]
+            ):
+                raise helper.ContractError(
+                    "sealed cleanup report differs from its prepared retention receipt"
+                )
+            final_marker_line = report.splitlines()[-1]
+            final_marker = fresh["kit"]["parse_terminal_marker_line"](
+                final_marker_line
+            )
+            if _seal_matches_retention(final_marker, retained_value) != final_marker_line:
+                raise helper.ContractError(
+                    "sealed cleanup result differs from its prepared request"
+                )
+            sealed_value = {
+                **retained_value,
+                "phase": "sealed",
+                "final_cleanup_report": report,
+                "final_marker_line": final_marker_line,
+                "final_report_sha256": helper.sha256_bytes(
+                    report.encode("utf-8")
+                ),
+            }
+            retained_digest = _retention_write(
+                state["task_short_id"],
+                sealed_value,
+                expected_sha256=retained_digest,
+            )
+            retained_value = sealed_value
+        elif (
+            report != retained_value["final_cleanup_report"]
+            or report.splitlines()[-1] != retained_value["final_marker_line"]
+        ):
+            raise helper.ContractError(
+                "replayed cleanup report differs from its completed retention receipt"
+            )
+        final_marker = fresh["kit"]["parse_terminal_marker_line"](
+            retained_value["final_marker_line"]
+        )
+        _retain_task_comment(state, retained_value, retained_digest)
+        if checkpoint_receipt is not None and not blocker and not (prior and prior["unresolved"]):
             latest = _observe(state,identity,records)
             expected_marker = fresh["kit"]["parse_terminal_marker_line"](report.splitlines()[-1])
             current_records, current_marker = _read_ledger(state, expected_marker)
+            expected_ledger_records = (
+                current_records == records
+                if marker is not None
+                else current_records[:-1] == records
+            )
             if (latest != facts or _caller(state,prior) != (session,session_identity)
                     or current_marker != expected_marker
-                    or current_records != (records if marker is not None else records + [current_records[-1]])):
+                    or not expected_ledger_records
+                    or not current_records
+                    or current_records[-1].get("record_kind") != "terminal_evidence_seal_v1"):
                 raise helper.ContractError("cleanup outcome/owner/evidence changed before checkpoint deletion")
             _verify_outcome(state,identity,latest,outcome,carrier,marker)
-            helper.delete_profile_checkpoint(ROOT,state["task_short_id"],receipt)
-            _validate_terminal_marker_ledger(state["task_short_id"],fresh["kit"]["parse_terminal_marker_line"](report.splitlines()[-1]),fresh["kit"])
+            current_checkpoint = helper.read_profile_checkpoint(
+                ROOT,
+                state["task_short_id"],
+                expected={
+                    "task_id": state["task_id"],
+                    "task_short_id": state["task_short_id"],
+                    "release_base_oid": state["commit"],
+                    "release_head_oid": identity["head"],
+                },
+                with_receipt=True,
+                with_snapshot=True,
+            )
+            if current_checkpoint[2] != checkpoint_raw:
+                raise helper.ContractError(
+                    "profile checkpoint changed before receipt-backed deletion"
+                )
+            helper.delete_profile_checkpoint(
+                ROOT, state["task_short_id"], current_checkpoint[1]
+            )
+            _validate_terminal_marker_ledger(state["task_short_id"],final_marker,fresh["kit"])
         fields = {"cleanup_report":report,"workspace_path":str(ROOT),"branch_name":identity["branch"],"pr_url":carrier.get("pr_url", ""),"cleanup_mode":"report_only","cleanup_session_id":session,"task_short_id":state["task_short_id"],**{key:carrier.get(key,"") for key in ("publication_report","publication_report_digest","release_report","release_report_digest","release_notes_path","release_notes_digest")}}
         helper.emit_exact(ROOT,"cleanup_task_janitor","task_janitor",fields)
         return 0

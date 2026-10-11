@@ -29,7 +29,9 @@ Implements a step from the feature plan. Loads relevant context, recipes, and wr
   as the starting point and reconcile it against the final source delta.
 - Find the target step:
   - If step number given → use that step
-  - If not → find the first `[ ]` (unchecked) step whose dependencies are complete
+  - If not → find the first unchecked writer-owned step whose dependencies are complete
+  - Skip workflow-owned review, Standards, Compliance, deterministic verification,
+    and Runtime Smoke steps; those are downstream stages, not writer work
 - If all steps are `[x]` → report "All steps completed!"
 
 ### Step 2: Load recipes for this step
@@ -101,6 +103,14 @@ If no triggers match → skip advanced recipes (core is sufficient for most step
 - Implement exactly one plan step per invocation. For a bounded slice with clear file ownership, delegation to
   `kent run --agent=implementation-worker --workspace "$PWD" "<prompt>"` is allowed, but the parent agent remains
   responsible for integration, verification, and progress updates.
+- When invoked from the current Kent `Implement` node, this is the workflow
+  writer itself: do not create a nested Kent Session or child implementation
+  worker. Preserve the complete approved Task boundary while editing one
+  independently verifiable slice.
+- If a verified finding proves the accepted plan materially stale or
+  contradictory, stop production edits and use the explicit `implement_replan`
+  route with the exact plan path, work kind, delivery context, discrepancy
+  evidence, and focused review context. Do not rewrite acceptance authority.
 - Run through the recipe's checklist before moving on
 
 ### Step 5: Verify
@@ -198,7 +208,10 @@ After previews are ready, compare implementation with the Figma design screensho
 3. **Fix any discrepancies** before proceeding
 
 ### Step 6: Update progress
-- Update `plan.md`: change `[ ] Step N` → `[x] Step N`
+- Only after focused verification succeeds, update the selected writer-owned
+  step in `plan.md`: change `[ ] Step N` → `[x] Step N`.
+- Do not mark workflow-owned review, deterministic verification, Compliance,
+  or Runtime Smoke work complete from Implement.
 - Do not write lifecycle or step-progress mirrors to `meta.json`.
 - Report what was implemented and which files were created/modified
 - **Open key files** (skip if in worktree): after explicit approval, call
@@ -231,7 +244,7 @@ After previews are ready, compare implementation with the Figma design screensho
 
 ## Important
 - Load ONLY the context and recipes needed for the current step — not everything
-- Follow the plan's dependency order — if step depends on a previous unchecked step, warn the user
+- Follow the accepted plan's dependency order; select only a ready writer-owned step
 - Do NOT skip ahead or combine steps unless user explicitly asks
 - After implementation, suggest the next step
 - Do NOT commit automatically — let user decide when to commit

@@ -159,23 +159,37 @@ def cleanup_session_uses_workspace(
     payload = json_object(result.stdout, "Kent worktree status")
     target = payload.get("target")
     worktree = payload.get("worktree")
-    candidates: list[object] = []
-    if isinstance(target, dict):
-        candidates.append(target.get("EffectiveWorkdir"))
-    if isinstance(worktree, dict):
-        candidates.extend(
-            (
-                worktree.get("recorded_root"),
-                worktree.get("observed_root"),
-            )
-        )
-    for candidate in candidates:
-        if not isinstance(candidate, str) or not candidate.strip():
-            continue
-        candidate_path = Path(candidate).expanduser().resolve()
-        if candidate_path == workspace or candidate_path.is_relative_to(workspace):
-            return True
-    return False
+    if not isinstance(target, dict) or (
+        worktree is not None and not isinstance(worktree, dict)
+    ):
+        raise RuntimeError("Kent worktree status has no trustworthy target identity")
+    worktree = worktree or {}
+    legacy = "EffectiveWorkdir" in target or any(
+        key in worktree for key in ("recorded_root", "observed_root")
+    )
+    native = "effectiveWorkdir" in target or any(
+        key in worktree for key in ("recordedRoot", "observedRoot")
+    )
+    if legacy == native:
+        raise RuntimeError("Kent worktree status has missing or mixed identity dialects")
+    effective_key = "effectiveWorkdir" if native else "EffectiveWorkdir"
+    root_keys = ("recordedRoot", "observedRoot") if native else (
+        "recorded_root", "observed_root",
+    )
+    effective = Path(_kent_root(target.get(effective_key), "Session effective root"))
+    roots = [
+        Path(_kent_root(worktree[key], "Session worktree root"))
+        for key in root_keys if key in worktree
+    ]
+    if len(set(roots)) > 1 or any(
+        effective != root and not effective.is_relative_to(root) for root in roots
+    ):
+        raise RuntimeError("Kent worktree status roots contradict each other")
+    workspace = workspace.resolve()
+    return any(
+        root == workspace or root.is_relative_to(workspace)
+        for root in [effective, *roots]
+    )
 
 
 def git_registers_worktree(primary: Path, workspace: Path) -> bool:
@@ -190,7 +204,10 @@ def git_registers_worktree(primary: Path, workspace: Path) -> bool:
 
 
 def _kent_root(value: object, label: str) -> str:
-    if not isinstance(value, str) or not value.strip():
+    if (
+        not isinstance(value, str) or not value.strip()
+        or not Path(value).expanduser().is_absolute()
+    ):
         raise RuntimeError(f"Kent worktree list has no {label}")
     return str(Path(value).expanduser().resolve())
 

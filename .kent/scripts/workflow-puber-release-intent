@@ -12,14 +12,15 @@ sys.dont_write_bytecode = True
 for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
     os.environ.pop(_name, None)
 ROOT = Path(__file__).resolve().parents[2]
-KIT_COMMIT = "9acedea07470c91f0c8caddb9546aa89ec7ed844"
+KIT_COMMIT = "3020962feffa870c8f064e7a0b2657d316a8ec1b"
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
-# Prepared native identity; valid only after an independently gated live 87 -> 88 rollout.
-WORKFLOW_REVISION = 88
-SOURCE_REVISION = 90
+# Private proposal cohort only; no current Task or live runtime is repinned.
+WORKFLOW_REVISION = 94
+SOURCE_REVISION = 91
 REPOSITORY = "rovkinmax/Puber"
+GRAPH_PATH = ".kent/workflows/puber-release-kit-5af.json"
 SCRIPT_PATHS = {
     "ci_prepare": ".kent/scripts/workflow-puber-release-ci",
     "ci_watch": ".kent/scripts/workflow-puber-release-ci",
@@ -30,7 +31,10 @@ SCRIPT_PATHS = {
     "monitor": ".kent/scripts/workflow-wait-github-release",
 }
 TASK_ROOT_KEYS = {"actions","attention_count","body","current_nodes","current_scripts","execution_target","label_ids","live_sessions","project","retained_session_count","source_workspace","status","summary","workflow","worktree_path"}
-KENT_KEYS = {"task_id","node_id","transition_branch_key"}
+KENT_KEYS = {"task_id","node_id"}
+ENTRY_TRANSITION = "entry_transition"
+INITIAL_SCRIPT_ENTRY = {"release_intent_gate": "start_release_intent_gate"}
+LEASED_SCRIPT_NODES = {"profile_generation"}
 SHA1 = re.compile(r"^[0-9a-f]{40}$")
 TASK_ID = re.compile(r"^task-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
 TASK_SHORT_ID = re.compile(r"^[A-Z][A-Z0-9]+-[0-9]+$")
@@ -188,14 +192,14 @@ def git(root: Path, *args: str, check: bool = True) -> str:
     return run(["git", *args], cwd=root, check=check).stdout.strip()
 
 def _node_id(root: Path, node_key: str) -> str:
-    graph = json.loads((root / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
+    graph = json.loads((root / GRAPH_PATH).read_text(encoding="utf-8"))
     for node in graph.get("nodes", []):
         if node.get("key") == node_key:
             return require_string(node.get("id"), "graph node id")
     raise ContractError(f"graph node missing: {node_key}")
 
 def graph_edge(root: Path, branch: str, node_key: str) -> dict[str, Any]:
-    graph = json.loads((root / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
+    graph = json.loads((root / GRAPH_PATH).read_text(encoding="utf-8"))
     node_id = _node_id(root, node_key)
     matches = [edge for edge in graph.get("edges", []) if edge.get("key") == branch and edge.get("target_node_id") == node_id]
     if len(matches) != 1 or matches[0].get("workflow_id") != WORKFLOW_ID:
@@ -268,14 +272,62 @@ def _status_string(value: Any, label: str) -> str:
     return value
 
 def _validate_session_status(root: Path, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], Path]:
-    if not isinstance(payload, dict) or set(payload) != {"target", "worktree", "problems"} or payload.get("problems") != []:
-        raise ContractError("Kent worktree status is not the exact clean closed shape")
-    target = payload.get("target")
-    worktree = payload.get("worktree")
-    if not isinstance(target, dict) or set(target) != {"WorkspaceID", "WorkspaceName", "WorkspaceRoot", "WorkspaceAvailability", "Worktree", "CwdRelpath", "EffectiveWorkdir"}:
-        raise ContractError("Kent worktree status target is not the stock closed shape")
-    if not isinstance(worktree, dict) or set(worktree) not in ({"recorded_root", "observed_root", "display_name", "recorded_branch_ref"}, {"recorded_root", "observed_root"}):
-        raise ContractError("Kent worktree status roots are not the stock closed shape")
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"target", "worktree", "problems"}
+        or payload.get("problems") is not None
+    ):
+        raise ContractError("Kent 2.8 worktree status is not the exact clean dialect")
+    native_target = payload.get("target")
+    native_worktree = payload.get("worktree")
+    target_keys = {
+        "workspaceId", "workspaceName", "workspaceRoot",
+        "workspaceAvailability", "worktree", "cwdRelpath",
+        "effectiveWorkdir",
+    }
+    active_worktree_keys = {
+        "recordedRoot", "observedRoot", "displayName", "recordedBranchRef",
+    }
+    inactive_worktree_keys = {"recordedRoot", "observedRoot"}
+    if not isinstance(native_target, dict) or set(native_target) != target_keys:
+        raise ContractError("Kent 2.8 worktree target is not the exact camel-case shape")
+    if (
+        not isinstance(native_worktree, dict)
+        or set(native_worktree) not in {frozenset(active_worktree_keys), frozenset(inactive_worktree_keys)}
+    ):
+        raise ContractError("Kent 2.8 worktree roots are not the exact camel-case shape")
+    native_task_worktree = native_target.get("worktree")
+    if native_task_worktree is None:
+        task_worktree = None
+    else:
+        task_worktree_keys = {"id", "name", "root", "availability"}
+        if (
+            not isinstance(native_task_worktree, dict)
+            or set(native_task_worktree) != task_worktree_keys
+        ):
+            raise ContractError("Kent 2.8 active Worktree is not the exact camel-case shape")
+        task_worktree = {
+            "ID": native_task_worktree["id"],
+            "Name": native_task_worktree["name"],
+            "Root": native_task_worktree["root"],
+            "Availability": native_task_worktree["availability"],
+        }
+    target = {
+        "WorkspaceID": native_target["workspaceId"],
+        "WorkspaceName": native_target["workspaceName"],
+        "WorkspaceRoot": native_target["workspaceRoot"],
+        "WorkspaceAvailability": native_target["workspaceAvailability"],
+        "Worktree": task_worktree,
+        "CwdRelpath": native_target["cwdRelpath"],
+        "EffectiveWorkdir": native_target["effectiveWorkdir"],
+    }
+    worktree = {
+        "recorded_root": native_worktree["recordedRoot"],
+        "observed_root": native_worktree["observedRoot"],
+    }
+    if set(native_worktree) == active_worktree_keys:
+        worktree["display_name"] = native_worktree["displayName"]
+        worktree["recorded_branch_ref"] = native_worktree["recordedBranchRef"]
     primary = git_common_root(root)
     workspace_id = _status_string(target.get("WorkspaceID"), "WorkspaceID")
     workspace_name = _status_string(target.get("WorkspaceName"), "WorkspaceName")
@@ -406,6 +458,12 @@ def _task_checkout(root: Path, task_id: str, node_key: str, task: dict, node_id:
     if current_head != commit and current_head != allowed_checkout_head:
         if node_key not in {"ci_prepare", "ci_watch", "merge_watch", "publish", "monitor", "cleanup"}:
             raise ContractError("selected checkout is not the exact Task execution commit")
+        if node_key == "cleanup":
+            if cleanup_recovery_admission is None:
+                raise ContractError("Cleanup inventory classifier is unavailable")
+            # Classify the existing terminal inventory/history before reading
+            # the release checkpoint or admitting a prepared controller.
+            cleanup_recovery_admission(validated)
         checkpoint = read_profile_checkpoint(root, validated["task_short_id"], expected={
             "task_id": task_id, "task_short_id": validated["task_short_id"],
             "release_base_oid": commit, "release_head_oid": current_head,
@@ -413,9 +471,6 @@ def _task_checkout(root: Path, task_id: str, node_key: str, task: dict, node_id:
         if checkpoint is None:
             if node_key != "cleanup" or cleanup_recovery_admission is None:
                 raise ContractError("prepared controller checkpoint is missing")
-            # Only Cleanup can recover after receipt-bound checkpoint deletion,
-            # and only through its existing exact terminal report/ledger checks.
-            cleanup_recovery_admission(validated)
         else:
             values = declarations(task.get("body"))
             version = values.get("release_version")
@@ -460,7 +515,7 @@ def validate_cleanup_agent(root: Path, task_id: str, caller: str, *, allowed_not
     node = task["current_nodes"][0]
     if task.get("current_scripts") != [] or node.get("session_id") != caller:
         raise ContractError("caller is not the actual current Cleanup Agent")
-    graph = json.loads((root / ".kent/workflows/puber-release.json").read_text())
+    graph = json.loads((root / GRAPH_PATH).read_text(encoding="utf-8"))
     configured = next(n for n in graph["nodes"] if n["id"] == node_id)
     if configured.get("kind") != "agent" or configured.get("subagent_role") != "delivery-operator":
         raise ContractError("Cleanup is not the configured Agent")
@@ -484,15 +539,55 @@ def validate_envelope(
         raise ContractError("Script input must be one object")
     metadata = payload.get("_kent")
     if not isinstance(metadata, dict) or set(metadata) != KENT_KEYS:
-        raise ContractError("_kent must contain exactly task_id, node_id, transition_branch_key")
+        raise ContractError("_kent must contain exactly task_id and node_id")
     task_id = require_string(metadata.get("task_id"), "_kent.task_id")
     if metadata.get("node_id") != _node_id(root, node_key):
         raise ContractError("_kent.node_id does not match the current Script")
-    branch = require_string(metadata.get("transition_branch_key"), "_kent.transition_branch_key")
-    edge = graph_edge(root, branch, node_key)
-    expected = {item.get("key") for item in edge.get("parameters", [])}
+    has_route = ENTRY_TRANSITION in payload
+    if node_key in INITIAL_SCRIPT_ENTRY and not has_route:
+        # Start -> release_intent_gate is the one explicit initial variant.
+        branch = INITIAL_SCRIPT_ENTRY[node_key]
+        edge = graph_edge(root, branch, node_key)
+        graph = json.loads((root / GRAPH_PATH).read_text(encoding="utf-8"))
+        group = next(
+            (
+                item for item in graph.get("transition_groups", [])
+                if item.get("id") == edge.get("transition_group_id")
+            ),
+            {},
+        )
+        source = next(
+            (
+                item for item in graph.get("nodes", [])
+                if item.get("id") == group.get("source_node_id")
+            ),
+            {},
+        )
+        if source.get("kind") != "start" or edge.get("parameters") != []:
+            raise ContractError("initial release-intent route is not the exact Start variant")
+    else:
+        branch = require_string(payload.get(ENTRY_TRANSITION), ENTRY_TRANSITION)
+        edge = graph_edge(root, branch, node_key)
+        parameter_keys = [
+            item.get("key") for item in edge.get("parameters", [])
+        ]
+        if (
+            edge.get("key") != branch
+            or parameter_keys.count(ENTRY_TRANSITION) != 1
+            or not parameter_keys
+            or parameter_keys[-1] != ENTRY_TRANSITION
+        ):
+            raise ContractError("business route is not the exact routed graph edge")
+    expected = {
+        item.get("key")
+        for item in edge.get("parameters", [])
+        if item.get("key") != ENTRY_TRANSITION
+    }
     if None in expected or expected & {"_kent", "commentary"}:
         raise ContractError(f"graph edge {branch} contains invalid business parameters")
+    expected_payload = set(expected) | {"_kent"}
+    if has_route:
+        expected_payload.add(ENTRY_TRANSITION)
     if "commentary" in payload:
         commentary = payload["commentary"]
         if not isinstance(commentary, str):
@@ -502,7 +597,14 @@ def validate_envelope(
                 raise ContractError("commentary must be a bounded UTF-8 string")
         except UnicodeEncodeError as error:
             raise ContractError("commentary must be a bounded UTF-8 string") from error
-    business = {key: value for key, value in payload.items() if key not in {"_kent", "commentary"}}
+        expected_payload.add("commentary")
+    if set(payload) != expected_payload:
+        raise ContractError("Script envelope contains unknown or missing fields")
+    business = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"_kent", "commentary", ENTRY_TRANSITION}
+    }
     if set(business) != expected:
         raise ContractError(f"input fields do not exactly match graph edge {branch}")
     allowed_notes = business.get("release_notes_path") if isinstance(business.get("release_notes_path"), str) else None
@@ -534,7 +636,7 @@ def validate_notes_path(root: Path, value: Any, *, task_short_id: str | None = N
     return path
 
 def output_edge(root: Path, transition: str, target_node: str) -> dict[str, Any]:
-    graph = json.loads((root / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
+    graph = json.loads((root / GRAPH_PATH).read_text(encoding="utf-8"))
     target_id = _node_id(root, target_node)
     matches = [edge for edge in graph.get("edges", []) if edge.get("key") == transition and edge.get("target_node_id") == target_id]
     if len(matches) != 1:
@@ -543,10 +645,33 @@ def output_edge(root: Path, transition: str, target_node: str) -> dict[str, Any]
 
 def emit_exact(root: Path, transition: str, target_node: str, fields: Mapping[str, Any], *, commentary: str | None = None) -> None:
     edge = output_edge(root, transition, target_node)
-    expected = {item.get("key") for item in edge.get("parameters", [])}
+    graph = json.loads((root / GRAPH_PATH).read_text(encoding="utf-8"))
+    target = next(
+        (item for item in graph.get("nodes", []) if item.get("key") == target_node),
+        {},
+    )
+    parameter_keys = [item.get("key") for item in edge.get("parameters", [])]
+    routed_script = target.get("kind") == "script" and target_node != "task_janitor"
+    if routed_script:
+        if (
+            parameter_keys.count(ENTRY_TRANSITION) != 1
+            or not parameter_keys
+            or parameter_keys[-1] != ENTRY_TRANSITION
+            or ENTRY_TRANSITION in fields
+        ):
+            raise ContractError(
+                f"Script output edge lacks the exact route carrier: {transition}"
+            )
+        expected = set(parameter_keys) - {ENTRY_TRANSITION}
+    else:
+        if ENTRY_TRANSITION in parameter_keys:
+            raise ContractError(f"route carrier is forbidden for this target: {transition}")
+        expected = set(parameter_keys)
     if set(fields) != expected:
         raise ContractError(f"output fields do not exactly match graph edge {transition}")
     output = {"transition": transition, **dict(fields)}
+    if routed_script:
+        output[ENTRY_TRANSITION] = transition
     if commentary is not None:
         if not isinstance(commentary, str) or len(commentary.encode("utf-8")) > 8192:
             raise ContractError("native approval commentary is invalid")
@@ -1182,7 +1307,9 @@ def _read_checkpoint_descriptor(directory):
 
 
 def read_profile_checkpoint(root: Path, task_short_id: str, *, expected: Mapping[str, Any] | None = None,
-                            with_receipt=False, missing_ok=False):
+                            with_receipt=False, with_snapshot=False, missing_ok=False):
+    if with_snapshot and not with_receipt:
+        raise ContractError("profile checkpoint snapshot requires its deletion receipt")
     try:
         with _checkpoint_directory(root, task_short_id) as (directory, parents, stable):
             raw, identity = _read_checkpoint_descriptor(directory)
@@ -1190,7 +1317,10 @@ def read_profile_checkpoint(root: Path, task_short_id: str, *, expected: Mapping
             if value["task_short_id"] != task_short_id:
                 raise ContractError("profile checkpoint task drifted")
             stable()
-            return (value, (parents, identity)) if with_receipt else value
+            receipt = (parents, identity)
+            if with_snapshot:
+                return value, receipt, raw
+            return (value, receipt) if with_receipt else value
     except FileNotFoundError as error:
         if missing_ok: return None
         raise ContractError("profile checkpoint is missing") from error

@@ -110,7 +110,37 @@ has no signing, release, tag, publication, deployment, or credential effect.
 The tracked graph is a source artifact only. S05 never applies, relinks, or
 mutates a live Kent Workflow, Task, default, canonical state, or project link.
 
-## Revision 90 closed safety contract
+## Private Release proposal cohort
+
+The profile selects the private Kit5af-named Release proposal
+`.kent/workflows/puber-release-kit-5af.json` at source revision 91/native
+proposal version 94. It preserves the existing 18/51/51 topology and adds the
+exact 21 `entry_transition` business-route carriers; the profile-generation
+Script and all native approval gates remain unchanged. This is preparation
+material only: future qualified Kit K and project commit C are unknown,
+`runtime_attested` remains false, and no live Workflow/Task/default/pin is
+changed. Historical Release v90 graph/spec/manifest bytes remain frozen.
+
+The profile-owned `mobile_script_resource_lock` adapter is a Puber context
+wrapper, not a second lock implementation. It invokes the same
+`mobile_resource_lock` shared owner record and guard as Session callers. It
+does not forge Session/Run/Step identity, include `entry_transition` in owner
+identity, persist lease tokens, automatically resume/take over Script owners,
+or delete Unknown owners. Activation remains blocked by old reachable Tasks
+OSM-108 and OSM-110 until their actual adapter bytes and lock semantics are
+compatible under separately approved rollout.
+
+Cleanup classifies Task runtime inventory and seal history before checkpoint
+reads or retention. Before final sealing it retains exact checkpoint bytes,
+original input/proofs, source-envelope digest, canonical report prefix, and
+seal request in an ignored bounded
+`build/kent-workflow/<task-short-id>/` receipt referenced and read back from
+the durable Task record. Unknown, partial, conflicting, or unsealed state
+preserves all bytes and blocks before seal or deletion. A valid prior seal with
+an absent checkpoint allows only read-only reuse of that retained original
+input; missing proof is never reconstructed from a marker.
+
+## Historical Revision 90 closed safety contract
 
 The exact signing pins, preparation-report v2 fields and admission rules are
 owned by `.kent/commands/release.md`. Require
