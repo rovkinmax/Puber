@@ -55,6 +55,10 @@ smoke-lab = "head"
 maintenance = "default-branch"
 release = "ask-on-first-execution"
 
+[puber_runtime.kit_source]
+schema_version = 1
+root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/restart-readiness-20261011-82ece821"
+
 [policies]
 smoke = "conditional"
 writer_sessions = "fresh_per_slice"
