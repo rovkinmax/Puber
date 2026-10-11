@@ -8,7 +8,7 @@ from pathlib import Path
 import unittest
 
 
-SOURCE = Path(__file__).resolve().parents[3] / ".kent/workflows/puber-release.json"
+SOURCE = Path(__file__).resolve().parents[3] / ".kent/workflows/puber-release-kit-5af.json"
 
 
 class SessionTrace:

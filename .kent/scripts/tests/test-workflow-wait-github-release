@@ -73,7 +73,7 @@ def test_monitor(rebased: bool, prepared=None) -> None:
         os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(kit_root)
         head = target
         assert head != base_oid
-        graph = json.loads((work / ".kent/workflows/puber-release.json").read_text())
+        graph = json.loads((work / ".kent/workflows/puber-release-kit-5af.json").read_text())
         publish_node = next(n for n in graph["nodes"] if n["key"] == "publish")
         monitor_node = next(n for n in graph["nodes"] if n["key"] == "monitor")
         ci_prepare_node = next(n for n in graph["nodes"] if n["key"] == "ci_prepare")
@@ -86,7 +86,7 @@ def test_monitor(rebased: bool, prepared=None) -> None:
             # prepared controller head H and the rebased merged target T.
             "execution_target": {"commit_oid": base_oid}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
             "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"}, "worktree_path": str(work),
+            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 94, "name": "Puber Release"}, "worktree_path": str(work),
         }
         if prepared:
             task = prepared["task"]
@@ -96,18 +96,31 @@ def test_monitor(rebased: bool, prepared=None) -> None:
         task_path.write_text(json.dumps(task), encoding="utf-8")
         kent = fake / "kent"
         sessions_path = fake / "retained-task-sessions.json"
+        comments_path = fake / "task-comments.json"
+        comments_path.write_text("[]", encoding="utf-8")
         owner_id = "a848edb1-27d7-45a2-a601-37005690e914"
         sessions_path.write_text(json.dumps({"task_id":task_id,"items":[{
             "session_id":owner_id,"session_name":"Retained Ship owner","node_name":"Ship PR",
             "agent_role":"delivery-operator","status":"idle"}]}))
         kent.write_text("#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\n" +
-            f"task=Path({str(task_path)!r}); sessions=Path({str(sessions_path)!r})\n" +
+            f"task=Path({str(task_path)!r}); sessions=Path({str(sessions_path)!r}); comments=Path({str(comments_path)!r}); owner={owner_id!r}\n" +
             "args=sys.argv[1:]\n" +
             "if args[:2] == ['task','show']: print(task.read_text()); sys.exit(0)\n" +
             "if args[:2] == ['task','sessions']:\n" +
             " assert args[2] == json.loads(task.read_text())['summary']['id']\n" +
             " assert args[-5:] == ['--offset','0','--limit','100','--json']\n" +
             " print(sessions.read_text()); sys.exit(0)\n" +
+            "if args[:2] == ['task','search']:\n" +
+            " value=json.loads(task.read_text()); body=args[2]\n" +
+            " assert args[3:] == ['--include-comments','--case-sensitive','--project',value['summary']['project_id'],'--page-size','2','--offset','0','--json']\n" +
+            " found=[item for item in json.loads(comments.read_text()) if item==body]\n" +
+            " groups=[]\n" +
+            " if found: groups=[{'hits':[{'literal':{'after':'','before':'','left_truncated':False,'match':body,'right_truncated':False},'ordinal':0,'source':{'kind':'comment','comment_id':'fixture-retention'}} for _ in found],'project_id':value['summary']['project_id'],'project_key':'PUB','short_id':value['summary']['short_id'],'status':'active','task_id':value['summary']['id'],'title':'fixture','total_hit_count':len(found),'workflow_id':value['summary']['workflow_id']}]\n" +
+            " print(json.dumps({'groups':groups,'mode':'literal'})); sys.exit(0)\n" +
+            "if args[:3] == ['task','comment','add']:\n" +
+            " value=json.loads(task.read_text()); body=args[args.index('--body')+1]\n" +
+            " assert args == ['task','comment','add',value['summary']['id'],'--project',value['summary']['project_id'],'--body',body,'--author','agent','--author-id',owner]\n" +
+            " values=json.loads(comments.read_text()); values.append(body); comments.write_text(json.dumps(values)); print('{}'); sys.exit(0)\n" +
             "sys.exit(2)\n")
         kent.chmod(0o755)
         body_file = fake / "body"; body_file.write_text("", encoding="utf-8")
@@ -337,7 +350,8 @@ sys.exit(3)
         task.update({"current_nodes":[{"node_id":ci_prepare_node["id"]}],"current_scripts":[{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-ci"),"current_node":{"node_id":ci_prepare_node["id"]}}],"status":{"node_ids":[ci_prepare_node["id"]]}})
         task_path.write_text(json.dumps(task), encoding="utf-8")
         ci_input = {
-            "_kent":{"task_id":task_id,"node_id":ci_prepare_node["id"],"transition_branch_key":"ship_pr_ci_watch"},
+            "entry_transition": "ship_pr_ci_watch",
+            "_kent":{"task_id":task_id,"node_id":ci_prepare_node["id"]},
             "workspace_path":str(work),"operation_id":"a"*64,"task_short_id":"PUB-99",
             "release_type":"minor","release_version":"99.0.0","release_tag":"v99.0.0",
             "release_branch":"release/99.0.0","release_base_oid":base_oid,"candidate_oid":head,
@@ -345,8 +359,6 @@ sys.exit(3)
             "release_preparation_report":preparation_report,"release_preparation_report_digest":preparation_digest,
             "verification_summary":"fixture preparation passed","pr_url":"https://github.com/rovkinmax/Puber/pull/7",
             "branch_name":"release/99.0.0","merge_strategy":"rebase","pr_head_oid":head,"pr_base_oid":base_oid,
-            "ci_contract": initial_ci_contract(head, base_oid),
-            "pr_feedback_cursor": "uninitialized",
         }
         if prepared:
             ship_edge = next(
@@ -359,13 +371,10 @@ sys.exit(3)
                 if key in prepared["carrier"]
             }
             ci_input.update(
-                ci_contract=initial_ci_contract(head, base_oid),
-                pr_feedback_cursor="uninitialized",
-                commentary="actual Prepare to CI carrier",
+                entry_transition="ship_pr_ci_watch",
                 _kent={
                     "task_id": task_id,
                     "node_id": ci_prepare_node["id"],
-                    "transition_branch_key": "ship_pr_ci_watch",
                 },
             )
         ci_result = subprocess.run([str(work/".kent/scripts/workflow-puber-release-ci")], cwd=work, input=json.dumps(ci_input), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
@@ -381,7 +390,8 @@ sys.exit(3)
                 "path": str(work.resolve()/".kent/scripts/workflow-puber-release-ci"), "current_node":{"node_id":watch_node["id"]}}], status={"node_ids":[watch_node["id"]]})
             task_path.write_text(json.dumps(task))
             watch_input = {key:value for key,value in ci_output.items() if key != "transition"}
-            watch_input["_kent"] = {"task_id":task_id,"node_id":watch_node["id"],"transition_branch_key":"ci_prepare_ready_initial"}
+            watch_input["entry_transition"] = "ci_prepare_ready_initial"
+            watch_input["_kent"] = {"task_id":task_id,"node_id":watch_node["id"]}
             watched = subprocess.run([str(work/".kent/scripts/workflow-puber-release-ci")], cwd=work,
                 input=json.dumps(watch_input), text=True, capture_output=True, env=env)
             assert watched.returncode == 0, watched.stderr
@@ -396,7 +406,8 @@ sys.exit(3)
             assert ci_output["transition"] == "ci_prepare_already_merged", ci_output
         task.update({"current_nodes":[{"node_id":merge_watch_node["id"]}],"current_scripts":[{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-ci"),"current_node":{"node_id":merge_watch_node["id"]}}],"status":{"node_ids":[merge_watch_node["id"]]}})
         task_path.write_text(json.dumps(task), encoding="utf-8")
-        merge_input = {"_kent":{"task_id":task_id,"node_id":merge_watch_node["id"],"transition_branch_key":"waiting_pr_merge_watch" if prepared else "ci_prepare_already_merged"}}
+        merge_input = {"entry_transition": "waiting_pr_merge_watch" if prepared else "ci_prepare_already_merged",
+            "_kent":{"task_id":task_id,"node_id":merge_watch_node["id"]}}
         merge_input.update({key: value for key, value in ci_output.items() if key != "transition"})
         merge_result = subprocess.run([str(work/".kent/scripts/workflow-puber-release-ci")], cwd=work, input=json.dumps(merge_input), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         assert merge_result.returncode == 0, merge_result.stderr
@@ -405,7 +416,8 @@ sys.exit(3)
         publish_payload.pop("transition")
         task.update({"current_nodes":[{"node_id":publish_node["id"]}],"current_scripts":[{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-publish"),"current_node":{"node_id":publish_node["id"]}}],"status":{"node_ids":[publish_node["id"]]}})
         task_path.write_text(json.dumps(task), encoding="utf-8")
-        publish_payload["_kent"] = {"task_id":task_id,"node_id":publish_node["id"],"transition_branch_key":"merge_watch_pr_merged"}
+        publish_payload["entry_transition"] = "merge_watch_pr_merged"
+        publish_payload["_kent"] = {"task_id":task_id,"node_id":publish_node["id"]}
         published_result = subprocess.run([str(work/".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(publish_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         assert published_result.returncode == 0, published_result.stderr
         published = json.loads(published_result.stdout)
@@ -414,7 +426,8 @@ sys.exit(3)
             env["PUBER_MASTER"] = "d" * 40  # Master advancing after publication is not Monitor drift.
         task.update({"current_nodes":[{"node_id":monitor_node["id"]}],"current_scripts":[{"path": str(work.resolve() / ".kent/scripts/workflow-wait-github-release"),"current_node":{"node_id":monitor_node["id"]}}],"status":{"node_ids":[monitor_node["id"]]}})
         task_path.write_text(json.dumps(task), encoding="utf-8")
-        monitor_payload = {"_kent":{"task_id":task_id,"node_id":monitor_node["id"],"transition_branch_key":"monitor_release"}}
+        monitor_payload = {"entry_transition": "monitor_release",
+            "_kent":{"task_id":task_id,"node_id":monitor_node["id"]}}
         monitor_payload.update({key: published[key] for key in ("release_version","release_tag","target_commit","pr_url","tag_push_status","release_notes_path","publication_report","publication_report_digest","release_run")})
         monitor_payload["commentary"] = "private-transport-commentary"
         result = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
@@ -562,7 +575,8 @@ sys.exit(3)
                 assert pinned_block["release_run"] == pinned_payload["release_run"]
                 assert not any("/actions/runs?" in line for line in calls_file.read_text(encoding="utf-8").splitlines())
 
-            retry = {"_kent": {**monitor_payload["_kent"], "transition_branch_key": "monitor_needs_user_action"}}
+            retry = {"entry_transition": "monitor_needs_user_action",
+                "_kent": dict(monitor_payload["_kent"])}
             retry["commentary"] = "private-retry-commentary"
             retry.update({key: blocked[key] for key in ("blocker_reason", "workspace_path", "operation_id", "pr_url", "branch_name", "release_version", "release_tag", "target_commit", "tag_push_status", "release_notes_path", "publication_report", "publication_report_digest", "release_run")})
             calls_file.write_text("", encoding="utf-8")
@@ -611,11 +625,11 @@ sys.exit(3)
         body_file.write_text((work / published["release_notes_path"]).read_text())
         primary = (root / "primary").resolve()
         status = {
-            "target": {"WorkspaceID": "fixture-workspace", "WorkspaceName": "Puber", "WorkspaceRoot": str(primary),
-                "WorkspaceAvailability": "available", "Worktree": {"ID": "fixture-worktree", "Name": "H", "Root": str(work), "Availability": "available"},
-                "CwdRelpath": ".", "EffectiveWorkdir": str(work)},
-            "worktree": {"recorded_root": str(work), "observed_root": str(work), "display_name": "H", "recorded_branch_ref": "refs/heads/release/99.0.0"},
-            "problems": [],
+            "target": {"workspaceId": "fixture-workspace", "workspaceName": "Puber", "workspaceRoot": str(primary),
+                "workspaceAvailability": "available", "worktree": {"id": "fixture-worktree", "name": "H", "root": str(work), "availability": "available"},
+                "cwdRelpath": ".", "effectiveWorkdir": str(work)},
+            "worktree": {"recordedRoot": str(work), "observedRoot": str(work), "displayName": "H", "recordedBranchRef": "refs/heads/release/99.0.0"},
+            "problems": None,
         }
         status_path = root / "status.json"; status_path.write_text(json.dumps(status))
         native = root / "kent-worktree-fixture"
@@ -623,7 +637,7 @@ sys.exit(3)
             f"path=Path({str(status_path)!r}); primary={str(primary)!r}; owner={owner_id!r}\n" +
             "args=sys.argv[1:]\nassert '--session' in args and args[args.index('--session')+1] == owner\n" +
             "if args[0]=='status': print(path.read_text()); sys.exit(0)\n" +
-            "if args[0]=='leave':\n value=json.loads(path.read_text()); value['target'].update(Worktree=None,EffectiveWorkdir=primary); value['worktree']={'recorded_root':primary,'observed_root':primary}; path.write_text(json.dumps(value)); print('{}'); sys.exit(0)\n" +
+            "if args[0]=='leave':\n value=json.loads(path.read_text()); value['target'].update(worktree=None,effectiveWorkdir=primary); value['worktree']={'recordedRoot':primary,'observedRoot':primary}; path.write_text(json.dumps(value)); print('{}'); sys.exit(0)\n" +
             "if args[0]=='delete': print('native fixture admission blocks active foreign work',file=sys.stderr); sys.exit(1)\n" +
             "sys.exit(99)\n")
         native.chmod(0o755)
@@ -672,7 +686,11 @@ sys.exit(3)
             "parameters":{key:value for key,value in output.items() if key != "transition"}}
         def blocked_route(label, request):
             def snapshot():
-                return {str(p.relative_to(work)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (work/".kent/runtime").rglob("*") if p.is_file()}
+                files = {str(p.relative_to(work)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (work/".kent/runtime").rglob("*") if p.is_file()}
+                retention = work/"build/kent-workflow/PUB-99/release-cleanup-retention.json"
+                files["<cleanup-retention>"] = hashlib.sha256(retention.read_bytes()).hexdigest() if retention.is_file() else "absent"
+                files["<task-comments>"] = hashlib.sha256(comments_path.read_bytes()).hexdigest()
+                return files
             before = snapshot()
             result = subprocess.run([str(work / ".kent/scripts/workflow-release-cleanup")],cwd=work,
                 input=json.dumps(request),text=True,capture_output=True,env=env)
@@ -710,7 +728,7 @@ sys.exit(3)
             original_status = json.loads(json.dumps(status))
             left = subprocess.run([str(native),"leave","--session",owner_id],cwd=work,text=True,capture_output=True,env=env)
             assert left.returncode == 0,left.stderr
-            assert json.loads(status_path.read_text())["target"]["Worktree"] is None
+            assert json.loads(status_path.read_text())["target"]["worktree"] is None
             assert all(row["root"] == str(work) for row in history)  # No bulk leave.
             janitor_node = next(n for n in graph["nodes"] if n["key"] == "task_janitor")
             task.update(current_nodes=[{"node_id":janitor_node["id"]}],current_scripts=[{"path":str(work/".kent/scripts/workflow-task-janitor"),"current_node":{"node_id":janitor_node["id"]}}],status={"node_ids":[janitor_node["id"]]},live_sessions=[])
@@ -730,6 +748,8 @@ sys.exit(3)
                 "workspace_path":str(work),"operation_id":"a"*64,"branch_name":"release/99.0.0",
                 "cleanup_mode":"report_only","cleanup_report":blocked["cleanup_report"]}}
             blocked_route("published retry mode downgrade",{**janitor_retry,"parameters":{**janitor_retry["parameters"],"cleanup_mode":"no_pr"}})
+            blocked_route("published retry workspace mismatch",{**janitor_retry,"parameters":{**janitor_retry["parameters"],"workspace_path":str(primary)}})
+            blocked_route("published retry branch mismatch",{**janitor_retry,"parameters":{**janitor_retry["parameters"],"branch_name":"release/100.0.0"}})
             recovered = subprocess.run([str(work / ".kent/scripts/workflow-release-cleanup")], cwd=work,
                 input=json.dumps(janitor_retry), text=True, capture_output=True, env=env)
             assert recovered.returncode == 0, recovered.stderr
@@ -739,7 +759,7 @@ sys.exit(3)
             assert recovery["publication_report_digest"] == cleaned["publication_report_digest"]
             second_leave = subprocess.run([str(native),"leave","--session",owner_id],cwd=work,text=True,capture_output=True,env=env)
             assert second_leave.returncode == 0, second_leave.stderr
-            assert json.loads(status_path.read_text())["target"]["Worktree"] is None
+            assert json.loads(status_path.read_text())["target"]["worktree"] is None
             assert all(row["root"] == str(work) for row in history)
             assert task["current_nodes"][0]["session_id"] == owner_id
             print("SECOND OWN LEAVE AFTER SUCCESSFUL RETRY", owner_id, "primary verified; other idle Sessions untouched")

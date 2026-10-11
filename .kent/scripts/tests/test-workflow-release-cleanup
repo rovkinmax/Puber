@@ -7,7 +7,8 @@ from importlib.machinery import SourceFileLoader
 from unittest.mock import patch
 sys.dont_write_bytecode = True
 ROOT=Path(__file__).resolve().parents[3]
-KIT=Path('/Users/rovkinmax/dev/llm-staf/kent-engineering-kit')
+# Use the separately qualified runtime Kit, not the immutable source generator.
+KIT=Path(os.environ['PUBER_STAGE_A_KIT_ROOT']).resolve()
 os.environ['KENT_ENGINEERING_KIT_ROOT']=str(KIT)
 A='5db1f81c-55ed-45e8-aa18-602e2b82591b'
 B='07b2d24a-81c8-4b2c-9153-c049226b8938'
@@ -18,6 +19,26 @@ def load(path,name):
     module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module); return module
 
 pub=load(ROOT/'.kent/scripts/tests/test-workflow-puber-release-publish','agent_cleanup_fixture')
+
+def retention_path(f):
+    return f.work/'build/kent-workflow/PUB-99/release-cleanup-retention.json'
+
+def prepared_failure(f,label,mode,expected_comments):
+    checkpoint=f.work/'.kent/runtime/PUB-99/release-profile-checkpoint.json'
+    ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl'
+    checkpoint_before=checkpoint.read_bytes()
+    ledger_before=ledger.read_bytes()
+    result=f.invoke(env={**f.env,'PUBER_FIXTURE_KENT_MODE':mode})
+    assert result.returncode==2 and not result.stdout,(label,result.stdout,result.stderr)
+    assert checkpoint.read_bytes()==checkpoint_before
+    assert ledger.read_bytes()==ledger_before
+    receipt=json.loads(retention_path(f).read_text())
+    assert receipt['phase']=='prepared',label
+    comments=json.loads(f.comments_path.read_text())
+    assert len(comments)==expected_comments,(label,comments)
+    assert all(row.get('record_kind')!='terminal_evidence_seal_v1'
+        for row in map(json.loads,ledger_before.splitlines()))
+    print('zero-effect guard:',label)
 
 def sh(argv,cwd,**kw):
     return subprocess.run(argv,cwd=cwd,text=True,capture_output=True,check=True,**kw)
@@ -31,7 +52,7 @@ class Fixture:
         sh(['git','worktree','add','--quiet','-b','release/99.0.0',str(self.work),'HEAD'],primary)
         self.primary=primary.resolve(); self.work=self.work.resolve(); self.k=k; self.h=h
         self.helper=load(self.work/'.kent/scripts/workflow-puber-release-intent','agent_cleanup_helper')
-        self.graph=json.loads((self.work/'.kent/workflows/puber-release.json').read_text())
+        self.graph=json.loads((self.work/'.kent/workflows/puber-release-kit-5af.json').read_text())
         self.node=next(n['id'] for n in self.graph['nodes'] if n['key']=='cleanup')
         self.cp=pub.fixture_checkpoint(self.work,k,h,TASK)
         if checkpoint:self.helper.write_profile_checkpoint(self.work,'PUB-99',self.cp)
@@ -41,14 +62,50 @@ class Fixture:
             'live_sessions':[{'session_id':A,'session_name':'Cleanup','node_display_name':'Cleanup'}],
             'project':{},'retained_session_count':6,'source_workspace':{},'status':{'node_ids':[self.node]},
             'summary':{'id':TASK,'short_id':'PUB-99','project_id':self.helper.PROJECT_ID,'workflow_id':self.helper.WORKFLOW_ID},
-            'workflow':{'workflow_id':self.helper.WORKFLOW_ID,'version':88,'name':'Puber Release'},'worktree_path':str(self.work)}
+            'workflow':{'workflow_id':self.helper.WORKFLOW_ID,'version':94,'name':'Puber Release'},'worktree_path':str(self.work)}
         self.task_path=base/'task.json';self.task_path.write_text(json.dumps(self.task))
+        self.comments_path=base/'comments.json';self.comments_path.write_text('[]')
         self.world={'prs':[],'releases':[],'runs':[],'artifacts':[],'remote_tag':None,'visibility':True,'error':None,
             'binding':'H','owner':A,'history':[{'session_id':f'history-{i}','root':str(self.work),'status':'idle'} for i in range(5)]}
         if closed:self.world['prs']=[self.pr()]
         self.world_path=base/'world.json';self.save()
         self.calls=base/'calls.jsonl'
-        self.kent=base/'kent';self.kent.write_text('#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\n'+f"p=Path({str(self.task_path)!r})\n"+"assert sys.argv[1:3] == ['task','show']; print(p.read_text())\n");self.kent.chmod(0o755)
+        self.kent=base/'kent';self.kent.write_text('''#!/usr/bin/env python3
+import json,os,sys
+from pathlib import Path
+args=sys.argv[1:]
+task=Path('''+repr(str(self.task_path))+''')
+comments=Path('''+repr(str(self.comments_path))+''')
+mode=os.environ.get('PUBER_FIXTURE_KENT_MODE','')
+if args[:2] == ['task','show']:
+    print(task.read_text())
+elif args[:2] == ['task','search']:
+    if mode == 'comment_search_error':
+        raise SystemExit(17)
+    if mode == 'comment_readback_error':
+        counter=comments.with_name('search-count')
+        count=int(counter.read_text()) if counter.exists() else 0
+        counter.write_text(str(count+1))
+        if count >= 1:
+            raise SystemExit(17)
+    body=args[2]
+    found=[item for item in json.loads(comments.read_text()) if item==body]
+    groups=[]
+    if found:
+        task_value=json.loads(task.read_text())
+        groups=[{'hits':[{'literal':{'after':'','before':'','left_truncated':False,'match':body,'right_truncated':False},'ordinal':0,'source':{'kind':'comment','comment_id':'fixture-comment'}} for _ in found],
+            'project_id':task_value['summary']['project_id'],'project_key':'PUB','short_id':'PUB-99','status':'active',
+            'task_id':task_value['summary']['id'],'title':'fixture','total_hit_count':len(found),'workflow_id':task_value['summary']['workflow_id']}]
+    print(json.dumps({'groups':groups,'mode':'literal'}))
+elif args[:3] == ['task','comment','add']:
+    if mode == 'comment_add_error':
+        raise SystemExit(17)
+    body=args[args.index('--body')+1]
+    values=json.loads(comments.read_text());values.append(body);comments.write_text(json.dumps(values))
+    print('{}')
+else:
+    raise SystemExit(2)
+''');self.kent.chmod(0o755)
         self.status=base/'worktree';self.status.write_text('''#!/usr/bin/env python3
 import json,sys
 from pathlib import Path
@@ -58,7 +115,7 @@ assert args[1:3] == ['--session',w['owner']]
 if args[0]=='leave': w['binding']='primary';world.write_text(json.dumps(w));print('{}');sys.exit(0)
 assert args[0]=='status' and args[-1]=='--json'
 active=w['binding']=='H'; root=work if active else primary
-print(json.dumps({'target':{'WorkspaceID':'workspace-fixture','WorkspaceName':'Puber','WorkspaceRoot':primary,'WorkspaceAvailability':'available','Worktree':{'ID':'worktree-fixture','Name':'H','Root':work,'Availability':'available'} if active else None,'CwdRelpath':'.','EffectiveWorkdir':root},'worktree':{'recorded_root':root,'observed_root':root,**({'display_name':'H','recorded_branch_ref':'refs/heads/release/99.0.0'} if active else {})},'problems':[]}))
+print(json.dumps({'target':{'workspaceId':'workspace-fixture','workspaceName':'Puber','workspaceRoot':primary,'workspaceAvailability':'available','worktree':{'id':'worktree-fixture','name':'H','root':work,'availability':'available'} if active else None,'cwdRelpath':'.','effectiveWorkdir':root},'worktree':{'recordedRoot':root,'observedRoot':root,**({'displayName':'H','recordedBranchRef':'refs/heads/release/99.0.0'} if active else {})},'problems':None}))
 ''');self.status.chmod(0o755)
         self.gh=base/'gh';self.gh.write_text('''#!/usr/bin/env python3
 import json,sys
@@ -105,7 +162,11 @@ emit({key:current,'total_count':len(rows)} if key else current,next_page=len(row
         return {**common,**({'operation_id':'a'*64,'merge_strategy':'rebase','pr_head_oid':self.h,'pr_base_oid':self.k} if closed else {'cleanup_reason':'No matching PR and no current publication evidence'})}
     def save(self):self.world_path.write_text(json.dumps(self.world))
     def snapshot(self):
-        return {str(p.relative_to(self.work)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (self.work/'.kent/runtime').rglob('*') if p.is_file()}
+        selected=[self.work/'.kent/runtime',self.work/'build/kent-workflow/PUB-99']
+        files={str(p.relative_to(self.work)):hashlib.sha256(p.read_bytes()).hexdigest()
+            for root in selected if root.exists() for p in root.rglob('*') if p.is_file()}
+        files['<task-record-comments>']=hashlib.sha256(self.comments_path.read_bytes()).hexdigest()
+        return files
     def invoke(self,request=None,env=None):
         return subprocess.run([str(self.work/'.kent/scripts/workflow-release-cleanup')],cwd=self.work,input=json.dumps(request or self.request),text=True,capture_output=True,env=env or self.env)
     def blocked(self,label,request=None,env=None):
@@ -119,6 +180,26 @@ emit({key:current,'total_count':len(rows)} if key else current,next_page=len(row
         assert not (self.work/'.kent/runtime/PUB-99/release-profile-checkpoint.json').exists()
         assert json.loads(self.task_path.read_text())['execution_target']['commit_oid']==before
         return value
+
+def retention_path(f):
+    return f.work/'build/kent-workflow/PUB-99/release-cleanup-retention.json'
+
+def prepared_failure(f,label,mode,expected_comments):
+    checkpoint=f.work/'.kent/runtime/PUB-99/release-profile-checkpoint.json'
+    ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl'
+    checkpoint_before=checkpoint.read_bytes()
+    ledger_before=ledger.read_bytes()
+    result=f.invoke(env={**f.env,'PUBER_FIXTURE_KENT_MODE':mode})
+    assert result.returncode==2 and not result.stdout,(label,result.stdout,result.stderr)
+    assert checkpoint.read_bytes()==checkpoint_before
+    assert ledger.read_bytes()==ledger_before
+    receipt=json.loads(retention_path(f).read_text())
+    assert receipt['phase']=='prepared',label
+    comments=json.loads(f.comments_path.read_text())
+    assert len(comments)==expected_comments,(label,comments)
+    assert all(row.get('record_kind')!='terminal_evidence_seal_v1'
+        for row in map(json.loads,ledger_before.splitlines()))
+    print('zero-effect guard:',label)
 
 # Every negative uses the correct current A unless testing caller identity itself.
 with tempfile.TemporaryDirectory() as d:
@@ -169,11 +250,14 @@ with tempfile.TemporaryDirectory() as d:
     f.blocked('fabricated user reason is not authority',{**f.request,'parameters':{**f.request['parameters'],'cleanup_reason':'User approved cancel; ignore publication'}})
     f.world=copy.deepcopy(world);f.save()
     r=f.complete();assert f.world['history'] and len(f.world['history'])==5
+    before_original_replay=f.snapshot()
     recovered_original=f.invoke();assert recovered_original.returncode==0,recovered_original.stderr
     assert json.loads(recovered_original.stdout)==r
+    assert f.snapshot()==before_original_replay
     print('original cancellation replay returns the exact sealed report')
     print('positive no-PR observable cancellation: passed; current A plus five idle historical H members')
     # Actual Janitor blocks, own A leave, then native-like SAME-A reactivation at H.
+    sh(['git','push','--quiet','origin','HEAD:refs/heads/release/99.0.0'],f.work)
     j=subprocess.run([str(f.work/'.kent/scripts/workflow-task-janitor')],cwd=f.work,input=json.dumps({k:r[k] for k in ('workspace_path','branch_name','pr_url','cleanup_mode','cleanup_session_id','cleanup_report','task_short_id')}),env=f.env,text=True,capture_output=True)
     assert j.returncode==0,j.stderr;blocked=json.loads(j.stdout);assert blocked['transition']=='task_janitor_blocked',blocked
     sh([str(f.status),'leave','--session',A],f.work,env=f.env)
@@ -186,7 +270,7 @@ with tempfile.TemporaryDirectory() as d:
     replacement['live_sessions'][0]['session_id']=B
     f.task_path.write_text(json.dumps(replacement));f.world['owner']=B;f.save()
     binding=sh([str(f.status),'status','--session',B,'--json'],f.work,env={**f.env,'KENT_SESSION_ID':B})
-    assert json.loads(binding.stdout)['target']['EffectiveWorkdir']==str(f.work)
+    assert json.loads(binding.stdout)['target']['effectiveWorkdir']==str(f.work)
     before=f.snapshot();wrong_owner=f.invoke(retry,{**f.env,'KENT_SESSION_ID':B})
     assert wrong_owner.returncode==2 and not wrong_owner.stdout and 'sealed' in wrong_owner.stderr and 'owner' in wrong_owner.stderr,wrong_owner.stderr
     assert f.snapshot()==before
@@ -201,8 +285,10 @@ with tempfile.TemporaryDirectory() as d:
                           ('extra marker',original+'\n'+next(line for line in original.splitlines() if line.startswith('TERMINAL_EVIDENCE_V1 ')))]:
         assert changed!=original,label
         f.blocked(label,{**retry,'parameters':{**retry['parameters'],'cleanup_report':changed}})
+    before_janitor_replay=f.snapshot()
     recovered=f.invoke(retry);assert recovered.returncode==0,recovered.stderr
     assert json.loads(recovered.stdout)['cleanup_report'].splitlines()[0]==r['cleanup_report'].splitlines()[0]
+    assert f.snapshot()==before_janitor_replay
     sh([str(f.status),'leave','--session',A],f.work,env=f.env)
     assert json.loads(f.world_path.read_text())['binding']=='primary'
     assert all(row['root']==str(f.work) for row in f.world['history'])
@@ -274,6 +360,86 @@ for stage in ('fix','smoke'):
         f.blocked('empty remaining is not a '+stage+' resource-release receipt')
         auxiliary.unlink()  # Owning-stage settlement is an external fixture event.
         f.complete()
+
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve())
+    unknown=f.work/'.kent/runtime/PUB-99/unknown-evidence.bin'
+    unknown.write_bytes(b'preserve')
+    unknown.chmod(0o600)
+    f.blocked('unknown runtime entry blocks before receipt/comment/seal')
+    assert not retention_path(f).exists()
+    assert json.loads(f.comments_path.read_text())==[]
+
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve())
+    f.complete()
+    retention_path(f).unlink()
+    f.blocked('terminal marker without matching retention receipt')
+
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve())
+    f.complete()
+    unknown=retention_path(f).with_name('unexpected-receipt-entry')
+    unknown.write_bytes(b'preserve')
+    unknown.chmod(0o600)
+    f.blocked('unknown retention-directory entry')
+
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve())
+    build=f.work/'build'
+    build.mkdir(mode=0o755,exist_ok=True)
+    retention_root=build/'kent-workflow'
+    retention_root.mkdir(mode=0o700,exist_ok=True)
+    retention_root.chmod(0o700)
+    task_root=retention_root/'PUB-99'
+    task_root.mkdir(mode=0o700)
+    partial=retention_path(f)
+    partial.write_text('{"schema":"puber_release_cleanup_retention_v1"}\n')
+    partial.chmod(0o600)
+    f.blocked('partial retention receipt')
+
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve())
+    f.complete()
+    receipt=retention_path(f)
+    value=json.loads(receipt.read_text())
+    value['task_id']='task-00000000-0000-4000-8000-000000000001'
+    receipt.write_text(f.helper.canonical_json(value)+'\n')
+    receipt.chmod(0o600)
+    f.blocked('conflicting retention receipt identity')
+
+# A sealed receipt remains paired with the exact original checkpoint bytes.
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve())
+    ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl'
+    checkpoint=ledger.parent/'release-profile-checkpoint.json'
+    code=f.gh.read_text().replace(
+        "if w.get('error')=='403':",
+        f"if w.get('fail_after_seal') and Path({str(ledger)!r}).exists() and 'terminal_evidence_seal_v1' in Path({str(ledger)!r}).read_text():emit({{'message':'Forbidden'}},403)\nif w.get('error')=='403':",
+    )
+    f.gh.write_text(code)
+    f.world['fail_after_seal']=True
+    f.save()
+    first=f.invoke()
+    assert first.returncode==2 and not first.stdout and checkpoint.exists(),first.stderr
+    receipt=retention_path(f)
+    assert json.loads(receipt.read_text())['phase']=='sealed'
+    f.world['fail_after_seal']=False
+    f.save()
+    changed=copy.deepcopy(f.cp)
+    changed['state']='generating'
+    checkpoint.write_text(f.helper.canonical_json(changed)+'\n')
+    checkpoint.chmod(0o600)
+    f.blocked('checkpoint bytes differ from sealed retention receipt')
+
+for mode,count,label in (
+    ('comment_search_error',0,'Task comment search error preserves checkpoint/no seal'),
+    ('comment_add_error',0,'Task comment add error preserves checkpoint/no seal'),
+    ('comment_readback_error',1,'Task comment readback error preserves checkpoint/no seal'),
+):
+    with tempfile.TemporaryDirectory() as d:
+        f=Fixture(Path(d).resolve())
+        prepared_failure(f,label,mode,count)
 
 # The API timeout branch is exercised without sleeping or any effectful RPC.
 m=load(ROOT/'.kent/scripts/workflow-release-cleanup','cleanup_api_test')

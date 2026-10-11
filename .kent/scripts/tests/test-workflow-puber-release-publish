@@ -26,42 +26,33 @@ SCRIPT_PATHS = [
     ".kent/scripts/workflow-puber-release-publish",
     ".kent/scripts/workflow-wait-github-release",
     ".kent/scripts/workflow-release-cleanup",
-    ".kent/workflows/puber-release.json",
-    ".kent/workflows/specs/puber-release.toml",
-    ".kent/workflows/builders/puber_release.py",
-    ".kent/workflows/puber-release.manifest.json",
+    ".kent/workflows/puber-release-kit-5af.json",
+    ".kent/workflows/specs/puber-release-kit-5af.toml",
+    ".kent/workflows/builders/puber_release_kit_5af.py",
+    ".kent/workflows/puber-release-kit-5af.manifest.json",
 ]
 
 def sh(args, cwd, **kwargs):
     return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
 
 def materialize(root: Path, bare: Path, *, linked: bool = False) -> tuple[Path, str, str, str]:
-    work = root / "work"
-    primary = root / "primary" if linked else work
-    sh(["git", "clone", "--quiet", str(ROOT), str(primary)], root)
+    primary = root / "primary"
+    work = root / "work" if linked else primary
+    shutil.copytree(
+        ROOT,
+        primary,
+        ignore=shutil.ignore_patterns(".git", "__pycache__"),
+    )
+    sh(["git", "init", "--quiet", "-b", "main"], primary)
+    sh(["git", "config", "user.email", "test@example.invalid"], primary)
+    sh(["git", "config", "user.name", "Puber Test"], primary)
+    sh(["git", "add", "."], primary)
+    sh(["git", "commit", "--quiet", "-m", "candidate source fixture"], primary)
     if linked:
+        work.parent.mkdir(parents=True, exist_ok=True)
         sh(["git", "worktree", "add", "--quiet", "-b", "fixture-controller", str(work), "HEAD"], primary)
-    manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text(encoding="utf-8"))
-    manifest_paths = set(SCRIPT_PATHS) | set(manifest["additional_paths"])
-    for external in manifest["external_roots"]:
-        if external.get("kind") == "source-sha256" and "=" in external.get("key", ""):
-            manifest_paths.add(external["key"].split("=", 1)[0])
-    for relative in sorted(manifest_paths):
-        source = ROOT / relative
-        target = work / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-    for external in manifest["external_roots"]:
-        if external["kind"] == "source-sha256":
-            relative, digest = external["key"].split("=", 1)
-            assert helper.sha256_bytes((work / relative).read_bytes()) == digest, relative
-        elif external["kind"] == "builder-sha256":
-            assert helper.sha256_bytes((work / ".kent/workflows/builders/puber_release.py").read_bytes()) == external["key"]
     sh(["git", "config", "user.email", "test@example.invalid"], work)
     sh(["git", "config", "user.name", "Puber Test"], work)
-    sh(["git", "add", "."], work)
-    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=work).returncode != 0:
-        sh(["git", "commit", "--quiet", "-m", "test fixture source closure"], work)
     base = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
     sh(["git", "checkout", "--quiet", "-b", "release/99.0.0"], work)
     build_file = work / "app/build.gradle.kts"
@@ -87,7 +78,7 @@ def materialize(root: Path, bare: Path, *, linked: bool = False) -> tuple[Path, 
     sh(["git", "commit", "--quiet", "-m", "test release preparation"], work)
     target = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
     sh(["git", "init", "--bare", str(bare)], root)
-    sh(["git", "remote", "set-url", "origin", str(bare)], work)
+    sh(["git", "remote", "add", "origin", str(bare)], work)
     sh(["git", "push", "--quiet", "-u", "origin", "HEAD:master"], work)
     return work, base, target, str(bare)
 
@@ -108,7 +99,7 @@ def rebased_target(work: Path, base: str, head: str) -> str:
 
 def target_with_changes(work: Path, target: str, changes: dict[str, bytes | None]) -> str:
     """Commit real target-only Git blobs without altering H or its index."""
-    manifest_path = ".kent/workflows/puber-release.manifest.json"
+    manifest_path = ".kent/workflows/puber-release-kit-5af.manifest.json"
     manifest = json.loads(sh(["git", "show", target + ":" + manifest_path], work).stdout)
     for external in manifest["external_roots"]:
         if external["kind"] == "source-sha256":
@@ -267,12 +258,12 @@ class Revision90StageRunner:
         self.task_path = task_path
         self.agentw = agentw
         self.graph = json.loads(
-            (work / ".kent/workflows/puber-release.json").read_text(
+            (work / ".kent/workflows/puber-release-kit-5af.json").read_text(
                 encoding="utf-8"
             )
         )
         self.manifest = json.loads(
-            (work / ".kent/workflows/puber-release.manifest.json").read_text(
+            (work / ".kent/workflows/puber-release-kit-5af.manifest.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -314,8 +305,8 @@ class Revision90StageRunner:
 
     def _validate_static_contracts(self) -> None:
         if (
-            self.graph["workflow"]["version"] != 88
-            or self.graph["workflow"]["source_revision"] != 90
+            self.graph["workflow"]["version"] != 94
+            or self.graph["workflow"]["source_revision"] != 91
             or self.graph["workflow"]["schema_version"] != 4
             or len(self.graph["nodes"]) != 18
             or len(self.graph["transition_groups"]) != 51
@@ -383,9 +374,15 @@ class Revision90StageRunner:
 
     def _emit(self, edge_key: str, values: dict) -> tuple[str, dict]:
         required = self._fields(edge_key)
-        if set(values) != set(required) or len(values) != len(required):
+        target = self.nodes_by_id[self.edges[edge_key]["target_node_id"]]
+        routed_script = target["kind"] == "script" and target["key"] != "task_janitor"
+        expected = set(required) - ({"entry_transition"} if routed_script else set())
+        if set(values) != expected or len(values) != len(expected):
             raise StageContractError(f"{edge_key} output carrier drifted")
-        return edge_key, {key: values[key] for key in required}
+        return edge_key, {
+            key: edge_key if routed_script and key == "entry_transition" else values[key]
+            for key in required
+        }
 
     def _checkpoint_path(self, task_short_id: str) -> Path:
         return (
@@ -536,7 +533,6 @@ class Revision90StageRunner:
                 "_kent": {
                     "task_id": self.task_id,
                     "node_id": self.nodes[stage]["id"],
-                    "transition_branch_key": incoming,
                 },
                 **carrier,
             }
@@ -893,15 +889,6 @@ class Revision90StageRunner:
                     "merge_strategy": "rebase",
                     "pr_head_oid": pr["headRefOid"],
                     "pr_base_oid": master_oid,
-                    "ci_contract": helper.canonical_json({
-                        "schema": "github-ci-contract-v1",
-                        "repository": "rovkinmax/Puber",
-                        "pull_number": 7,
-                        "head_oid": pr["headRefOid"],
-                        "base_oid": master_oid,
-                        "require_ci": True,
-                    }),
-                    "pr_feedback_cursor": "uninitialized",
                 },
             )
 
@@ -925,11 +912,20 @@ def test_clean_master_to_exactly_one_release_pr(continuation=None) -> None:
         control = root / "control"
         control.mkdir()
         primary = root / "primary"
-        sh(["git", "clone", "--quiet", str(ROOT), str(primary)], root)
+        shutil.copytree(
+            ROOT,
+            primary,
+            ignore=shutil.ignore_patterns(".git", "__pycache__"),
+        )
+        sh(["git", "init", "--quiet", "-b", "master"], primary)
+        sh(["git", "config", "user.email", "test@example.invalid"], primary)
+        sh(["git", "config", "user.name", "Puber Test"], primary)
+        sh(["git", "add", "."], primary)
+        sh(["git", "commit", "--quiet", "-m", "candidate source fixture"], primary)
         work.parent.mkdir(parents=True, exist_ok=True)
         sh(["git", "worktree", "add", "--quiet", "-b", "fixture-initial", str(work), "HEAD"], primary)
         manifest = json.loads(
-            (ROOT / ".kent/workflows/puber-release.manifest.json").read_text(
+            (ROOT / ".kent/workflows/puber-release-kit-5af.manifest.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -952,7 +948,7 @@ def test_clean_master_to_exactly_one_release_pr(continuation=None) -> None:
                 relative, digest = external["key"].split("=", 1)
                 assert helper.sha256_bytes((work / relative).read_bytes()) == digest, relative
             elif external["kind"] == "builder-sha256":
-                assert helper.sha256_bytes((work / ".kent/workflows/builders/puber_release.py").read_bytes()) == external["key"]
+                assert helper.sha256_bytes((work / ".kent/workflows/builders/puber_release_kit_5af.py").read_bytes()) == external["key"]
 
         adapter_log = control / "adapter.jsonl"
         adapter = work / ".kent/adapters/mobile/emulator-resource-lock.sh"
@@ -960,6 +956,7 @@ def test_clean_master_to_exactly_one_release_pr(continuation=None) -> None:
         adapter.write_text(
             f"""#!/usr/bin/env python3
 import json
+import uuid
 import sys
 from pathlib import Path
 args = sys.argv[1:]
@@ -967,6 +964,68 @@ with Path({str(adapter_log)!r}).open("a", encoding="utf-8") as stream:
     stream.write(json.dumps(args) + "\\n")
 if args == ["adb-emulators", "tv"]:
     print("emulator-5554")
+    sys.exit(0)
+if args and args[0] == "acquire-script-any":
+    try:
+        request = sys.stdin.buffer.read().decode("ascii").splitlines()
+        task_id = request[1].removeprefix("task_id=")
+        uuid.UUID(task_id.removeprefix("task-"))
+        context = request[2].removeprefix("context_sha256=")
+        pid = request[3].removeprefix("pid=")
+    except (IndexError, UnicodeDecodeError, ValueError):
+        sys.exit(64)
+    if (
+        len(args) < 4
+        or args[-2] != "--"
+        or not args[-1].isdecimal()
+        or not args[1:-2]
+        or any(not item.startswith("emulator-") for item in args[1:-2])
+        or len(request) != 4
+        or request[0] != "schema=mobile-script-lease-request-v1"
+        or not task_id.startswith("task-")
+        or len(task_id) != len("task-") + 36
+        or len(context) != 64
+        or any(character not in "0123456789abcdef" for character in context)
+        or not pid.isdecimal()
+        or int(pid) <= 0
+    ):
+        sys.exit(64)
+    print("schema=mobile-script-lease-result-v1")
+    print(f"resource={{args[1]}}")
+    print("token=fixture-script-token")
+    print("owner_sha256=" + "a" * 64)
+    sys.exit(0)
+if len(args) == 2 and args[0] == "inspect-script-recovery":
+    print("schema=mobile-script-recovery-v1")
+    print(f"resource={{args[1]}}")
+    print("owner_kind=Absent")
+    print("owner_sha256=none")
+    sys.exit(0)
+if len(args) == 2 and args[0] == "release-script":
+    try:
+        request = sys.stdin.buffer.read().decode("ascii").splitlines()
+        task_id = request[1].removeprefix("task_id=")
+        uuid.UUID(task_id.removeprefix("task-"))
+        context = request[2].removeprefix("context_sha256=")
+        pid = request[3].removeprefix("pid=")
+        token = request[4].removeprefix("token=")
+        owner = request[5].removeprefix("owner_sha256=")
+    except (IndexError, UnicodeDecodeError, ValueError):
+        sys.exit(64)
+    if (
+        len(request) != 6
+        or request[0] != "schema=mobile-script-lease-request-v1"
+        or not task_id.startswith("task-")
+        or len(context) != 64
+        or any(character not in "0123456789abcdef" for character in context)
+        or not pid.isdecimal()
+        or int(pid) <= 0
+        or not 1 <= len(token) <= 256
+        or any(character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-" for character in token)
+        or len(owner) != 64
+        or any(character not in "0123456789abcdef" for character in owner)
+    ):
+        sys.exit(64)
     sys.exit(0)
 if args and args[0] == "acquire-any":
     print("resource=emulator-5554")
@@ -1031,7 +1090,7 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
         )
         agentw.chmod(0o755)
 
-        fixture_manifest_path = work / ".kent/workflows/puber-release.manifest.json"
+        fixture_manifest_path = work / ".kent/workflows/puber-release-kit-5af.manifest.json"
         fixture_manifest = json.loads(
             fixture_manifest_path.read_text(encoding="utf-8")
         )
@@ -1047,7 +1106,7 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
                 else:
                     assert actual_digest == expected_digest, relative
             elif external.get("kind") == "builder-sha256":
-                assert helper.sha256_bytes((work / ".kent/workflows/builders/puber_release.py").read_bytes()) == external["key"]
+                assert helper.sha256_bytes((work / ".kent/workflows/builders/puber_release_kit_5af.py").read_bytes()) == external["key"]
         fixture_manifest_path.write_text(
             json.dumps(fixture_manifest, indent=2) + "\n",
             encoding="utf-8",
@@ -1058,11 +1117,11 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
         sh(["git", "commit", "--quiet", "-m", "test release source closure"], work)
         base_oid = sh(["git", "rev-parse", "HEAD"], work).stdout.strip()
         sh(["git", "init", "--bare", str(bare)], root)
-        sh(["git", "remote", "set-url", "origin", str(bare)], work)
+        sh(["git", "remote", "add", "origin", str(bare)], work)
         sh(["git", "push", "--quiet", "-u", "origin", "HEAD:master"], work)
 
         graph = json.loads(
-            (work / ".kent/workflows/puber-release.json").read_text(
+            (work / ".kent/workflows/puber-release-kit-5af.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -1101,7 +1160,7 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
             },
             "workflow": {
                 "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-                "version": 88,
+                "version": 94,
                 "name": "Puber Release",
             },
             "worktree_path": str(work),
@@ -1288,8 +1347,8 @@ sys.exit(2)
         ]
         assert adapter_calls == [
             ["adb-emulators", "tv"],
-            ["acquire-any", "emulator-5554", "--", "900", "7200"],
-            ["release", "emulator-5554", "fake-release-token"],
+            ["acquire-script-any", "emulator-5554", "--", "900"],
+            ["release-script", "emulator-5554"],
         ]
         github_calls = [
             json.loads(line)
@@ -1463,7 +1522,7 @@ def test_publication(rebased: bool) -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory); bare = root / "origin.git"
         work, base_oid, target, bare_path = materialize(root, bare)
-        graph = json.loads((work / ".kent/workflows/puber-release.json").read_text())
+        graph = json.loads((work / ".kent/workflows/puber-release-kit-5af.json").read_text())
         publish_node = next(n for n in graph["nodes"] if n["key"] == "publish")
         task_id = "task-12345678-1234-4234-8234-123456789abc"
         task = {
@@ -1471,7 +1530,7 @@ def test_publication(rebased: bool) -> None:
             "current_nodes": [{"node_id": publish_node["id"]}], "current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-publish"), "current_node": {"node_id": publish_node["id"]}}],
             "execution_target": {"commit_oid": base_oid}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
             "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"}, "worktree_path": str(work),
+            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 94, "name": "Puber Release"}, "worktree_path": str(work),
         }
         checkpoint = fixture_checkpoint(work, base_oid, target, task_id)
         profile_path = "app/src/main/generated/baselineProfiles/baseline-prof.txt"
@@ -1482,7 +1541,7 @@ def test_publication(rebased: bool) -> None:
         checkpoint_path.write_text(helper.canonical_json(checkpoint) + "\n", encoding="utf-8")
         checkpoint_path.chmod(0o600)
         log = root / "gh.log"; kent, gh = write_fake_bins(root, task, target, bare_path, log)
-        payload = {"_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "merge_watch_pr_merged"}, "workspace_path": str(work), "operation_id": "a"*64, "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "branch_name": "release/99.0.0", "merge_strategy": "rebase", "pr_head_oid": target, "pr_base_oid": base_oid}
+        payload = {"_kent": {"task_id": task_id, "node_id": publish_node["id"]}, "entry_transition": "merge_watch_pr_merged", "workspace_path": str(work), "operation_id": "a"*64, "pr_url": "https://github.com/rovkinmax/Puber/pull/7", "branch_name": "release/99.0.0", "merge_strategy": "rebase", "pr_head_oid": target, "pr_base_oid": base_oid}
         env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(fake_task := root / "fake-task.json"), "PUBER_GH_LOG": str(log), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": target, "PUBER_PR_BASE": base_oid}
         fake_task.write_text(json.dumps(task), encoding="utf-8")
         head = target
@@ -1546,7 +1605,8 @@ def test_publication(rebased: bool) -> None:
         assert "api" in log.read_text(encoding="utf-8") and "git/ref/heads/master" in log.read_text(encoding="utf-8")
         retry = {
             "commentary": "private-retry-commentary",
-            "_kent": {"task_id": task_id, "node_id": publish_node["id"], "transition_branch_key": "publish_needs_user_action"},
+            "_kent": {"task_id": task_id, "node_id": publish_node["id"]},
+            "entry_transition": "publish_needs_user_action",
             "blocker_reason": "retry",
             "workspace_path": payload["workspace_path"],
             "operation_id": payload["operation_id"],
@@ -1658,13 +1718,13 @@ def test_publication(rebased: bool) -> None:
             fake_task.write_text(json.dumps(task), encoding="utf-8")
 
         rejected_gate("task_id", task_changes={"summary": {**task["summary"], "id": "task-00000000-0000-4000-8000-000000000000"}})
-        for invalid_revision in (87, 89, 90):
+        for invalid_revision in (87, 89, 90, 91):
             rejected_gate("workflow_revision", task_changes={"workflow": {**task["workflow"], "version": invalid_revision}})
         rejected_gate("current_script", task_changes={"current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-wait-github-release"), "current_node": {"node_id": publish_node["id"]}}]})
         rejected_gate("execution_commit", task_changes={"execution_target": {"commit_oid": "f" * 40}})
         rejected_gate("worktree_path", task_changes={"worktree_path": str(root / "foreign")})
         rejected_gate("pr_identity", payload_changes={"pr_head_oid": "d" * 40})
-        rejected_gate("transition", payload_changes={"_kent": {**payload["_kent"], "transition_branch_key": "not-a-real-edge"}})
+        rejected_gate("transition", payload_changes={"entry_transition": "not-a-real-edge"})
         source = work / ".kent/scripts/workflow-puber-release-intent"
         original_source = source.read_bytes()
         source.write_bytes(original_source + b"\n")

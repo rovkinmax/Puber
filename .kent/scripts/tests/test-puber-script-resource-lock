@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+"""Isolated protocol tests for Puber’s project-owned Script lease adapter."""
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import os
+import subprocess
+import tempfile
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from unittest.mock import patch
+
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+ROOT = Path(__file__).resolve().parents[3]
+ADAPTER = ROOT / ".kent/adapters/mobile/puber-script-resource-lock"
+spec = importlib.util.spec_from_loader(
+    "puber_script_resource_lock_test",
+    SourceFileLoader("puber_script_resource_lock_test", str(ADAPTER)),
+)
+module = importlib.util.module_from_spec(spec)
+assert spec and spec.loader
+import sys
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+TASK_ID = "task-12345678-1234-4234-8234-123456789abc"
+TOKEN = "private-test-token-never-on-argv"
+OWNER = "a" * 64
+
+
+def context() -> dict[str, object]:
+    profile = (ROOT / ".kent/workflow-profile.toml").read_bytes()
+    return {
+        "schema": module.CONTEXT_SCHEMA,
+        "task_id": TASK_ID,
+        "task_short_id": "PUB-99",
+        "project_id": module.PROJECT_ID,
+        "workflow_id": module.WORKFLOW_ID,
+        "workflow_name": module.WORKFLOW_NAME,
+        "workflow_version": module.WORKFLOW_VERSION,
+        "node_id": "native-profile-node",
+        "node_key": module.NODE_KEY,
+        "script_path": str(ROOT / module._helper.SCRIPT_PATHS[module.NODE_KEY]),
+        "profile_sha256": hashlib.sha256(profile).hexdigest(),
+        "workspace_root": str(ROOT),
+        "execution_base_oid": "b" * 40,
+        "controller_commit": "c" * 40,
+        "operation_id": "d" * 64,
+        "release_type": "minor",
+        "release_version": "99.0.0",
+        "release_tag": "v99.0.0",
+        "release_branch": "release/99.0.0",
+        "release_base_oid": "e" * 40,
+        "candidate_oid": "f" * 40,
+    }
+
+
+def completed(argv: list[str], stdout: bytes) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr=b"")
+
+
+def test_acquire_uses_native_context_request_and_hides_token() -> None:
+    value = context()
+    _, digest = module._canonical_context(value)
+    fake_adapter = Path(tempfile.gettempdir()) / "isolated-script-lease-adapter"
+    response = (
+        "schema=mobile-script-lease-result-v1\n"
+        "resource=emulator-5556\n"
+        f"token={TOKEN}\n"
+        f"owner_sha256={OWNER}\n"
+    ).encode("ascii")
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def run(args, **kwargs):
+        calls.append((args, kwargs))
+        return completed(args, response)
+
+    with patch.object(
+        module,
+        "_fresh_native_context",
+        return_value=(value, digest, 4321),
+    ), patch.object(module, "_kernel_path", return_value=fake_adapter), patch.object(
+        module.subprocess, "run", side_effect=run
+    ):
+        lease = module.acquire_any(
+            value,
+            ["emulator-5554", "emulator-5556"],
+            wait_seconds=0,
+        )
+
+    assert lease.resource == "emulator-5556"
+    assert lease.token == TOKEN
+    assert repr(lease).find(TOKEN) == -1
+    args, kwargs = calls[0]
+    assert args == [
+        str(fake_adapter),
+        "acquire-script-any",
+        "emulator-5554",
+        "emulator-5556",
+        "--",
+        "0",
+    ]
+    assert TOKEN not in repr(args)
+    assert kwargs["input"] == (
+        "schema=mobile-script-lease-request-v1\n"
+        f"task_id={TASK_ID}\n"
+        f"context_sha256={digest}\n"
+        "pid=4321\n"
+    ).encode("ascii")
+    assert "KENT_TASK_ID" in kwargs["env"]
+    assert not {"KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"} & set(
+        kwargs["env"]
+    )
+    assert "KENT_RESOURCE_LOCK_DIR" not in kwargs["env"]
+    assert "timeout" in kwargs and kwargs["timeout"] == 60
+
+
+def test_release_sends_token_only_over_stdin_and_accepts_unspecified_success_body() -> None:
+    value = context()
+    _, digest = module._canonical_context(value)
+    lease = module.Lease(
+        resource="emulator-5554",
+        token=TOKEN,
+        owner_sha256=OWNER,
+        context_sha256=digest,
+        task_id=TASK_ID,
+        pid=4321,
+    )
+    fake_adapter = Path(tempfile.gettempdir()) / "isolated-script-lease-adapter"
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def run(args, **kwargs):
+        calls.append((args, kwargs))
+        return completed(args, b"release-confirmed\n")
+
+    with patch.object(
+        module,
+        "_fresh_native_context",
+        return_value=(value, digest, 4321),
+    ), patch.object(module, "_kernel_path", return_value=fake_adapter), patch.object(
+        module.subprocess, "run", side_effect=run
+    ):
+        assert module.release(value, lease) is None
+
+    args, kwargs = calls[0]
+    assert args == [str(fake_adapter), "release-script", "emulator-5554"]
+    assert TOKEN not in repr(args)
+    assert kwargs["input"].decode("ascii").splitlines() == [
+        "schema=mobile-script-lease-request-v1",
+        f"task_id={TASK_ID}",
+        f"context_sha256={digest}",
+        "pid=4321",
+        f"token={TOKEN}",
+        f"owner_sha256={OWNER}",
+    ]
+    assert kwargs["timeout"] == 30
+
+
+def test_read_only_recovery_is_closed_and_token_free() -> None:
+    value = context()
+    _, digest = module._canonical_context(value)
+    fake_adapter = Path(tempfile.gettempdir()) / "isolated-script-lease-adapter"
+    response = (
+        "schema=mobile-script-recovery-v1\n"
+        "resource=emulator-5554\n"
+        "owner_kind=Absent\n"
+        "owner_sha256=none\n"
+    ).encode("ascii")
+    with patch.object(
+        module,
+        "_fresh_native_context",
+        return_value=(value, digest, 4321),
+    ), patch.object(module, "_kernel_path", return_value=fake_adapter), patch.object(
+        module.subprocess,
+        "run",
+        side_effect=lambda args, **kwargs: completed(args, response),
+    ) as run:
+        observed = module.inspect_recovery(value, ["emulator-5554"])
+    assert observed == [{
+        "schema": "mobile-script-recovery-v1",
+        "resource": "emulator-5554",
+        "owner_kind": "Absent",
+        "owner_sha256": "none",
+    }]
+    args, kwargs = run.call_args
+    assert args[0][1:] == ["inspect-script-recovery", "emulator-5554"]
+    assert kwargs["input"] is None
+    assert TOKEN not in repr(observed)
+
+
+def test_context_and_responses_fail_closed_on_route_or_field_drift() -> None:
+    value = context()
+    for mutate in (
+        lambda item: item.update(entry_transition="prepare_profile_generation"),
+        lambda item: item.update(workspace_root=str(ROOT / "..")),
+        lambda item: item.update(profile_sha256="0" * 64),
+        lambda item: item.update(workflow_version=93),
+    ):
+        invalid = dict(value)
+        mutate(invalid)
+        try:
+            module._canonical_context(invalid)
+        except module.ScriptLeaseError:
+            pass
+        else:
+            raise AssertionError("open or stale Script context was admitted")
+
+    for raw in (
+        b"resource=emulator-5554\nschema=mobile-script-recovery-v1\nowner_kind=Absent\nowner_sha256=none\n",
+        b"schema=mobile-script-recovery-v1\nresource=emulator-5554\nowner_kind=Absent\nowner_kind=Absent\nowner_sha256=none\n",
+    ):
+        try:
+            module._parse_lines(
+                raw,
+                ("schema", "resource", "owner_kind", "owner_sha256"),
+            )
+        except module.ScriptLeaseError:
+            pass
+        else:
+            raise AssertionError("reordered or duplicate response was admitted")
+
+
+test_acquire_uses_native_context_request_and_hides_token()
+test_release_sends_token_only_over_stdin_and_accepts_unspecified_success_body()
+test_read_only_recovery_is_closed_and_token_free()
+test_context_and_responses_fail_closed_on_route_or_field_drift()
+print("puber-script-resource-lock: passed isolated protocol scenarios")

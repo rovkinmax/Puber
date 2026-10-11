@@ -1,0 +1,515 @@
+#!/usr/bin/env python3
+"""Puber-owned identity adapter for the shared Kit Script lease operations.
+
+This module never implements resource locking. It validates Puber's native
+Task/Script context, constructs the reviewed bounded request, and calls the
+configured shared mobile resource-lock adapter.
+"""
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+import tomllib
+import time
+from dataclasses import dataclass, field
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+sys.dont_write_bytecode = True
+
+ROOT = Path(__file__).resolve().parents[3]
+HELPER_PATH = ROOT / ".kent/scripts/workflow-puber-release-intent"
+PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
+WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
+WORKFLOW_NAME = "Puber Release"
+WORKFLOW_VERSION = 94
+NODE_KEY = "profile_generation"
+KERNEL_ADAPTER_PATH = ".kent/adapters/mobile/emulator-resource-lock.sh"
+CONTEXT_SCHEMA = "puber-mobile-script-context-v1"
+REQUEST_SCHEMA = "mobile-script-lease-request-v1"
+RESULT_SCHEMA = "mobile-script-lease-result-v1"
+RECOVERY_SCHEMA = "mobile-script-recovery-v1"
+TASK_ID_RE = re.compile(
+    r"^task-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+)
+SHORT_ID_RE = re.compile(r"^[A-Z][A-Z0-9]+-[0-9]+$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
+SERIAL_RE = re.compile(r"^emulator-[A-Za-z0-9._=-]+$")
+TOKEN_RE = re.compile(r"^[A-Za-z0-9._-]{1,256}$")
+OWNER_KINDS = {"Absent", "LegacySessionOwner", "ScriptOwnerV1", "UnknownOwner"}
+PROFILE_OUTPUT_PATHS = {
+    "app/src/main/generated/baselineProfiles/baseline-prof.txt",
+    "app/src/main/generated/baselineProfiles/startup-prof.txt",
+}
+CONTEXT_KEYS = {
+    "schema",
+    "task_id",
+    "task_short_id",
+    "project_id",
+    "workflow_id",
+    "workflow_name",
+    "workflow_version",
+    "node_id",
+    "node_key",
+    "script_path",
+    "profile_sha256",
+    "workspace_root",
+    "execution_base_oid",
+    "controller_commit",
+    "operation_id",
+    "release_type",
+    "release_version",
+    "release_tag",
+    "release_branch",
+    "release_base_oid",
+    "candidate_oid",
+}
+
+
+class ScriptLeaseError(ValueError):
+    """A fail-closed Puber Script lease admission or operation failure."""
+
+
+@dataclass(frozen=True)
+class Lease:
+    resource: str
+    token: str = field(repr=False)
+    owner_sha256: str
+    context_sha256: str
+    task_id: str
+    pid: int
+
+
+def _load_helper():
+    try:
+        metadata = HELPER_PATH.lstat()
+    except OSError as error:
+        raise ScriptLeaseError("Puber release runtime helper is unavailable") from error
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise ScriptLeaseError("Puber release runtime helper is unsafe")
+    spec = importlib.util.spec_from_loader(
+        "puber_script_lease_release_runtime",
+        SourceFileLoader("puber_script_lease_release_runtime", str(HELPER_PATH)),
+    )
+    if spec is None or spec.loader is None:
+        raise ScriptLeaseError("Puber release runtime helper cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise ScriptLeaseError("Puber release runtime helper cannot be loaded") from error
+    return module
+
+
+_helper = _load_helper()
+
+
+def _require_text(value: Any, label: str, pattern: re.Pattern[str] | None = None) -> str:
+    if not isinstance(value, str) or not value or value != value.strip() or "\x00" in value:
+        raise ScriptLeaseError(f"{label} is not a valid non-empty string")
+    if pattern is not None and not pattern.fullmatch(value):
+        raise ScriptLeaseError(f"{label} has an invalid format")
+    return value
+
+
+def _canonical_context(context: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
+    if not isinstance(context, Mapping) or set(context) != CONTEXT_KEYS:
+        raise ScriptLeaseError("Script lease context has an open or incomplete field set")
+    value = dict(context)
+    if value.get("schema") != CONTEXT_SCHEMA:
+        raise ScriptLeaseError("Script lease context schema is not exact")
+    for key in CONTEXT_KEYS - {"workflow_version"}:
+        _require_text(value.get(key), f"context.{key}")
+    for key in ("task_id",):
+        _require_text(value[key], f"context.{key}", TASK_ID_RE)
+    for key in ("task_short_id",):
+        _require_text(value[key], f"context.{key}", SHORT_ID_RE)
+    for key in ("execution_base_oid", "controller_commit", "release_base_oid", "candidate_oid"):
+        _require_text(value[key], f"context.{key}", SHA1_RE)
+    for key in ("operation_id",):
+        _require_text(value[key], f"context.{key}", SHA256_RE)
+    if isinstance(value.get("workflow_version"), bool) or value.get("workflow_version") != WORKFLOW_VERSION:
+        raise ScriptLeaseError("native Puber Release revision is not the prepared 94 cohort")
+    profile_path = ROOT / ".kent/workflow-profile.toml"
+    try:
+        profile_metadata = profile_path.lstat()
+        profile_bytes = profile_path.read_bytes()
+    except OSError as error:
+        raise ScriptLeaseError("Puber workflow profile is unavailable") from error
+    if (
+        stat.S_ISLNK(profile_metadata.st_mode)
+        or not stat.S_ISREG(profile_metadata.st_mode)
+        or profile_metadata.st_nlink != 1
+        or len(profile_bytes) > 256 * 1024
+        or value["profile_sha256"] != hashlib.sha256(profile_bytes).hexdigest()
+    ):
+        raise ScriptLeaseError("Puber workflow profile digest is not exact")
+    if (
+        value["project_id"] != PROJECT_ID
+        or value["workflow_id"] != WORKFLOW_ID
+        or value["workflow_name"] != WORKFLOW_NAME
+        or value["node_key"] != NODE_KEY
+        or value["script_path"] != str(ROOT / _helper.SCRIPT_PATHS[NODE_KEY])
+        or value["workspace_root"] != str(ROOT)
+        or value["release_branch"] != f"release/{value['release_version']}"
+        or value["release_tag"] != f"v{value['release_version']}"
+    ):
+        raise ScriptLeaseError("Puber Script lease context does not match its fixed runtime identity")
+    if value["release_type"] not in _helper.RELEASE_TYPE:
+        raise ScriptLeaseError("Puber release type is invalid")
+    if not re.fullmatch(r"\d+\.\d+\.\d+", value["release_version"]):
+        raise ScriptLeaseError("Puber release version is invalid")
+    raw = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    if len(raw) > 4096:
+        raise ScriptLeaseError("Script lease context exceeds its bound")
+    return value, hashlib.sha256(raw).hexdigest()
+
+
+def _admit_profile_dirty(context: Mapping[str, Any]) -> None:
+    """Allow only checkpoint-bound profile outputs during the owning Script."""
+    expected = {
+        key: context[key]
+        for key in (
+            "task_id",
+            "task_short_id",
+            "operation_id",
+            "release_branch",
+            "release_base_oid",
+            "candidate_oid",
+        )
+    }
+    checkpoint = _helper.read_profile_checkpoint(
+        ROOT,
+        context["task_short_id"],
+        expected=expected,
+        missing_ok=True,
+    )
+    if checkpoint is None:
+        raise ScriptLeaseError("dirty profile outputs have no exact recovery checkpoint")
+    if checkpoint["state"] not in {"acquiring", "generating", "failed", "completed"}:
+        raise ScriptLeaseError("profile recovery checkpoint state is unknown")
+    current_head = _helper.git(ROOT, "rev-parse", "HEAD")
+    if current_head != context["candidate_oid"] and (
+        checkpoint["state"] != "completed"
+        or checkpoint["release_head_oid"] != current_head
+    ):
+        raise ScriptLeaseError("profile recovery checkpoint head is not exact")
+    status = _helper.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all", "-z"],
+        cwd=ROOT,
+        check=True,
+    ).stdout
+    for entry in (item for item in status.split("\0") if item):
+        if len(entry) < 4 or entry[:3] not in {" M ", " D ", " T "}:
+            raise ScriptLeaseError("profile recovery contains an unsupported Git status")
+        if entry[3:] not in PROFILE_OUTPUT_PATHS:
+            raise ScriptLeaseError("profile recovery includes a non-profile path")
+
+
+def _fresh_native_context(context: Mapping[str, Any]) -> tuple[dict[str, Any], str, int]:
+    value, context_sha256 = _canonical_context(context)
+    if value["node_id"] != _helper._node_id(ROOT, NODE_KEY):
+        raise ScriptLeaseError("profile_generation node ID differs from the selected graph")
+    if _helper.git(ROOT, "rev-parse", "HEAD") != value["controller_commit"]:
+        raise ScriptLeaseError("Puber controller source changed before lease operation")
+    task = _helper.task_show(ROOT, value["task_id"])
+    validated = _helper.validate_task(
+        ROOT,
+        value["task_id"],
+        NODE_KEY,
+        task=task,
+        allowed_checkout_head=value["controller_commit"],
+        profile_recovery_admission=lambda _state: _admit_profile_dirty(value),
+    )
+    if (
+        validated["task_short_id"] != value["task_short_id"]
+        or validated["node_id"] != value["node_id"]
+        or validated["commit"] != value["execution_base_oid"]
+        or validated["controller_commit"] != value["controller_commit"]
+        or Path(task.get("worktree_path", "")).expanduser().resolve() != ROOT
+    ):
+        raise ScriptLeaseError("fresh native Puber Task readback differs from the lease context")
+    scripts = task.get("current_scripts")
+    if (
+        not isinstance(scripts, list)
+        or len(scripts) != 1
+        or scripts[0].get("path") != value["script_path"]
+        or scripts[0].get("current_node", {}).get("node_id") != value["node_id"]
+    ):
+        raise ScriptLeaseError("native current Script identity is not exact")
+    return value, context_sha256, os.getpid()
+
+
+def _kernel_path() -> Path:
+    profile_path = ROOT / ".kent/workflow-profile.toml"
+    try:
+        profile = tomllib.loads(profile_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise ScriptLeaseError("Puber workflow profile cannot be read safely") from error
+    configured = profile.get("adapters", {}).get("mobile_resource_lock")
+    if configured != KERNEL_ADAPTER_PATH:
+        raise ScriptLeaseError("Puber shared mobile resource-lock adapter path drifted")
+    path = ROOT / configured
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise ScriptLeaseError("shared Kit mobile resource-lock adapter is unavailable") from error
+    if (
+        stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or not os.access(path, os.X_OK)
+    ):
+        raise ScriptLeaseError("shared Kit mobile resource-lock adapter is unsafe")
+    return path
+
+
+def _request_bytes(
+    context: Mapping[str, Any],
+    context_sha256: str,
+    pid: int,
+    *,
+    token: str | None = None,
+    owner_sha256: str | None = None,
+) -> bytes:
+    value, digest = _canonical_context(context)
+    if digest != context_sha256:
+        raise ScriptLeaseError("Script lease context digest changed")
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        raise ScriptLeaseError("Script lease process ID is invalid")
+    lines = [
+        f"schema={REQUEST_SCHEMA}",
+        f"task_id={value['task_id']}",
+        f"context_sha256={context_sha256}",
+        f"pid={pid}",
+    ]
+    if token is not None or owner_sha256 is not None:
+        if token is None or owner_sha256 is None:
+            raise ScriptLeaseError("Script lease release proof is incomplete")
+        _require_text(token, "lease token", TOKEN_RE)
+        _require_text(owner_sha256, "owner hash", SHA256_RE)
+        lines.extend((f"token={token}", f"owner_sha256={owner_sha256}"))
+    raw = ("\n".join(lines) + "\n").encode("ascii")
+    if len(raw) > 1024:
+        raise ScriptLeaseError("Script lease request exceeds its 1 KiB bound")
+    return raw
+
+
+def _parse_lines(raw: bytes, expected_keys: Sequence[str]) -> dict[str, str]:
+    if (
+        not isinstance(raw, bytes)
+        or not raw
+        or len(raw) > 1024
+        or not raw.endswith(b"\n")
+        or raw.endswith(b"\n\n")
+        or b"\r" in raw
+        or b"\x00" in raw
+    ):
+        raise ScriptLeaseError("shared Kit Script lease response is not bounded LF ASCII")
+    try:
+        lines = raw[:-1].decode("ascii").split("\n")
+    except UnicodeDecodeError as error:
+        raise ScriptLeaseError("shared Kit Script lease response is not ASCII") from error
+    keys: list[str] = []
+    values: dict[str, str] = {}
+    for line in lines:
+        if "=" not in line:
+            raise ScriptLeaseError("shared Kit Script lease response has a malformed line")
+        key, value = line.split("=", 1)
+        if not key or not value or key in values:
+            raise ScriptLeaseError("shared Kit Script lease response has an empty or duplicate field")
+        keys.append(key)
+        values[key] = value
+    if keys != list(expected_keys):
+        raise ScriptLeaseError("shared Kit Script lease response field order is not exact")
+    return values
+
+
+def _kernel_environment(task_id: str) -> dict[str, str]:
+    allowed = {
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "LANG",
+        "LC_ALL",
+    }
+    result = {key: value for key, value in os.environ.items() if key in allowed}
+    result["KENT_TASK_ID"] = task_id
+    for key in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
+        result.pop(key, None)
+    return result
+
+
+def _run_kernel(
+    arguments: Sequence[str],
+    *,
+    task_id: str,
+    input_bytes: bytes | None,
+    timeout_seconds: int = 30,
+) -> subprocess.CompletedProcess[bytes]:
+    try:
+        result = subprocess.run(
+            [str(_kernel_path()), *arguments],
+            cwd=ROOT,
+            env=_kernel_environment(task_id),
+            input=input_bytes,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        raise ScriptLeaseError("shared Kit Script lease operation could not be completed") from error
+    if (
+        not isinstance(result.stdout, bytes)
+        or not isinstance(result.stderr, bytes)
+        or len(result.stdout) > 1024
+        or len(result.stderr) > 1024
+    ):
+        raise ScriptLeaseError("shared Kit Script lease subprocess returned non-byte output")
+    return result
+
+
+def _serials(resources: Sequence[str]) -> list[str]:
+    if isinstance(resources, (str, bytes)) or not isinstance(resources, Sequence):
+        raise ScriptLeaseError("TV resource set is not a closed serial list")
+    result = [_require_text(item, "TV serial", SERIAL_RE) for item in resources]
+    if not result or result != sorted(set(result)):
+        raise ScriptLeaseError("TV resource set must be non-empty, sorted, and unique")
+    return result
+
+
+def acquire_any(
+    context: Mapping[str, Any],
+    resources: Sequence[str],
+    *,
+    wait_seconds: int = 900,
+) -> Lease:
+    value, context_sha256, pid = _fresh_native_context(context)
+    serials = _serials(resources)
+    if isinstance(wait_seconds, bool) or not isinstance(wait_seconds, int) or not 0 <= wait_seconds <= 7200:
+        raise ScriptLeaseError("Script lease wait duration is invalid")
+    request = _request_bytes(value, context_sha256, pid)
+    result = _run_kernel(
+        ["acquire-script-any", *serials, "--", str(wait_seconds)],
+        task_id=value["task_id"],
+        input_bytes=request,
+        timeout_seconds=wait_seconds + 60,
+    )
+    if result.returncode != 0:
+        raise ScriptLeaseError("shared Kit Script lease acquisition was refused")
+    response = _parse_lines(
+        result.stdout,
+        ("schema", "resource", "token", "owner_sha256"),
+    )
+    resource = _require_text(response["resource"], "leased resource", SERIAL_RE)
+    token = _require_text(response["token"], "lease token", TOKEN_RE)
+    owner_sha256 = _require_text(response["owner_sha256"], "owner hash", SHA256_RE)
+    if response["schema"] != RESULT_SCHEMA or resource not in serials:
+        raise ScriptLeaseError("shared Kit Script lease result is not an exact requested acquisition")
+    return Lease(
+        resource=resource,
+        token=token,
+        owner_sha256=owner_sha256,
+        context_sha256=context_sha256,
+        task_id=value["task_id"],
+        pid=pid,
+    )
+
+
+def release(context: Mapping[str, Any], lease: Lease) -> None:
+    value, context_sha256, pid = _fresh_native_context(context)
+    if (
+        not isinstance(lease, Lease)
+        or lease.task_id != value["task_id"]
+        or lease.context_sha256 != context_sha256
+        or lease.pid != pid
+        or not SERIAL_RE.fullmatch(lease.resource)
+        or not TOKEN_RE.fullmatch(lease.token)
+        or not SHA256_RE.fullmatch(lease.owner_sha256)
+    ):
+        raise ScriptLeaseError("Puber lease release owner proof does not match current context")
+    request = _request_bytes(
+        value,
+        context_sha256,
+        pid,
+        token=lease.token,
+        owner_sha256=lease.owner_sha256,
+    )
+    result = _run_kernel(
+        ["release-script", lease.resource],
+        task_id=value["task_id"],
+        input_bytes=request,
+    )
+    if (
+        result.returncode != 0
+        or lease.token.encode("ascii") in result.stdout
+        or lease.token.encode("ascii") in result.stderr
+    ):
+        raise ScriptLeaseError("shared Kit Script lease release was not proven")
+
+
+def inspect_recovery(context: Mapping[str, Any], resources: Sequence[str]) -> list[dict[str, str]]:
+    value, _context_sha256, _pid = _fresh_native_context(context)
+    results = []
+    for resource in _serials(resources):
+        result = _run_kernel(
+            ["inspect-script-recovery", resource],
+            task_id=value["task_id"],
+            input_bytes=None,
+            timeout_seconds=30,
+        )
+        if result.returncode != 0:
+            raise ScriptLeaseError("shared Kit Script recovery inspection failed")
+        response = _parse_lines(
+            result.stdout,
+            ("schema", "resource", "owner_kind", "owner_sha256"),
+        )
+        owner_hash = response["owner_sha256"]
+        if response["schema"] != RECOVERY_SCHEMA or response["resource"] != resource:
+            raise ScriptLeaseError("shared Kit Script recovery identity is not exact")
+        if response["owner_kind"] not in OWNER_KINDS:
+            raise ScriptLeaseError("shared Kit Script recovery owner kind is unknown")
+        if (
+            (response["owner_kind"] == "Absent" and owner_hash != "none")
+            or (response["owner_kind"] == "UnknownOwner" and owner_hash != "unknown")
+            or (
+                response["owner_kind"] in {"LegacySessionOwner", "ScriptOwnerV1"}
+                and not SHA256_RE.fullmatch(owner_hash)
+            )
+        ):
+            raise ScriptLeaseError("shared Kit Script recovery owner hash is inconsistent")
+        results.append(response)
+    return results
+
+
+def main() -> int:
+    print(
+        "puber-script-resource-lock is an import-only adapter for the "
+        "profile-generation Script",
+        file=sys.stderr,
+    )
+    return 64
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

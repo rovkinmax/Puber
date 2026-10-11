@@ -8,6 +8,7 @@ required_adapters = [
   "android_apk_install",
   "mcp_policy",
   "mobile_resource_lock",
+  "mobile_script_resource_lock",
   "mobile_evidence_audit",
 ]
 kit_managed_adapters = [
@@ -41,9 +42,9 @@ github_observation = "1.0.0"
 [release]
 topology_kind = "puber-release"
 adoption_mode = "managed-in-place"
-spec_path = ".kent/workflows/specs/puber-release.toml"
-builder_path = ".kent/workflows/builders/puber_release.py"
-snapshot_path = ".kent/workflows/puber-release.json"
+spec_path = ".kent/workflows/specs/puber-release-kit-5af.toml"
+builder_path = ".kent/workflows/builders/puber_release_kit_5af.py"
+snapshot_path = ".kent/workflows/puber-release-kit-5af.json"
 
 [execution]
 default_target = "ask-on-first-execution"
@@ -139,6 +140,7 @@ implement = ".kent/commands/test-coverage.md"
 android_apk_install = ".kent/adapters/mobile/android-apk-install-preserve"
 mcp_policy = ".kent/adapters/mcp/policy"
 mobile_resource_lock = ".kent/adapters/mobile/emulator-resource-lock.sh"
+mobile_script_resource_lock = ".kent/adapters/mobile/puber-script-resource-lock"
 mobile_evidence_audit = ".kent/adapters/mobile/mobile-evidence-audit.sh"
 
 [roles]

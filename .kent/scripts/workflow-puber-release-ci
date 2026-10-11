@@ -202,7 +202,7 @@ def main() -> int:
         metadata = payload.get("_kent")
         if not isinstance(metadata, dict):
             raise helper.ContractError("native CI envelope is required")
-        graph = json.loads((ROOT / ".kent/workflows/puber-release.json").read_text())
+        graph = json.loads((ROOT / helper.GRAPH_PATH).read_text(encoding="utf-8"))
         operation = next((node["key"] for node in graph["nodes"] if node["id"] == metadata.get("node_id")), None)
         if operation not in SHARED_PATHS:
             raise helper.ContractError("native CI node is not admitted")
@@ -214,7 +214,8 @@ def main() -> int:
         edge = edges[0]
         target = next(node["key"] for node in graph["nodes"] if node["id"] == edge["target_node_id"])
         helper.emit_exact(ROOT, result["transition"], target,
-            {field["key"]: result[field["key"]] for field in edge["parameters"]}, commentary=result.get("commentary"))
+            {field["key"]: result[field["key"]] for field in edge["parameters"]
+             if field["key"] != helper.ENTRY_TRANSITION}, commentary=result.get("commentary"))
         return 0
     except (ValueError, RuntimeError, OSError, KeyError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)

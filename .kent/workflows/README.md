@@ -221,7 +221,40 @@ The six deterministic pre-publication/cleanup transport nodes are
 `release_intent_gate`, `profile_generation`, `ci_prepare`, `ci_watch`, `merge_watch`, and
 `task_janitor`.
 
-## Revision 90 closed safety contract
+## Private Release cohort proposal
+
+The profile selects `.kent/workflows/puber-release-kit-5af.json`, a
+non-attested proposal derived from the frozen v90 source. It preserves the
+same UUID, 18 nodes, 51 groups, 51 edges, Script/Agent topology, ordering, and
+approval fields; source revision 91 adds the exact 21 business-only
+`entry_transition` carriers required for Script edge validation. The expected
+native proposal version is 94, but no live graph, metadata, Task target, or
+default is changed here. Runtime Kit K is pinned to clean commit
+`3020962feffa870c8f064e7a0b2657d316a8ec1b` through
+`KENT_ENGINEERING_KIT_ROOT`. Source-generation qualification remains bound to
+the separate immutable generator commit `5af04089844c10c66dcaa692c36f42f738b9b302`,
+supplied only through the test-only `PUBER_STAGE_A_GENERATOR_KIT_ROOT`; it is
+not a production runtime input or dynamic resolver. Project source commit C
+remains unknown, and the candidate filename is not a runtime pin.
+
+The profile-generation Script binds native Task/project/workflow/node/root,
+execution base/controller, and release-operation/source identities through the
+Puber-owned wrapper. The wrapper uses the shared Kit adapter's existing
+resource record/guard; it never creates Session/Run/Step identity, takes over
+Script/Unknown owners, or stores tokens in Task state. The Script node and all
+approval gates remain unchanged. OSM-108 and OSM-110 remain activation blockers
+until their reachable old root-local adapters are proven compatible under a
+separately approved rollout.
+
+Cleanup inventories runtime/history before reading or retaining the profile
+checkpoint. It retains exact checkpoint bytes, original input/proofs, source
+envelope digest, report prefix, and seal request in an ignored bounded
+`build/kent-workflow/<task-short-id>/` receipt referenced and read back in the
+Task record before sealing. Unknown or partial state is preserved and blocks.
+A valid seal with an absent checkpoint permits only read-only original-input
+replay; missing proof is never reconstructed.
+
+## Historical Revision 90 closed safety contract
 
 The exact signing pins, preparation-report v2 fields and admission rules are
 owned by `.kent/commands/release.md`. Require

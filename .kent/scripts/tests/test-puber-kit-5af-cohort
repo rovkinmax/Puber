@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""Deterministic private-cohort and Script-route contract tests."""
+from __future__ import annotations
+
+import contextlib
+import io
+import importlib
+import importlib.util
+import json
+import os
+import runpy
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from unittest.mock import patch
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[3]
+BUILDER_PATH = ROOT / ".kent/workflows/builders/puber_release_kit_5af.py"
+BUILDER = runpy.run_path(str(BUILDER_PATH))
+
+runtime_spec = importlib.util.spec_from_loader(
+    "puber_route_cohort_runtime",
+    SourceFileLoader(
+        "puber_route_cohort_runtime",
+        str(ROOT / ".kent/scripts/workflow-puber-release-intent"),
+    ),
+)
+runtime = importlib.util.module_from_spec(runtime_spec)
+assert runtime_spec and runtime_spec.loader
+runtime_spec.loader.exec_module(runtime)
+
+
+def edge_map(graph: dict) -> dict[str, dict]:
+    result = {edge["key"]: edge for edge in graph["edges"]}
+    assert len(result) == len(graph["edges"])
+    return result
+
+
+def validate_typed_engineering_spec(value: dict) -> None:
+    runtime._kit_modules()
+    kit_root = Path(os.environ["KENT_ENGINEERING_KIT_ROOT"]).expanduser().resolve()
+    model = importlib.import_module("workflowkit.model")
+    assert Path(model.__file__).resolve().is_relative_to(kit_root)
+
+    nodes = tuple(model.NodeSpec(**node) for node in value["nodes"])
+    edges = tuple(
+        model.EdgeSpec(
+            **{
+                **edge,
+                "parameters": tuple(
+                    model.ParameterSpec(**parameter)
+                    for parameter in edge.get("parameters", [])
+                ),
+            }
+        )
+        for edge in value["edges"]
+    )
+    spec = model.WorkflowSpec(
+        name=value["name"],
+        description=value["description"],
+        execution_target=value["execution_target"],
+        nodes=nodes,
+        edges=edges,
+    )
+    spec.validate()
+
+
+def test_replan_parameters_reuse_canonical_shared_definitions() -> None:
+    base = json.loads(
+        BUILDER["BASE_ENGINEERING_SPEC"].read_text(encoding="utf-8")
+    )
+    requested = BUILDER["REPLAN_PARAMETERS"]
+    requested_identities = {
+        (parameter["key"], parameter.get("purpose", "ordinary"))
+        for parameter in requested
+    }
+    canonical: dict[tuple[str, str], dict] = {}
+    for edge in base["edges"]:
+        for parameter in edge.get("parameters", []):
+            identity = (
+                parameter["key"],
+                parameter.get("purpose", "ordinary"),
+            )
+            if identity not in requested_identities:
+                continue
+            if identity in canonical:
+                assert canonical[identity] == parameter, identity
+            else:
+                canonical[identity] = parameter
+
+    expected = [
+        canonical.get(
+            (parameter["key"], parameter.get("purpose", "ordinary")),
+            parameter,
+        )
+        for parameter in requested
+    ]
+    assert BUILDER["resolve_replan_parameters"](base) == expected
+
+    new_only = {
+        "key": "replan_extension_fixture",
+        "description": "Original requested contract for a new-only field.",
+        "purpose": "ordinary",
+    }
+    assert BUILDER["resolve_replan_parameters"](
+        base,
+        [*requested, new_only],
+    ) == [*expected, new_only]
+
+
+def test_graph_cohort_preserves_anchors_and_approvals() -> None:
+    graph = BUILDER["build_graph"]()
+    BUILDER["validate_graph"](graph)
+    assert graph["workflow"]["id"] == BUILDER["WORKFLOW_ID"]
+    assert graph["workflow"]["version"] == 94
+    assert graph["workflow"]["source_revision"] == 91
+    assert (
+        len(graph["nodes"]),
+        len(graph["transition_groups"]),
+        len(graph["edges"]),
+    ) == (18, 51, 51)
+    edges = edge_map(graph)
+    assert set(BUILDER["ROUTED_TRANSITIONS"]) == {
+        key for key, edge in edges.items()
+        if any(item["key"] == "entry_transition" for item in edge["parameters"])
+    }
+    assert edges["profile_generation_needs_user_action"]["requires_approval"] is True
+    assert edges["publish_needs_user_action"]["requires_approval"] is True
+    assert edges["merge_watch_pr_merged"]["requires_approval"] is True
+    start = edges["start_release_intent_gate"]
+    assert start["parameters"] == []
+    assert not any(
+        item["key"] == "entry_transition"
+        for item in edges["cleanup_task_janitor"]["parameters"]
+    )
+
+    engineering = BUILDER["build_engineering_spec"]()
+    BUILDER["validate_engineering_spec"](engineering)
+    assert engineering["name"] == "Puber Engineering Delivery v25"
+    assert len(engineering["nodes"]) == 31
+    assert len(engineering["edges"]) == 92
+    assert {edge["key"] for edge in engineering["edges"][-2:]} == {
+        "implement_replan",
+        "fix_replan",
+    }
+    replan_edges = {
+        edge["key"]: edge for edge in engineering["edges"][-2:]
+    }
+    assert {
+        key: edge["context_source"] for key, edge in replan_edges.items()
+    } == {
+        "implement_replan": "node:plan",
+        "fix_replan": "node:plan",
+    }
+    validate_typed_engineering_spec(engineering)
+
+
+def test_all_script_inputs_require_the_exact_business_route() -> None:
+    graph = BUILDER["build_graph"]()
+    edges = edge_map(graph)
+    node_by_id = {node["id"]: node for node in graph["nodes"]}
+    task_id = "task-12345678-1234-4234-8234-123456789abc"
+    sentinel = {"validated": True}
+
+    for key in BUILDER["ROUTED_TRANSITIONS"]:
+        edge = edges[key]
+        target = node_by_id[edge["target_node_id"]]
+        target_key = target["key"]
+        node_id = target["id"]
+        business = {
+            item["key"]: f"fixture-{item['key']}"
+            for item in edge["parameters"]
+            if item["key"] != runtime.ENTRY_TRANSITION
+        }
+        payload = {
+            **business,
+            "_kent": {"task_id": task_id, "node_id": node_id},
+            "entry_transition": key,
+        }
+        with patch.object(runtime, "validate_task", return_value=sentinel) as admit:
+            actual, validated, observed = runtime.validate_envelope(
+                payload,
+                ROOT,
+                target_key,
+            )
+        assert actual == business, key
+        assert validated is sentinel and observed["key"] == key
+        admit.assert_called_once()
+
+        invalids = (
+            {k: v for k, v in payload.items() if k != "entry_transition"},
+            {**payload, "entry_transition": "not-a-graph-edge"},
+            {**payload, "extra_business_field": "not-admitted"},
+        )
+        for invalid in invalids:
+            with patch.object(runtime, "validate_task") as admit:
+                try:
+                    runtime.validate_envelope(invalid, ROOT, target_key)
+                except runtime.ContractError:
+                    pass
+                else:
+                    raise AssertionError(
+                        f"invalid Script route was admitted: {key}"
+                    )
+                admit.assert_not_called()
+
+
+def test_script_outputs_add_routes_and_janitor_does_not() -> None:
+    graph = BUILDER["build_graph"]()
+    edges = edge_map(graph)
+    node_by_id = {node["id"]: node for node in graph["nodes"]}
+    for key in BUILDER["ROUTED_TRANSITIONS"]:
+        edge = edges[key]
+        target_key = node_by_id[edge["target_node_id"]]["key"]
+        fields = {
+            item["key"]: f"fixture-{item['key']}"
+            for item in edge["parameters"]
+            if item["key"] != runtime.ENTRY_TRANSITION
+        }
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            runtime.emit_exact(ROOT, key, target_key, fields)
+        observed = json.loads(output.getvalue())
+        assert observed["transition"] == key
+        assert observed["entry_transition"] == key
+        assert set(observed) == set(fields) | {
+            "transition",
+            "entry_transition",
+        }
+
+    janitor = next(
+        edge for edge in graph["edges"]
+        if node_by_id[edge["target_node_id"]]["key"] == "task_janitor"
+    )
+    janitor_key = node_by_id[janitor["target_node_id"]]["key"]
+    fields = {
+        item["key"]: f"fixture-{item['key']}"
+        for item in janitor["parameters"]
+    }
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        runtime.emit_exact(ROOT, janitor["key"], janitor_key, fields)
+    observed = json.loads(output.getvalue())
+    assert "entry_transition" not in observed
+
+
+def test_profile_selects_project_wrapper_and_unbound_manifest() -> None:
+    with (ROOT / ".kent/workflow-profile.toml").open("rb") as stream:
+        import tomllib
+        profile = tomllib.load(stream)
+    assert "mobile_script_resource_lock" in profile["required_adapters"]
+    assert "mobile_script_resource_lock" not in profile["kit_managed_adapters"]
+    assert profile["adapters"]["mobile_script_resource_lock"] == (
+        ".kent/adapters/mobile/puber-script-resource-lock"
+    )
+    assert profile["release"]["spec_path"] == (
+        ".kent/workflows/specs/puber-release-kit-5af.toml"
+    )
+    manifest = json.loads(
+        (ROOT / ".kent/workflows/puber-release-kit-5af.manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["runtime_attested"] is False
+    assert not any(
+        item.get("kind") in {"kit-commit", "runtime-commit"}
+        for item in manifest.get("external_roots", [])
+    )
+
+
+test_graph_cohort_preserves_anchors_and_approvals()
+test_replan_parameters_reuse_canonical_shared_definitions()
+test_all_script_inputs_require_the_exact_business_route()
+test_script_outputs_add_routes_and_janitor_does_not()
+test_profile_selects_project_wrapper_and_unbound_manifest()
+print("puber-kit-5af-cohort: passed isolated graph/route fixtures")

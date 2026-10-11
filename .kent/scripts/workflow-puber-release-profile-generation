@@ -15,8 +15,8 @@ import signal
 import stat
 import subprocess
 import sys
-import tempfile
 import time
+import tomllib
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from typing import Any, Mapping
@@ -71,6 +71,15 @@ def _safe_serial(value: Any) -> str:
     if not SERIAL_RE.fullmatch(serial):
         raise ProfileError("TV emulator serial is not an exact emulator serial")
     return serial
+
+
+def _serials(value: Any) -> list[str]:
+    if not isinstance(value, list) or not value or len(value) > 256:
+        raise ProfileError("TV emulator serial set is invalid")
+    serials = [_safe_serial(item) for item in value]
+    if serials != sorted(serials) or len(serials) != len(set(serials)):
+        raise ProfileError("TV emulator serial set is not sorted and unique")
+    return serials
 
 
 def _sha(path: Path) -> str:
@@ -360,6 +369,96 @@ def _tool(default: Path, forbidden_override: str) -> str:
     return str(default)
 
 
+def _profile_adapter_path(key: str) -> Path:
+    profile_path = ROOT / ".kent/workflow-profile.toml"
+    try:
+        metadata = profile_path.lstat()
+        raw = profile_path.read_bytes()
+        profile = tomllib.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        raise ProfileError("Puber workflow profile is unavailable") from error
+    if (
+        stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or len(raw) > 256 * 1024
+    ):
+        raise ProfileError("Puber workflow profile is unsafe")
+    configured = profile.get("adapters", {}).get(key)
+    if (
+        not isinstance(configured, str)
+        or not configured
+        or Path(configured).is_absolute()
+        or "\\" in configured
+        or Path(configured).as_posix() != configured
+        or ".." in Path(configured).parts
+    ):
+        raise ProfileError(f"profile adapter path is not exact: {key}")
+    path = ROOT / configured
+    try:
+        adapter_metadata = path.lstat()
+    except OSError as error:
+        raise ProfileError(f"profile adapter is unavailable: {key}") from error
+    if (
+        stat.S_ISLNK(adapter_metadata.st_mode)
+        or not stat.S_ISREG(adapter_metadata.st_mode)
+        or adapter_metadata.st_nlink != 1
+    ):
+        raise ProfileError(f"profile adapter is unsafe: {key}")
+    return path
+
+
+def _load_script_lease_adapter():
+    path = _profile_adapter_path("mobile_script_resource_lock")
+    if not os.access(path, os.X_OK):
+        raise ProfileError("profile Script lease adapter is not executable")
+    spec = importlib.util.spec_from_loader(
+        "puber_profile_script_lease",
+        SourceFileLoader("puber_profile_script_lease", str(path)),
+    )
+    if spec is None or spec.loader is None:
+        raise ProfileError("profile Script lease adapter cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        sys.modules.pop(spec.name, None)
+        raise ProfileError("profile Script lease adapter cannot be loaded") from error
+    return module
+
+
+def _script_context(
+    validated: Mapping[str, Any],
+    state: Mapping[str, Any],
+) -> dict[str, Any]:
+    profile_path = ROOT / ".kent/workflow-profile.toml"
+    profile_sha256 = helper.sha256_bytes(profile_path.read_bytes())
+    return {
+        "schema": "puber-mobile-script-context-v1",
+        "task_id": validated["task_id"],
+        "task_short_id": validated["task_short_id"],
+        "project_id": helper.PROJECT_ID,
+        "workflow_id": helper.WORKFLOW_ID,
+        "workflow_name": helper.WORKFLOW_NAME,
+        "workflow_version": helper.WORKFLOW_REVISION,
+        "node_id": validated["node_id"],
+        "node_key": "profile_generation",
+        "script_path": str(ROOT / helper.SCRIPT_PATHS["profile_generation"]),
+        "profile_sha256": profile_sha256,
+        "workspace_root": str(ROOT),
+        "execution_base_oid": validated["commit"],
+        "controller_commit": validated["controller_commit"],
+        "operation_id": state["operation_id"],
+        "release_type": state["release_type"],
+        "release_version": state["release_version"],
+        "release_tag": state["release_tag"],
+        "release_branch": state["release_branch"],
+        "release_base_oid": state["release_base_oid"],
+        "candidate_oid": state["candidate_oid"],
+    }
+
+
 def _inventory(adapter: str) -> list[str]:
     result = helper.run([adapter, "adb-emulators", "tv"], cwd=ROOT, env=_child_env("emulator-inventory"), check=False)
     if result.returncode != 0:
@@ -372,88 +471,8 @@ def _inventory(adapter: str) -> list[str]:
     return sorted(serials)
 
 
-def _parse_acquired(raw: str, serials: list[str]) -> tuple[str, str]:
-    values: dict[str, str] = {}
-    for line in raw.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            if key in {"resource", "token"}:
-                values[key] = value.strip()
-    resource = _safe_serial(values.get("resource", ""))
-    token = helper.require_string(values.get("token"), "lease token")
-    if resource not in serials:
-        raise ProfileError("lease adapter returned a resource outside the enumerated serials")
-    return resource, token
-
-
-def _release(adapter: str, resource: str, token: str) -> None:
-    result = helper.run([adapter, "release", resource, token], cwd=ROOT, env=_child_env(resource), check=False)
-    if result.returncode != 0:
-        raise ProfileError("leased TV emulator could not be proven released")
-
-
-def _parse_owned_token(raw: str) -> str:
-    # Unlike acquire-any's resource/token envelope, resume-owned prints only
-    # the token. Reject extra lines, envelopes and whitespace without echoing it.
-    if not re.fullmatch(r"[A-Za-z0-9._-]+\n?", raw):
-        raise ProfileError("owned lease recovery returned an invalid single token")
-    return raw.removesuffix("\n")
-
-
-def _recover_owned(adapter: str, serials: list[str]) -> set[str]:
-    recovered: set[str] = set()
-    for serial in serials:
-        result = helper.run(
-            [adapter, "resume-owned", serial],
-            cwd=ROOT,
-            env={**_child_env(serial), "KENT_TASK_ID": os.environ.get("KENT_TASK_ID", "")},
-            check=False,
-        )
-        if result.returncode == 0:
-            token = _parse_owned_token(result.stdout)
-            _release(adapter, serial, token)
-            recovered.add(serial)
-        elif result.returncode not in (75,):
-            raise ProfileError("owned lease recovery failed")
-    return recovered
-
-
-def _restore_outputs(before: Mapping[str, bytes]) -> None:
-    for relative, raw in before.items():
-        path = ROOT / relative
-        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.restore.", dir=path.parent)
-        try:
-            os.fchmod(fd, stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644)
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(raw)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, path)
-        finally:
-            Path(temporary).unlink(missing_ok=True)
-
-
-def _restore_outputs_from_git() -> None:
-    for relative in PROFILE_PATHS:
-        path = ROOT / relative
-        raw = helper.run(["git", "show", f"HEAD:{relative}"], cwd=ROOT, check=False)
-        if raw.returncode != 0 or not raw.stdout:
-            raise ProfileError(f"cannot restore interrupted profile output: {relative}")
-        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.recover.", dir=path.parent)
-        try:
-            os.fchmod(fd, 0o644)
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(raw.stdout.encode("utf-8"))
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, path)
-        finally:
-            Path(temporary).unlink(missing_ok=True)
-
-
 def _assert_owned_output_hashes(expected: Mapping[str, str]) -> None:
-    # Lease ownership is not file ownership. Check BOTH outputs, including
-    # Git-clean files, before restoring either or admitting another generation.
+    # Check BOTH generated outputs, including Git-clean files, before retry.
     current = {path: _sha(ROOT / path) for path in PROFILE_PATHS}
     if current != dict(expected):
         raise ProfileError("profile output ownership could not be proven")
@@ -484,7 +503,7 @@ def _admit_checkpoint_recovery(
         or existing["release_head_oid"] != current_head
     ):
         raise ProfileError("profile recovery checkpoint head drifted")
-    # Source identity must be checked BEFORE any owned-resource recovery.
+    # Source identity is checked before any read-only lease inspection.
     _assert_runtime_source_closure(validated)
     _status_paths()
     status = helper.run(
@@ -494,8 +513,30 @@ def _admit_checkpoint_recovery(
     if any(entry[:3] not in {" M ", " D ", " T "}
            for entry in status.split("\0") if entry):
         raise ProfileError("profile recovery requires unstaged profile changes only")
-    # Unknown bytes may reach lease release, never restoration or successful
-    # reuse. Those require the existing all-output hash checks below.
+
+
+def _base_transition_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: payload[key]
+        for key in (
+            "workspace_path",
+            "operation_id",
+            "task_short_id",
+            "release_type",
+            "release_version",
+            "release_tag",
+            "release_branch",
+            "release_base_oid",
+            "candidate_oid",
+        )
+    }
+
+
+def _owner_summary(observations: list[dict[str, str]]) -> str:
+    return ", ".join(
+        f"{item['resource']}={item['owner_kind']}"
+        for item in observations
+    )
 
 
 def main() -> int:
@@ -527,14 +568,14 @@ def main() -> int:
                     and existing["release_head_oid"] == current_head
                 ):
                     allowed_checkout_head = current_head
-        payload, validated, edge = helper.validate_envelope(
+        payload, validated, _edge = helper.validate_envelope(
             raw_payload,
             ROOT,
             "profile_generation",
             task=task,
             allowed_checkout_head=allowed_checkout_head,
-            profile_recovery_admission=lambda validated: _admit_checkpoint_recovery(
-                raw_payload, validated,
+            profile_recovery_admission=lambda current: _admit_checkpoint_recovery(
+                raw_payload, current,
             ),
         )
     except helper.ContractError as error:
@@ -543,15 +584,11 @@ def main() -> int:
 
     state: dict[str, Any] = {}
     checkpoint_task: str | None = None
-    before: dict[str, bytes] = {}
-    adapter = ""
-    generator = ""
-    resource = ""
-    token = ""
+    lease_api = None
+    lease = None
     serials: list[str] = []
-    cleanup_failed = False
-    interrupt_failure = False
     started = time.monotonic()
+    interrupt_failure = False
 
     def cancel(_signum: int, _frame: Any) -> None:
         raise KeyboardInterrupt("profile generation cancelled")
@@ -559,13 +596,14 @@ def main() -> int:
     try:
         _validate_local_properties()
         adapter = _tool(
-            ROOT / ".kent/adapters/mobile/emulator-resource-lock.sh",
+            _profile_adapter_path("mobile_resource_lock"),
             "PUBER_RESOURCE_LOCK_BIN",
         )
         generator = _tool(
             ROOT / "tools/generate-baseline-profile.sh",
             "PUBER_PROFILE_GENERATOR_BIN",
         )
+        lease_api = _load_script_lease_adapter()
         state = _state_from_payload(payload, {
             **validated,
             **{key: payload[key] for key in (
@@ -574,10 +612,8 @@ def main() -> int:
             )},
         })
         checkpoint_task = state["task_short_id"]
-        try:
-            existing = _read_checkpoint(checkpoint_task)
-        except ProfileError as error:
-            raise InterruptProfileError(str(error)) from error
+        lease_context = _script_context(validated, state)
+        existing = _read_checkpoint(checkpoint_task)
         if existing is not None:
             if any(existing[key] != state[key] for key in (
                 "task_id", "task_short_id", "operation_id", "release_branch",
@@ -631,8 +667,7 @@ def main() -> int:
                         )
                     current = _profile_bytes()
                     _assert_no_unexpected_changes()
-                    expected = existing["output_hashes"]
-                    if expected != {
+                    if existing["output_hashes"] != {
                         path: helper.sha256_bytes(raw)
                         for path, raw in current.items()
                     }:
@@ -641,159 +676,146 @@ def main() -> int:
                         )
                 except helper.ContractError as error:
                     raise InterruptProfileError(str(error)) from error
-                state["operation_id"] = payload["operation_id"]
                 helper.emit_exact(
                     ROOT,
                     "profile_generation_passed",
                     "finalize_release",
                     {
-                        **{key: payload[key] for key in (
-                            "workspace_path", "operation_id", "task_short_id",
-                            "release_type", "release_version", "release_tag",
-                            "release_branch", "release_base_oid", "candidate_oid",
-                        )},
+                        **_base_transition_fields(payload),
                         "profile_report": helper.canonical_json(report),
                         "profile_report_digest": existing["profile_report_digest"],
                     },
                 )
                 return 0
-            _assert_candidate_unchanged(state)
-            existing_serials = existing["candidate_serials"]
-            if (
-                not isinstance(existing_serials, list)
-                or any(not isinstance(item, str) for item in existing_serials)
-            ):
+
+            try:
+                serials = _serials(existing["candidate_serials"])
+            except (KeyError, ProfileError) as error:
                 raise InterruptProfileError(
                     "profile checkpoint candidate serials are invalid"
-                )
-            os.environ["KENT_TASK_ID"] = state["task_id"]
-            if existing["state"] == "generating":
-                try:
-                    _status_paths()
-                except ProfileError as error:
-                    raise InterruptProfileError(str(error)) from error
-                recorded_resource = existing["resource_serial"]
-                if not recorded_resource:
-                    raise InterruptProfileError(
-                        "generating checkpoint has no recorded lease resource"
-                    )
-                try:
-                    recovered = _recover_owned(adapter, existing_serials)
-                except ProfileError as error:
-                    raise InterruptProfileError(str(error)) from error
-                if recorded_resource not in recovered:
-                    raise InterruptProfileError(
-                        "owned generating lease could not be proven recovered"
-                    )
-                try:
-                    # Persist only the proven lease release, retaining the
-                    # original byte authority. Unknown partial output or user
-                    # edits must never become owned merely by hashing them here.
-                    _checkpoint(
-                        checkpoint_task,
-                        state=state,
-                        candidate_serials=existing_serials,
-                        status="failed",
-                        resource_serial="",
-                        output_hashes=existing["output_hashes"],
-                    )
-                    _assert_owned_output_hashes(existing["output_hashes"])
-                except helper.ContractError as error:
-                    raise InterruptProfileError(str(error)) from error
-                _restore_outputs_from_git()
-                try:
-                    _assert_clean_start()
-                except ProfileError as error:
-                    raise InterruptProfileError(str(error)) from error
-                restored = _profile_bytes()
-                _checkpoint(
-                    checkpoint_task,
-                    state=state,
-                    candidate_serials=existing_serials,
-                    status="failed",
-                    resource_serial="",
-                    output_hashes={
-                        path: helper.sha256_bytes(raw)
-                        for path, raw in restored.items()
-                    },
-                )
-                try:
-                    _assert_runtime_source_closure(validated)
-                except helper.ContractError as error:
-                    raise InterruptProfileError(str(error)) from error
-                return _emit_failure(
-                    {key: payload[key] for key in (
-                        "workspace_path", "operation_id", "task_short_id",
-                        "release_type", "release_version", "release_tag",
-                        "release_branch", "release_base_oid", "candidate_oid",
-                    )},
-                    "previous profile generation was interrupted; "
-                    "owned lease and controlled profile outputs were recovered",
-                )
-            serials = existing_serials
-            _recover_owned(adapter, serials)
+                ) from error
             try:
-                dirty_paths = _status_paths()
+                observations = lease_api.inspect_recovery(lease_context, serials)
+            except (ValueError, OSError) as error:
+                raise InterruptProfileError(
+                    "prior profile lease state is unknown; preserve the checkpoint and outputs"
+                ) from error
+            if (
+                existing["state"] not in {"acquiring", "failed"}
+                or existing["resource_serial"]
+                or any(item["owner_kind"] != "Absent" for item in observations)
+            ):
+                return _emit_failure(
+                    _base_transition_fields(payload),
+                    "prior profile generation has an ambiguous owner/outcome; "
+                    "preserve the checkpoint, generated files, and lease state; "
+                    + _owner_summary(observations),
+                )
+            try:
                 _assert_owned_output_hashes(existing["output_hashes"])
-            except ProfileError as error:
-                raise InterruptProfileError(str(error)) from error
-            if dirty_paths:
-                _restore_outputs_from_git()
+                _assert_clean_start()
+            except (ProfileError, helper.ContractError) as error:
+                return _emit_failure(
+                    _base_transition_fields(payload),
+                    f"prior profile acquisition is not safe to retry: {error}",
+                )
+            current_serials = _inventory(adapter)
+            if current_serials != serials:
+                return _emit_failure(
+                    _base_transition_fields(payload),
+                    "TV emulator inventory changed; preserve the original checkpoint",
+                )
+            before = _profile_bytes()
         else:
             _assert_candidate_unchanged(state)
-
-        try:
             _assert_clean_start()
-        except ProfileError as error:
-            raise InterruptProfileError(str(error)) from error
-        try:
             _assert_runtime_source_closure(validated)
-        except helper.ContractError as error:
-            raise InterruptProfileError(str(error)) from error
-        before = _profile_bytes()
+            before = _profile_bytes()
+            serials = _inventory(adapter)
+            _checkpoint(
+                checkpoint_task,
+                state=state,
+                candidate_serials=serials,
+                status="acquiring",
+                resource_serial="",
+                output_hashes={
+                    path: helper.sha256_bytes(raw)
+                    for path, raw in before.items()
+                },
+            )
+
         signal.signal(signal.SIGINT, cancel)
         signal.signal(signal.SIGHUP, cancel)
         signal.signal(signal.SIGTERM, cancel)
-        os.environ["KENT_TASK_ID"] = state["task_id"]
-        serials = _inventory(adapter)
-        _checkpoint(
-            checkpoint_task,
-            state=state,
-            candidate_serials=serials,
-            status="acquiring",
-            resource_serial="",
-            output_hashes={path: helper.sha256_bytes(raw) for path, raw in before.items()},
-        )
-        acquired = helper.run(
-            [adapter, "acquire-any", *serials, "--", "900", "7200"],
+        try:
+            lease = lease_api.acquire_any(
+                lease_context,
+                serials,
+                wait_seconds=900,
+            )
+        except (ValueError, OSError) as error:
+            try:
+                observations = lease_api.inspect_recovery(lease_context, serials)
+                summary = _owner_summary(observations)
+            except (ValueError, OSError):
+                summary = "read-only owner inspection is unavailable"
+            return _emit_failure(
+                _base_transition_fields(payload),
+                "TV Script lease acquisition was refused or ambiguous; "
+                "preserve the acquisition checkpoint; " + summary,
+            )
+
+        resource = lease.resource
+        try:
+            _checkpoint(
+                checkpoint_task,
+                state=state,
+                candidate_serials=serials,
+                status="generating",
+                resource_serial=resource,
+                output_hashes={
+                    path: helper.sha256_bytes(raw)
+                    for path, raw in before.items()
+                },
+            )
+        except (OSError, ValueError, helper.ContractError) as error:
+            try:
+                # No device/build command has started, so this exact acquired
+                # owner has no outstanding work to protect.
+                lease_api.release(lease_context, lease)
+                lease = None
+            except (ValueError, OSError):
+                raise ProfileError(
+                    "generation checkpoint write failed before work started; "
+                    "lease release is ambiguous and owner state is preserved"
+                ) from error
+            raise ProfileError(
+                "generation checkpoint write failed before work started; "
+                "lease was released without starting generation"
+            ) from error
+
+        generated = subprocess.run(
+            [generator],
             cwd=ROOT,
-            env={**_child_env(serials[0]), "KENT_TASK_ID": state["task_id"]},
+            env=_child_env(resource),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=7200,
             check=False,
         )
-        if acquired.returncode != 0:
-            raise ProfileError("TV emulator lease acquisition failed")
-        resource, token = _parse_acquired(acquired.stdout, serials)
-        _checkpoint(
-            checkpoint_task,
-            state=state,
-            candidate_serials=serials,
-            status="generating",
-            resource_serial=resource,
-            output_hashes={path: helper.sha256_bytes(raw) for path, raw in before.items()},
-        )
-        generated = helper.run([generator], cwd=ROOT, env=_child_env(resource), check=False)
         if generated.returncode != 0:
-            raise ProfileError("mock-backed profile generator failed")
-        try:
-            _assert_candidate_unchanged(state)
-        except ProfileError as error:
-            raise InterruptProfileError(str(error)) from error
+            raise ProfileError(
+                "profile generator failed; preserve its checkpoint, outputs, and lease"
+            )
+        _assert_candidate_unchanged(state)
         _child_env(resource)
         after = _profile_bytes()
-        changed = sorted(path for path in PROFILE_PATHS if before[path] != after[path])
         if any(path not in ALLOWED_STATUS_PATHS for path in _status_paths()):
             raise ProfileError("profile generator changed an unexpected path")
-        elapsed_ms = int((time.monotonic() - started) * 1000)
+        changed = sorted(
+            path for path in PROFILE_PATHS if before[path] != after[path]
+        )
         report_value = {
             "schema": PROFILE_REPORT_SCHEMA,
             "operation_id": state["operation_id"],
@@ -809,18 +831,28 @@ def main() -> int:
             "lease_state": "released",
             "generation_state": "passed",
             "network_isolation_state": "passed",
-            "elapsed_ms": elapsed_ms,
-            "baseline_before_sha256": helper.sha256_bytes(before[PROFILE_PATHS[0]]),
-            "baseline_after_sha256": helper.sha256_bytes(after[PROFILE_PATHS[0]]),
-            "startup_before_sha256": helper.sha256_bytes(before[PROFILE_PATHS[1]]),
-            "startup_after_sha256": helper.sha256_bytes(after[PROFILE_PATHS[1]]),
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+            "baseline_before_sha256": helper.sha256_bytes(
+                before[PROFILE_PATHS[0]]
+            ),
+            "baseline_after_sha256": helper.sha256_bytes(
+                after[PROFILE_PATHS[0]]
+            ),
+            "startup_before_sha256": helper.sha256_bytes(
+                before[PROFILE_PATHS[1]]
+            ),
+            "startup_after_sha256": helper.sha256_bytes(
+                after[PROFILE_PATHS[1]]
+            ),
             "changed_profiles": changed,
         }
         report = helper.canonical_json(report_value)
         report_digest = helper.sha256_bytes(report.encode("utf-8"))
-        output_hashes = {path: helper.sha256_bytes(raw) for path, raw in after.items()}
-        _release(adapter, resource, token)
-        token = ""
+        output_hashes = {
+            path: helper.sha256_bytes(raw) for path, raw in after.items()
+        }
+        lease_api.release(lease_context, lease)
+        lease = None
         _checkpoint(
             checkpoint_task,
             state=state,
@@ -837,11 +869,7 @@ def main() -> int:
             "profile_generation_passed",
             "finalize_release",
             {
-                **{key: payload[key] for key in (
-                    "workspace_path", "operation_id", "task_short_id",
-                    "release_type", "release_version", "release_tag",
-                    "release_branch", "release_base_oid", "candidate_oid",
-                )},
+                **_base_transition_fields(payload),
                 "profile_report": report,
                 "profile_report_digest": report_digest,
             },
@@ -849,66 +877,15 @@ def main() -> int:
         return 0
     except KeyboardInterrupt as error:
         reason = str(error) or "profile generation cancelled"
-    except (helper.ContractError, OSError, ValueError, ImportError) as error:
+    except (helper.ContractError, OSError, ValueError, ImportError, subprocess.SubprocessError) as error:
         reason = str(error)
         interrupt_failure = isinstance(error, InterruptProfileError)
-    finally:
-        if token:
-            try:
-                _release(adapter, resource, token)
-                token = ""
-            except ProfileError as error:
-                reason = f"{reason}; {error}" if "reason" in locals() else str(error)
-                try:
-                    _recover_owned(adapter, [resource])
-                    token = ""
-                except (ProfileError, OSError, ValueError) as recovery_error:
-                    cleanup_failed = True
-                    reason = f"{reason}; lease recovery failed: {recovery_error}"
-        if "reason" in locals() and serials and adapter:
-            try:
-                _recover_owned(adapter, serials)
-            except (ProfileError, OSError, ValueError) as error:
-                cleanup_failed = True
-                reason = f"{reason}; lease recovery failed: {error}"
-        if before and "reason" in locals():
-            try:
-                _restore_outputs(before)
-            except (OSError, ValueError) as error:
-                reason = f"{reason}; profile rollback failed: {error}"
-            if checkpoint_task is not None and state:
-                try:
-                    _checkpoint(
-                        checkpoint_task,
-                        state=state,
-                        candidate_serials=serials,
-                        status="failed",
-                        resource_serial="",
-                        output_hashes={
-                            path: helper.sha256_bytes(raw) for path, raw in before.items()
-                        },
-                    )
-                except (OSError, ValueError, helper.ContractError) as error:
-                    reason = f"{reason}; checkpoint update failed: {error}"
-    if "reason" not in locals():
-        return 2
-    if (
-        not state
-        or checkpoint_task is None
-        or cleanup_failed
-        or interrupt_failure
-    ):
+
+    if not state or checkpoint_task is None or interrupt_failure:
         print(json.dumps({"error": reason}, ensure_ascii=False), file=sys.stderr)
         return 2
     try:
-        return _emit_failure(
-            {key: payload[key] for key in (
-                "workspace_path", "operation_id", "task_short_id",
-                "release_type", "release_version", "release_tag",
-                "release_branch", "release_base_oid", "candidate_oid",
-            )},
-            reason,
-        )
+        return _emit_failure(_base_transition_fields(payload), reason)
     except helper.ContractError as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 2

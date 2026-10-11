@@ -16,7 +16,22 @@ import contextlib
 from types import SimpleNamespace
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[3]
+SOURCE_ROOT = Path(__file__).resolve().parents[3]
+_SOURCE_FIXTURE = tempfile.TemporaryDirectory(
+    prefix="puber-intent-source-",
+    dir=os.environ.get("TMPDIR"),
+)
+ROOT = Path(_SOURCE_FIXTURE.name) / "project"
+shutil.copytree(
+    SOURCE_ROOT,
+    ROOT,
+    ignore=shutil.ignore_patterns(".git", "__pycache__"),
+)
+subprocess.run(["git", "init", "--quiet", "-b", "main"], cwd=ROOT, check=True)
+subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=ROOT, check=True)
+subprocess.run(["git", "config", "user.name", "Puber Test"], cwd=ROOT, check=True)
+subprocess.run(["git", "add", "-f", "."], cwd=ROOT, check=True)
+subprocess.run(["git", "commit", "--quiet", "-m", "candidate source fixture"], cwd=ROOT, check=True)
 KIT = Path(os.environ.get("PUBER_STAGE_A_KIT_ROOT", "/Users/rovkinmax/.kent/worktrees/--json")).resolve()
 result = subprocess.run([str(ROOT / ".kent/scripts/workflow-puber-release-intent")], cwd=ROOT, input="{}", text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 assert result.returncode != 0 and "error" in result.stderr
@@ -26,9 +41,12 @@ mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.l
 assert mod.parse_run_carrier(mod.canonical_json(mod.NOT_SELECTED_RUN)) == mod.NOT_SELECTED_RUN
 
 # Exercise the real entry seam before Task I/O or runtime source admission.
-envelope = {"_kent": {"task_id": "fixture", "node_id": "node",
-                     "transition_branch_key": "branch"}, "workspace_path": "fixture"}
-edge = {"parameters": [{"key": "workspace_path"}]}
+envelope = {"_kent": {"task_id": "fixture", "node_id": "node"},
+            "workspace_path": "fixture", "entry_transition": "branch"}
+edge = {
+    "key": "branch",
+    "parameters": [{"key": "workspace_path"}, {"key": "entry_transition"}],
+}
 with patch.object(mod, "_node_id", return_value="node"), \
      patch.object(mod, "graph_edge", return_value=edge), \
      patch.object(mod, "validate_task", return_value={"validated": True}) as admission:
@@ -282,18 +300,27 @@ for key in ("publish_after_merge", "observe_release"):
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)
     work = root / "work"
-    subprocess.run(["git", "clone", "--quiet", str(ROOT), str(work)], cwd=root, check=True)
-    manifest = json.loads((ROOT / ".kent/workflows/puber-release.manifest.json").read_text(encoding="utf-8"))
+    shutil.copytree(
+        ROOT,
+        work,
+        ignore=shutil.ignore_patterns(".git", "__pycache__"),
+    )
+    subprocess.run(["git", "init", "--quiet", "-b", "main"], cwd=work, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=work, check=True)
+    subprocess.run(["git", "config", "user.name", "Puber Test"], cwd=work, check=True)
+    subprocess.run(["git", "add", "-f", "."], cwd=work, check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "intent test fixture"], cwd=work, check=True)
+    manifest = json.loads((ROOT / ".kent/workflows/puber-release-kit-5af.manifest.json").read_text(encoding="utf-8"))
     source_roots = {item["key"].split("=", 1)[0] for item in manifest["external_roots"] if item["kind"] == "source-sha256"}
     for relative in sorted(set(manifest["additional_paths"]) | source_roots | {
         ".kent/scripts/workflow-puber-release-intent",
         ".kent/workflow-profile.toml",
         ".kent/scripts/workflow_runtime_contracts.py",
         ".kent/scripts/workflow-prepare-github-ci",
-        ".kent/workflows/puber-release.json",
-        ".kent/workflows/puber-release.manifest.json",
-        ".kent/workflows/specs/puber-release.toml",
-        ".kent/workflows/builders/puber_release.py",
+        ".kent/workflows/puber-release-kit-5af.json",
+        ".kent/workflows/puber-release-kit-5af.manifest.json",
+        ".kent/workflows/specs/puber-release-kit-5af.toml",
+        ".kent/workflows/builders/puber_release_kit_5af.py",
         ".kent/commands/compliance-review.md",
         ".kent/commands/ship-pr.md",
         ".kent/scripts/workflow-puber-release-publish",
@@ -306,21 +333,21 @@ with tempfile.TemporaryDirectory() as directory:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
     fixture_manifest = json.loads(
-        (work / ".kent/workflows/puber-release.manifest.json").read_text()
+        (work / ".kent/workflows/puber-release-kit-5af.manifest.json").read_text()
     )
     for external in fixture_manifest["external_roots"]:
         if external["kind"] == "source-sha256":
             relative, digest = external["key"].split("=", 1)
             assert hashlib.sha256((work / relative).read_bytes()).hexdigest() == digest, relative
         elif external["kind"] == "builder-sha256":
-            assert hashlib.sha256((work / ".kent/workflows/builders/puber_release.py").read_bytes()).hexdigest() == external["key"]
+            assert hashlib.sha256((work / ".kent/workflows/builders/puber_release_kit_5af.py").read_bytes()).hexdigest() == external["key"]
     subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=work, check=True)
     subprocess.run(["git", "config", "user.name", "Puber Test"], cwd=work, check=True)
     subprocess.run(["git", "add", "."], cwd=work, check=True)
     if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=work).returncode != 0:
         subprocess.run(["git", "commit", "--quiet", "-m", "intent test fixture"], cwd=work, check=True)
     target_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=work, text=True).strip()
-    graph = json.loads((work / ".kent/workflows/puber-release.json").read_text(encoding="utf-8"))
+    graph = json.loads((work / ".kent/workflows/puber-release-kit-5af.json").read_text(encoding="utf-8"))
     node = next(item for item in graph["nodes"] if item["key"] == "release_intent_gate")
     task_id = "task-12345678-1234-4234-8234-123456789abc"
     task = {
@@ -332,14 +359,14 @@ with tempfile.TemporaryDirectory() as directory:
         "project": {}, "retained_session_count": 0, "source_workspace": {},
         "status": {"node_ids": [node["id"]]},
         "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 88, "name": "Puber Release"},
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 94, "name": "Puber Release"},
         "worktree_path": str(work),
     }
     fake = root / "fake"; fake.mkdir()
     task_file = fake / "task.json"; task_file.write_text(json.dumps(task), encoding="utf-8")
     kent = fake / "kent"; kent.write_text("#!/bin/sh\ncat \"$PUBER_FAKE_TASK\"\n", encoding="utf-8"); kent.chmod(0o755)
     env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_FAKE_TASK": str(task_file)}
-    success = {"_kent": {"task_id": task_id, "node_id": node["id"], "transition_branch_key": "start_release_intent_gate"}}
+    success = {"_kent": {"task_id": task_id, "node_id": node["id"]}}
     result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-intent")], cwd=work, input=json.dumps(success), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert result.returncode == 0, result.stderr
     output = json.loads(result.stdout)
@@ -358,7 +385,8 @@ with tempfile.TemporaryDirectory() as directory:
     for retry_branch in ("release_intent_blocked", "release_intent_needs_user_action",
                          "release_intent_invalid"):
         retry_payload = {
-            "_kent": {**success["_kent"], "transition_branch_key": retry_branch},
+            "_kent": success["_kent"],
+            "entry_transition": retry_branch,
             **{key: output[key] for key in (
                 "workspace_path", "operation_id", "task_short_id",
                 "release_type", "release_version",
@@ -415,7 +443,8 @@ with tempfile.TemporaryDirectory() as directory:
 
     rejected_case("task_id", payload_changes={"_kent": {**success["_kent"], "task_id": "task-00000000-0000-4000-8000-000000000000"}})
     rejected_case("project", task_changes={"summary": {**task["summary"], "project_id": "foreign-project"}})
-    rejected_case("workflow_revision", task_changes={"workflow": {**task["workflow"], "version": 87}})
+    for revision in (87, 88, 91):
+        rejected_case(f"workflow_revision_{revision}", task_changes={"workflow": {**task["workflow"], "version": revision}})
     rejected_case("current_node", task_changes={"status": {"node_ids": ["foreign-node"]}})
     rejected_case("current_script", task_changes={"current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-publish"), "current_node": {"node_id": node["id"]}}]})
     rejected_case("execution_commit", task_changes={"execution_target": {"commit_oid": "f" * 40}})
