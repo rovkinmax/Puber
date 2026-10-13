@@ -93,7 +93,53 @@ CLOSED_PATHS = (
     ".kent/adapters/mobile/puber-script-resource-lock",
     ".kent/scripts/tests/test-puber-script-resource-lock",
     ".kent/scripts/tests/test-workflow-wait-github-release",
+    ".kent/scripts/tests/test-workflow-task-janitor-native",
+    ".kent/scripts/tests/test-writer-preservation-authority",
+    "tools/test-smoke-lease-procedure",
+    ".kent/context/delivery.md",
 )
+CLEANUP_EDGES = frozenset({
+    "prepare_pr_no_pr", "ci_prepare_merged", "ci_watch_merged",
+    "ci_monitor_merged", "fix_pr_merged_cleanup", "waiting_pr_cleanup",
+    "merge_watch_cleanup", "waiting_pr_close_without_merge",
+    "task_janitor_blocked",
+})
+LEGACY_CLEANUP_CONTEXT = """Read `.kent/context/delivery.md` first and stay inside its required and
+conditionally triggered sources.
+
+Before transition, pipe one non-empty JSON object to
+`.kent/scripts/workflow-evidence-ledger append --task {{.TaskShortId}} --workspace
+<workspace>`. Set `node_key` to `cleanup`, `evidence_type` to
+`delivery`, and `context.manifest_path` to `.kent/context/delivery.md`.
+`context.files_read` lists other project instruction files in actual read
+order; do not repeat the manifest there. Record repeated questions and
+verification loops, use null for unavailable model/compaction counters, and
+exclude secrets or broad raw evidence. Append is idempotent for the current
+Kent run; on recovery, reuse the returned sequence/hash and continue."""
+
+
+def cleanup_context() -> str:
+    runtime = runpy.run_path(str(ROOT / ".kent/scripts/workflow-puber-release-intent"))
+    modules = runtime["_kit_modules"]()
+    from workflowkit.delivery import cleanup_without_preparation_instruction
+
+    profile = modules["ProjectProfile"].from_toml(
+        ROOT, PROFILE.read_text(encoding="utf-8"), check_files=False,
+    )
+    return cleanup_without_preparation_instruction(
+        profile, ".kent/context/delivery.md", "delivery",
+    )
+
+
+def with_cleanup_context(edge: dict[str, Any], instruction: str) -> dict[str, Any]:
+    result = copy.deepcopy(edge)
+    if edge["key"] in CLEANUP_EDGES:
+        if edge.get("target") != "cleanup" or edge["prompt"].count(LEGACY_CLEANUP_CONTEXT) != 1:
+            raise ValueError(f"historical Cleanup context drifted: {edge['key']}")
+        result["prompt"] = edge["prompt"].replace(LEGACY_CLEANUP_CONTEXT, instruction)
+    return result
+
+
 REPLAN_PARAMETERS = [
     {
         "key": "workspace_path",
@@ -231,6 +277,10 @@ def build_engineering_spec() -> dict[str, Any]:
     replan_parameters = resolve_replan_parameters(base)
     value = copy.deepcopy(base)
     value["name"] = "Puber Engineering Delivery v25"
+    instruction = cleanup_context()
+    if not CLEANUP_EDGES <= {edge["key"] for edge in base["edges"]}:
+        raise ValueError("historical Cleanup edge set drifted")
+    value["edges"] = [with_cleanup_context(edge, instruction) for edge in base["edges"]]
     for key, source, transition, node_key in (
         ("implement_replan", "implement", "implement_replan", "Implement"),
         ("fix_replan", "fix", "fix_replan", "Fix"),
@@ -293,8 +343,10 @@ def validate_engineering_spec(
     if base is not None:
         if value["nodes"] != base["nodes"]:
             raise ValueError("Engineering v25 changed historical node identities")
-        if value["edges"][: len(base["edges"])] != base["edges"]:
-            raise ValueError("Engineering v25 changed historical edges")
+        instruction = cleanup_context()
+        expected = [with_cleanup_context(edge, instruction) for edge in base["edges"]]
+        if value["edges"][: len(base["edges"])] != expected:
+            raise ValueError("Engineering v25 changed fields beyond qualified Cleanup prompts")
 
 
 def _sha(path: Path) -> str:

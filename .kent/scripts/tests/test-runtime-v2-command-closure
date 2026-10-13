@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import hashlib, os, subprocess
+import hashlib, os, subprocess, sys
 ROOT=Path(__file__).resolve().parents[3]
 KIT=Path(os.environ["KENT_ENGINEERING_KIT_ROOT"]).resolve()
 COMMIT="3020962feffa870c8f064e7a0b2657d316a8ec1b"
@@ -47,6 +47,18 @@ for item in manifest["external_roots"]:
         assert hashlib.sha256((ROOT / ".kent/workflows/builders/puber_release_kit_5af.py").read_bytes()).hexdigest() == item["key"]
 assert "app/build.gradle.kts" not in source_roots
 assert "app/debug.jks" not in manifest["additional_paths"]
+for relative, donor in (
+    (".kent/scripts/workflow-task-janitor", "templates/project/workflow-task-janitor"),
+    (".kent/scripts/workflow-evidence-ledger", "templates/project/workflow-evidence-ledger"),
+    (".kent/scripts/workflow_runtime_contracts.py", "workflowkit/runtime.py"),
+):
+    assert (ROOT / relative).read_bytes() == (KIT / donor).read_bytes(), relative
+for test in (
+    ".kent/scripts/tests/test-workflow-task-janitor-native",
+    ".kent/scripts/tests/test-writer-preservation-authority",
+):
+    assert test in source_roots, test
+    subprocess.run([sys.executable, "-B", str(ROOT / test)], cwd=ROOT, check=True)
 print('runtime-v2-command-closure: passed manifest-bound candidate files')
 
 def assert_native_join_parameter_contract(workflow):

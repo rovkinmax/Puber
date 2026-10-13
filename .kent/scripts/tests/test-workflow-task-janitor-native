@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Exercise Puber's materialized commands with the pinned Kit fixture suite."""
+from __future__ import annotations
+
+import importlib.util
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[3]
+KIT = Path(os.environ["KENT_ENGINEERING_KIT_ROOT"]).resolve(strict=True)
+PIN = "3020962feffa870c8f064e7a0b2657d316a8ec1b"
+head = subprocess.check_output(["git", "-C", str(KIT), "rev-parse", "HEAD"], text=True).strip()
+if head != PIN:
+    raise SystemExit("Janitor qualification requires the selected immutable Kit")
+if subprocess.check_output(
+    ["git", "-C", str(KIT), "status", "--porcelain=v1", "--untracked-files=all"],
+    text=True,
+):
+    raise SystemExit("Janitor qualification requires a clean Kit")
+
+spec = importlib.util.spec_from_file_location(
+    "pinned_janitor_fixtures", KIT / "tests/test_workflow_runtime.py"
+)
+assert spec is not None and spec.loader is not None
+fixtures = importlib.util.module_from_spec(spec)
+sys.path.insert(0, str(KIT))
+spec.loader.exec_module(fixtures)
+
+
+class PuberJanitorTest(fixtures.WorkflowJanitorTest):
+    """Keep upstream failure-path coverage while testing actual consumer bytes."""
+
+    def install_v2_runtime_commands(self, root: Path) -> Path:
+        scripts = root / ".kent/scripts"
+        scripts.mkdir(parents=True)
+        for name in (
+            "workflow-task-janitor",
+            "workflow-evidence-ledger",
+            "workflow_runtime_contracts.py",
+        ):
+            target = scripts / name
+            shutil.copyfile(ROOT / ".kent/scripts" / name, target)
+            target.chmod(0o755)
+        return scripts
+
+    def test_sealed_accepted_plan_cache_is_preserved_before_native_delete(self) -> None:
+        root, worktree, scripts, marker = self.make_managed_worktree(with_v2=True)
+        contract = fixtures.load_template_module(
+            ROOT / ".kent/scripts/workflow-plan-contract", "puber_plan_fixture",
+        )
+        path = worktree / ".kent/runtime/TASK-1/plan-contract.json"
+        normalized = "# Plan\n\n- [ ] Preserve accepted scope.\n"
+        contract.write_snapshot(
+            path, root=worktree, task="TASK-1", plan_path=".todo/fixture/plan.md",
+            work_kind="bugfix", normalized=normalized,
+            digest=hashlib.sha256(normalized.encode()).hexdigest(),
+        )
+        before = path.read_bytes()
+        ledger = path.with_name("evidence-ledger.jsonl")
+        ledger_before = ledger.read_bytes()
+        wrapper = self.completed_wrapper(root)
+        called = root / "native-delete-called"
+        result = subprocess.run(
+            [str(scripts / "workflow-task-janitor")],
+            cwd=worktree, text=True, capture_output=True,
+            input=self.janitor_input(
+                worktree, branch_name="TASK-1", cleanup_mode="no_pr",
+                cleanup_report="Cleanup complete.\n" + marker,
+            ),
+            env={
+                **os.environ, "KENT_WORKTREE_WRAPPER": str(wrapper),
+                "KENT_TEST_PRIMARY": str(root),
+                "KENT_TEST_WRAPPER_MARKER": str(called),
+            },
+        )
+        report = json.loads(result.stdout)
+        self.assertEqual(report["transition"], "task_janitor_blocked", report)
+        self.assertIn("plan-contract.json", report["cleanup_report"])
+        self.assertFalse(called.exists())
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(ledger.read_bytes(), ledger_before)
+
+
+if __name__ == "__main__":
+    # Upstream legacy cases deliberately have no sibling runtime module.
+    # V2 cases install all three actual consumer files through the override.
+    with tempfile.TemporaryDirectory(prefix="puber-janitor-contract-") as directory:
+        legacy = Path(directory) / "workflow-task-janitor"
+        shutil.copyfile(ROOT / ".kent/scripts/workflow-task-janitor", legacy)
+        legacy.chmod(0o755)
+        fixtures.JANITOR = legacy
+        unittest.main()

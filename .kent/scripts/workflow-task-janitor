@@ -2,11 +2,12 @@
 """Terminal evidence admission under the existing cooperative POSIX lock.
 
 One scoped admission owns the directory and file descriptors through rename,
-retention or deletion. Any non-CI ordinary entry is admitted only as a private,
-owned regular file; its bytes remain opaque. CI names are reserved:
-canonical validated bytes, their digest and an exact logical Task reference in
-the sealed chain authorize each report. Tombstone paths never become logical
-artifact identities.
+retention or deletion. Only named ledger/checkpoint files and validated
+referenced CI reports are admitted; unknown entries are preserved and block
+cleanup. Legacy cleanup has its own closed ledger/checkpoint/lock set. CI
+names are reserved: canonical validated bytes, their digest and an exact
+logical Task reference in the sealed chain authorize each report. Tombstone
+paths never become logical artifact identities.
 Admission Git probes resolve and bind the selected workspace's own Git directory,
 worktree and index, including linked worktrees. Inherited GIT_* routing, object,
 namespace and config injection are removed; ordinary on-disk Git exclusions
@@ -20,8 +21,8 @@ Initial and managed admission require every referenced report. Only a matching
 tombstone with a verified durable sentinel and matching ledger/report marker may
 resume with already-absent reports; that checkpoint cannot distinguish prior
 deletion from unrelated loss. No absent bytes are claimed to have been verified.
-Managed cleanup retains all admitted bytes. Primary cleanup removes ordinary
-opaque files, then lexically ordered validated reports, then the ledger last,
+Managed cleanup retains all admitted bytes. Primary cleanup removes
+checkpoints, lexically ordered validated reports, then the ledger last,
 fsyncing after each unlink.
 FD/link/byte checks detect cooperative drift, not hostile same-UID stat/unlink
 races: POSIX unlink is not an atomic inode compare-and-swap.
@@ -51,6 +52,14 @@ MAX_CI_ARTIFACTS = 64
 MAX_CI_ARTIFACT_BYTES = 4 * 1024 * 1024
 MAX_LEDGER_BYTES = 8 * 1024 * 1024
 MAX_LEDGER_RECORDS = 8192
+RUNTIME_EVIDENCE_ENTRIES = frozenset({
+    "evidence-ledger.jsonl",
+    "fix-checkpoint.json",
+    "smoke-checkpoint.json",
+})
+LEGACY_RUNTIME_ENTRIES = RUNTIME_EVIDENCE_ENTRIES | frozenset({
+    "runtime.lock",
+})
 RUNTIME_FILE_METADATA = (
     "st_dev", "st_ino", "st_uid", "st_mode", "st_nlink",
     "st_size", "st_mtime_ns", "st_ctime_ns",
@@ -71,15 +80,20 @@ def runtime_contracts():
     sibling = Path(__file__).with_name("workflow_runtime_contracts.py")
     if sibling.is_symlink() or not sibling.is_file():
         raise RuntimeError("runtime contract support module is unsafe")
-    spec = importlib.util.spec_from_file_location(
-        "workflow_runtime_contracts",
-        sibling,
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("runtime contract support module is unavailable")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    previous_bytecode_policy = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "workflow_runtime_contracts",
+            sibling,
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("runtime contract support module is unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.dont_write_bytecode = previous_bytecode_policy
 
 
 def run(
@@ -126,10 +140,19 @@ def primary_root(workspace: Path) -> Path:
     raise RuntimeError("cannot determine the primary Git worktree")
 
 
+def _unique_json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
 def json_object(output: str, label: str) -> dict[str, object]:
     try:
-        payload = json.loads(output)
-    except json.JSONDecodeError as error:
+        payload = json.loads(output, object_pairs_hook=_unique_json_pairs)
+    except ValueError as error:
         raise RuntimeError(f"{label} returned invalid JSON: {error}") from error
     if not isinstance(payload, dict):
         raise RuntimeError(f"{label} returned a non-object JSON payload")
@@ -216,15 +239,55 @@ def _kent_record(
     item: object,
     *,
     workspace: Path,
+    primary: Path,
 ) -> dict[str, str]:
     if not isinstance(item, dict):
         raise RuntimeError("Kent worktree list contains a malformed entry")
     topology = item.get("topology")
     if not isinstance(topology, dict):
         raise RuntimeError("Kent worktree list entry has no topology")
-    variant = topology.get("variant")
-    if not isinstance(variant, str):
-        raise RuntimeError("Kent worktree list entry has no topology variant")
+    variants = {"external", "missing", "registered", "mainWorkspace"}
+    native = "variant" not in topology
+    if native:
+        if len(topology) != 1 or not (set(topology) <= variants):
+            raise RuntimeError("Kent worktree list has unknown or ambiguous topology")
+        variant = next(iter(topology))
+    else:
+        variant = topology.get("variant")
+        if not isinstance(variant, str) or variant not in variants:
+            raise RuntimeError("Kent worktree list has unknown topology variant")
+        if set(topology) != {"variant", variant}:
+            raise RuntimeError("Kent worktree list has ambiguous topology payloads")
+    body = topology.get(variant)
+    if not isinstance(body, dict):
+        raise RuntimeError("Kent worktree topology payload is malformed")
+    # Only identity fields are translated; projection/display metadata is not identity.
+    aliases = {"canonical_root": "canonicalRoot", "worktree_id": "worktreeId",
+               "is_main_worktree": "isMainWorktree"}
+    normalized = dict(body)
+    for name in ("git", "kent"):
+        identity = body.get(name)
+        if identity is None:
+            continue
+        if not isinstance(identity, dict):
+            raise RuntimeError("Kent worktree topology identity is malformed")
+        forbidden = aliases.keys() if native else aliases.values()
+        if any(key in identity for key in forbidden):
+            raise RuntimeError("Kent worktree topology mixes identity dialects")
+        normalized[name] = {
+            **identity,
+            **{old: identity[new] for old, new in aliases.items()
+               if native and new in identity},
+        }
+    topology = {variant: normalized}
+    if variant == "mainWorkspace":
+        git = normalized.get("git")
+        if not isinstance(git, dict) or git.get("is_main_worktree") is not True:
+            raise RuntimeError("Kent primary topology is not a main worktree")
+        root = _kent_root(git.get("canonical_root"), "primary root")
+        if root != str(primary.resolve()):
+            raise RuntimeError("Kent primary topology root differs from known primary")
+        return {"variant": variant, "root": root}
     if variant == "external":
         external = topology.get("external")
         git = external.get("git") if isinstance(external, dict) else None
@@ -258,6 +321,8 @@ def _kent_record(
         kent = registered.get("kent")
         if not isinstance(git, dict) or not isinstance(kent, dict):
             raise RuntimeError("Kent registered topology is incomplete")
+        if git.get("is_main_worktree", False) is not False:
+            raise RuntimeError("Kent registered topology claims the primary worktree")
         git_root = _kent_root(git.get("canonical_root"), "registered Git root")
         kent_root = _kent_root(kent.get("canonical_root"), "registered Kent root")
         if git_root != kent_root:
@@ -301,9 +366,14 @@ def kent_worktree_entries(
     if not isinstance(worktrees, list):
         raise RuntimeError("Kent worktree list has no worktrees array")
     entries = [
-        _kent_record(item, workspace=workspace)
+        _kent_record(item, workspace=workspace, primary=primary)
         for item in worktrees
     ]
+    if len({entry["root"] for entry in entries}) != len(entries):
+        raise RuntimeError("Kent worktree list contains duplicate roots")
+    identities = [entry["worktree_id"] for entry in entries if "worktree_id" in entry]
+    if len(set(identities)) != len(identities):
+        raise RuntimeError("Kent worktree list contains duplicate managed identities")
     return entries
 
 
@@ -688,6 +758,46 @@ def _evidence_git_workspace(workspace: Path) -> tuple[list[str], dict[str, str]]
     ], environment
 
 
+def _verify_runtime_git_paths(
+    workspace: Path,
+    paths: list[str],
+    git_command: list[str],
+    git_environment: dict[str, str],
+) -> None:
+    if not paths:
+        return
+    ignored = run(
+        [*git_command, "check-ignore", "-z", "--stdin"],
+        cwd=workspace,
+        check=False,
+        environment=git_environment,
+        input_text="".join(path + "\0" for path in paths),
+    )
+    tracked = run(
+        [
+            *git_command,
+            "--literal-pathspecs",
+            "ls-files",
+            "-z",
+            "--",
+            *paths,
+        ],
+        cwd=workspace,
+        check=False,
+        environment=git_environment,
+    )
+    if (
+        ignored.returncode != 0
+        or not ignored.stdout.endswith("\0")
+        or ignored.stdout.split("\0")[:-1] != paths
+        or tracked.returncode != 0
+        or tracked.stdout
+    ):
+        raise ValueError(
+            "runtime entries are tracked or not ignored in selected workspace"
+        )
+
+
 class _EvidenceAdmission:
     """Janitor-local FD ownership; no caller-supplied recovery phase."""
 
@@ -739,6 +849,10 @@ class _EvidenceAdmission:
                     self.references.add(name)
                     if len(self.references) > MAX_CI_ARTIFACTS:
                         raise ValueError("CI report reference count exceeds limit")
+            allowed = RUNTIME_EVIDENCE_ENTRIES | self.references
+            unknown = sorted(set(entries) - allowed)
+            if unknown:
+                raise ValueError(f"unexpected tombstone entries: {unknown}")
             if state_name == self.tombstone:
                 _, self.sentinel_name = runtime_state_names(task_short_id)
                 try:
@@ -928,6 +1042,239 @@ def _validate_retained_tombstone(
     except BaseException:
         admission.close()
         raise
+
+
+def _admit_managed_runtime_parent(
+    workspace: Path,
+    task_short_id: str,
+    *,
+    cleanup_report: str,
+) -> tuple[bool, str]:
+    """Admit only this Task's bounded runtime-parent state before retirement."""
+
+    v2_declared = _declares_terminal_evidence(cleanup_report)
+    support_module = Path(__file__).with_name("workflow_runtime_contracts.py")
+    v2_supported = support_module.is_file() and not support_module.is_symlink()
+    if v2_declared and not v2_supported:
+        return False, "declared v2 runtime support is missing or unsafe"
+
+    try:
+        runtime = runtime_contracts() if v2_supported else None
+    except (ImportError, OSError, RuntimeError, ValueError, AttributeError) as error:
+        return False, f"runtime contract support is unavailable: {error}"
+    reported_marker = None
+    expected_tombstone = None
+    if v2_declared:
+        try:
+            reported_marker = _cleanup_marker(runtime, cleanup_report, task_short_id)
+            expected_tombstone = (
+                ".evidence-cleanup-" + runtime.canonical_sha256(reported_marker)
+            )
+        except (ValueError, json.JSONDecodeError) as error:
+            return False, f"terminal marker is invalid: {error}"
+
+    lock_name, sentinel_name = runtime_state_names(task_short_id)
+    descriptors: list[int] = []
+    file_descriptors: dict[str, tuple[int, os.stat_result]] = {}
+    admission = None
+    legacy_state_fd = -1
+    legacy_state_entries: list[str] = []
+    legacy_state_files: dict[str, tuple[int, os.stat_result]] = {}
+    legacy_git_command: list[str] | None = None
+    legacy_git_environment: dict[str, str] | None = None
+    legacy_paths: list[str] = []
+    try:
+        root_fd = os.open(
+            workspace,
+            os.O_RDONLY
+            | os.O_DIRECTORY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        descriptors.append(root_fd)
+        try:
+            kent_fd = open_child_directory(root_fd, ".kent")
+        except FileNotFoundError:
+            if v2_declared:
+                return False, "sealed v2 runtime parent is missing"
+            return True, "legacy runtime parent is absent"
+        descriptors.append(kent_fd)
+        try:
+            runtime_fd = open_child_directory(kent_fd, "runtime")
+        except FileNotFoundError:
+            if v2_declared:
+                return False, "sealed v2 runtime parent is missing"
+            return True, "legacy runtime parent is absent"
+        descriptors.append(runtime_fd)
+        _revalidate_directory_link(root_fd, ".kent", kent_fd)
+        _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+
+        entries = _bounded_inventory(runtime_fd)
+        allowed = {task_short_id, lock_name}
+        if v2_declared and expected_tombstone is not None:
+            allowed.add(expected_tombstone)
+        unknown = sorted(set(entries) - allowed - {sentinel_name})
+        if unknown:
+            return False, f"unadmitted entry {unknown[0]!r} in runtime-parent"
+        if sentinel_name in entries and (
+            not v2_declared
+            or expected_tombstone is None
+            or expected_tombstone not in entries
+        ):
+            return False, "task-derived terminal sentinel has no validated tombstone"
+
+        active_present = task_short_id in entries
+        tombstone_present = (
+            expected_tombstone is not None and expected_tombstone in entries
+        )
+        if active_present and tombstone_present:
+            return False, "active runtime conflicts with terminal tombstone"
+        if active_present and sentinel_name in entries:
+            return False, "active runtime conflicts with terminal sentinel"
+
+        state_name = ""
+        if active_present:
+            state_name = task_short_id
+        elif tombstone_present:
+            state_name = expected_tombstone
+        if state_name:
+            state_fd = open_child_directory(runtime_fd, state_name)
+            descriptors.append(state_fd)
+            _revalidate_directory_link(runtime_fd, state_name, state_fd)
+            if v2_declared:
+                admission = _validate_retained_tombstone(
+                    workspace,
+                    runtime,
+                    state_fd,
+                    state_name,
+                    task_short_id,
+                    reported_marker,
+                    runtime_fd,
+                )
+            else:
+                legacy_state_fd = state_fd
+                legacy_state_entries = _bounded_inventory(state_fd)
+                unexpected = sorted(
+                    set(legacy_state_entries) - LEGACY_RUNTIME_ENTRIES
+                )
+                if unexpected:
+                    raise ValueError(
+                        f"unexpected runtime entries: {unexpected}"
+                    )
+                legacy_git_command, legacy_git_environment = (
+                    _evidence_git_workspace(workspace)
+                )
+                legacy_paths = sorted(
+                    f".kent/runtime/{task_short_id}/{name}"
+                    for name in legacy_state_entries
+                )
+                _verify_runtime_git_paths(
+                    workspace,
+                    legacy_paths,
+                    legacy_git_command,
+                    legacy_git_environment,
+                )
+                for name in legacy_state_entries:
+                    descriptor = _open_evidence_file(state_fd, name)
+                    legacy_state_files[name] = (
+                        descriptor,
+                        os.fstat(descriptor),
+                    )
+                    if name == "runtime.lock" and _bounded_file_bytes(
+                        descriptor,
+                        0,
+                    ):
+                        raise ValueError("legacy runtime lock is not empty")
+
+        for name in (lock_name, sentinel_name):
+            if name not in entries:
+                continue
+            descriptor = os.open(
+                name,
+                os.O_RDONLY
+                | getattr(os, "O_NONBLOCK", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=runtime_fd,
+            )
+            try:
+                metadata = os.fstat(descriptor)
+                if (
+                    not stat.S_ISREG(metadata.st_mode)
+                    or metadata.st_nlink != 1
+                    or metadata.st_uid != os.getuid()
+                    or metadata.st_mode & 0o077
+                ):
+                    raise ValueError(f"task-derived runtime file is unsafe: {name}")
+                if _bounded_file_bytes(descriptor, 0):
+                    raise ValueError(
+                        f"task-derived runtime file is not empty: {name}"
+                    )
+                _revalidate_file_link(runtime_fd, name, descriptor)
+            except BaseException:
+                os.close(descriptor)
+                raise
+            file_descriptors[name] = (descriptor, metadata)
+
+        if _bounded_inventory(runtime_fd) != entries:
+            raise ValueError("runtime-parent inventory changed during admission")
+        _revalidate_directory_link(root_fd, ".kent", kent_fd)
+        _revalidate_directory_link(kent_fd, "runtime", runtime_fd)
+        for name, (descriptor, saved) in file_descriptors.items():
+            _revalidate_file_link(runtime_fd, name, descriptor)
+            current = os.fstat(descriptor)
+            if any(
+                getattr(current, key) != getattr(saved, key)
+                for key in RUNTIME_FILE_METADATA
+            ):
+                raise ValueError("task-derived runtime file changed during admission")
+        if legacy_state_fd >= 0:
+            _revalidate_directory_link(
+                runtime_fd,
+                state_name,
+                legacy_state_fd,
+            )
+            if _bounded_inventory(legacy_state_fd) != legacy_state_entries:
+                raise ValueError("legacy runtime inventory changed during admission")
+            for name, (descriptor, saved) in legacy_state_files.items():
+                _revalidate_file_link(legacy_state_fd, name, descriptor)
+                current = os.fstat(descriptor)
+                if any(
+                    getattr(current, key) != getattr(saved, key)
+                    for key in RUNTIME_FILE_METADATA
+                ):
+                    raise ValueError(
+                        "legacy runtime file changed during admission"
+                    )
+            assert legacy_git_command is not None
+            assert legacy_git_environment is not None
+            _verify_runtime_git_paths(
+                workspace,
+                legacy_paths,
+                legacy_git_command,
+                legacy_git_environment,
+            )
+        if admission is not None:
+            admission.revalidate()
+        return True, "managed runtime-parent admission passed"
+    except (
+        FileNotFoundError,
+        NotADirectoryError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        json.JSONDecodeError,
+        subprocess.TimeoutExpired,
+    ) as error:
+        return False, f"managed runtime-parent admission failed: {error}"
+    finally:
+        if admission is not None:
+            admission.close()
+        for descriptor, _ in legacy_state_files.values():
+            os.close(descriptor)
+        for descriptor, _ in file_descriptors.values():
+            os.close(descriptor)
+        close_descriptors(*descriptors)
 
 
 def _remove_v2_runtime_state(
@@ -1554,20 +1901,19 @@ def remove_runtime_state(
         if _phase_hook is not None:
             _phase_hook("after_task_fd_before_link_revalidation")
 
-        lock_fd = os.open(
-            "runtime.lock",
-            os.O_RDWR
-            | os.O_CREAT
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-            dir_fd=task_fd,
-        )
+        lock_fd, lock_created = _open_stable_lock(task_fd, "runtime.lock")
         descriptors.append(lock_fd)
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
         entries = _bounded_inventory(task_fd)
-        if "terminal-sentinel" in entries:
-            runtime_contracts()
+        unexpected = sorted(set(entries) - LEGACY_RUNTIME_ENTRIES)
+        if unexpected:
+            if lock_created:
+                _revalidate_file_link(task_fd, "runtime.lock", lock_fd)
+                os.close(lock_fd)
+                descriptors.remove(lock_fd)
+                os.unlink("runtime.lock", dir_fd=task_fd)
+                os.fsync(task_fd)
+            return False, f"unexpected runtime entries: {unexpected}"
         for entry in entries:
             if entry.startswith(CI_REPORT_PREFIX):
                 return (
@@ -1575,6 +1921,9 @@ def remove_runtime_state(
                     f"CI evidence requires sealed v2 admission: {entry}",
                 )
             descriptor = _open_evidence_file(task_fd, entry)
+            if entry == "runtime.lock" and os.fstat(descriptor).st_size:
+                os.close(descriptor)
+                raise ValueError("legacy runtime lock is not empty")
             admitted[entry] = (descriptor, os.fstat(descriptor))
 
         git_command, git_environment = _evidence_git_workspace(workspace)
@@ -1668,6 +2017,44 @@ def complete(transition: str, report: str, blocker: str = "") -> None:
     print(json.dumps(payload, ensure_ascii=False))
 
 
+def deletion_result_kind(payload: dict) -> str:
+    """Decode legacy completion or Kent 2.8 CLI direct DeleteSuccess."""
+    if "kind" in payload:
+        if set(payload) - {"kind", "completed", "scheduled"}:
+            raise ValueError("mixed or unknown legacy deletion fields")
+        kind = payload["kind"]
+        if kind not in {"completed", "scheduled"}:
+            raise ValueError("unknown legacy deletion result")
+        if (kind == "completed" and "scheduled" in payload) or (
+            kind == "scheduled" and "completed" in payload
+        ):
+            raise ValueError("conflicting legacy deletion outcomes")
+        if kind in payload:
+            details = payload[kind]
+            if not isinstance(details, dict):
+                raise ValueError("malformed legacy deletion details")
+            if "leftover_root" in details or "leftoverRoot" in details:
+                raise ValueError("legacy deletion left a root")
+        return kind
+    if set(payload) - {"cleanup", "leftoverRoot"} or "leftoverRoot" in payload:
+        raise ValueError("unknown deletion fields or leftover root")
+    cleanup = payload.get("cleanup")
+    if not isinstance(cleanup, dict) or set(cleanup) - {"kind", "branchName", "diagnostic"}:
+        raise ValueError("malformed native branch cleanup")
+    kind = cleanup.get("kind")
+    prefix = "WORKTREE_BRANCH_CLEANUP_OUTCOME_"
+    if kind not in {prefix + value for value in (
+        "DELETED", "RETAINED", "NOT_REQUESTED", "NOT_APPLICABLE"
+    )}:
+        raise ValueError("unknown native branch cleanup outcome")
+    for key in ("branchName", "diagnostic"):
+        if key in cleanup and not isinstance(cleanup[key], str):
+            raise ValueError("invalid native branch cleanup text")
+    if kind in {prefix + "DELETED", prefix + "RETAINED"} and not cleanup.get("branchName"):
+        raise ValueError("native branch cleanup lacks branch identity")
+    return "completed"
+
+
 def delete_managed_worktree(
     wrapper: str,
     primary: Path,
@@ -1733,7 +2120,15 @@ def delete_managed_worktree(
                 f"Janitor could not confirm removal of {workspace}: {error}",
                 "Kent worktree deletion returned no trustworthy completion result.",
             )
-        deletion_kind = str(deletion_payload.get("kind") or "")
+        try:
+            deletion_kind = deletion_result_kind(deletion_payload)
+        except (TypeError, ValueError) as error:
+            return (
+                False,
+                f"Janitor could not confirm deletion of {workspace}: {error}. "
+                "The destructive operation may already have completed.",
+                "Kent did not return a trustworthy completed worktree deletion result.",
+            )
         if deletion_kind == "scheduled":
             scheduled = deletion_payload.get("scheduled")
             operation_id = (
@@ -1743,7 +2138,7 @@ def delete_managed_worktree(
             )
             return (
                 False,
-                f"Janitor preserved {workspace}: Kent scheduled worktree "
+                f"Janitor could not confirm deletion of {workspace}: Kent scheduled worktree "
                 f"deletion operation {operation_id or '<unknown>'} but did "
                 "not confirm completion.",
                 "Resume Cleanup so the session can leave the task worktree, "
@@ -2155,6 +2550,24 @@ def main() -> int:
         )
         return 0
 
+    runtime_parent_ok, runtime_parent_report = _admit_managed_runtime_parent(
+        workspace,
+        task_short_id,
+        cleanup_report=previous_report,
+    )
+    if not runtime_parent_ok:
+        complete(
+            "task_janitor_blocked",
+            f"{previous_report}\nJanitor preserved {workspace}: "
+            f"{runtime_parent_report}.",
+            "Managed cleanup is blocked by unadmitted runtime-parent material. "
+            "Identify its actual owner from retained Task evidence; if another "
+            "Session owns it, coordinate release with that owner through the "
+            "supported path. Do not remove or signal foreign state. Retry only "
+            "after release is confirmed and fresh safety checks pass.",
+        )
+        return 0
+
     managed_v2 = _prepare_v2_managed_runtime_state(
         workspace,
         task_short_id,
@@ -2227,6 +2640,24 @@ def main() -> int:
             f"Kent registration preflight failed: {error}",
             "The exact managed Kent record could not be captured; no worktree "
             "or branch was removed.",
+        )
+        return 0
+
+    runtime_parent_ok, runtime_parent_report = _admit_managed_runtime_parent(
+        workspace,
+        task_short_id,
+        cleanup_report=previous_report,
+    )
+    if not runtime_parent_ok:
+        complete(
+            "task_janitor_blocked",
+            f"{previous_report}\nJanitor preserved {workspace}: "
+            f"{runtime_parent_report}.",
+            "Managed cleanup is blocked by unadmitted runtime-parent material. "
+            "Identify its actual owner from retained Task evidence; if another "
+            "Session owns it, coordinate release with that owner through the "
+            "supported path. Do not remove or signal foreign state. Retry only "
+            "after release is confirmed and fresh safety checks pass.",
         )
         return 0
 

@@ -17,14 +17,15 @@ Runs smoke test for a feature via MCP mobile.
 
 ## Evidence Safety
 
-- Smoke lease/device execution is blocked until separately approved adoption
-  and source proof of a compatible adapter implementing the KEN-6 mobile Smoke
-  contract/template pinned at Kit commit
-  `0ba82a89e7b38a1f70defe6ec286e33dd7f6ba8d`. The currently tracked Puber
-  adapter is not compatible or ready; this source-only change does not install,
-  qualify, or roll out a replacement. Stop before lease status/acquisition,
-  emulator discovery, or device work. The examples describe the target
-  contract; deterministic tests use synthetic stubs only.
+- The procedure, unchanged selected Puber resource-lock adapter, and canonical
+  checkpoint helper are source-qualified together by the disposable
+  production-component fixture in `tools/test-smoke-lease-procedure`. This
+  removes the historical source-level prohibition on lease status/acquisition.
+  It is not live adapter adoption or rollout, and does not prove that a live TV
+  is available, authenticated, or has passed product Smoke. Runtime/device
+  effects remain subject to the active workflow node and task authority;
+  physical-device use, credentials, MFA, and additional emulator startup still
+  require the applicable explicit authorization.
 - Use `.kent/scripts/workflow-checkpoint` to maintain the canonical ignored
   `.kent/runtime/<TASK-ID>/smoke-checkpoint.json`. Reconcile and persist its
   complete state before repeating build, install, launch, navigation, mutation,
@@ -66,10 +67,11 @@ Runs smoke test for a feature via MCP mobile.
 
 1. Reads the MCP Mobile Testing section in `AGENTS.md` to understand the process
 2. **Establish Task ownership and reconcile a lease before device work**
-   - The adoption gate in Evidence Safety applies before adapter status,
-     acquisition, emulator discovery, or any other device operation. The
-     checked-in Puber adapter is not compatible; do not execute the examples
-     against it or describe this change as adapter adoption.
+   - Source qualification removes only the previous blanket stop before lease
+     operations. Use the selected Puber adapter and checkpoint helper through
+     the workflow-authorized Smoke procedure. The disposable fixture is not a
+     live lease, device-readiness result, authentication proof, adapter rollout,
+     or product Smoke pass.
    - Resolve identity from the Task short ID rendered for this Smoke invocation.
      Do not infer Task or Session identity from environment variables. In
      particular, `KENT_TASK_ID` and `KENT_SESSION_ID` are adapter inputs, not
@@ -128,7 +130,7 @@ Runs smoke test for a feature via MCP mobile.
      persist_lease() {
        local state="$1" owner="$2" resource="$3" token="$4" next_action="$5"
        local current payload
-       current="$("$CHECKPOINT_TOOL" read --stage smoke --task "$TASK_SHORT_ID")"
+       current="$("$CHECKPOINT_TOOL" read --stage smoke --task "$TASK_SHORT_ID")" || return $?
        payload="$(jq -ce \
          --arg native "$TASK_NATIVE_ID" \
          --arg short "$TASK_SHORT_ID" \
@@ -154,9 +156,16 @@ Runs smoke test for a feature via MCP mobile.
                lease_state: $state
              })
            | .next_action = $next
-         ' <<<"$current")"
+         ' <<<"$current")" || return $?
        printf '%s\n' "$payload" |
-         "$CHECKPOINT_TOOL" write --stage smoke --task "$TASK_SHORT_ID" >/dev/null
+         "$CHECKPOINT_TOOL" write --stage smoke --task "$TASK_SHORT_ID" >/dev/null || return $?
+     }
+
+     persist_lease_or_exit() {
+       if ! persist_lease "$@"; then
+         echo "Smoke lease checkpoint persistence failed; exact-resource cleanup will run" >&2
+         return 1
+       fi
      }
 
      read_status_owner() {
@@ -179,8 +188,12 @@ Runs smoke test for a feature via MCP mobile.
        printf '%s' "$owner"
      }
      ```
-     The same cleanup handler must be installed before any device work, but
-     only after a lease is held and checkpointed:
+     Define this cleanup handler before running the resume, recovery, or acquire
+     examples below. Each path arms its EXIT trap as soon as ownership is known
+     or verified, before writing the lease checkpoint. Tokenless recovery arms
+     it only after redacted status proves the same Task; if token recovery then
+     fails, cleanup reports the unresolved exact resource and leaves it
+     recoverable by the next same-Task invocation.
      ```bash
      # smoke-lease-case: release
      cleanup_lease() {
@@ -277,15 +290,15 @@ Runs smoke test for a feature via MCP mobile.
          LOCK_OWNER_ID="${LOCK_OWNER_ID:-$TASK_SHORT_ID}"
        fi
        export KENT_TASK_ID="$LOCK_OWNER_ID" KENT_SESSION_ID="$SESSION_ID"
+       LEASE_HELD=true
+       trap on_smoke_exit EXIT
        LOCK_OUTPUT="$("$LOCK_ADAPTER" resume "$LOCK_RESOURCE" "$LOCK_TOKEN" && printf '\034')"
        LOCK_OUTPUT="${LOCK_OUTPUT%$'\034'}"
        RESUMED_TOKEN="$(parse_bare_token "$LOCK_OUTPUT")"
        [[ "$RESUMED_TOKEN" == "$LOCK_TOKEN" ]]
-       persist_lease held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+       persist_lease_or_exit held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
          "Continue Smoke on the retained resource"
-       LEASE_HELD=true
        DEVICE_SERIAL="$LOCK_RESOURCE"
-       trap on_smoke_exit EXIT
      fi
      ```
      If the exact pair cannot be proven or resumed, stop; never fall through
@@ -300,14 +313,14 @@ Runs smoke test for a feature via MCP mobile.
        [[ -z "$LOCK_OWNER_ID" || "$LOCK_OWNER_ID" == "$STATUS_OWNER" ]]
        LOCK_OWNER_ID="$STATUS_OWNER"
        export KENT_TASK_ID="$LOCK_OWNER_ID" KENT_SESSION_ID="$SESSION_ID"
+       LEASE_HELD=true
+       trap on_smoke_exit EXIT
        LOCK_OUTPUT="$("$LOCK_ADAPTER" resume-owned "$LOCK_RESOURCE" && printf '\034')"
        LOCK_OUTPUT="${LOCK_OUTPUT%$'\034'}"
        LOCK_TOKEN="$(parse_bare_token "$LOCK_OUTPUT")"
-       persist_lease held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+       persist_lease_or_exit held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
          "Continue Smoke after owned-resource recovery"
-       LEASE_HELD=true
        DEVICE_SERIAL="$LOCK_RESOURCE"
-       trap on_smoke_exit EXIT
      elif [[ -z "$LOCK_RESOURCE" && -z "$LOCK_TOKEN" ]]; then
        declare -A SEEN_EMULATORS=()
        EMULATORS=()
@@ -344,14 +357,14 @@ Runs smoke test for a feature via MCP mobile.
          LOCK_RESOURCE="${SAME_TASK_RESOURCES[0]}"
          LOCK_OWNER_ID="${SAME_TASK_OWNERS[0]}"
          export KENT_TASK_ID="$LOCK_OWNER_ID" KENT_SESSION_ID="$SESSION_ID"
+         LEASE_HELD=true
+         trap on_smoke_exit EXIT
          LOCK_OUTPUT="$("$LOCK_ADAPTER" resume-owned "$LOCK_RESOURCE" && printf '\034')"
          LOCK_OUTPUT="${LOCK_OUTPUT%$'\034'}"
          LOCK_TOKEN="$(parse_bare_token "$LOCK_OUTPUT")"
-         persist_lease held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+         persist_lease_or_exit held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
            "Continue Smoke after same-Task resource recovery"
-         LEASE_HELD=true
          DEVICE_SERIAL="$LOCK_RESOURCE"
-         trap on_smoke_exit EXIT
        fi
      elif [[ -z "$LOCK_RESOURCE" || -z "$LOCK_TOKEN" ]]; then
        echo "Smoke lease checkpoint contains an inconsistent resource/token pair" >&2
@@ -415,11 +428,11 @@ Runs smoke test for a feature via MCP mobile.
          [[ -n "${SEEN_EMULATORS[$LOCK_RESOURCE]+x}" ]]
        fi
        LOCK_OWNER_ID="$TASK_SHORT_ID"
-       persist_lease held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
-         "Use the acquired Smoke resource"
        LEASE_HELD=true
-       DEVICE_SERIAL="$LOCK_RESOURCE"
        trap on_smoke_exit EXIT
+       persist_lease_or_exit held "$LOCK_OWNER_ID" "$LOCK_RESOURCE" "$LOCK_TOKEN" \
+         "Use the acquired Smoke resource"
+       DEVICE_SERIAL="$LOCK_RESOURCE"
      fi
      ```
      `persist_lease` must re-read and validate the checkpoint, merge only the
@@ -519,14 +532,17 @@ Runs smoke test for a feature via MCP mobile.
      status command fails or reports locked/malformed output, cleanup is
      unresolved even when release returned success: preserve the held
      checkpoint and token, do not mark released, do not switch resources, and
-     do not report Smoke success. Reconcile the same resource under the
-     separately approved compatible adapter before any later action.
+     do not report Smoke success. Reconcile the same resource with the
+     currently selected adapter before any later action. If its bytes or
+     contract have drifted from the source-qualified version, stop for
+     separately approved compatibility/adoption review.
    - After verified unlocked readback, mark `lease_state=released` in
      `stage_data` and persist before the next workflow transition. Keep the
      token only in that ignored checkpoint until Smoke is fully reported.
-   - The exit trap is registered immediately after acquire/resume and checkpoint
-     persistence, before any device work. Explicit release later calls the same
-     cleanup function and disables the trap only after verified release:
+   - The exit trap is registered as soon as an exact lease pair is acquired or
+     a same-Task owner is verified, before checkpoint persistence and before
+     any device work. Explicit release later calls the same cleanup function
+     and disables the trap only after verified release:
      ```bash
      # smoke-lease-case: explicit-release
      if ! cleanup_lease; then
