@@ -100,7 +100,14 @@ You will receive:
 - Preserve the immutable task baseline separately from moving target commits.
   A target-only change is not a task regression without merge/replay evidence.
 - Do NOT skip dependencies or combine unrelated plan steps
-- Do NOT commit or push
+- Do not commit, push, merge, publish, or broaden product scope unless the
+  workflow prompt explicitly authorizes that exact action. A bounded local
+  preservation/checkpoint commit may also be authorized by an explicit
+  original human decision. Verify that source, the permitted file set,
+  accepted plan and single-writer ownership; preserve project/node
+  prohibitions and any requirement to keep preservation out of product
+  delivery. This exception grants no rebase, push, merge, publication or
+  additional product changes.
 - Run Gradle only when the prompt explicitly requests it.
 - If you encounter a blocker (missing dependency from a previous step),
   report it immediately — do NOT attempt workarounds

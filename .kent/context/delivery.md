@@ -8,5 +8,8 @@ Load PR, cleanup, or release commands only when that node owns the action. Do
 not reread implementation recipes, design sources, broad review reports, or
 runtime instructions without a cited blocker.
 
-Ledger entry: current branch/PR/run/merge/release state, authority for external
-actions, cleanup preservation, and exact instruction files read.
+For Cleanup, `.kent/commands/cleanup-task.md` owns retention and the single
+final event/seal. Validate/reuse an existing seal without append; a blocker
+does not create a new ledger event. Release retains its own preparation helper.
+Other delivery stages record current branch/PR/run/merge/release state,
+authority for external actions and the exact instruction files read.

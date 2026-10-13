@@ -170,6 +170,13 @@ counter changed; adoption remains separately gated.
 
 ## Cleanup Agent boundary
 
+Engineering accepted-plan retention and the no-helper terminal evidence
+protocol are owned by `.kent/commands/cleanup-task.md`. Retain the exact
+accepted-plan cache bytes in a readback-verified Task comment before retiring
+that cache and sealing. Recovery reuses original proof without append/reseal.
+This does not change Release's separate same-owner retention protocol or
+permit it to retire an unknown accepted-plan cache.
+
 The existing Cleanup node is a normal `delivery-operator` Agent, not a Script.
 Its current native Session is the owner; other idle Task Sessions on H are
 not candidates to select or bulk-move. `.kent/commands/release.md` owns the

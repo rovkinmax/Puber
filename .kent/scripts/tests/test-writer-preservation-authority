@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Guard the narrow local preservation exception in Puber writer roles."""
+
+from __future__ import annotations
+
+from pathlib import Path
+import re
+
+
+ROOT = Path(__file__).resolve().parents[3]
+RULE_START = (
+    "- Do not commit, push, merge, publish, or broaden product scope unless"
+)
+CONTRADICTORY_RULES = (
+    "Do NOT commit or push",
+    "Do not commit or push.",
+)
+
+
+def commit_policy(content: str, path: str) -> str:
+    lines = content.splitlines()
+    starts = [
+        index for index, line in enumerate(lines)
+        if line.startswith(RULE_START)
+    ]
+    assert len(starts) == 1, (
+        f"{path} must contain exactly one commit-policy bullet"
+    )
+    paragraph = [lines[starts[0]].removeprefix("- ").strip()]
+    for line in lines[starts[0] + 1 :]:
+        if not line.startswith("  "):
+            break
+        paragraph.append(line.strip())
+    return " ".join(paragraph)
+
+
+def main() -> None:
+    policies = []
+    for relative in (
+        ".kent/subagents/implementation-worker.md",
+        ".kent/subagents/fix-worker.md",
+    ):
+        content = (ROOT / relative).read_text(encoding="utf-8")
+        policies.append(commit_policy(content, relative))
+        normalized = re.sub(r"\s+", " ", content)
+        for old_rule in CONTRADICTORY_RULES:
+            assert old_rule.lower() not in normalized.lower(), (
+                f"{relative} retains a contradictory rule: {old_rule}"
+            )
+    assert policies[0] == policies[1], (
+        "implementation and fix roles must share one commit policy"
+    )
+    print("writer-preservation-authority: passed")
+
+
+if __name__ == "__main__":
+    main()

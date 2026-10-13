@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import io
 import importlib
 import importlib.util
@@ -269,9 +270,46 @@ def test_profile_selects_project_wrapper_and_unbound_manifest() -> None:
     )
 
 
+def test_engineering_cleanup_changes_only_nine_prompt_blocks() -> None:
+    base = json.loads(BUILDER["BASE_ENGINEERING_SPEC"].read_text())
+    actual = BUILDER["build_engineering_spec"]()
+    expected_keys = {
+        "prepare_pr_no_pr", "ci_prepare_merged", "ci_watch_merged",
+        "ci_monitor_merged", "fix_pr_merged_cleanup", "waiting_pr_cleanup",
+        "merge_watch_cleanup", "waiting_pr_close_without_merge",
+        "task_janitor_blocked",
+    }
+    changed = set()
+    instruction = BUILDER["cleanup_context"]()
+    for old, new in zip(base["edges"], actual["edges"], strict=False):
+        if old == new:
+            continue
+        changed.add(old["key"])
+        assert {key: value for key, value in old.items() if key != "prompt"} == {
+            key: value for key, value in new.items() if key != "prompt"
+        }
+        assert new["prompt"] == old["prompt"].replace(
+            BUILDER["LEGACY_CLEANUP_CONTEXT"], instruction,
+        )
+    assert changed == expected_keys
+    assert actual["nodes"] == base["nodes"]
+    validate_typed_engineering_spec(actual)
+    for field, value in (("target", "fix"), ("requires_approval", True)):
+        invalid = copy.deepcopy(actual)
+        edge = next(row for row in invalid["edges"] if row["key"] == "task_janitor_blocked")
+        edge[field] = value
+        try:
+            BUILDER["validate_engineering_spec"](invalid)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Cleanup rewrite admitted unrelated field drift")
+
+
 test_graph_cohort_preserves_anchors_and_approvals()
 test_replan_parameters_reuse_canonical_shared_definitions()
 test_all_script_inputs_require_the_exact_business_route()
 test_script_outputs_add_routes_and_janitor_does_not()
 test_profile_selects_project_wrapper_and_unbound_manifest()
+test_engineering_cleanup_changes_only_nine_prompt_blocks()
 print("puber-kit-5af-cohort: passed isolated graph/route fixtures")

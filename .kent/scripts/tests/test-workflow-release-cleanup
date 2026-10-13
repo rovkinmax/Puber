@@ -361,14 +361,17 @@ for stage in ('fix','smoke'):
         auxiliary.unlink()  # Owning-stage settlement is an external fixture event.
         f.complete()
 
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve())
-    unknown=f.work/'.kent/runtime/PUB-99/unknown-evidence.bin'
-    unknown.write_bytes(b'preserve')
-    unknown.chmod(0o600)
-    f.blocked('unknown runtime entry blocks before receipt/comment/seal')
-    assert not retention_path(f).exists()
-    assert json.loads(f.comments_path.read_text())==[]
+for name in ('unknown-evidence.bin', 'plan-contract.json'):
+    with tempfile.TemporaryDirectory() as d:
+        f=Fixture(Path(d).resolve())
+        unknown=f.work/'.kent/runtime/PUB-99'/name
+        unknown.write_bytes(b'preserve')
+        unknown.chmod(0o600)
+        before=unknown.read_bytes()
+        f.blocked(name+' blocks before receipt/comment/seal')
+        assert unknown.read_bytes()==before
+        assert not retention_path(f).exists()
+        assert json.loads(f.comments_path.read_text())==[]
 
 with tempfile.TemporaryDirectory() as d:
     f=Fixture(Path(d).resolve())
