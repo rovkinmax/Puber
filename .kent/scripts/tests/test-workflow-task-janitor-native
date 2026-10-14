@@ -51,6 +51,31 @@ class PuberJanitorTest(fixtures.WorkflowJanitorTest):
             target.chmod(0o755)
         return scripts
 
+    def test_kent_29_cli_compatibility_on_puber_janitor(self) -> None:
+        donor = Path(
+            os.environ["PUBER_STAGE_A_JANITOR_KIT_ROOT"]
+        ).resolve(strict=True)
+        suite = donor / "tests/test_worktree_cli_compatibility.py"
+        self.assertFalse(suite.is_symlink(), suite)
+        self.assertTrue(suite.is_file(), suite)
+        result = subprocess.run(
+            [sys.executable, "-B", str(suite)],
+            cwd=donor,
+            text=True,
+            capture_output=True,
+            env={
+                **os.environ,
+                "KENT_WORKTREE_JANITOR_PATH": str(
+                    ROOT / ".kent/scripts/workflow-task-janitor"
+                ),
+                "PYTHONDONTWRITEBYTECODE": "1",
+            },
+            check=False,
+        )
+        self.assertEqual(
+            result.returncode, 0, result.stdout + result.stderr,
+        )
+
     def test_sealed_accepted_plan_cache_is_preserved_before_native_delete(self) -> None:
         root, worktree, scripts, marker = self.make_managed_worktree(with_v2=True)
         contract = fixtures.load_template_module(
