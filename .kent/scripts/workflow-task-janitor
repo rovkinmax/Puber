@@ -187,18 +187,37 @@ def cleanup_session_uses_workspace(
     ):
         raise RuntimeError("Kent worktree status has no trustworthy target identity")
     worktree = worktree or {}
-    legacy = "EffectiveWorkdir" in target or any(
-        key in worktree for key in ("recorded_root", "observed_root")
-    )
-    native = "effectiveWorkdir" in target or any(
-        key in worktree for key in ("recordedRoot", "observedRoot")
-    )
-    if legacy == native:
-        raise RuntimeError("Kent worktree status has missing or mixed identity dialects")
-    effective_key = "effectiveWorkdir" if native else "EffectiveWorkdir"
-    root_keys = ("recordedRoot", "observedRoot") if native else (
-        "recorded_root", "observed_root",
-    )
+    effective_fields = {
+        "legacy": "EffectiveWorkdir",
+        "protobuf": "effectiveWorkdir",
+        "cli": "effective_workdir",
+    }
+    dialects = [
+        dialect for dialect, key in effective_fields.items() if key in target
+    ]
+    if len(dialects) != 1:
+        raise RuntimeError(
+            "Kent worktree status has missing or mixed identity dialects"
+        )
+    dialect = dialects[0]
+    root_fields = {
+        "legacy": ("recorded_root", "observed_root"),
+        "protobuf": ("recordedRoot", "observedRoot"),
+        "cli": ("recorded_root", "observed_root"),
+    }
+    selected_root_fields = root_fields[dialect]
+    known_root_fields = {
+        "recorded_root", "observed_root", "recordedRoot", "observedRoot",
+    }
+    if any(
+        key in worktree
+        for key in known_root_fields - set(selected_root_fields)
+    ):
+        raise RuntimeError(
+            "Kent worktree status mixes root identity dialects"
+        )
+    effective_key = effective_fields[dialect]
+    root_keys = selected_root_fields
     effective = Path(_kent_root(target.get(effective_key), "Session effective root"))
     roots = [
         Path(_kent_root(worktree[key], "Session worktree root"))
@@ -246,19 +265,28 @@ def _kent_record(
     topology = item.get("topology")
     if not isinstance(topology, dict):
         raise RuntimeError("Kent worktree list entry has no topology")
-    variants = {"external", "missing", "registered", "mainWorkspace"}
+    variant_aliases = {"main_workspace": "mainWorkspace"}
+    variants = {
+        "external", "missing", "registered", "mainWorkspace",
+        "main_workspace",
+    }
     native = "variant" not in topology
     if native:
-        if len(topology) != 1 or not (set(topology) <= variants):
-            raise RuntimeError("Kent worktree list has unknown or ambiguous topology")
-        variant = next(iter(topology))
+        legacy_variants = variants - {"main_workspace"}
+        if len(topology) != 1 or not set(topology).issubset(legacy_variants):
+            raise RuntimeError(
+                "Kent worktree list has unknown or ambiguous topology"
+            )
+        wire_variant = next(iter(topology))
+        variant = wire_variant
     else:
-        variant = topology.get("variant")
-        if not isinstance(variant, str) or variant not in variants:
+        wire_variant = topology.get("variant")
+        if not isinstance(wire_variant, str) or wire_variant not in variants:
             raise RuntimeError("Kent worktree list has unknown topology variant")
-        if set(topology) != {"variant", variant}:
+        if set(topology) != {"variant", wire_variant}:
             raise RuntimeError("Kent worktree list has ambiguous topology payloads")
-    body = topology.get(variant)
+        variant = variant_aliases.get(wire_variant, wire_variant)
+    body = topology.get(wire_variant)
     if not isinstance(body, dict):
         raise RuntimeError("Kent worktree topology payload is malformed")
     # Only identity fields are translated; projection/display metadata is not identity.
@@ -271,15 +299,31 @@ def _kent_record(
             continue
         if not isinstance(identity, dict):
             raise RuntimeError("Kent worktree topology identity is malformed")
-        forbidden = aliases.keys() if native else aliases.values()
+        forbidden = (
+            set(aliases) | {"is_main"}
+            if native else set(aliases.values())
+        )
         if any(key in identity for key in forbidden):
             raise RuntimeError("Kent worktree topology mixes identity dialects")
+        if not native and "is_main" in identity:
+            if name != "git":
+                raise RuntimeError(
+                    "Kent worktree topology primary discriminator is misplaced"
+                )
+            if "is_main_worktree" in identity:
+                raise RuntimeError(
+                    "Kent worktree topology has duplicate primary discriminators"
+                )
+            identity = {
+                **{key: value for key, value in identity.items()
+                   if key != "is_main"},
+                "is_main_worktree": identity["is_main"],
+            }
         normalized[name] = {
             **identity,
             **{old: identity[new] for old, new in aliases.items()
                if native and new in identity},
         }
-    topology = {variant: normalized}
     if variant == "mainWorkspace":
         git = normalized.get("git")
         if not isinstance(git, dict) or git.get("is_main_worktree") is not True:
@@ -289,17 +333,17 @@ def _kent_record(
             raise RuntimeError("Kent primary topology root differs from known primary")
         return {"variant": variant, "root": root}
     if variant == "external":
-        external = topology.get("external")
-        git = external.get("git") if isinstance(external, dict) else None
+        git = normalized.get("git")
         if not isinstance(git, dict):
             raise RuntimeError("Kent external topology is malformed")
+        if git.get("is_main_worktree", False) is not False:
+            raise RuntimeError("Kent external topology claims the primary worktree")
         return {
             "variant": variant,
             "root": _kent_root(git.get("canonical_root"), "external root"),
         }
     if variant == "missing":
-        missing = topology.get("missing")
-        kent = missing.get("kent") if isinstance(missing, dict) else None
+        kent = normalized.get("kent")
         if not isinstance(kent, dict):
             raise RuntimeError("Kent missing topology is malformed")
         root = _kent_root(kent.get("canonical_root"), "missing root")
@@ -314,11 +358,8 @@ def _kent_record(
             "worktree_id": worktree_id,
         }
     if variant == "registered":
-        registered = topology.get("registered")
-        if not isinstance(registered, dict):
-            raise RuntimeError("Kent registered topology is malformed")
-        git = registered.get("git")
-        kent = registered.get("kent")
+        git = normalized.get("git")
+        kent = normalized.get("kent")
         if not isinstance(git, dict) or not isinstance(kent, dict):
             raise RuntimeError("Kent registered topology is incomplete")
         if git.get("is_main_worktree", False) is not False:
@@ -2018,7 +2059,7 @@ def complete(transition: str, report: str, blocker: str = "") -> None:
 
 
 def deletion_result_kind(payload: dict) -> str:
-    """Decode legacy completion or Kent 2.8 CLI direct DeleteSuccess."""
+    """Decode legacy, protobuf and Kent 2.9 CLI worktree-delete results."""
     if "kind" in payload:
         if set(payload) - {"kind", "completed", "scheduled"}:
             raise ValueError("mixed or unknown legacy deletion fields")
@@ -2036,21 +2077,43 @@ def deletion_result_kind(payload: dict) -> str:
             if "leftover_root" in details or "leftoverRoot" in details:
                 raise ValueError("legacy deletion left a root")
         return kind
-    if set(payload) - {"cleanup", "leftoverRoot"} or "leftoverRoot" in payload:
+    if (
+        set(payload) - {"cleanup", "leftoverRoot", "leftover_root"}
+        or "leftoverRoot" in payload
+        or "leftover_root" in payload
+    ):
         raise ValueError("unknown deletion fields or leftover root")
     cleanup = payload.get("cleanup")
-    if not isinstance(cleanup, dict) or set(cleanup) - {"kind", "branchName", "diagnostic"}:
+    if not isinstance(cleanup, dict):
         raise ValueError("malformed native branch cleanup")
     kind = cleanup.get("kind")
     prefix = "WORKTREE_BRANCH_CLEANUP_OUTCOME_"
-    if kind not in {prefix + value for value in (
-        "DELETED", "RETAINED", "NOT_REQUESTED", "NOT_APPLICABLE"
-    )}:
+    protobuf_outcomes = {
+        prefix + value for value in (
+            "DELETED", "RETAINED", "NOT_REQUESTED", "NOT_APPLICABLE",
+        )
+    }
+    cli_outcomes = {
+        "deleted", "retained", "not_requested", "not_applicable",
+    }
+    if kind in protobuf_outcomes:
+        allowed_cleanup_fields = {"kind", "branchName", "diagnostic"}
+        branch_key = "branchName"
+        completed_kinds = {
+            prefix + "DELETED", prefix + "RETAINED",
+        }
+    elif kind in cli_outcomes:
+        allowed_cleanup_fields = {"kind", "branch_name", "diagnostic"}
+        branch_key = "branch_name"
+        completed_kinds = {"deleted", "retained"}
+    else:
         raise ValueError("unknown native branch cleanup outcome")
-    for key in ("branchName", "diagnostic"):
+    if set(cleanup) - allowed_cleanup_fields:
+        raise ValueError("malformed or mixed native branch cleanup fields")
+    for key in (branch_key, "diagnostic"):
         if key in cleanup and not isinstance(cleanup[key], str):
             raise ValueError("invalid native branch cleanup text")
-    if kind in {prefix + "DELETED", prefix + "RETAINED"} and not cleanup.get("branchName"):
+    if kind in completed_kinds and not cleanup.get(branch_key, "").strip():
         raise ValueError("native branch cleanup lacks branch identity")
     return "completed"
 

@@ -6,6 +6,17 @@ KIT=Path(os.environ["KENT_ENGINEERING_KIT_ROOT"]).resolve()
 COMMIT="3020962feffa870c8f064e7a0b2657d316a8ec1b"
 assert KIT.is_dir() and subprocess.run(["git","rev-parse","HEAD"],cwd=KIT,text=True,capture_output=True).stdout.strip()==COMMIT
 assert subprocess.run(["git","status","--porcelain=v1","--untracked-files=all"],cwd=KIT,text=True,capture_output=True).stdout==""
+JANITOR_KIT=Path(os.environ["PUBER_STAGE_A_JANITOR_KIT_ROOT"]).resolve(strict=True)
+JANITOR_COMMIT="88eac2e5ae30605361954afa206900124735c280"
+JANITOR_BLOB="38abc81fb113e57c5dc370cead42da202a458061"
+JANITOR_SHA256="51308b4b79f4025cf5645d527d2e939f7d9afeb2409e2abb0fcaa32df57ec992"
+assert subprocess.run(["git","rev-parse","HEAD"],cwd=JANITOR_KIT,text=True,capture_output=True).stdout.strip()==JANITOR_COMMIT
+assert subprocess.run(["git","status","--porcelain=v1","--untracked-files=all"],cwd=JANITOR_KIT,text=True,capture_output=True).stdout==""
+assert subprocess.run(["git","rev-parse",f"{JANITOR_COMMIT}:templates/project/workflow-task-janitor"],cwd=JANITOR_KIT,text=True,capture_output=True).stdout.strip()==JANITOR_BLOB
+janitor_template=JANITOR_KIT / "templates/project/workflow-task-janitor"
+assert not janitor_template.is_symlink() and janitor_template.is_file()
+assert hashlib.sha256(janitor_template.read_bytes()).hexdigest()==JANITOR_SHA256
+assert (ROOT / ".kent/scripts/workflow-task-janitor").read_bytes()==janitor_template.read_bytes()
 GENERATOR_KIT=Path(os.environ["PUBER_STAGE_A_GENERATOR_KIT_ROOT"]).resolve()
 GENERATOR_COMMIT="5af04089844c10c66dcaa692c36f42f738b9b302"
 assert GENERATOR_KIT.is_dir()
@@ -48,7 +59,6 @@ for item in manifest["external_roots"]:
 assert "app/build.gradle.kts" not in source_roots
 assert "app/debug.jks" not in manifest["additional_paths"]
 for relative, donor in (
-    (".kent/scripts/workflow-task-janitor", "templates/project/workflow-task-janitor"),
     (".kent/scripts/workflow-evidence-ledger", "templates/project/workflow-evidence-ledger"),
     (".kent/scripts/workflow_runtime_contracts.py", "workflowkit/runtime.py"),
 ):

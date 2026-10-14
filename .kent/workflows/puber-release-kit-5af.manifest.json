@@ -236,7 +236,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-runtime-v2-command-closure=ff2d53c72623519da2c53308b346348d8adf5f61b9b31ad8ca010cc8776da135",
+      "key": ".kent/scripts/tests/test-runtime-v2-command-closure=14f54bda8bfcf5e15342188119a2ba3167bfa0635c9311f8e6278b7fe7c6094a",
       "runtime_digest_required": true
     },
     {
@@ -261,7 +261,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-task-janitor-native=c008659ec04b91c24e064e177800e418315a00a11ef714b93232460069fe531f",
+      "key": ".kent/scripts/tests/test-workflow-task-janitor-native=b7f3b72d9538f08b737e84cb1c0d2e302fec5db88fe0f35a826d03dc4746715b",
       "runtime_digest_required": true
     },
     {
@@ -361,7 +361,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-task-janitor=1eb273fbfda85934b0ad763d184eb2eadb27a04b003c586ab3a2c867934c4cc7",
+      "key": ".kent/scripts/workflow-task-janitor=51308b4b79f4025cf5645d527d2e939f7d9afeb2409e2abb0fcaa32df57ec992",
       "runtime_digest_required": true
     },
     {
