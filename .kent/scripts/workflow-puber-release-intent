@@ -17,7 +17,7 @@ PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
 # Private proposal cohort only; no current Task or live runtime is repinned.
-WORKFLOW_REVISION = 94
+WORKFLOW_REVISION = 95
 SOURCE_REVISION = 91
 REPOSITORY = "rovkinmax/Puber"
 GRAPH_PATH = ".kent/workflows/puber-release-kit-5af.json"

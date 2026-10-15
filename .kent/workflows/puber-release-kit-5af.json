@@ -3,7 +3,7 @@
     "id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
     "name": "Puber Release",
     "description": "Prepare the next Puber release, create the version bump PR, monitor CI, then publish the release tag after approval.",
-    "version": 94,
+    "version": 95,
     "execution_target_policy": {
       "mode": "head"
     },

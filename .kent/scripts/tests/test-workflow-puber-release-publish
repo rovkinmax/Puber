@@ -305,7 +305,7 @@ class Revision90StageRunner:
 
     def _validate_static_contracts(self) -> None:
         if (
-            self.graph["workflow"]["version"] != 94
+            self.graph["workflow"]["version"] != 95
             or self.graph["workflow"]["source_revision"] != 91
             or self.graph["workflow"]["schema_version"] != 4
             or len(self.graph["nodes"]) != 18
@@ -1160,7 +1160,7 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
             },
             "workflow": {
                 "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-                "version": 94,
+                "version": 95,
                 "name": "Puber Release",
             },
             "worktree_path": str(work),
@@ -1530,7 +1530,7 @@ def test_publication(rebased: bool) -> None:
             "current_nodes": [{"node_id": publish_node["id"]}], "current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-publish"), "current_node": {"node_id": publish_node["id"]}}],
             "execution_target": {"commit_oid": base_oid}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
             "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 94, "name": "Puber Release"}, "worktree_path": str(work),
+            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 95, "name": "Puber Release"}, "worktree_path": str(work),
         }
         checkpoint = fixture_checkpoint(work, base_oid, target, task_id)
         profile_path = "app/src/main/generated/baselineProfiles/baseline-prof.txt"

@@ -576,7 +576,7 @@ with tempfile.TemporaryDirectory() as directory:
         "project": {}, "retained_session_count": 0, "source_workspace": {},
         "status": {"node_ids": [node["id"]]},
         "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 94, "name": "Puber Release"},
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 95, "name": "Puber Release"},
         "worktree_path": str(work),
     }
     fake = root / "fake"; fake.mkdir()
@@ -660,7 +660,7 @@ with tempfile.TemporaryDirectory() as directory:
 
     rejected_case("task_id", payload_changes={"_kent": {**success["_kent"], "task_id": "task-00000000-0000-4000-8000-000000000000"}})
     rejected_case("project", task_changes={"summary": {**task["summary"], "project_id": "foreign-project"}})
-    for revision in (87, 88, 91):
+    for revision in (87, 88, 91, 94, 96):
         rejected_case(f"workflow_revision_{revision}", task_changes={"workflow": {**task["workflow"], "version": revision}})
     rejected_case("current_node", task_changes={"status": {"node_ids": ["foreign-node"]}})
     rejected_case("current_script", task_changes={"current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-publish"), "current_node": {"node_id": node["id"]}}]})

@@ -114,7 +114,7 @@ def test_graph_cohort_preserves_anchors_and_approvals() -> None:
     graph = BUILDER["build_graph"]()
     BUILDER["validate_graph"](graph)
     assert graph["workflow"]["id"] == BUILDER["WORKFLOW_ID"]
-    assert graph["workflow"]["version"] == 94
+    assert graph["workflow"]["version"] == 95
     assert graph["workflow"]["source_revision"] == 91
     assert (
         len(graph["nodes"]),

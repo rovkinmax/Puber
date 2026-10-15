@@ -114,7 +114,7 @@ mutates a live Kent Workflow, Task, default, canonical state, or project link.
 
 The profile selects the private Kit5af-named Release proposal
 `.kent/workflows/puber-release-kit-5af.json` at source revision 91/native
-proposal version 94. It preserves the existing 18/51/51 topology and adds the
+proposal version 95. It preserves the existing 18/51/51 topology and adds the
 exact 21 `entry_transition` business-route carriers; the profile-generation
 Script and all native approval gates remain unchanged. This is preparation
 material only: future qualified Kit K and project commit C are unknown,

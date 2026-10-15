@@ -7,7 +7,7 @@ description: Prepare and publish a Puber release through the schema-4 control pl
 Use the non-default `Puber Release` graph for release work. Keep
 `profile_generation` as a Script; do not impersonate a Session or move device
 work into Prepare. The private proposal cohort is
-`.kent/workflows/puber-release-kit-5af.json` (native version 94, source revision
+`.kent/workflows/puber-release-kit-5af.json` (native version 95, source revision
 91). It preserves 18 nodes, 51 transition groups, 51 edges, Script/Agent kinds,
 and existing approval gates, adding only the reviewed `entry_transition`
 business carrier to the 21 project-Script inputs. `_kent` contains only native

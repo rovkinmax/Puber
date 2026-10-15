@@ -449,7 +449,7 @@ def build_graph() -> dict[str, Any]:
             if "entry_transition` value from this fixed set" not in prompt:
                 edge["prompt_template"] = prompt.rstrip() + instruction
 
-    value["workflow"]["version"] = 94
+    value["workflow"]["version"] = 95
     value["workflow"]["source_revision"] = 91
     value = legacy["normalized_export"](value)
     validate_graph(value, original)
@@ -460,8 +460,8 @@ def validate_graph(value: dict[str, Any], original: dict[str, Any] | None = None
     workflow = value.get("workflow")
     if not isinstance(workflow, dict) or workflow.get("id") != WORKFLOW_ID:
         raise ValueError("cohort Workflow UUID drifted")
-    if workflow.get("version") != 94 or workflow.get("source_revision") != 91:
-        raise ValueError("cohort source identity must propose native 94/source 91")
+    if workflow.get("version") != 95 or workflow.get("source_revision") != 91:
+        raise ValueError("cohort source identity must propose native 95/source 91")
     if (
         len(value.get("nodes", [])),
         len(value.get("transition_groups", [])),

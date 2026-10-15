@@ -62,7 +62,7 @@ class Fixture:
             'live_sessions':[{'session_id':A,'session_name':'Cleanup','node_display_name':'Cleanup'}],
             'project':{},'retained_session_count':6,'source_workspace':{},'status':{'node_ids':[self.node]},
             'summary':{'id':TASK,'short_id':'PUB-99','project_id':self.helper.PROJECT_ID,'workflow_id':self.helper.WORKFLOW_ID},
-            'workflow':{'workflow_id':self.helper.WORKFLOW_ID,'version':94,'name':'Puber Release'},'worktree_path':str(self.work)}
+            'workflow':{'workflow_id':self.helper.WORKFLOW_ID,'version':95,'name':'Puber Release'},'worktree_path':str(self.work)}
         self.task_path=base/'task.json';self.task_path.write_text(json.dumps(self.task))
         self.comments_path=base/'comments.json';self.comments_path.write_text('[]')
         self.world={'prs':[],'releases':[],'runs':[],'artifacts':[],'remote_tag':None,'visibility':True,'error':None,
