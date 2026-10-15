@@ -228,7 +228,7 @@ non-attested proposal derived from the frozen v90 source. It preserves the
 same UUID, 18 nodes, 51 groups, 51 edges, Script/Agent topology, ordering, and
 approval fields; source revision 91 adds the exact 21 business-only
 `entry_transition` carriers required for Script edge validation. The expected
-native proposal version is 94, but no live graph, metadata, Task target, or
+native proposal version is 95, but no live graph, metadata, Task target, or
 default is changed here. Runtime Kit K is pinned to clean commit
 `3020962feffa870c8f064e7a0b2657d316a8ec1b` through
 `KENT_ENGINEERING_KIT_ROOT` when that variable is present. An explicit value

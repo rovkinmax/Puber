@@ -106,12 +106,12 @@ print("runtime-v2-validation-key-closure: passed")
 assert subprocess.run(["git", "status", "--porcelain=v1", "--untracked-files=all"], cwd=KIT, text=True, capture_output=True, check=True).stdout == ""
 assert pins is not None
 runtime = runpy.run_path(str(ROOT / ".kent/scripts/workflow-puber-release-intent"))
-assert runtime["WORKFLOW_REVISION"] == 94 and runtime["SOURCE_REVISION"] == 91
+assert runtime["WORKFLOW_REVISION"] == 95 and runtime["SOURCE_REVISION"] == 91
 portable = json.loads((ROOT / ".kent/workflows/specs/puber-engineering-delivery-v21.json").read_text())
 assert len(portable["nodes"]) == 31 and len(portable["edges"]) == 89
 assert len({(edge["source"], edge["transition"]) for edge in portable["edges"]}) == 87
 release_graph = json.loads((ROOT / ".kent/workflows/puber-release-kit-5af.json").read_text())
-assert release_graph["workflow"]["version"] == 94
+assert release_graph["workflow"]["version"] == 95
 assert release_graph["workflow"]["source_revision"] == 91
 assert (len(release_graph["nodes"]), len(release_graph["transition_groups"]), len(release_graph["edges"])) == (18, 51, 51)
 assert not any(node.get("kind") == "join" for node in release_graph["nodes"])

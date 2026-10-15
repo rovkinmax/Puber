@@ -86,7 +86,7 @@ def test_monitor(rebased: bool, prepared=None) -> None:
             # prepared controller head H and the rebased merged target T.
             "execution_target": {"commit_oid": base_oid}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
             "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 94, "name": "Puber Release"}, "worktree_path": str(work),
+            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 95, "name": "Puber Release"}, "worktree_path": str(work),
         }
         if prepared:
             task = prepared["task"]

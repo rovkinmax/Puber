@@ -56,6 +56,19 @@ def context() -> dict[str, object]:
     }
 
 
+def test_native_revision_matches_release_helper() -> None:
+    assert module.WORKFLOW_VERSION == module._helper.WORKFLOW_REVISION == 95
+    value = {**context(), "workflow_version": 95}
+    module._canonical_context(value)
+    for revision in (94, 96):
+        try:
+            module._canonical_context({**value, "workflow_version": revision})
+        except module.ScriptLeaseError:
+            pass
+        else:
+            raise AssertionError(f"unqualified native revision {revision} admitted")
+
+
 def completed(argv: list[str], stdout: bytes) -> subprocess.CompletedProcess[bytes]:
     return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr=b"")
 
@@ -221,6 +234,7 @@ def test_context_and_responses_fail_closed_on_route_or_field_drift() -> None:
             raise AssertionError("reordered or duplicate response was admitted")
 
 
+test_native_revision_matches_release_helper()
 test_acquire_uses_native_context_request_and_hides_token()
 test_release_sends_token_only_over_stdin_and_accepts_unspecified_success_body()
 test_read_only_recovery_is_closed_and_token_free()
