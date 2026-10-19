@@ -7,11 +7,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
@@ -37,6 +40,107 @@ spec.loader.exec_module(fixtures)
 
 class PuberJanitorTest(fixtures.WorkflowJanitorTest):
     """Keep upstream failure-path coverage while testing actual consumer bytes."""
+
+    def make_ci_terminal_state(self, *args, **kwargs):
+        append_index = 0
+        original_run = subprocess.run
+
+        def run_with_native_step(*run_args, **run_kwargs):
+            nonlocal append_index
+            command = run_args[0] if run_args else run_kwargs.get("args")
+            if (
+                isinstance(command, (list, tuple))
+                and command
+                and Path(command[0]).name == "workflow-evidence-ledger"
+                and "append" in command
+            ):
+                environment = dict(run_kwargs.get("env") or os.environ)
+                environment["KENT_SESSION_ID"] = os.environ["KENT_SESSION_ID"]
+                environment["KENT_STEP_ID"] = str(uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"puber-janitor:{self.id()}:{append_index}",
+                ))
+                run_kwargs["env"] = environment
+                append_index += 1
+            elif (
+                isinstance(command, (list, tuple))
+                and command
+                and Path(command[0]).name == "workflow-evidence-ledger"
+                and "seal" in command
+            ):
+                workspace_index = command.index("--workspace")
+                self._last_ci_ledger_workspace = Path(
+                    command[workspace_index + 1]
+                )
+            return original_run(*run_args, **run_kwargs)
+
+        with patch.object(subprocess, "run", side_effect=run_with_native_step):
+            return super().make_ci_terminal_state(*args, **kwargs)
+
+    def test_ci_ledger_record_limit_is_inclusive_and_bounded(self):
+        def resize_records(total):
+            def resize(rows):
+                prototype = {
+                    "schema_version": 1,
+                    "task_short_id": "TASK-1",
+                    "artifacts": rows[0]["artifacts"],
+                }
+                rows[:] = [dict(prototype) for _ in range(total - 1)]
+
+            return resize
+
+        fixture = self.make_ci_terminal_state(
+            count=1,
+            mutate_records=resize_records(8192),
+        )
+        result = self.ci_cleanup(fixture)
+        self.assertTrue(result[0], result)
+        self.assertFalse(fixture[3].exists())
+
+        with self.assertRaisesRegex(
+            AssertionError,
+            "evidence exceeds record limit",
+        ):
+            self.make_ci_terminal_state(
+                count=1,
+                mutate_records=resize_records(8193),
+            )
+        ledger = (
+            self._last_ci_ledger_workspace
+            / ".kent/runtime/TASK-1/evidence-ledger.jsonl"
+        )
+        self.assertTrue(ledger.is_file())
+        self.assertEqual(len(ledger.read_bytes().splitlines()), 8192)
+
+        # The producer correctly refuses to seal 8193 records. Preserve the
+        # Janitor's independent read-side bound coverage with a deliberately
+        # tampered, otherwise valid 8192-record sealed fixture.
+        oversized = self.make_ci_terminal_state(
+            count=1,
+            mutate_records=resize_records(8192),
+        )
+        active, tombstone = oversized[3], oversized[4]
+        oversized_ledger = active / "evidence-ledger.jsonl"
+        sealed_bytes = oversized_ledger.read_bytes()
+        self.assertEqual(len(sealed_bytes.splitlines()), 8192)
+        tampered_bytes = sealed_bytes + sealed_bytes.splitlines(keepends=True)[-1]
+        oversized_ledger.write_bytes(tampered_bytes)
+
+        runtime = oversized[1].runtime_contracts()
+        with self.assertRaisesRegex(
+            runtime.RuntimeContractError,
+            "evidence exceeds record limit",
+        ):
+            runtime.validate_evidence_view(
+                tampered_bytes,
+                task_short_id="TASK-1",
+            )
+        result = self.ci_cleanup(oversized)
+        self.assertFalse(result[0], result)
+        self.assertIn("ledger is missing or invalid", result[1])
+        self.assertTrue(active.is_dir())
+        self.assertFalse(tombstone.exists())
+        self.assertEqual(oversized_ledger.read_bytes(), tampered_bytes)
 
     def install_v2_runtime_commands(self, root: Path) -> Path:
         scripts = root / ".kent/scripts"
@@ -117,6 +221,20 @@ class PuberJanitorTest(fixtures.WorkflowJanitorTest):
 if __name__ == "__main__":
     # Upstream legacy cases deliberately have no sibling runtime module.
     # V2 cases install all three actual consumer files through the override.
+    # The Release helper clears inherited Kent context when imported by the
+    # closure test, so provide canonical synthetic identities for these local
+    # subprocess fixtures.
+    uuid_pattern = re.compile(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    )
+    for key, suffix in (
+        ("KENT_SESSION_ID", "session"),
+        ("KENT_STEP_ID", "step"),
+    ):
+        if not uuid_pattern.fullmatch(os.environ.get(key, "")):
+            os.environ[key] = str(
+                uuid.uuid5(uuid.NAMESPACE_URL, f"puber-janitor-test:{suffix}")
+            )
     with tempfile.TemporaryDirectory(prefix="puber-janitor-contract-") as directory:
         legacy = Path(directory) / "workflow-task-janitor"
         shutil.copyfile(ROOT / ".kent/scripts/workflow-task-janitor", legacy)

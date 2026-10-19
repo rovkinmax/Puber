@@ -16,7 +16,6 @@ assert subprocess.run(["git","rev-parse",f"{JANITOR_COMMIT}:templates/project/wo
 janitor_template=JANITOR_KIT / "templates/project/workflow-task-janitor"
 assert not janitor_template.is_symlink() and janitor_template.is_file()
 assert hashlib.sha256(janitor_template.read_bytes()).hexdigest()==JANITOR_SHA256
-assert (ROOT / ".kent/scripts/workflow-task-janitor").read_bytes()==janitor_template.read_bytes()
 GENERATOR_KIT=Path(os.environ["PUBER_STAGE_A_GENERATOR_KIT_ROOT"]).resolve()
 GENERATOR_COMMIT="5af04089844c10c66dcaa692c36f42f738b9b302"
 assert GENERATOR_KIT.is_dir()
@@ -58,11 +57,17 @@ for item in manifest["external_roots"]:
         assert hashlib.sha256((ROOT / ".kent/workflows/builders/puber_release_kit_5af.py").read_bytes()).hexdigest() == item["key"]
 assert "app/build.gradle.kts" not in source_roots
 assert "app/debug.jks" not in manifest["additional_paths"]
-for relative, donor in (
-    (".kent/scripts/workflow-evidence-ledger", "templates/project/workflow-evidence-ledger"),
-    (".kent/scripts/workflow_runtime_contracts.py", "workflowkit/runtime.py"),
-):
-    assert (ROOT / relative).read_bytes() == (KIT / donor).read_bytes(), relative
+compatibility_sources = {
+    ".kent/scripts/workflow-evidence-ledger":
+        "f5febc3850b955706f6991f062ca6971c2631d59d649d69497d39a284613cc1c",
+    ".kent/scripts/workflow_runtime_contracts.py":
+        "e2b3f5c90432996fa8d7ba88d49b85563ba049eb943dca7525e2c45125dd0828",
+    ".kent/scripts/workflow-task-janitor":
+        "db9cee6fe3a8e72fcf1ac73395d096d25eca2f76d21626504bf17e544f38a024",
+}
+for relative, expected in compatibility_sources.items():
+    assert source_roots.get(relative) == expected, relative
+    assert hashlib.sha256((ROOT / relative).read_bytes()).hexdigest() == expected, relative
 for test in (
     ".kent/scripts/tests/test-workflow-task-janitor-native",
     ".kent/scripts/tests/test-writer-preservation-authority",

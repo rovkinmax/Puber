@@ -263,11 +263,50 @@ def test_profile_selects_project_wrapper_and_unbound_manifest() -> None:
             encoding="utf-8"
         )
     )
+    source_paths = {
+        item["key"].split("=", 1)[0]
+        for item in manifest.get("external_roots", [])
+        if item.get("kind") == "source-sha256"
+    }
+    assert {
+        ".kent/scripts/workflow-evidence-ledger",
+        ".kent/scripts/workflow_runtime_contracts.py",
+        ".kent/scripts/workflow-task-janitor",
+        ".kent/commands/cleanup-task.md",
+        ".kent/commands/smoke-test.md",
+        "tools/test-smoke-lease-procedure",
+        "tools/fixtures/smoke-lease/baseline.json",
+        "tools/fixtures/smoke-lease/eligible-resources.json",
+        "tools/fixtures/smoke-lease/native-task.json",
+    } <= source_paths
     assert manifest["runtime_attested"] is False
     assert not any(
         item.get("kind") in {"kit-commit", "runtime-commit"}
         for item in manifest.get("external_roots", [])
     )
+
+
+def test_cleanup_context_uses_versioned_owner_and_recovery_only_retention() -> None:
+    instruction = BUILDER["cleanup_context"]()
+    assert "schema 2 uses Session/Step" in instruction
+    assert "historical schema 1 retains Session/Run/Step" in instruction
+    assert "KENT_SESSION_ID` and `KENT_STEP_ID`" in instruction
+    assert "ignore stale `KENT_RUN_ID`" in instruction
+    assert "actual Kent Session/Run/Step records" not in instruction
+
+    procedure = (ROOT / ".kent/commands/cleanup-task.md").read_text(
+        encoding="utf-8",
+    )
+    normalized = " ".join(procedure.lower().split())
+    assert "evidence_recovery_boundary_v1" in normalized
+    assert "evidence_recovery_boundary_v2" in normalized
+    assert "retain-evidence" in normalized
+    assert "--confirm <exact-preview-digest>" in normalized
+    assert "published == true" in normalized
+    assert "receipt.bundle_sha256 == <exact-preview-digest>" in normalized
+    assert "healthy chain, skip retention entirely" in normalized
+    assert "original validated terminal marker unchanged" in normalized
+    assert "alter the task profile/storage mode" in normalized
 
 
 def test_engineering_cleanup_changes_only_nine_prompt_blocks() -> None:
@@ -311,5 +350,6 @@ test_replan_parameters_reuse_canonical_shared_definitions()
 test_all_script_inputs_require_the_exact_business_route()
 test_script_outputs_add_routes_and_janitor_does_not()
 test_profile_selects_project_wrapper_and_unbound_manifest()
+test_cleanup_context_uses_versioned_owner_and_recovery_only_retention()
 test_engineering_cleanup_changes_only_nine_prompt_blocks()
 print("puber-kit-5af-cohort: passed isolated graph/route fixtures")

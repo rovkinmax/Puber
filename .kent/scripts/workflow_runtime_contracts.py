@@ -23,6 +23,76 @@ class RuntimeContractError(ValueError):
 RuntimeValidationError = RuntimeContractError
 
 
+def validate_retained_script_reader(native_kent, *, detail, graph, workspace):
+    """Pure native Script binding for retained reads, never an Agent owner.
+
+    The adapter supplies bounded fresh native Task/graph observations and a
+    canonical workspace. This cooperative binding is not authentication of
+    arbitrary caller input and grants no append/recovery/retention capability.
+    """
+    if (
+        not isinstance(native_kent, dict)
+        or set(native_kent) not in (
+            {"task_id", "node_id"},
+            {"task_id", "node_id", "transition_branch_key"},
+        )
+        or any(
+            not isinstance(value, str) or not value or len(value) > 256
+            for key, value in native_kent.items()
+            if not (key == "transition_branch_key" and value is None)
+        )
+    ):
+        raise RuntimeContractError("invalid native Script context")
+    if (
+        not isinstance(detail, dict) or not isinstance(detail.get("summary"), dict)
+        or not isinstance(workspace, str) or not workspace.startswith("/") or "\x00" in workspace
+    ):
+        raise RuntimeContractError("native Script Task/workspace observation is invalid")
+    summary = detail["summary"]
+    if summary.get("id") != native_kent["task_id"]:
+        raise RuntimeContractError("native Script Task mismatch")
+    rows = detail.get("current_scripts")
+    if (
+        not isinstance(rows, list) or len(rows) > 256
+        or any(not isinstance(row, dict) or not isinstance(row.get("current_node"), dict)
+               for row in rows)
+    ):
+        raise RuntimeContractError("native current Script observation is incomplete")
+    matches = [
+        row for row in rows
+        if row["current_node"].get("node_id") == native_kent["node_id"]
+        and row["current_node"].get("transition_branch_key") == native_kent.get("transition_branch_key")
+    ]
+    if len(matches) != 1 or matches[0]["current_node"].get("session_id"):
+        raise RuntimeContractError("native current Script ownership is unresolved")
+    if (
+        not isinstance(graph, dict) or graph.get("workflow_id") != summary.get("workflow_id")
+        or not isinstance(graph.get("graph"), dict)
+        or not isinstance(graph["graph"].get("nodes"), list)
+        or any(not isinstance(node, dict) for node in graph["graph"]["nodes"])
+    ):
+        raise RuntimeContractError("native Script graph identity mismatch")
+    nodes = [node for node in graph["graph"]["nodes"] if node.get("id") == native_kent["node_id"]]
+
+    def path(value):
+        # Pure POSIX path normalization, shared by Unix project adapters.
+        import posixpath
+        if not isinstance(value, str) or not value or "\x00" in value:
+            raise RuntimeContractError("native Script path is unresolved")
+        return posixpath.normpath(value if value.startswith("/") else workspace + "/" + value)
+
+    if (
+        len(nodes) != 1 or nodes[0].get("kind") != "script"
+        or path(nodes[0].get("script_path")) != path(matches[0].get("path"))
+    ):
+        raise RuntimeContractError("native graph does not own the current Script path")
+    return {
+        "invocation_kind": "script", "task_id": native_kent["task_id"],
+        "node_id": native_kent["node_id"],
+        "transition_branch_key": native_kent.get("transition_branch_key"),
+    }
+
+
 class _FrozenList(tuple):
     """Private marker preserving list semantics during materialization."""
 
@@ -2229,6 +2299,293 @@ def parse_terminal_marker_line(line: str) -> dict[str, Any]:
     return marker
 
 
+MAX_EVIDENCE_BYTES = 8 * 1024 * 1024
+MAX_EVIDENCE_RECORDS = 8192
+EVIDENCE_RECOVERY_SCHEMA = "evidence-recovery-v2"
+EVIDENCE_BOUNDARY_KIND = "evidence_recovery_boundary_v2"
+EVIDENCE_BOUNDARY_KINDS = {"evidence_recovery_boundary_v1", EVIDENCE_BOUNDARY_KIND}
+EVIDENCE_RECOVERY_FILES = ("evidence-recovery.json", "evidence-continuation.jsonl")
+LEGACY_OWNER_PROVENANCE = {
+    "schema": "kent-owner-provenance-v1",
+    "session_task_binding": "native-readback",
+    "run_step_binding": "inherited-kent-environment",
+    "independently_verified_current_run": False,
+}
+OWNER_PROVENANCE = {
+    "schema": "kent-owner-provenance-v2",
+    "session_task_binding": "native-readback",
+    "step_binding": "inherited-kent-environment",
+    "independently_verified_current_step": False,
+}
+
+
+def validate_owner_provenance(value, *, version=None):
+    expected = {1: LEGACY_OWNER_PROVENANCE, 2: OWNER_PROVENANCE}
+    candidates = expected.values() if version is None else [expected[version]]
+    if not any(canonical_bytes(value) == canonical_bytes(item) for item in candidates):
+        raise RuntimeContractError("invalid evidence owner provenance classification")
+    return dict(value)
+
+
+def evidence_identity_version(data):
+    """Outer record version selects ownership; historical bytes remain opaque."""
+    version = data.get("schema_version")
+    if type(version) is not int or version not in (1, 2):
+        raise RuntimeContractError("ledger record has unsupported schema")
+    if version == 2:
+        if "run_id" in data or data.get("record_kind") == TERMINAL_SEAL_SCHEMA:
+            raise RuntimeContractError("inconsistent evidence identity version")
+        _evidence_owner({key: data.get(key) for key in ("session_id", "step_id")}, version=2)
+    kind = data.get("record_kind")
+    if kind in EVIDENCE_BOUNDARY_KINDS and kind != f"evidence_recovery_boundary_v{version}":
+        raise RuntimeContractError("inconsistent recovery boundary version")
+    return version
+
+
+def _evidence_record(raw: bytes, task: str, sequence: int, previous: str) -> dict:
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value:
+                raise RuntimeContractError("duplicate evidence JSON key")
+            value[key] = item
+        return value
+
+    try:
+        data = json.loads(
+            raw.decode("utf-8"), object_pairs_hook=pairs,
+            parse_constant=lambda _: (_ for _ in ()).throw(
+                RuntimeContractError("nonfinite evidence JSON")
+            ),
+        )
+        canonical_bytes(data)  # Enforce depth and value bounds, not serialization.
+    except (UnicodeDecodeError, ValueError, RecursionError) as error:
+        raise RuntimeContractError("invalid evidence JSON") from error
+    data = _object(data, "evidence record")
+    evidence_identity_version(data)
+    if (
+        type(data.get("schema_version")) is not int
+        or data["schema_version"] not in (1, 2)
+        or type(data.get("sequence")) is not int
+        or data["sequence"] != sequence
+        or data.get("task_short_id") != task
+        or data.get("previous_hash") != previous
+    ):
+        raise RuntimeContractError("evidence chain identity or sequence mismatch")
+    unsigned = {key: value for key, value in data.items() if key != "event_hash"}
+    if _event_hash(unsigned) != data.get("event_hash"):
+        raise RuntimeContractError("evidence record has an invalid hash")
+    return data
+
+
+def _evidence_lines(raw: bytes) -> list[bytes]:
+    if not isinstance(raw, bytes) or len(raw) > MAX_EVIDENCE_BYTES:
+        raise RuntimeContractError("evidence exceeds byte limit")
+    lines = []
+    for line in _evidence_line_iterator(raw):
+        if len(lines) >= MAX_EVIDENCE_RECORDS:
+            raise RuntimeContractError("evidence exceeds record limit")
+        lines.append(line)
+    return lines
+
+
+def _evidence_line_iterator(raw: bytes):
+    for match in re.finditer(rb"[^\r\n]*(?:\r\n|\n|\r|$)", raw):
+        if match.end() == match.start():
+            return
+        yield match.group()
+
+
+def _evidence_owner(owner: Any, *, version=None) -> dict:
+    if version is None:
+        version = 1 if isinstance(owner, dict) and "run_id" in owner else 2
+    keys = {"session_id", "step_id"} | ({"run_id"} if version == 1 else set())
+    value = _closed(owner, keys, "recovery owner")
+    if set(value) != keys:
+        raise RuntimeContractError("recovery owner is incomplete")
+    for key in keys:
+        if _string(value[key], key) == "unknown":
+            raise RuntimeContractError("recovery requires a known current owner")
+        if version == 2 and not re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", value[key]
+        ):
+            raise RuntimeContractError("owner requires canonical Kent Session/Step UUIDs")
+    return value
+
+
+def build_evidence_recovery_request(
+    original: bytes, *, task_short_id: str, owner: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Describe the first invalid byte suffix; this grants no effect authority."""
+    if not TASK_RE.fullmatch(_string(task_short_id, "task_short_id")):
+        raise RuntimeContractError("invalid evidence task")
+    owner = _evidence_owner(owner)
+    previous = ""
+    offset = count = 0
+    if not isinstance(original, bytes) or len(original) > MAX_EVIDENCE_BYTES:
+        raise RuntimeContractError("evidence exceeds byte limit")
+    for line in _evidence_line_iterator(original):
+        try:
+            record = _evidence_record(line, task_short_id, count + 1, previous)
+        except RuntimeContractError:
+            break
+        if record.get("record_kind") in {TERMINAL_SEAL_SCHEMA, *EVIDENCE_BOUNDARY_KINDS}:
+            raise RuntimeContractError("sealed or already recovered evidence")
+        previous = record["event_hash"]
+        count += 1
+        if count > MAX_EVIDENCE_RECORDS:
+            raise RuntimeContractError("evidence prefix exceeds record limit")
+        offset += len(line)
+    if not count or offset == len(original):
+        raise RuntimeContractError("recovery requires a nonempty prefix and damaged suffix")
+    if count + 3 > MAX_EVIDENCE_RECORDS:
+        raise RuntimeContractError("recovery has no capacity for boundary, genuine final event and seal")
+    prefix, suffix = original[:offset], original[offset:]
+    return {
+        "task_short_id": task_short_id,
+        "original_byte_size": len(original),
+        "original_sha256": hashlib.sha256(original).hexdigest(),
+        "prefix_byte_size": offset, "prefix_count": count,
+        "prefix_sha256": hashlib.sha256(prefix).hexdigest(),
+        "suffix_byte_size": len(suffix),
+        "suffix_sha256": hashlib.sha256(suffix).hexdigest(),
+        "continuation": EVIDENCE_RECOVERY_FILES[1], "owner": owner,
+        "owner_provenance": dict(LEGACY_OWNER_PROVENANCE if "run_id" in owner else OWNER_PROVENANCE),
+    }
+
+
+def validate_evidence_view(
+    original: bytes, *, task_short_id: str, manifest: Mapping[str, Any] | None = None,
+    continuation: bytes | None = None,
+) -> dict[str, Any]:
+    """Validate one logical chain without interpreting the damaged raw suffix."""
+    recovery_hash = None
+    boundary_hash = None
+    if manifest is None:
+        if continuation is not None:
+            raise RuntimeContractError("incomplete evidence recovery publication")
+        lines = _evidence_lines(original)
+    else:
+        keys = {"schema", "request", "request_sha256", "boundary_event_hash"}
+        metadata = _closed(manifest, keys, "evidence recovery manifest")
+        if set(metadata) != keys or metadata["schema"] not in {"evidence-recovery-v1", EVIDENCE_RECOVERY_SCHEMA}:
+            raise RuntimeContractError("invalid evidence recovery manifest")
+        if continuation is None:
+            raise RuntimeContractError("missing evidence continuation")
+        request = _object(metadata["request"], "recovery request")
+        version = 1 if metadata["schema"] == "evidence-recovery-v1" else 2
+        _evidence_owner(request.get("owner"), version=version)
+        validate_owner_provenance(request.get("owner_provenance"), version=version)
+        expected = build_evidence_recovery_request(
+            original, task_short_id=task_short_id, owner=request.get("owner"),
+        )
+        if canonical_bytes(request) != canonical_bytes(expected) or metadata["request_sha256"] != canonical_sha256(expected):
+            raise RuntimeContractError("recovery preimage/request mismatch")
+        recovery_hash = metadata["request_sha256"]
+        boundary_hash = _digest(metadata["boundary_event_hash"], "boundary_event_hash")
+        prefix = original[:request["prefix_byte_size"]]
+        if len(prefix) + len(continuation) > MAX_EVIDENCE_BYTES:
+            raise RuntimeContractError("logical evidence exceeds byte limit")
+        lines = _evidence_lines(prefix) + _evidence_lines(continuation)
+        if len(lines) > MAX_EVIDENCE_RECORDS or not continuation.endswith(b"\n"):
+            raise RuntimeContractError("invalid evidence continuation bounds")
+    records = []
+    previous = ""
+    for index, line in enumerate(lines, 1):
+        record = _evidence_record(line, task_short_id, index, previous)
+        kind = record.get("record_kind")
+        is_boundary = manifest is not None and index == request["prefix_count"] + 1
+        if is_boundary:
+            boundary_keys = {
+                "schema_version", "sequence", "task_short_id", "previous_hash", "event_hash",
+                "record_kind", "recovery_request_sha256", *request["owner"],
+            }
+            if (
+                set(record) != boundary_keys
+                or kind != f"evidence_recovery_boundary_v{version}"
+                or record["schema_version"] != version
+                or record["event_hash"] != boundary_hash
+                or record.get("recovery_request_sha256") != recovery_hash
+                or any(record.get(key) != value for key, value in request["owner"].items())
+                or any(record.get(key) for key in ("checks", "decisions", "artifacts"))
+            ):
+                raise RuntimeContractError("invalid evidence recovery boundary")
+        elif kind in EVIDENCE_BOUNDARY_KINDS:
+            raise RuntimeContractError("unexpected evidence recovery boundary")
+        if kind == TERMINAL_SEAL_SCHEMA:
+            if index != len(lines) or not records or records[-1].get("record_kind") in EVIDENCE_BOUNDARY_KINDS:
+                raise RuntimeContractError("seal requires a genuine final ordinary event")
+            validate_terminal_seal_record(record)
+        records.append(record)
+        previous = record["event_hash"]
+    if manifest is not None and len(records) <= request["prefix_count"]:
+        raise RuntimeContractError("missing evidence recovery boundary")
+    return {
+        "records": records, "status": "recovered_with_gap" if manifest else "healthy",
+        "recovery_request_sha256": recovery_hash,
+        "byte_size": len(original) if manifest is None else request["prefix_byte_size"] + len(continuation),
+    }
+
+
+def validate_evidence_retention_receipt(value: Mapping[str, Any]) -> dict[str, Any]:
+    keys = {
+        "schema", "task_short_id", "source_workspace", "source_native_identity",
+        "terminal_event_hash", "recovery_request_sha256", "files", "bundle_sha256",
+        "owner_provenance",
+    }
+    data = _closed(value, keys, "evidence retention receipt")
+    if set(data) != keys or data["schema"] not in {"evidence-retention-v1", "evidence-retention-v2"}:
+        raise RuntimeContractError("invalid evidence retention receipt")
+    validate_owner_provenance(data["owner_provenance"], version=1 if data["schema"] == "evidence-retention-v1" else 2)
+    task = _string(data["task_short_id"], "task_short_id")
+    if not TASK_RE.fullmatch(task):
+        raise RuntimeContractError("invalid retention task")
+    source = _string(data["source_workspace"], "source_workspace")
+    if not source.startswith("/") or any(part in {".", "..", ""} for part in source[1:].split("/")):
+        raise RuntimeContractError("retention source must be an absolute canonical path")
+    native_keys = {"project_id", "workspace_id", "task_id"}
+    native = _closed(data["source_native_identity"], native_keys, "source native identity")
+    if set(native) != native_keys:
+        raise RuntimeContractError("source native identity is incomplete")
+    for key in native_keys:
+        _string(native[key], key)
+    _digest(data["terminal_event_hash"], "terminal_event_hash")
+    if data["recovery_request_sha256"] is not None:
+        _digest(data["recovery_request_sha256"], "recovery_request_sha256")
+    files = data["files"]
+    if not isinstance(files, list) or not 1 <= len(files) <= 256:
+        raise RuntimeContractError("retention file count exceeds bounds")
+    paths = []
+    total = 0
+    for item in files:
+        row = _closed(item, {"logical_path", "byte_size", "sha256"}, "retained file")
+        if set(row) != {"logical_path", "byte_size", "sha256"}:
+            raise RuntimeContractError("retained file is incomplete")
+        path = _string(row["logical_path"], "logical_path")
+        if (
+            path.startswith("/") or "\\" in path or "\x00" in path
+            or any(part in {"", ".", ".."} for part in path.split("/"))
+        ):
+            raise RuntimeContractError("invalid retained logical path")
+        total += _integer(row["byte_size"], "byte_size", minimum=0)
+        _digest(row["sha256"], "sha256")
+        paths.append(path)
+    if paths != sorted(set(paths)) or total > 256 * 1024 * 1024:
+        raise RuntimeContractError("retention inventory is unsorted, repeated or oversized")
+    required = {f".kent/runtime/{task}/evidence-ledger.jsonl"}
+    recovery_paths = {f".kent/runtime/{task}/{name}" for name in EVIDENCE_RECOVERY_FILES}
+    if data["recovery_request_sha256"] is not None:
+        required |= recovery_paths
+    elif recovery_paths & set(paths):
+        raise RuntimeContractError("healthy retention must not invent recovery files")
+    if not required <= set(paths):
+        raise RuntimeContractError("retention omits required evidence files")
+    unsigned = {key: item for key, item in data.items() if key != "bundle_sha256"}
+    if _digest(data["bundle_sha256"], "bundle_sha256") != canonical_sha256(unsigned):
+        raise RuntimeContractError("retention bundle digest mismatch")
+    return data
+
+
 def validate_terminal_chain(
     records: Sequence[Mapping[str, Any]],
     *,
@@ -2239,8 +2596,7 @@ def validate_terminal_chain(
     previous = ""
     for index, raw in enumerate(records, start=1):
         data = _object(raw, f"ledger record {index}")
-        if data.get("schema_version") != 1:
-            raise RuntimeContractError("ledger record has unsupported schema")
+        evidence_identity_version(data)
         if data.get("sequence") != index:
             raise RuntimeContractError("ledger sequence is not contiguous")
         if data.get("task_short_id") != task_short_id:
@@ -2259,6 +2615,8 @@ def validate_terminal_chain(
             raise RuntimeContractError("terminal seal must be the final record")
         previous = event_hash
     seal = validate_terminal_seal_record(records[-1])
+    if len(records) < 2 or records[-2].get("record_kind") in EVIDENCE_BOUNDARY_KINDS:
+        raise RuntimeContractError("terminal seal requires an ordinary final event")
     if seal["sequence"] != len(records) or seal["previous_hash"] != (
         records[-2]["event_hash"]
     ):

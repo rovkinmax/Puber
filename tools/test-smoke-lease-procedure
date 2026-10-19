@@ -25,6 +25,7 @@ LEASE_STOP = "3. **Builds"
 NATIVE_ID = "task-00000000-0000-4000-8000-000000000083"
 TASK_SHORT_ID = "PUB-83"
 SESSION_ID = "00000000-0000-4000-8000-000000000084"
+PROJECT_ID = "project-00000000-0000-4000-8000-000000000085"
 TOKEN = "token-synthetic-pub83"
 RESOURCE = "emulator-5554"
 RESOURCES = [RESOURCE, "emulator-5556"]
@@ -83,22 +84,37 @@ raise SystemExit(code)
 '''
 
 
+IDENTITY_STUB = r'''#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["SMOKE_LEASE_TRACE"], "a", encoding="utf-8") as stream:
+    stream.write(json.dumps({"kind": "identity", "op": "identity", "args": args}) + "\n")
+if (
+    len(args) != 5
+    or args[0] != "identity"
+    or args[1] != "--task"
+    or args[2] != os.environ["SMOKE_TASK_SHORT_ID"]
+    or args[3] != "--workspace"
+):
+    print("unexpected native identity request", file=sys.stderr)
+    raise SystemExit(98)
+config = json.load(open(os.environ["SMOKE_LEASE_CONFIG"], encoding="utf-8"))
+identity = dict(config["identity"])
+identity["workspace_path"] = config.get("identity_workspace_path", args[4])
+if config.get("identity_exit_code"):
+    raise SystemExit(int(config["identity_exit_code"]))
+print(json.dumps(identity))
+'''
+
+
 KENT_STUB = r'''#!/usr/bin/env python3
 import json, os, sys
 args = sys.argv[1:]
-if not args:
-    raise SystemExit(98)
-op = "task" if args[0] == "task" else args[0]
+op = args[0] if args else "<missing>"
 with open(os.environ["SMOKE_LEASE_TRACE"], "a", encoding="utf-8") as stream:
     stream.write(json.dumps({"kind": "kent", "op": op, "args": args}) + "\n")
-config = json.load(open(os.environ["SMOKE_LEASE_CONFIG"], encoding="utf-8"))
-if args == ["task", "show", os.environ["SMOKE_TASK_SHORT_ID"], "--json"]:
-    print(json.dumps(config["native_task"]))
-elif args == ["session-id"]:
-    print(config["session_id"])
-else:
-    print("unexpected fake Kent command", file=sys.stderr)
-    raise SystemExit(98)
+print("unexpected fake Kent command", file=sys.stderr)
+raise SystemExit(98)
 '''
 
 
@@ -221,14 +237,16 @@ def checkpoint_for(
 
 def default_config(
     *, eligible: list[str] | None = None, selected: str = RESOURCE,
-    session_id: str = SESSION_ID, native_task: dict[str, Any] | None = None,
+    session_id: str = SESSION_ID,
 ) -> dict[str, Any]:
+    identity = json.loads((FIXTURES / "native-task.json").read_text())
+    identity["session_id"] = session_id
     return {
         "eligible_resources": list(eligible or RESOURCES),
         "selected_resource": selected,
         "token": TOKEN,
         "session_id": session_id,
-        "native_task": native_task or json.loads((FIXTURES / "native-task.json").read_text()),
+        "identity": identity,
         "device_properties": {
             RESOURCE: {
                 "ro.build.characteristics": "tv",
@@ -293,6 +311,9 @@ def install_stubs(
         checkpoint_tool.write_text(CHECKPOINT_STUB, encoding="utf-8")
         checkpoint_tool.chmod(0o755)
         checkpoint_path.write_text(json.dumps(checkpoint), encoding="utf-8")
+    identity_tool = sandbox / ".kent/scripts/workflow-evidence-ledger"
+    identity_tool.write_text(IDENTITY_STUB, encoding="utf-8")
+    identity_tool.chmod(0o755)
     (bin_dir / "kent").write_text(KENT_STUB, encoding="utf-8")
     (bin_dir / "kent").chmod(0o755)
     adb = bin_dir / "adb"
@@ -423,10 +444,12 @@ class SmokeLeaseProcedureTests(unittest.TestCase):
         normalized_text = " ".join(self.text.lower().split())
         missing = self.required - self.blocks.keys()
         self.assertFalse(missing, f"missing source-bound examples: {sorted(missing)}")
-        self.assertIn("kent task show", self.text)
-        self.assertIn("kent session-id", self.text)
-        self.assertIn("summary.id", self.text)
-        self.assertIn("summary.short_id", self.text)
+        self.assertIn(".kent/scripts/workflow-evidence-ledger", self.text)
+        self.assertIn('"$identity_tool" identity', normalized_text)
+        self.assertNotIn("kent task show", normalized_text)
+        self.assertNotIn("kent session-id", normalized_text)
+        self.assertIn("project_id", self.text)
+        self.assertIn("workspace_path", self.text)
         self.assertIn("resume-owned", self.text)
         self.assertIn("lease_owner_id", self.text)
         self.assertIn("task_native_id", self.text)
@@ -462,13 +485,51 @@ class SmokeLeaseProcedureTests(unittest.TestCase):
         result = run_scenario(self.blocks, cases=["identity"])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(ops(result, "adapter"), [])
-        self.assertEqual(ops(result, "kent"), ["task", "session-id"])
+        self.assertEqual(ops(result, "identity"), ["identity"])
+        self.assertEqual(ops(result, "kent"), [])
+        self.assertEqual(default_config()["identity"]["project_id"], PROJECT_ID)
+        identity_call = next(call for call in result.calls if call.get("kind") == "identity")
+        self.assertEqual(
+            identity_call["args"][:4],
+            ["identity", "--task", TASK_SHORT_ID, "--workspace"],
+        )
+        self.assertTrue(identity_call["args"][4].startswith("/"))
         self.assertFalse(any(call.get("kind") == "adb" for call in result.calls))
 
-        mismatched = default_config(native_task={"summary": {"id": NATIVE_ID, "short_id": "PUB-84"}})
-        rejected = run_scenario(self.blocks, cases=["identity"], config=mismatched)
+        invalid_identities = (
+            ("Task ID", {"task_id": "not-a-task-uuid"}),
+            ("Task short ID", {"task_short_id": "PUB-84"}),
+            ("Project ID", {"project_id": "project-not-a-uuid"}),
+            ("Session ID", {"session_id": "not-a-session-uuid"}),
+            ("missing Session ID", {"session_id": None}),
+            ("extra field", {"unexpected": "not-in-closed-identity"}),
+        )
+        for label, change in invalid_identities:
+            with self.subTest(identity=label):
+                rejected_config = default_config()
+                rejected_config["identity"].update(change)
+                rejected = run_scenario(
+                    self.blocks, cases=["identity"], config=rejected_config,
+                )
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertEqual(ops(rejected, "adapter"), [])
+                self.assertFalse(any(call.get("kind") == "adb" for call in rejected.calls))
+
+        wrong_workspace = default_config()
+        wrong_workspace["identity_workspace_path"] = "/foreign/workspace"
+        rejected = run_scenario(
+            self.blocks, cases=["identity"], config=wrong_workspace,
+        )
         self.assertNotEqual(rejected.returncode, 0)
         self.assertEqual(ops(rejected, "adapter"), [])
+
+        unavailable = default_config()
+        unavailable["identity_exit_code"] = 75
+        failed = run_scenario(
+            self.blocks, cases=["identity"], config=unavailable,
+        )
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertEqual(ops(failed, "adapter"), [])
 
     def test_retained_pair_resumes_exact_owner_resource_token_and_session(self) -> None:
         config = default_config()

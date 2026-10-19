@@ -1,6 +1,7 @@
 {
-  "summary": {
-    "id": "task-00000000-0000-4000-8000-000000000083",
-    "short_id": "PUB-83"
-  }
+  "task_id": "task-00000000-0000-4000-8000-000000000083",
+  "task_short_id": "PUB-83",
+  "project_id": "project-00000000-0000-4000-8000-000000000085",
+  "workspace_path": "/synthetic/smoke-lease-workspace",
+  "session_id": "00000000-0000-4000-8000-000000000084"
 }

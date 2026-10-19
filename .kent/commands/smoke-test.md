@@ -82,19 +82,34 @@ Runs smoke test for a feature via MCP mobile.
      set -euo pipefail
      TASK_SHORT_ID="${SMOKE_TASK_SHORT_ID:?Set this to the Task short ID rendered for this Smoke run}"
      [[ "$TASK_SHORT_ID" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]
-     TASK_FIELDS="$(kent task show "$TASK_SHORT_ID" --json |
-       jq -er '
-         [.summary.id, .summary.short_id]
-         | if all(.[]; type == "string" and length > 0)
-           then @tsv
-           else error("native Task identity is incomplete")
-           end
-       ')"
-     IFS=$'\t' read -r TASK_NATIVE_ID VERIFIED_SHORT_ID <<<"$TASK_FIELDS"
-     [[ -n "$TASK_NATIVE_ID" && -n "$VERIFIED_SHORT_ID" ]]
-     [[ "$VERIFIED_SHORT_ID" == "$TASK_SHORT_ID" ]]
-     SESSION_ID="$(kent session-id)"
-     [[ "$SESSION_ID" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]
+     WORKSPACE="$(pwd -P)"
+     IDENTITY_TOOL=".kent/scripts/workflow-evidence-ledger"
+     IDENTITY_JSON="$("$IDENTITY_TOOL" identity \
+       --task "$TASK_SHORT_ID" --workspace "$WORKSPACE")"
+     jq -e --arg short "$TASK_SHORT_ID" --arg workspace "$WORKSPACE" '
+       if type != "object" then error("native identity is not an object")
+       elif keys != ["project_id", "session_id", "task_id", "task_short_id", "workspace_path"]
+         then error("native identity has an unexpected shape")
+       elif (.task_id | type) != "string" then error("native Task identity is missing")
+       elif (.task_id | test("^task-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$") | not)
+         then error("native Task identity is malformed")
+       elif .task_short_id != $short then error("native Task short ID mismatch")
+       elif (.project_id | type) != "string" then error("native Project identity is missing")
+       elif (.project_id | test("^project-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$") | not)
+         then error("native Project identity is malformed")
+       elif .workspace_path != $workspace then error("native workspace identity mismatch")
+       elif (.session_id | type) != "string" then error("native Session identity is missing")
+       elif (.session_id | test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$") | not)
+         then error("native Session identity is malformed")
+       else true
+       end
+     ' <<<"$IDENTITY_JSON" >/dev/null
+     TASK_NATIVE_ID="$(jq -er '.task_id' <<<"$IDENTITY_JSON")"
+     VERIFIED_SHORT_ID="$(jq -er '.task_short_id' <<<"$IDENTITY_JSON")"
+     PROJECT_ID="$(jq -er '.project_id' <<<"$IDENTITY_JSON")"
+     VERIFIED_WORKSPACE="$(jq -er '.workspace_path' <<<"$IDENTITY_JSON")"
+     SESSION_ID="$(jq -er '.session_id' <<<"$IDENTITY_JSON")"
+     [[ "$VERIFIED_SHORT_ID" == "$TASK_SHORT_ID" && "$VERIFIED_WORKSPACE" == "$WORKSPACE" ]]
      unset KENT_TASK_ID KENT_SESSION_ID
      export KENT_TASK_ID="$VERIFIED_SHORT_ID" KENT_SESSION_ID="$SESSION_ID"
      LOCK_ADAPTER=".kent/adapters/mobile/emulator-resource-lock.sh"

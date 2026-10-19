@@ -30,6 +30,8 @@ races: POSIX unlink is not an atomic inode compare-and-swap.
 from __future__ import annotations
 
 import json
+import importlib.machinery
+import importlib.util
 import fcntl
 import hashlib
 import io
@@ -40,6 +42,7 @@ import stat
 import subprocess
 import sys
 import time
+import tomllib
 from urllib.parse import urlparse
 
 
@@ -52,6 +55,9 @@ MAX_CI_ARTIFACTS = 64
 MAX_CI_ARTIFACT_BYTES = 4 * 1024 * 1024
 MAX_LEDGER_BYTES = 8 * 1024 * 1024
 MAX_LEDGER_RECORDS = 8192
+# Actual native Script input, populated only by main. It is never synthesized
+# from cleanup_session_id (which identifies the preceding Agent, not us).
+_NATIVE_KENT = None
 RUNTIME_EVIDENCE_ENTRIES = frozenset({
     "evidence-ledger.jsonl",
     "fix-checkpoint.json",
@@ -748,12 +754,73 @@ def _open_evidence_file(task_fd: int, name: str) -> int:
         raise
 
 
-def _read_ledger_records(task_fd: int) -> list[dict[str, object]]:
+def _read_ledger_records(task_fd: int, *, task: str, runtime=None) -> list[dict[str, object]]:
     descriptor = _open_evidence_file(task_fd, "evidence-ledger.jsonl")
     try:
-        return _ledger_records(
-            _bounded_file_bytes(descriptor, MAX_LEDGER_BYTES, ledger=True)
-        )
+        original = _bounded_file_bytes(descriptor, MAX_LEDGER_BYTES)
+    finally:
+        os.close(descriptor)
+    recovery = {}
+    for name in ("evidence-recovery.json", "evidence-continuation.jsonl"):
+        try:
+            descriptor = _open_evidence_file(task_fd, name)
+        except FileNotFoundError:
+            continue
+        try:
+            if os.fstat(descriptor).st_mode & 0o7777 != 0o600:
+                raise ValueError("recovery files must be private mode 0600")
+            recovery[name] = _bounded_file_bytes(descriptor, MAX_LEDGER_BYTES)
+        finally:
+            os.close(descriptor)
+    sibling = Path(__file__).with_name("workflow_runtime_contracts.py")
+    if runtime is None and not sibling.exists() and not sibling.is_symlink():
+        if recovery:
+            raise ValueError("recovery requires qualified runtime support")
+        return _ledger_records(original)
+    runtime = runtime or runtime_contracts()
+    metadata = recovery.get("evidence-recovery.json")
+    return runtime.validate_evidence_view(
+        original, task_short_id=task,
+        manifest=(
+            runtime.parse_canonical_json(metadata, label="evidence recovery manifest", max_bytes=1024 * 1024)
+            if metadata is not None else None
+        ),
+        continuation=recovery.get("evidence-continuation.jsonl"),
+    )["records"]
+
+
+def evidence_ledger():
+    sibling = Path(__file__).with_name("workflow-evidence-ledger")
+    metadata = sibling.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o022:
+        raise ValueError("qualified evidence ledger support is unsafe")
+    loader = importlib.machinery.SourceFileLoader("janitor_evidence_ledger", str(sibling))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    previous = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = previous
+    return module
+
+
+def _retention_declared(workspace):
+    path = workspace / ".kent/workflow-profile.toml"
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return False
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o022:
+            raise ValueError("unsafe workflow profile for evidence retention")
+        profile = tomllib.loads(_bounded_file_bytes(descriptor, 1024 * 1024).decode("utf-8"))
+        policy = profile.get("policies", {}).get("delivery_reliability")
+        if policy is not None and policy != "v1":
+            raise ValueError("unknown evidence retention policy")
+        return policy == "v1"
     finally:
         os.close(descriptor)
 
@@ -855,12 +922,59 @@ class _EvidenceAdmission:
         self.phase = "initial"
         self.workspace = workspace
         self.task_short_id = task_short_id
+        self.retained = None
+        self.retention_ledger = None
         try:
             entries = _bounded_inventory(self.directory)
-            ledger_fd = _open_evidence_file(self.directory, "evidence-ledger.jsonl")
-            self.files["evidence-ledger.jsonl"] = (ledger_fd, None, None)
-            raw = _bounded_file_bytes(ledger_fd, MAX_LEDGER_BYTES, ledger=True)
-            records = _ledger_records(raw)
+            expected_tombstone = ".evidence-cleanup-" + runtime.canonical_sha256(reported_marker)
+            if state_name == expected_tombstone:
+                _, self.sentinel_name = runtime_state_names(task_short_id)
+                try:
+                    self.sentinel = _open_evidence_file(runtime_fd, self.sentinel_name)
+                except FileNotFoundError:
+                    pass
+                else:
+                    if _bounded_file_bytes(self.sentinel, 0):
+                        raise ValueError("terminal sentinel is unsafe")
+                    self.phase = "deletion-resume"
+            archive_fallback = False
+            retention_declared = _retention_declared(workspace)
+            try:
+                records = _read_ledger_records(self.directory, task=task_short_id, runtime=runtime)
+            except (FileNotFoundError, ValueError):
+                if self.phase != "deletion-resume":
+                    raise
+                if not retention_declared and not entries:
+                    # Preserve the existing final empty-tombstone checkpoint.
+                    # No remaining bytes are being admitted or discarded.
+                    raise
+                archive_fallback = True
+            requires_retention = archive_fallback or retention_declared or (
+                any(record.get("record_kind") in runtime.EVIDENCE_BOUNDARY_KINDS for record in records)
+            )
+            if requires_retention:
+                self.retention_ledger = evidence_ledger()
+                self.retained = self.retention_ledger.find_retained_evidence(
+                    workspace, task=task_short_id, marker=reported_marker,
+                    native_kent=_NATIVE_KENT,
+                )
+                if archive_fallback:
+                    records = self.retained["view"]["records"]
+                elif records != self.retained["view"]["records"]:
+                    raise ValueError("retained logical view differs from live evidence")
+                self.retention_ledger.verify_retained_sources(
+                    workspace, self.directory, self.retained,
+                    allow_missing_runtime=self.phase == "deletion-resume",
+                )
+            try:
+                ledger_fd = _open_evidence_file(self.directory, "evidence-ledger.jsonl")
+            except FileNotFoundError:
+                if self.retained is None or self.phase != "deletion-resume":
+                    raise
+            else:
+                self.files["evidence-ledger.jsonl"] = (ledger_fd, None, None)
+                raw = _bounded_file_bytes(ledger_fd, MAX_LEDGER_BYTES)
+                self.files["evidence-ledger.jsonl"] = (ledger_fd, os.fstat(ledger_fd), raw)
             self.marker = runtime.validate_terminal_chain(
                 records, task_short_id=task_short_id,
             )
@@ -869,9 +983,6 @@ class _EvidenceAdmission:
                 raise ValueError("cleanup tombstone name does not match sealed ledger")
             if reported_marker != self.marker:
                 raise ValueError("cleanup report marker does not match ledger")
-            self.files["evidence-ledger.jsonl"] = (
-                ledger_fd, os.fstat(ledger_fd), raw,
-            )
             for record in records:
                 artifacts = record.get("artifacts", [])
                 if not isinstance(artifacts, list) or any(
@@ -891,10 +1002,12 @@ class _EvidenceAdmission:
                     if len(self.references) > MAX_CI_ARTIFACTS:
                         raise ValueError("CI report reference count exceeds limit")
             allowed = RUNTIME_EVIDENCE_ENTRIES | self.references
+            if self.retained is not None and self.retained["receipt"]["recovery_request_sha256"] is not None:
+                allowed |= set(runtime.EVIDENCE_RECOVERY_FILES)
             unknown = sorted(set(entries) - allowed)
             if unknown:
                 raise ValueError(f"unexpected tombstone entries: {unknown}")
-            if state_name == self.tombstone:
+            if state_name == self.tombstone and self.sentinel < 0:
                 _, self.sentinel_name = runtime_state_names(task_short_id)
                 try:
                     self.sentinel = _open_evidence_file(runtime_fd, self.sentinel_name)
@@ -914,6 +1027,8 @@ class _EvidenceAdmission:
                     descriptor = _open_evidence_file(self.directory, name)
                     self.files[name] = (descriptor, None, None)
                     report_bytes = None
+                    if name in runtime.EVIDENCE_RECOVERY_FILES:
+                        report_bytes = _bounded_file_bytes(descriptor, MAX_LEDGER_BYTES)
                     if name.startswith(CI_REPORT_PREFIX):
                         if name not in self.references:
                             raise ValueError(
@@ -974,6 +1089,16 @@ class _EvidenceAdmission:
             raise ValueError("runtime entries are tracked or not ignored in selected workspace")
 
     def revalidate(self):
+        if self.retained is not None:
+            self.retention_ledger.revalidate_retention_observation(
+                self.retained["identity"], self.task_short_id,
+                self.retained["receipt"], self.retained["archive_observation"],
+            )
+            self.retention_ledger.verify_retained_sources(
+                self.workspace, self.directory, self.retained,
+                allow_missing_runtime=self.phase == "deletion-resume",
+                reuse_observation=True,
+            )
         _revalidate_directory_link(self.runtime_fd, self.name, self.directory)
         if set(_bounded_inventory(self.directory)) != self.files.keys():
             raise ValueError("runtime inventory changed after admission")
@@ -1078,6 +1203,12 @@ def _validate_retained_tombstone(
     try:
         # A managed worktree never enters raw-file deletion recovery.
         admission.require_complete()
+        if admission.retained is not None:
+            required = {"evidence-ledger.jsonl"}
+            if admission.retained["receipt"]["recovery_request_sha256"] is not None:
+                required.update(runtime.EVIDENCE_RECOVERY_FILES)
+            if required - admission.files.keys():
+                raise ValueError("managed retained evidence is missing required raw ledger files")
         admission.phase = "managed-retained"
         return admission
     except BaseException:
@@ -1410,7 +1541,7 @@ def _remove_v2_runtime_state(
         if active_present:
             ledger_error = None
             try:
-                records = _read_ledger_records(task_fd)
+                records = _read_ledger_records(task_fd, task=task_short_id)
             except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
                 records = []
                 ledger_error = "active v2 ledger is missing or invalid"
@@ -1627,6 +1758,8 @@ def _remove_v2_runtime_state(
         if admission.sentinel < 0:
             admission.sentinel = os.dup(sentinel_fd)
             admission.sentinel_name = sentinel_name
+        if admission.retained is not None:
+            admission.phase = "deletion-resume"
         order = sorted(
             name for name in admission.files
             if name != "evidence-ledger.jsonl"
@@ -1772,7 +1905,7 @@ def _prepare_v2_managed_runtime_state(
             return False, "active runtime conflicts with cleanup tombstone"
         if task_fd >= 0 and not sentinel_present and not tombstone_name:
             try:
-                candidate_records = _read_ledger_records(task_fd)
+                candidate_records = _read_ledger_records(task_fd, task=task_short_id)
             except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
                 return False, "active v2 ledger is missing or invalid"
             if (
@@ -2460,12 +2593,16 @@ def settle_local_branch(
 
 
 def main() -> int:
+    global _NATIVE_KENT
     try:
-        payload = json.load(sys.stdin)
+        payload = json.load(sys.stdin, object_pairs_hook=_unique_json_pairs)
     except json.JSONDecodeError as error:
         raise ValueError(f"stdin is not valid JSON: {error}") from error
     if not isinstance(payload, dict):
         raise ValueError("stdin must be one JSON object")
+    _NATIVE_KENT = payload.get("_kent")
+    if "_kent" in payload and not isinstance(_NATIVE_KENT, dict):
+        raise ValueError("_kent must be a native Script context object")
 
     workspace = Path(require_string(payload, "workspace_path")).expanduser().resolve()
     branch = require_string(payload, "branch_name", empty=True)
