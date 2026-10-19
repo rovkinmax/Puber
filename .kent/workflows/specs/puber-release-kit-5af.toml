@@ -18,7 +18,7 @@ allow_default_change = false
 allow_uuid_change = false
 
 # Private source revision 91 preserves the Script-based preparation
-# sequence and adds only exact business-route carriers to Script inputs.
+# sequence and approved route carriers with qualified Cleanup identity prompts.
 [source_manifest]
 schema = "release_source_manifest_v1"
 path = ".kent/workflows/puber-release-kit-5af.manifest.json"

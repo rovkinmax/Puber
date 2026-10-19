@@ -65,6 +65,9 @@ CLOSED_PATHS = (
     ".kent/subagents/fix-worker.md",
     ".kent/commands/feature-implement.md",
     ".kent/commands/cleanup-task.md",
+    "tools/fixtures/smoke-lease/baseline.json",
+    "tools/fixtures/smoke-lease/eligible-resources.json",
+    "tools/fixtures/smoke-lease/native-task.json",
     ".kent/scripts/workflow-task-janitor",
     ".kent/adapters/mobile/android-apk-install-preserve",
     ".kent/adapters/mobile/emulator-resource-lock.sh",
@@ -126,8 +129,34 @@ def cleanup_context() -> str:
     profile = modules["ProjectProfile"].from_toml(
         ROOT, PROFILE.read_text(encoding="utf-8"), check_files=False,
     )
-    return cleanup_without_preparation_instruction(
+    instruction = cleanup_without_preparation_instruction(
         profile, ".kent/context/delivery.md", "delivery",
+    )
+    identity_readback = (
+        "read back the final ordinary event's actual Kent Session/Run/Step records;\n"
+        "non-empty identity strings alone are not proof."
+    )
+    qualified_readback = (
+        "read back the final ordinary event's versioned owner and native "
+        "Session/Task binding; schema 2 uses Session/Step while historical "
+        "schema 1 retains Session/Run/Step. Locally supplied identity strings "
+        "alone are not proof."
+    )
+    current_owner = (
+        "use real unmodified current\n"
+        "`KENT_SESSION_ID`, `KENT_RUN_ID` and `KENT_STEP_ID`."
+    )
+    qualified_owner = (
+        "use genuine current unmodified `KENT_SESSION_ID` and `KENT_STEP_ID` "
+        "for new schema-2 evidence; ignore stale `KENT_RUN_ID`. The helper "
+        "verifies the Session against the native Task binding; Step is "
+        "inherited, not independently authenticated. Preserve the original "
+        "Session/Run/Step owner in historical schema-1 evidence."
+    )
+    if instruction.count(identity_readback) != 1 or instruction.count(current_owner) != 1:
+        raise ValueError("pinned Kit Cleanup instruction no longer matches the qualified identity seam")
+    return instruction.replace(identity_readback, qualified_readback, 1).replace(
+        current_owner, qualified_owner, 1,
     )
 
 
@@ -561,7 +590,7 @@ def write_spec() -> None:
     raw = (
         raw[:start]
         + "# Private source revision 91 preserves the Script-based preparation\n"
-        + "# sequence and adds only exact business-route carriers to Script inputs.\n"
+        + "# sequence and approved route carriers with qualified Cleanup identity prompts.\n"
         + raw[end + 1 :]
     )
     note = (

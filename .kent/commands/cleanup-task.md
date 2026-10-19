@@ -56,11 +56,40 @@ retain the exact seal request and its actual operation/redaction reports in
 the Task record and read them back. Preserve the incoming route's publication
 or closure report/reason in this packet; absent carriers remain explicitly
 not-applicable. Then record one final ordinary event and seal.
-Use real current native Session/Run/Step identities. Do not append/seal merely
-to report a blocker. Validate and preserve the exact returned terminal marker.
+For new schema-2 evidence, use the real current `KENT_SESSION_ID` and
+`KENT_STEP_ID`; the evidence helper verifies the Session against the native
+Task binding, while Step is inherited rather than independently authenticated.
+Ignore stale `KENT_RUN_ID`. Historical schema-1 evidence retains its original
+Session/Run/Step owner. Do not append/seal merely to report a blocker. Validate
+and preserve the exact returned terminal marker.
 Retain and read back the final cleanup report/marker before leaving the root.
 If retention fails after sealing, preserve the root and recover the original
 seal output from the current Session; never create another event or seal.
+
+Before the Janitor transition, perform evidence retention only for a recovered
+ledger. After the one final seal is validated and its exact terminal marker is
+read back, inspect the validated ledger records with
+`.kent/scripts/workflow-evidence-ledger read --task <task-short-id> --workspace
+<task-workspace>`. A recovery boundary is either
+`evidence_recovery_boundary_v1` or `evidence_recovery_boundary_v2`. A failed or
+malformed read blocks; it is not a healthy-chain result. For a healthy chain,
+skip retention entirely. Do not retain healthy evidence or apply this procedure
+as a blanket cleanup step.
+
+For a ledger containing either recovery boundary, and only after sealing:
+
+1. Preview `.kent/scripts/workflow-evidence-ledger retain-evidence --task
+   <task-short-id> --workspace <task-workspace>`. Validate the returned
+   `confirm` as the exact lowercase SHA-256 from the preview; do not construct
+   or reuse a digest from another attempt.
+2. Publish with the same command and `--confirm <exact-preview-digest>`.
+   Read back the result and require `published == true` and
+   `receipt.bundle_sha256 == <exact-preview-digest>`. On any mismatch or
+   failure, preserve the worktree and do not transition to Janitor.
+3. Pass the original validated terminal marker unchanged through the existing
+   Janitor transition. Do not append or reseal, change the marker, introduce a
+   preparation helper, or alter the Task profile/storage mode.
+
 Leave the Task worktree before the normal Janitor transition; this Agent never
 deletes its own worktree or branch.
 
