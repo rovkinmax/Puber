@@ -19,6 +19,7 @@ import com.adamglin.phosphoricons.duotone.TelevisionSimple
 import com.adamglin.phosphoricons.duotone.MagnifyingGlass
 import com.adamglin.phosphoricons.duotone.Trophy
 import com.kino.puber.R
+import com.kino.puber.core.model.BookmarkMode
 import com.kino.puber.core.model.NavigationMode
 import com.kino.puber.core.system.ResourceProvider
 import com.kino.puber.core.ui.navigation.PuberScreen
@@ -33,9 +34,12 @@ internal class MainUIMapper(
     private val navPrefs: NavigationPreferencesRepository,
 ) {
 
-    fun buildViewState(previousSelectedTab: TabType? = null): MainViewState {
+    fun buildViewState(
+        previousSelectedTab: TabType? = null,
+        bookmarkMode: BookmarkMode = BookmarkMode.Simple,
+    ): MainViewState {
         val mode = navPrefs.getNavigationMode()
-        val tabs = navPrefs.getVisibleTabs(mode)
+        val tabs = navPrefs.getVisibleTabs(mode, bookmarkMode)
         val selectedTab = previousSelectedTab
             ?.takeIf(tabs::contains)
             ?: getDefaultSelectedTab(mode)

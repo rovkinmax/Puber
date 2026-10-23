@@ -15,6 +15,7 @@ sealed class CommonAction : UIAction {
     class ItemFocused<T>(val item: T) : CommonAction()
     class ItemRemoved<T>(val item: T) : CommonAction()
     class ItemSavedChanged<T>(val item: T, val isSaved: Boolean) : CommonAction()
+    class ItemBookmarksRequested<T>(val item: T) : CommonAction()
     class TextChanged(val text: String, val tag: Any) : CommonAction()
     class FieldFocusChanged(val tag: Any, val focused: Boolean) : CommonAction()
     class DateRangePickedAction(val dateFrom: LocalDate?, val dateTo: LocalDate?) : CommonAction()

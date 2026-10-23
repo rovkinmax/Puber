@@ -2,7 +2,6 @@ package com.kino.puber.domain.interactor.bookmarks
 
 import com.kino.puber.data.api.KinoPubApiClient
 import com.kino.puber.data.api.models.ApiResponseList
-import com.kino.puber.data.api.models.BookmarkFolder
 import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.WatchlistToggleResponse
@@ -21,7 +20,7 @@ import org.junit.jupiter.api.Test
 class SavedItemInteractorTest {
 
     private val api = mockk<KinoPubApiClient>(relaxed = true)
-    private val watchLaterBookmarkInteractor = mockk<WatchLaterBookmarkInteractor>(relaxed = true)
+    private val bookmarkFolderInteractor = mockk<BookmarkFolderInteractor>()
     private val itemDetailsRepository = mockk<ItemDetailsRepository>()
     private lateinit var interactor: SavedItemInteractor
 
@@ -29,7 +28,7 @@ class SavedItemInteractorTest {
     fun setup() {
         interactor = SavedItemInteractor(
             api = api,
-            watchLaterBookmarkInteractor = watchLaterBookmarkInteractor,
+            bookmarkFolderInteractor = bookmarkFolderInteractor,
             itemDetailsRepository = itemDetailsRepository,
         )
         every { itemDetailsRepository.invalidate(any()) } returns Unit
@@ -64,29 +63,27 @@ class SavedItemInteractorTest {
     }
 
     @Test
-    fun removeMovie_returnsSuccess_whenWriteSucceedsAndVerificationReadFails() = runTest {
-        val folder = BookmarkFolder(id = 7, title = "Folder")
-        coEvery { api.getItemBookmarkFolders(42) } returnsMany listOf(
-            Result.success(listOf(folder)),
-            Result.failure(IllegalStateException("verification unavailable")),
-        )
-        coEvery { api.removeBookmarkItem(itemId = 42, folderId = folder.id) } returns Result.success(Unit)
+    fun removeMovie_updatesOnlyConfiguredQuickFolder() = runTest {
+        coEvery {
+            bookmarkFolderInteractor.setQuickSaved(itemId = 42, saved = false)
+        } returns QuickBookmarkUpdate(isSaved = false, folder = null)
 
         val result = interactor.setSaved(itemId = 42, isSeriesLike = false, saved = false)
 
         assertTrue(result.isSuccess)
         assertEquals(false, result.getOrThrow())
-        verify(exactly = 1) { itemDetailsRepository.invalidate(42) }
+        coVerify(exactly = 1) {
+            bookmarkFolderInteractor.setQuickSaved(itemId = 42, saved = false)
+        }
+        coVerify(exactly = 0) { api.getItemBookmarkFolders(any()) }
+        coVerify(exactly = 0) { api.removeBookmarkItem(any(), any()) }
     }
 
     @Test
-    fun removeMovie_rethrowsCancellationAfterInvalidatingDurableWrite() = runTest {
-        val folder = BookmarkFolder(id = 7, title = "Folder")
-        coEvery { api.getItemBookmarkFolders(42) } returnsMany listOf(
-            Result.success(listOf(folder)),
-            Result.failure(kotlinx.coroutines.CancellationException("cancelled")),
-        )
-        coEvery { api.removeBookmarkItem(itemId = 42, folderId = folder.id) } returns Result.success(Unit)
+    fun removeMovie_rethrowsCancellationFromQuickFolderMutation() = runTest {
+        coEvery {
+            bookmarkFolderInteractor.setQuickSaved(itemId = 42, saved = false)
+        } throws kotlinx.coroutines.CancellationException("cancelled")
 
         var cancelled = false
         try {
@@ -96,7 +93,9 @@ class SavedItemInteractorTest {
         }
 
         assertTrue(cancelled)
-        verify(exactly = 1) { itemDetailsRepository.invalidate(42) }
+        coVerify(exactly = 1) {
+            bookmarkFolderInteractor.setQuickSaved(itemId = 42, saved = false)
+        }
     }
 
     @Test

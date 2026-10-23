@@ -11,4 +11,7 @@ interface PuberScreen : Screen, Parcelable {
 
 interface RootPuberScreen : PuberScreen
 
+/** A root screen rendered over the previous root screen instead of replacing it visually. */
+interface OverlayPuberScreen : RootPuberScreen
+
 interface FullscreenPuberScreen : RootPuberScreen

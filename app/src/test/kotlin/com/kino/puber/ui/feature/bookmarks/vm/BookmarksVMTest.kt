@@ -16,13 +16,20 @@ import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.data.api.models.PaginatedResponse
 import com.kino.puber.data.api.models.Pagination
 import com.kino.puber.domain.interactor.bookmarks.BookmarkInteractor
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
+import com.kino.puber.ui.feature.bookmarks.model.BookmarksViewState
 import com.kino.puber.util.MainDispatcherExtension
+import io.mockk.CapturingSlot
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
@@ -94,11 +101,140 @@ class BookmarksVMTest {
         coVerify(exactly = 2) { interactor.getBookmarkItems(7, page = 1) }
     }
 
+    @Test
+    fun initialLoad_readsEveryFolderPageAndDeduplicatesItems() {
+        coEvery { interactor.getBookmarkItems(7, page = 1) } returns page(
+            current = 1,
+            total = 2,
+            items = listOf(Item(id = 42, title = "Movie", type = ItemType.MOVIE)),
+        )
+        coEvery { interactor.getBookmarkItems(7, page = 2) } returns page(
+            current = 2,
+            total = 2,
+            items = listOf(
+                Item(id = 42, title = "Movie", type = ItemType.MOVIE),
+                Item(id = 43, title = "Second", type = ItemType.MOVIE),
+            ),
+        )
+        every { mapper.mapShortItemList(any()) } answers {
+            firstArg<List<Item>>().map { videoItem(it.id) }
+        }
+        val vm = createVM()
+
+        vm.testOnStart()
+
+        val state = vm.testStateValue as BookmarksViewState.Content
+        assertEquals(listOf(42, 43), state.items.map { it.id })
+        coVerify(exactly = 1) { interactor.getBookmarkItems(7, page = 2) }
+    }
+
+    @Test
+    fun folderShrinkingMidWalk_keepsThePagesAlreadyRead() {
+        coEvery { interactor.getBookmarkItems(7, page = 1) } returns page(
+            current = 1,
+            total = 3,
+            items = listOf(Item(id = 42, title = "Movie", type = ItemType.MOVIE)),
+        )
+        // The folder lost items between requests, so the API answers with a page other than
+        // the one asked for.
+        coEvery { interactor.getBookmarkItems(7, page = 2) } returns page(
+            current = 1,
+            total = 1,
+            items = listOf(Item(id = 43, title = "Second", type = ItemType.MOVIE)),
+        )
+        every { mapper.mapShortItemList(any()) } answers {
+            firstArg<List<Item>>().map { videoItem(it.id) }
+        }
+        val vm = createVM()
+
+        vm.testOnStart()
+
+        val state = vm.testStateValue as BookmarksViewState.Content
+        assertEquals(listOf(42), state.items.map { it.id })
+        assertFalse(state.isLoadingItems)
+        coVerify(exactly = 0) { interactor.getBookmarkItems(7, page = 3) }
+    }
+
+    @Test
+    fun firstPageIsPublishedBeforeTheRemainingPagesArrive() {
+        val secondPage = CompletableDeferred<PaginatedResponse<Item>>()
+        coEvery { interactor.getBookmarkItems(7, page = 1) } returns page(
+            current = 1,
+            total = 2,
+            items = listOf(Item(id = 42, title = "Movie", type = ItemType.MOVIE)),
+        )
+        coEvery { interactor.getBookmarkItems(7, page = 2) } coAnswers { secondPage.await() }
+        every { mapper.mapShortItemList(any()) } answers {
+            firstArg<List<Item>>().map { videoItem(it.id) }
+        }
+        val vm = createVM()
+
+        vm.testOnStart()
+
+        val loading = vm.testStateValue as BookmarksViewState.Content
+        assertEquals(listOf(42), loading.items.map { it.id })
+        assertTrue(loading.isLoadingItems)
+
+        secondPage.complete(
+            page(current = 2, total = 2, items = listOf(Item(id = 43, title = "Second", type = ItemType.MOVIE)))
+        )
+        val loaded = vm.testStateValue as BookmarksViewState.Content
+        assertEquals(listOf(42, 43), loaded.items.map { it.id })
+        assertFalse(loaded.isLoadingItems)
+    }
+
+    @Test
+    fun itemBookmarksRequested_opensTheBookmarkPickerForThatItem() {
+        val screen = mockk<PuberScreen>()
+        every {
+            screens.bookmarkPicker(itemId = 42, resultCode = any())
+        } returns screen
+        val vm = createVM()
+
+        vm.onAction(CommonAction.ItemBookmarksRequested(videoItem(42)))
+
+        verify { router.navigateForResult<BookmarkPickerResult>(screen, any(), any()) }
+    }
+
+    @Test
+    fun bookmarkPickerResult_reloadsTheBookmarkList() {
+        val listener = openPickerAndCaptureListener()
+
+        listener.captured(BookmarkPickerResult(itemId = 42, selectedFolderIds = listOf(7)))
+
+        coVerify(exactly = 2) { interactor.getBookmarks() }
+    }
+
+    @Test
+    fun dismissedBookmarkPicker_leavesTheListAlone() {
+        val listener = openPickerAndCaptureListener()
+
+        listener.captured(null)
+
+        coVerify(exactly = 1) { interactor.getBookmarks() }
+    }
+
+    private fun openPickerAndCaptureListener(): CapturingSlot<(BookmarkPickerResult?) -> Unit> {
+        val screen = mockk<PuberScreen>()
+        every { screens.bookmarkPicker(any(), any()) } returns screen
+        val listener = slot<(BookmarkPickerResult?) -> Unit>()
+        val vm = createVM().also { it.testOnStart() }
+
+        vm.onAction(CommonAction.ItemBookmarksRequested(videoItem(42)))
+
+        verify { router.navigateForResult<BookmarkPickerResult>(screen, any(), capture(listener)) }
+        return listener
+    }
+
     private fun createVM() = BookmarksVM(router, interactor, mapper, errorHandler)
 
-    private fun page() = PaginatedResponse(
-        items = listOf(Item(id = 42, title = "Movie", type = ItemType.MOVIE)),
-        pagination = Pagination(current = 1, perpage = 50, total = 1),
+    private fun page(
+        current: Int = 1,
+        total: Int = 1,
+        items: List<Item> = listOf(Item(id = 42, title = "Movie", type = ItemType.MOVIE)),
+    ) = PaginatedResponse(
+        items = items,
+        pagination = Pagination(current = current, perpage = 50, total = total),
     )
 
     private fun videoItem(id: Int) = VideoItemUIState(id, "Item $id", "", "")

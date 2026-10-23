@@ -6,7 +6,7 @@ import kotlinx.coroutines.CancellationException
 
 class SavedItemInteractor(
     private val api: KinoPubApiClient,
-    private val watchLaterBookmarkInteractor: WatchLaterBookmarkInteractor,
+    private val bookmarkFolderInteractor: BookmarkFolderInteractor,
     private val itemDetailsRepository: ItemDetailsRepository,
 ) {
 
@@ -14,12 +14,7 @@ class SavedItemInteractor(
         return resultOf {
             when {
                 isSeriesLike -> setSeriesSaved(itemId, saved)
-                saved -> {
-                    watchLaterBookmarkInteractor.add(itemId).getOrThrow()
-                    itemDetailsRepository.invalidate(itemId)
-                    true
-                }
-                else -> removeFromAnyBookmark(itemId)
+                else -> bookmarkFolderInteractor.setQuickSaved(itemId, saved).isSaved
             }
         }
     }
@@ -34,20 +29,6 @@ class SavedItemInteractor(
                 itemDetailsRepository.invalidate(itemId)
             }
         }
-    }
-
-    private suspend fun removeFromAnyBookmark(itemId: Int): Boolean {
-        val folders = api.getItemBookmarkFolders(itemId).getOrThrow()
-        val folder = folders.firstOrNull() ?: return false
-        api.removeBookmarkItem(itemId = itemId, folderId = folder.id).getOrThrow()
-        itemDetailsRepository.invalidate(itemId)
-
-        val verification = api.getItemBookmarkFolders(itemId)
-        verification.exceptionOrNull()?.let { error ->
-            if (error is CancellationException) throw error
-            return folders.size > 1
-        }
-        return verification.getOrThrow().isNotEmpty()
     }
 
     private suspend fun <T> resultOf(block: suspend () -> T): Result<T> {

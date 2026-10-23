@@ -27,6 +27,7 @@ import com.kino.puber.data.repository.SkipSegmentService
 import com.kino.puber.data.repository.TmdbCastRepository
 import com.kino.puber.data.repository.TmdbIdRepository
 import com.kino.puber.data.preferences.NavigationPreferencesRepository
+import com.kino.puber.data.preferences.BookmarkPreferencesRepository
 import com.kino.puber.data.api.IntroDbAppApiClient
 import com.kino.puber.data.api.TheIntroDbApiClient
 import com.kino.puber.data.api.TmdbApiClient
@@ -91,6 +92,7 @@ val repositoryModule = module {
     singleOf(::TmdbIdRepository)
     singleOf(::SkipSegmentRepository)
     singleOf(::SkipSegmentService)
+    single { BookmarkPreferencesRepository(androidContext()) }
     single { NavigationPreferencesRepository(androidContext()) }
     single<androidx.media3.datasource.cache.Cache> {
         val cacheDir = java.io.File(androidContext().externalCacheDir ?: androidContext().cacheDir, "media_cache")

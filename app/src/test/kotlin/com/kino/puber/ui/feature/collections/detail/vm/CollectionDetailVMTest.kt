@@ -14,6 +14,7 @@ import com.kino.puber.data.api.models.Item
 import com.kino.puber.data.api.models.ItemType
 import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.collections.CollectionInteractor
+import com.kino.puber.ui.feature.bookmarkpicker.model.BookmarkPickerResult
 import com.kino.puber.util.MainDispatcherExtension
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -74,6 +75,19 @@ class CollectionDetailVMTest {
         listener.captured(ContentChangeSet.single(42, ContentChangeType.Watched))
 
         coVerify(exactly = 2) { interactor.getCollectionItems(7) }
+    }
+
+    @Test
+    fun itemBookmarksRequested_opensTheBookmarkPickerForThatItem() {
+        val screen = mockk<PuberScreen>()
+        every {
+            screens.bookmarkPicker(itemId = 42, resultCode = any())
+        } returns screen
+        val vm = createVM()
+
+        vm.onAction(CommonAction.ItemBookmarksRequested(videoItem(42)))
+
+        verify { router.navigateForResult<BookmarkPickerResult>(screen, any(), any()) }
     }
 
     private fun createVM() = CollectionDetailVM(

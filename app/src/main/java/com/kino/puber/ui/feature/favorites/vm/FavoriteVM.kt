@@ -12,6 +12,7 @@ import com.kino.puber.domain.interactor.bookmarks.SavedItemInteractor
 import com.kino.puber.domain.interactor.favorites.FavoritesInteractor
 import com.kino.puber.ui.feature.favorites.model.FavoriteItemUIMapper
 import com.kino.puber.ui.feature.favorites.model.FavoriteViewState
+import com.kino.puber.ui.feature.bookmarkpicker.openBookmarkPicker
 import kotlinx.coroutines.Job
 
 internal class FavoriteVM(
@@ -52,6 +53,11 @@ internal class FavoriteVM(
                 val item = action.item as VideoItemUIState
                 setItemSaved(item, action.isSaved)
             }
+            is CommonAction.ItemBookmarksRequested<*> ->
+                router.openBookmarkPicker(
+                    item = action.item as VideoItemUIState,
+                    listener = { result -> if (result != null) loadData() },
+                )
             is CommonAction.RetryClicked -> loadData()
             else -> super.onAction(action)
         }
