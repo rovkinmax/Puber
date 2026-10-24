@@ -29,7 +29,7 @@ HELPER_PATH = ROOT / ".kent/scripts/workflow-puber-release-intent"
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
-WORKFLOW_VERSION = 95
+WORKFLOW_VERSION = 97
 NODE_KEY = "profile_generation"
 KERNEL_ADAPTER_PATH = ".kent/adapters/mobile/emulator-resource-lock.sh"
 CONTEXT_SCHEMA = "puber-mobile-script-context-v1"
@@ -138,7 +138,7 @@ def _canonical_context(context: Mapping[str, Any]) -> tuple[dict[str, Any], str]
     for key in ("operation_id",):
         _require_text(value[key], f"context.{key}", SHA256_RE)
     if isinstance(value.get("workflow_version"), bool) or value.get("workflow_version") != WORKFLOW_VERSION:
-        raise ScriptLeaseError("native Puber Release revision is not the prepared 95 cohort")
+        raise ScriptLeaseError("native Puber Release revision is not the prepared 97 cohort")
     profile_path = ROOT / ".kent/workflow-profile.toml"
     try:
         profile_metadata = profile_path.lstat()

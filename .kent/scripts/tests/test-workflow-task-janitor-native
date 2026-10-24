@@ -19,7 +19,7 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
 KIT = Path(os.environ["KENT_ENGINEERING_KIT_ROOT"]).resolve(strict=True)
-PIN = "3020962feffa870c8f064e7a0b2657d316a8ec1b"
+PIN = "9e7da4ee800d3e0e9c1bbd0d419cd87faa011dfc"
 head = subprocess.check_output(["git", "-C", str(KIT), "rev-parse", "HEAD"], text=True).strip()
 if head != PIN:
     raise SystemExit("Janitor qualification requires the selected immutable Kit")
@@ -99,7 +99,7 @@ class PuberJanitorTest(fixtures.WorkflowJanitorTest):
 
         with self.assertRaisesRegex(
             AssertionError,
-            "evidence exceeds record limit",
+            "terminal seal exceeds logical byte or record limit",
         ):
             self.make_ci_terminal_state(
                 count=1,
@@ -212,7 +212,10 @@ class PuberJanitorTest(fixtures.WorkflowJanitorTest):
         )
         report = json.loads(result.stdout)
         self.assertEqual(report["transition"], "task_janitor_blocked", report)
-        self.assertIn("plan-contract.json", report["cleanup_report"])
+        self.assertIn(
+            "unknown_runtime_entry: unadmitted runtime material",
+            report["cleanup_report"],
+        )
         self.assertFalse(called.exists())
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(ledger.read_bytes(), ledger_before)

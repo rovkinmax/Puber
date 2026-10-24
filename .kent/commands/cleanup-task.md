@@ -103,6 +103,19 @@ the concrete missing capability or external action; do not interpret
 Use the existing `workflow-release-cleanup` procedure and its same-owner
 contract. Engineering cache retirement is not a Release preflight bypass:
 an unexpected `plan-contract.json` remains an unknown-entry blocker.
+For the current Release successor, preserve the original `operation_id` and
+`pr_base_branch` unchanged through Cleanup and the Janitor handoff. Validate
+the branch name against a fresh PR `baseRefName`; a base OID is not branch
+identity. The explicit `not-applicable` branch value is permitted only when
+there is genuinely no PR and is never evidence for a PR-bearing cleanup mode.
+When `delivery_reliability = "v1"` is enabled, pass the exact native
+commentary supplied to the current Cleanup Agent as the helper's optional
+top-level `commentary`. Do not fabricate `_kent`, use another Session's
+identity, or recover commentary from a different Task packet. The helper
+authenticates this Agent's current native Task identity and producer ancestry
+before every GitHub API read; a missing, malformed, foreign, or retry-blocked
+source prevents the provider query and any cleanup effect. Preserve the same
+commentary unchanged in the Janitor handoff.
 Before reading or requiring the release checkpoint, classify the full
 Task runtime inventory and evidence history. Unknown entries, unsealed cleanup
 state, partial/conflicting seals, unsafe checkpoint identity, or disagreement

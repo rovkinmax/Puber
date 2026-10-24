@@ -221,26 +221,45 @@ The six deterministic pre-publication/cleanup transport nodes are
 `release_intent_gate`, `profile_generation`, `ci_prepare`, `ci_watch`, `merge_watch`, and
 `task_janitor`.
 
-## Private Release cohort proposal
+## Release-only successor candidate
 
-The profile selects `.kent/workflows/puber-release-kit-5af.json`, a
-non-attested proposal derived from the frozen v90 source. It preserves the
-same UUID, 18 nodes, 51 groups, 51 edges, Script/Agent topology, ordering, and
-approval fields; source revision 91 adds the exact 21 business-only
-`entry_transition` carriers required for Script edge validation. The expected
-native proposal version is 95, but no live graph, metadata, Task target, or
-default is changed here. Runtime Kit K is pinned to clean commit
-`3020962feffa870c8f064e7a0b2657d316a8ec1b` through
-`KENT_ENGINEERING_KIT_ROOT` when that variable is present. An explicit value
-always takes precedence; an empty, invalid, dirty, wrong-revision, or
+The profile selects `.kent/workflows/puber-release-current.json`, a
+non-attested successor derived from the frozen v90 source and historical
+5af-named v95/source-91 proposal. It preserves the same UUID, 18 nodes,
+Script/Agent topology, and unrelated approval gates; it adds two S4
+CI-recovery transitions, yielding 53 transition groups and 53 edges.
+The read-only native preflight on October 23, 2026 observed this Workflow UUID
+at version 96 with 18 nodes, 51 transition groups, and 51 edges; this same-UUID
+source successor targets version 97. Re-read native state before any future
+plan or apply because this observation is not a CAS authorization.
+Source revision 92 keeps 20 ordinary business-only `entry_transition` hints
+and adds target-branch, operation, merged-T, and typed-CI-failure continuity.
+The typed failure, retry, and user-action routes have no synthetic route
+hint. The intent helper and Script-lease adapter both enforce the exact
+version-97 cohort, rejecting the observed version-96 preimage and future
+revisions. No live graph, metadata, Task target, or default is changed here.
+
+The project source now selects the qualified immutable Kit K
+`9e7da4ee800d3e0e9c1bbd0d419cd87faa011dfc` at
+`/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/045`. The profile pins
+runtime contracts 2.2.0, prepare-CI 3.1.0, CI/PR waiters 4.1.0, checkpoint
+1.2.0, evidence 2.1.0, GitHub observation 1.1.0, and Janitor 3.1.0. The
+qualified shared helper copies and Puber Janitor adapter are source-bound in
+the current Release manifest. The project closure C and final configured
+source gates remain pending; consequently `runtime_attested` stays false.
+The older 5af graph, spec, manifest, and builder remain historical inputs.
+This source candidate does not activate or mutate a live Workflow, Task,
+metadata, or default; any future activation requires its separate compatible,
+explicitly authorized effect. An explicit `KENT_ENGINEERING_KIT_ROOT` still
+takes precedence and an empty, invalid, dirty, wrong-revision, or
 import-escaping Kit fails closed without profile fallback. When the variable
 is absent, the runtime obtains its root only from the validated
-`[puber_runtime.kit_source]` table from `.kent/workflow-profile.toml`:
+`[puber_runtime.kit_source]` table:
 
 ```toml
 [puber_runtime.kit_source]
 schema_version = 1
-root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/restart-readiness-20261011-82ece821"
+root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/045"
 ```
 
 The profile file must be a bounded, regular, nonsymlink file owned by the

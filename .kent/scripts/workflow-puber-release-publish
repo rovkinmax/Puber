@@ -16,28 +16,49 @@ ROOT = helper.ROOT
 
 PUBLISH_FIELDS = (
     "blocker_reason", "workspace_path", "operation_id", "pr_url", "branch_name",
-    "merge_strategy", "pr_head_oid", "pr_base_oid", "release_version",
+    "pr_base_branch", "merge_strategy", "pr_head_oid", "pr_base_oid", "release_version",
     "release_tag", "target_commit", "release_notes_path", "publication_report",
     "publication_report_digest", "release_run",
 )
 
-def _base_fields(payload: dict, state: dict, version: str, tag: str) -> dict:
+def _base_fields(payload: dict, _state: dict, version: str, tag: str) -> dict:
+    workspace_path = helper.require_string(
+        payload.get("workspace_path"), "workspace_path"
+    )
+    try:
+        if Path(workspace_path).expanduser().resolve() != ROOT.resolve():
+            raise helper.ContractError("workspace_path differs from the admitted workspace")
+    except (OSError, RuntimeError, ValueError) as error:
+        raise helper.ContractError("workspace_path is invalid") from error
+    operation_id = helper.require_string(payload.get("operation_id"), "operation_id")
+    if not helper.HEX64.fullmatch(operation_id):
+        raise helper.ContractError("operation_id is not a canonical digest")
+
+    def optional_string(key: str) -> str | None:
+        value = payload.get(key)
+        return None if value is None else helper.require_string(value, key)
+
     return {
-        "workspace_path": str(ROOT),
-        "operation_id": payload.get("operation_id") or helper.digest_json({"task_id": state["task_id"], "commit": state["commit"], "workflow_id": helper.WORKFLOW_ID}),
-        "pr_url": payload.get("pr_url", ""),
-        "branch_name": payload.get("branch_name", f"release/{version}"),
-        "merge_strategy": payload.get("merge_strategy", ""),
-        "pr_head_oid": payload.get("pr_head_oid", ""),
-        "pr_base_oid": payload.get("pr_base_oid", ""),
+        "workspace_path": workspace_path,
+        "operation_id": operation_id,
+        "pr_url": helper.canonical_pr_url(payload.get("pr_url")),
+        "branch_name": helper.require_string(payload.get("branch_name"), "branch_name"),
+        "pr_base_branch": helper.require_string(
+            payload.get("pr_base_branch"), "pr_base_branch"
+        ),
+        "merge_strategy": helper.require_string(
+            payload.get("merge_strategy"), "merge_strategy"
+        ),
+        "pr_head_oid": helper.require_string(payload.get("pr_head_oid"), "pr_head_oid"),
+        "pr_base_oid": helper.require_string(payload.get("pr_base_oid"), "pr_base_oid"),
         "release_version": version,
         "release_tag": tag,
-        "target_commit": payload.get("target_commit", ""),
+        "target_commit": optional_string("target_commit"),
         "release_head_oid": payload.get("release_head_oid", ""),
         "release_preparation_report_digest": payload.get("release_preparation_report_digest", ""),
-        "release_notes_path": payload.get("release_notes_path", ""),
-        "publication_report": payload.get("publication_report", ""),
-        "publication_report_digest": payload.get("publication_report_digest", ""),
+        "release_notes_path": optional_string("release_notes_path"),
+        "publication_report": optional_string("publication_report"),
+        "publication_report_digest": optional_string("publication_report_digest"),
         "release_run": payload.get("release_run", helper.canonical_json(helper.NOT_SELECTED_RUN)),
     }
 
@@ -47,36 +68,61 @@ def _validate_preparation_proof(payload: dict, state: dict, version: str, tag: s
 def main() -> int:
     payload = None
     try:
-        payload, state, edge = helper.validate_envelope(helper.read_zero_argument(), ROOT, "publish")
+        source_payload = helper.read_zero_argument()
+        payload, state, edge = helper.validate_envelope(
+            source_payload,
+            ROOT,
+            "publish",
+        )
     except helper.ContractError as error:
         print(helper.json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 2
     values = helper.declarations(state["task"].get("body"))
     try:
         version, tag = helper.safe_version_tag(values.get("release_version"), values.get("release_tag") or f"v{values.get('release_version', '')}")
-        helper.safe_release_branch(payload.get("branch_name", f"release/{version}"), version)
-        pr_url = helper.canonical_pr_url(payload["pr_url"])
         base = _base_fields(payload, state, version, tag)
+        helper.safe_release_branch(base["branch_name"], version)
+        pr_url = base["pr_url"]
         if not helper.HEX64.fullmatch(base["operation_id"]):
             raise helper.ContractError("operation_id is not a canonical digest")
         base["release_run"] = helper.canonical_json(helper.parse_run_carrier(base["release_run"]))
         if bool(payload.get("publication_report")) != bool(payload.get("publication_report_digest")):
             raise helper.ContractError("publication report and digest must be paired")
-        pr = helper.pr_state(ROOT, pr_url)
-        if pr["headRefName"] != base["branch_name"] or pr["headRefOid"] != base["pr_head_oid"] or pr["baseRefOid"] != base["pr_base_oid"]:
-            raise helper.ContractError("merged PR head/base identity drifted")
+        pr = helper.pr_state(
+            ROOT,
+            pr_url,
+            expected_base_branch=base["pr_base_branch"],
+        )
+        if (
+            pr["headRefName"] != base["branch_name"]
+            or pr["headRefOid"] != base["pr_head_oid"]
+            or pr["baseRefName"] != base["pr_base_branch"]
+        ):
+            raise helper.ContractError("merged PR head/target-branch identity drifted")
         preparation = _validate_preparation_proof(payload, state, version, tag, base["pr_head_oid"])
         base["release_head_oid"] = base["pr_head_oid"]
         base["release_preparation_report_digest"] = helper.sha256_bytes(
             helper.canonical_json(preparation).encode("utf-8")
         )
-        target = pr["mergeCommit"]["oid"]
-        base["target_commit"] = target
+        target = (pr.get("mergeCommit") or {}).get("oid")
+        if not isinstance(target, str) or not helper.SHA1.fullmatch(target):
+            raise helper.ContractError("merged PR has no exact target commit T")
+        supplied_target = base["target_commit"]
+        if (
+            not isinstance(supplied_target, str)
+            or not helper.SHA1.fullmatch(supplied_target)
+        ):
+            raise helper.ContractError(
+                "approved merged target T is absent; publication is not authorized"
+            )
+        if supplied_target != target:
+            raise helper.ContractError(
+                "supplied merged target T differs from freshly observed PR T"
+            )
         helper.resolve_merge_strategy(ROOT, state, base)
         if helper.remote_master(ROOT) != target:
             raise helper.ContractError("merged target is not exact current remote master")
         helper.qualify_merged_target(ROOT, state, target, preparation)
-        base["target_commit"] = target
         existing_report = None
         if payload.get("publication_report"):
             existing_report = helper.parse_publication_report(payload["publication_report"], payload.get("publication_report_digest"), expected_pr=pr_url, expected_version=version, expected_tag=tag, expected_target=target, task_short_id=state["task_short_id"], root=ROOT)
@@ -88,7 +134,9 @@ def main() -> int:
         if existing_report is None:
             attested = helper.attest(ROOT, state, "publish", edge["key"], kind="publish", project_fields={"release_tag": tag, "target_commit": target, "release_version": version})
             operation_digest = attested["operation"].operation_digest
-            if helper.remote_master(ROOT) != target or helper.pr_state(ROOT, pr_url) != pr:
+            if helper.remote_master(ROOT) != target or helper.pr_state(
+                ROOT, pr_url, expected_base_branch=base["pr_base_branch"]
+            ) != pr:
                 raise helper.ContractError("merged PR/current master drifted before tag attempt")
             tag_status = helper.publish_tag(ROOT, tag, target)
             previous_operation_digest = ""
@@ -96,7 +144,9 @@ def main() -> int:
             attested = helper.attest(ROOT, state, "publish", edge["key"], kind="publish", project_fields={"release_tag": tag, "target_commit": target, "release_version": version})
             operation_digest = attested["operation"].operation_digest
             previous_operation_digest = existing_report["operation_digest"]
-            if helper.remote_master(ROOT) != target or helper.pr_state(ROOT, pr_url) != pr:
+            if helper.remote_master(ROOT) != target or helper.pr_state(
+                ROOT, pr_url, expected_base_branch=base["pr_base_branch"]
+            ) != pr:
                 raise helper.ContractError("merged PR/current master drifted before tag retry")
             tag_status = helper.publish_tag(ROOT, tag, target)
         report, report_digest = helper.publication_report(operation_digest, pr_url, version, tag, target, notes, tag_phase="tag_published", tag_status=tag_status, unresolved=True, previous_operation_digest=previous_operation_digest, release_head_oid=base["release_head_oid"], release_preparation_report_digest=base["release_preparation_report_digest"])
@@ -109,7 +159,23 @@ def main() -> int:
             "release_run": helper.canonical_json(helper.NOT_SELECTED_RUN),
             "tag_push_status": tag_status,
         }
-        helper.emit_exact(ROOT, "monitor_release", "monitor", {key: fields[key] for key in ("release_version", "release_tag", "target_commit", "pr_url", "tag_push_status", "release_notes_path", "publication_report", "publication_report_digest", "release_run")})
+        helper.emit_script_transition(
+            ROOT,
+            source_payload,
+            "monitor_release",
+            "monitor",
+            {
+                key: fields[key]
+                for key in (
+                    "workspace_path", "operation_id", "branch_name",
+                    "pr_base_branch", "release_version", "release_tag",
+                    "target_commit", "pr_url", "tag_push_status",
+                    "release_notes_path", "publication_report",
+                    "publication_report_digest", "release_run",
+                )
+            },
+            producer_kind="puber-release-publish",
+        )
         return 0
     except helper.ContractError as error:
         version = values.get("release_version", "")
@@ -118,15 +184,18 @@ def main() -> int:
         if "base" in locals() and helper.SHA1.fullmatch(str(base.get("target_commit", ""))):
             fields["target_commit"] = base["target_commit"]
         fields["blocker_reason"] = str(error)
-        helper.emit_exact(
+        helper.emit_script_transition(
             ROOT,
+            source_payload,
             "publish_needs_user_action",
             "publish",
             {key: fields[key] for key in PUBLISH_FIELDS},
+            producer_kind="puber-release-publish",
             commentary=(f"Нужно от вас: подтвердить повторную проверку публикации Puber {version}, "
                 f"тег {tag}, наблюдаемый merged T={fields['target_commit'] or 'ещё не установлен'}. "
                 f"Почему: {error}. После подтверждения: повторная проверка H/T и current master "
                 "до любого действия с тегом; H и checkpoint не меняются."),
+            provider_error=error,
         )
         return 0
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import hashlib
+import io
 import json
 import os
 import stat
@@ -42,7 +43,515 @@ spec = importlib.util.spec_from_loader("intent_runtime_test", SourceFileLoader("
 mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
 assert mod.parse_run_carrier(mod.canonical_json(mod.NOT_SELECTED_RUN)) == mod.NOT_SELECTED_RUN
 
-# Exercise the real entry seam before Task I/O or runtime source admission.
+
+class ProviderRetryBlocked(Exception):
+    def __init__(self, state: str) -> None:
+        self.state = state
+        super().__init__("private provider diagnostic must not escape")
+
+
+class FakeDelivery:
+    GitHubProviderRetryBlocked = ProviderRetryBlocked
+
+    def __init__(
+        self,
+        *,
+        block: str | None = None,
+        source_admission_error: Exception | None = None,
+    ) -> None:
+        self.block = block
+        self.source_admission_error = source_admission_error
+        self.calls = []
+
+    def admit_script_source_ingress(self, root, native_context, *, kent_path):
+        self.calls.append(
+            ("source-admission", root, native_context, kent_path)
+        )
+        if self.source_admission_error is not None:
+            raise self.source_admission_error
+        return SimpleNamespace(
+            project_id=mod.PROJECT_ID,
+            workflow_id=mod.WORKFLOW_ID,
+            project_root="/fixture/primary",
+            source_admission_sha256="f" * 64,
+            receipt_sha256="e" * 64,
+            gate="legacy",
+        )
+
+    def producer_locator(self, commentary):
+        self.calls.append(("locator", commentary))
+        if "invalid-footer" in commentary or "duplicate-footer" in commentary:
+            raise ValueError("invalid or duplicate producer footer")
+        return (
+            "build/kent-workflow/PUB-99/packets/base-" + "a" * 64 + ".json"
+            if "Kent producer packet:" in commentary
+            else None
+        )
+
+    def observe_script_identity(self, root, task, native_context, *, native_read):
+        self.calls.append(("identity", root, task, native_context, native_read))
+        return {
+            "task_short_id": task,
+            "node_id": native_context["node_id"],
+            "invocation_kind": "script",
+        }
+
+    def require_github_provider_read(self, root, refs, identity):
+        self.calls.append(("provider", root, refs, identity))
+        if self.block:
+            raise ProviderRetryBlocked(self.block)
+
+
+class EmissionStdout(io.StringIO):
+    @property
+    def buffer(self):
+        return self
+
+    def write(self, value):
+        if isinstance(value, bytes):
+            value = value.decode("utf-8")
+        return super().write(value)
+
+
+# Ordinary Script fallback must not forward untrusted transport commentary.
+# Authored output prose remains, and nullable routes still render without refs.
+for incoming_commentary in (
+    "private-transport-commentary",
+    "",
+    " \t\n",
+):
+    stdout = EmissionStdout()
+    with patch.object(
+        mod,
+        "producer_refs_from_commentary",
+        return_value=[],
+    ), patch.object(
+        mod,
+        "render_exact",
+        return_value={"transition": "fixture_route"},
+    ), patch.object(
+        mod,
+        "capture_script_output",
+        return_value=None,
+    ), patch.object(mod.sys, "stdout", stdout):
+        mod.emit_script_transition(
+            ROOT,
+            {"commentary": incoming_commentary},
+            "fixture_route",
+            "fixture_target",
+            {},
+            producer_kind="puber-release-fixture",
+        )
+    assert json.loads(stdout.getvalue()) == {"transition": "fixture_route"}
+    assert "private-transport-commentary" not in stdout.getvalue()
+
+authored_output = {
+    "transition": "fixture_route",
+    "commentary": "authored route explanation",
+}
+stdout = EmissionStdout()
+with patch.object(
+    mod,
+    "producer_refs_from_commentary",
+    return_value=[],
+), patch.object(
+    mod,
+    "render_exact",
+    return_value=authored_output,
+), patch.object(
+    mod,
+    "capture_script_output",
+    return_value=None,
+), patch.object(mod.sys, "stdout", stdout):
+    mod.emit_script_transition(
+        ROOT,
+        {"commentary": "private-transport-commentary"},
+        "fixture_route",
+        "fixture_target",
+        {},
+        producer_kind="puber-release-fixture",
+        commentary="authored route explanation",
+    )
+assert json.loads(stdout.getvalue()) == authored_output
+assert "private-transport-commentary" not in stdout.getvalue()
+
+nullable_output = {
+    "transition": "fixture_blocker",
+    "optional_report": None,
+}
+stdout = EmissionStdout()
+with patch.object(
+    mod,
+    "producer_refs_from_commentary",
+    return_value=[],
+), patch.object(
+    mod,
+    "render_exact",
+    return_value=nullable_output,
+), patch.object(mod.sys, "stdout", stdout):
+    mod.emit_script_transition(
+        ROOT,
+        {},
+        "fixture_blocker",
+        "fixture_target",
+        {},
+        producer_kind="puber-release-fixture",
+    )
+assert json.loads(stdout.getvalue()) == nullable_output
+
+# String-only valid ancestry emits the newly qualified current-producer bytes,
+# using the original source envelope as capture input.
+valid_ref = "build/kent-workflow/PUB-99/packets/base-" + "a" * 64 + ".json"
+source_payload = {
+    "_kent": {"task_id": "fixture-task", "node_id": "fixture-node"},
+    "commentary": "native source footer",
+}
+qualified_packet = json.dumps(
+    {
+        "transition": "fixture_route",
+        "commentary": (
+            "KENT_PACKET_SOURCE_V1\nKent producer packet: "
+            "build/kent-workflow/PUB-99/packets/script-" + "b" * 64 + ".json"
+        ),
+    },
+    sort_keys=True,
+).encode("utf-8")
+stdout = EmissionStdout()
+with patch.object(
+    mod,
+    "producer_refs_from_commentary",
+    return_value=[valid_ref],
+), patch.object(
+    mod,
+    "render_exact",
+    return_value={"transition": "fixture_route"},
+), patch.object(
+    mod,
+    "capture_script_output",
+    return_value=qualified_packet,
+) as capture, patch.object(mod.sys, "stdout", stdout):
+    mod.emit_script_transition(
+        ROOT,
+        source_payload,
+        "fixture_route",
+        "fixture_target",
+        {},
+        producer_kind="puber-release-fixture",
+    )
+assert stdout.getvalue().encode("utf-8") == qualified_packet
+assert capture.call_args.args[1] is source_payload
+assert capture.call_args.kwargs["producer_refs"] == [valid_ref]
+
+# Nullable outputs cannot silently discard syntactically valid source refs,
+# whether the reference is expected-local or foreign to this producer.
+for source_ref in (
+    valid_ref,
+    "build/kent-workflow/OTHER/packets/foreign-" + "c" * 64 + ".json",
+):
+    stdout = EmissionStdout()
+    with patch.object(
+        mod,
+        "producer_refs_from_commentary",
+        return_value=[source_ref],
+    ), patch.object(
+        mod,
+        "render_exact",
+        return_value=nullable_output,
+    ), patch.object(
+        mod,
+        "capture_script_output",
+        return_value=None,
+    ), patch.object(mod.sys, "stdout", stdout):
+        try:
+            mod.emit_script_transition(
+                ROOT,
+                {"commentary": "syntactically valid producer footer"},
+                "fixture_blocker",
+                "fixture_target",
+                {},
+                producer_kind="puber-release-fixture",
+            )
+        except mod.ContractError as error:
+            assert str(error) == (
+                "qualified Script producer ancestry cannot be represented by the exact native route"
+            )
+        else:
+            raise AssertionError("nullable route silently discarded producer ancestry")
+    assert stdout.getvalue() == ""
+
+# Malformed source commentary and provider-failure constraints also fail
+# before writing an incomplete or unqualified route.
+stdout = EmissionStdout()
+with patch.object(
+    mod,
+    "producer_refs_from_commentary",
+    side_effect=mod.ContractError("native producer commentary is malformed"),
+), patch.object(
+    mod,
+    "render_exact",
+    return_value={"transition": "fixture_route"},
+), patch.object(mod.sys, "stdout", stdout):
+    try:
+        mod.emit_script_transition(
+            ROOT,
+            {"commentary": "malformed source footer"},
+            "fixture_route",
+            "fixture_target",
+            {},
+            producer_kind="puber-release-fixture",
+        )
+    except mod.ContractError as error:
+        assert str(error) == "native producer commentary is malformed"
+    else:
+        raise AssertionError("malformed producer footer was accepted")
+assert stdout.getvalue() == ""
+
+stdout = EmissionStdout()
+with patch.object(
+    mod,
+    "producer_refs_from_commentary",
+    return_value=[],
+), patch.object(
+    mod,
+    "render_exact",
+    return_value={"transition": "fixture_route"},
+), patch.object(
+    mod,
+    "capture_script_output",
+    return_value=None,
+), patch.object(
+    mod,
+    "provider_retry_constraint_from_error",
+    return_value="unknown",
+), patch.object(mod.sys, "stdout", stdout):
+    try:
+        mod.emit_script_transition(
+            ROOT,
+            {},
+            "fixture_route",
+            "fixture_target",
+            {},
+            producer_kind="puber-release-fixture",
+            provider_error=RuntimeError("private provider error"),
+        )
+    except mod.ContractError as error:
+        assert str(error) == (
+            "provider retry failure cannot be represented by the exact native route"
+        )
+    else:
+        raise AssertionError("provider retry constraint was dropped")
+assert stdout.getvalue() == ""
+
+
+for blocked_state in (None, "not_before", "unknown"):
+    fake_delivery = FakeDelivery(block=blocked_state)
+    metadata = {
+        "task_id": "task-12345678-1234-4234-8234-123456789abc",
+        "node_id": "native-provider-node",
+    }
+    commentary = (
+        "release handoff\nKent producer packet:"
+        + "build/kent-workflow/PUB-99/packets/base-"
+        + "a" * 64
+        + ".json"
+    )
+    mod._activate_github_provider_context(
+        ROOT,
+        {"_kent": metadata, "commentary": commentary},
+        {"task_short_id": "PUB-99"},
+    )
+    with patch.object(mod, "_qualified_delivery_module", return_value=fake_delivery), \
+         patch.object(mod, "_kent_bin", return_value="/qualified/kent"):
+        guard = mod.github_provider_read_guard(ROOT)
+        if blocked_state is None:
+            guard()
+        else:
+            gh_run = patch.object(mod, "run")
+            with gh_run as run_mock:
+                try:
+                    mod.gh(ROOT, ["api", "repos/rovkinmax/Puber"])
+                except mod.GitHubProviderReadBlocked as error:
+                    assert error.state == blocked_state
+                    assert "private provider diagnostic" not in str(error)
+                else:
+                    raise AssertionError("provider denial was ignored")
+                run_mock.assert_not_called()
+        assert [call[0] for call in fake_delivery.calls] == [
+            "locator", "identity", "provider",
+        ]
+        assert fake_delivery.calls[0][1] == commentary
+        assert fake_delivery.calls[1][3] == metadata
+        assert fake_delivery.calls[2][2] == [
+            "build/kent-workflow/PUB-99/packets/base-" + "a" * 64 + ".json"
+        ]
+
+initial_delivery = FakeDelivery()
+mod._activate_github_provider_context(
+    ROOT,
+    {"_kent": {"task_id": "task-12345678-1234-4234-8234-123456789abc",
+               "node_id": "native-provider-node"}},
+    {"task_short_id": "PUB-99"},
+)
+with patch.object(mod, "_qualified_delivery_module", return_value=initial_delivery), \
+     patch.object(mod, "_kent_bin", return_value="/qualified/kent"):
+    mod.github_provider_read_guard(ROOT)()
+assert initial_delivery.calls[-1][2] == []
+
+# Malformed and duplicate native producer footers fail closed before the
+# provider child and do not expose the parser's diagnostic.
+for invalid_commentary in (
+    "release handoff\ninvalid-footer",
+    "release handoff\nKent producer packet:child-a\n"
+    "Kent producer packet:child-b\nduplicate-footer",
+):
+    invalid_delivery = FakeDelivery()
+    mod._activate_github_provider_context(
+        ROOT,
+        {
+            "_kent": {
+                "task_id": "task-12345678-1234-4234-8234-123456789abc",
+                "node_id": "native-provider-node",
+            },
+            "commentary": invalid_commentary,
+        },
+        {"task_short_id": "PUB-99"},
+    )
+    with patch.object(mod, "_qualified_delivery_module", return_value=invalid_delivery), \
+         patch.object(mod, "run") as run_mock:
+        try:
+            mod.gh(ROOT, ["api", "repos/rovkinmax/Puber"])
+        except mod.ContractError as error:
+            assert str(error) == "GitHub provider source reference is invalid"
+        else:
+            raise AssertionError("invalid producer ancestry was accepted")
+        run_mock.assert_not_called()
+    assert [call[0] for call in invalid_delivery.calls] == ["locator"]
+
+# The callback is evaluated anew immediately before every direct provider
+# child, including byte downloads.
+repeated_delivery = FakeDelivery()
+repeated_commentary = (
+    "release handoff\nKent producer packet:"
+    "build/kent-workflow/PUB-99/packets/base-" + "a" * 64 + ".json"
+)
+mod._activate_github_provider_context(
+    ROOT,
+    {
+        "_kent": {
+            "task_id": "task-12345678-1234-4234-8234-123456789abc",
+            "node_id": "native-provider-node",
+        },
+        "commentary": repeated_commentary,
+    },
+    {"task_short_id": "PUB-99"},
+)
+with patch.object(mod, "_qualified_delivery_module", return_value=repeated_delivery), \
+     patch.object(mod, "run", return_value=SimpleNamespace(returncode=0, stdout="{}")) as run_mock, \
+     patch.object(mod, "run_bytes", return_value=SimpleNamespace(returncode=0, stdout=b"bytes")) as bytes_mock:
+    mod.gh(ROOT, ["api", "repos/rovkinmax/Puber"])
+    mod.gh(ROOT, ["api", "repos/rovkinmax/Puber/pulls/1"])
+    assert mod.gh_api_bytes(ROOT, "repos/rovkinmax/Puber/releases/assets/1") == b"bytes"
+    assert run_mock.call_count == 2
+    bytes_mock.assert_called_once()
+assert [call[0] for call in repeated_delivery.calls].count("provider") == 3
+
+# The exact first Script ingress runs native source admission before local node
+# and Task inspection. Only the genuine two-field _kent context is supplied.
+source_delivery = FakeDelivery()
+source_metadata = {
+    "task_id": "task-12345678-1234-4234-8234-123456789abc",
+    "node_id": "source-admission-node",
+}
+start_edge = mod.graph_edge(
+    ROOT,
+    "start_release_intent_gate",
+    "release_intent_gate",
+)
+source_order = []
+source_state = {"task_short_id": "PUB-99"}
+
+
+def load_source_delivery(root, *, required):
+    assert root == ROOT
+    assert required == ("admit_script_source_ingress",)
+    return source_delivery
+
+
+def admit_node_id(_root, _node):
+    source_order.append("node")
+    return source_metadata["node_id"]
+
+
+def admit_task(*_args, **_kwargs):
+    source_order.append("task")
+    return source_state
+
+
+with patch.object(mod, "_qualified_delivery_module", side_effect=load_source_delivery), \
+     patch.object(mod, "_kent_bin", return_value="/qualified/kent"), \
+     patch.object(mod, "_node_id", side_effect=admit_node_id), \
+     patch.object(mod, "graph_edge", return_value=start_edge), \
+     patch.object(mod, "validate_task", side_effect=admit_task):
+    source_result = mod.validate_envelope(
+        {"_kent": source_metadata},
+        ROOT,
+        "release_intent_gate",
+    )
+assert source_result[0] == {}
+assert source_order == ["node", "task"]
+assert source_delivery.calls == [
+    (
+        "source-admission",
+        ROOT,
+        source_metadata,
+        "/qualified/kent",
+    )
+]
+
+# Source denial is normalized to one fixed message and stops before local
+# workflow or Task inspection.
+denied_delivery = FakeDelivery(
+    source_admission_error=RuntimeError("private native admission detail")
+)
+denied_order = []
+
+
+def load_denied_delivery(root, *, required):
+    assert root == ROOT
+    assert required == ("admit_script_source_ingress",)
+    return denied_delivery
+
+
+with patch.object(mod, "_qualified_delivery_module", side_effect=load_denied_delivery), \
+     patch.object(mod, "_kent_bin", return_value="/qualified/kent"), \
+     patch.object(
+         mod,
+         "_node_id",
+         side_effect=lambda *_args: denied_order.append("node"),
+     ) as node_read, \
+     patch.object(
+         mod,
+         "validate_task",
+         side_effect=lambda *_args, **_kwargs: denied_order.append("task"),
+     ) as task_read:
+    try:
+        mod.validate_envelope(
+            {"_kent": source_metadata},
+            ROOT,
+            "release_intent_gate",
+        )
+    except mod.ContractError as error:
+        assert str(error) == "native Script source admission failed"
+        assert "private native admission detail" not in str(error)
+    else:
+        raise AssertionError("source-admission denial was ignored")
+    node_read.assert_not_called()
+    task_read.assert_not_called()
+assert denied_order == []
+assert [call[0] for call in denied_delivery.calls] == ["source-admission"]
+
+# Ordinary routed Script envelopes preserve transport-only commentary and do
+# not invoke the first-ingress source gate.
 envelope = {"_kent": {"task_id": "fixture", "node_id": "node"},
             "workspace_path": "fixture", "entry_transition": "branch"}
 edge = {
@@ -80,6 +589,50 @@ with patch.object(mod, "_node_id", return_value="node"), \
                 pass
             else:
                 raise AssertionError("reserved graph business parameter accepted")
+
+# The S4 retry is the one typed route without entry_transition. Native
+# commentary is required and remains transport-only.
+retry_envelope = {
+    "_kent": {
+        "task_id": "task-12345678-1234-4234-8234-123456789abc",
+        "node_id": "node",
+    },
+    "workspace_path": "fixture",
+    "task_short_id": "PUB-99",
+    "delivery_context": '{"schema":"workflow-delivery-context-v2"}',
+    "commentary": "native Agent pack locator",
+}
+retry_edge = {
+    "key": mod.CI_PREPARATION_RETRY_ROUTE,
+    "parameters": [
+        {"key": key} for key in mod.CI_PREPARATION_RETRY_FIELDS
+    ],
+}
+with patch.object(mod, "_node_id", return_value="node"), \
+     patch.object(mod, "graph_edge", return_value=retry_edge), \
+     patch.object(mod, "validate_task", return_value={"validated": True}):
+    before = mod.canonical_json(retry_envelope)
+    business, validated, actual_edge = mod.validate_envelope(
+        retry_envelope,
+        ROOT,
+        "ci_prepare",
+    )
+    assert set(business) == set(mod.CI_PREPARATION_RETRY_FIELDS)
+    assert business["delivery_context"] == retry_envelope["delivery_context"]
+    assert validated == {"validated": True}
+    assert actual_edge == retry_edge
+    assert mod.canonical_json(retry_envelope) == before
+    for bad in (
+        {key: value for key, value in retry_envelope.items() if key != "commentary"},
+        {**retry_envelope, "entry_transition": mod.CI_PREPARATION_RETRY_ROUTE},
+        {**retry_envelope, "extra": "not-native"},
+    ):
+        try:
+            mod.validate_envelope(bad, ROOT, "ci_prepare")
+        except mod.ContractError:
+            pass
+        else:
+            raise AssertionError("invalid S4 native retry envelope was accepted")
 selected = {"schema":"puber_release_run_v1","state":"selected","repository":"rovkinmax/Puber","workflow_path":".github/workflows/release.yml","workflow_name":"Release","event":"push","run_id":1,"attempt":1,"head_sha":"a"*40,"ref":"refs/tags/v1.2.3","head_branch":"v1.2.3"}
 assert mod.parse_run_carrier(mod.canonical_json(selected)) == selected
 for bad in ({"schema":"puber_release_run_v1","state":"selected"}, {"schema":"puber_release_run_v1","state":"selected","extra":1}):
@@ -527,17 +1080,17 @@ with tempfile.TemporaryDirectory() as directory:
     subprocess.run(["git", "config", "user.name", "Puber Test"], cwd=work, check=True)
     subprocess.run(["git", "add", "-f", "."], cwd=work, check=True)
     subprocess.run(["git", "commit", "--quiet", "-m", "intent test fixture"], cwd=work, check=True)
-    manifest = json.loads((ROOT / ".kent/workflows/puber-release-kit-5af.manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((ROOT / ".kent/workflows/puber-release-current.manifest.json").read_text(encoding="utf-8"))
     source_roots = {item["key"].split("=", 1)[0] for item in manifest["external_roots"] if item["kind"] == "source-sha256"}
     for relative in sorted(set(manifest["additional_paths"]) | source_roots | {
         ".kent/scripts/workflow-puber-release-intent",
         ".kent/workflow-profile.toml",
         ".kent/scripts/workflow_runtime_contracts.py",
         ".kent/scripts/workflow-prepare-github-ci",
-        ".kent/workflows/puber-release-kit-5af.json",
-        ".kent/workflows/puber-release-kit-5af.manifest.json",
-        ".kent/workflows/specs/puber-release-kit-5af.toml",
-        ".kent/workflows/builders/puber_release_kit_5af.py",
+        ".kent/workflows/puber-release-current.json",
+        ".kent/workflows/puber-release-current.manifest.json",
+        ".kent/workflows/specs/puber-release-current.toml",
+        ".kent/workflows/builders/puber_release_current.py",
         ".kent/commands/compliance-review.md",
         ".kent/commands/ship-pr.md",
         ".kent/scripts/workflow-puber-release-publish",
@@ -549,22 +1102,69 @@ with tempfile.TemporaryDirectory() as directory:
         target = work / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
+    # The checked-in project helper predates the final qualified Kit API.
+    # Give this disposable source fixture a minimal delivery-module seam so
+    # the command test can exercise its admitted first-ingress path without
+    # invoking native Kent or claiming source qualification.
+    checkpoint_helper = work / ".kent/scripts/workflow-checkpoint"
+    checkpoint_source = checkpoint_helper.read_text(encoding="utf-8")
+    checkpoint_helper.write_text(
+        checkpoint_source
+        + "\n\nfrom types import SimpleNamespace\n"
+        + "def delivery_module():\n"
+        + "    def admit_script_source_ingress(root, native_context, *, kent_path):\n"
+        + "        if set(native_context) != {'task_id', 'node_id'}:\n"
+        + "            raise ValueError('invalid fixture native context')\n"
+        + "        return SimpleNamespace(\n"
+        + "            project_id='project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176',\n"
+        + "            workflow_id='10d8adb2-c74c-4ef0-8b5c-311cb5cd0459',\n"
+        + "            source_admission_sha256='f' * 64,\n"
+        + "            receipt_sha256='e' * 64,\n"
+        + "            gate='legacy',\n"
+        + "        )\n"
+        + "    return SimpleNamespace(\n"
+        + "        admit_script_source_ingress=admit_script_source_ingress,\n"
+        + "    )\n",
+        encoding="utf-8",
+    )
+    fixture_manifest_path = (
+        work / ".kent/workflows/puber-release-current.manifest.json"
+    )
+    fixture_manifest_value = json.loads(
+        fixture_manifest_path.read_text(encoding="utf-8")
+    )
+    checkpoint_digest = hashlib.sha256(
+        checkpoint_helper.read_bytes()
+    ).hexdigest()
+    checkpoint_bindings = [
+        item for item in fixture_manifest_value["external_roots"]
+        if item["kind"] == "source-sha256"
+        and item["key"].startswith(".kent/scripts/workflow-checkpoint=")
+    ]
+    assert len(checkpoint_bindings) == 1
+    checkpoint_bindings[0]["key"] = (
+        ".kent/scripts/workflow-checkpoint=" + checkpoint_digest
+    )
+    fixture_manifest_path.write_text(
+        json.dumps(fixture_manifest_value, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     fixture_manifest = json.loads(
-        (work / ".kent/workflows/puber-release-kit-5af.manifest.json").read_text()
+        (work / ".kent/workflows/puber-release-current.manifest.json").read_text()
     )
     for external in fixture_manifest["external_roots"]:
         if external["kind"] == "source-sha256":
             relative, digest = external["key"].split("=", 1)
             assert hashlib.sha256((work / relative).read_bytes()).hexdigest() == digest, relative
         elif external["kind"] == "builder-sha256":
-            assert hashlib.sha256((work / ".kent/workflows/builders/puber_release_kit_5af.py").read_bytes()).hexdigest() == external["key"]
+            assert hashlib.sha256((work / ".kent/workflows/builders/puber_release_current.py").read_bytes()).hexdigest() == external["key"]
     subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=work, check=True)
     subprocess.run(["git", "config", "user.name", "Puber Test"], cwd=work, check=True)
     subprocess.run(["git", "add", "."], cwd=work, check=True)
     if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=work).returncode != 0:
         subprocess.run(["git", "commit", "--quiet", "-m", "intent test fixture"], cwd=work, check=True)
     target_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=work, text=True).strip()
-    graph = json.loads((work / ".kent/workflows/puber-release-kit-5af.json").read_text(encoding="utf-8"))
+    graph = json.loads((work / ".kent/workflows/puber-release-current.json").read_text(encoding="utf-8"))
     node = next(item for item in graph["nodes"] if item["key"] == "release_intent_gate")
     task_id = "task-12345678-1234-4234-8234-123456789abc"
     task = {
@@ -576,7 +1176,7 @@ with tempfile.TemporaryDirectory() as directory:
         "project": {}, "retained_session_count": 0, "source_workspace": {},
         "status": {"node_ids": [node["id"]]},
         "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 95, "name": "Puber Release"},
+        "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 97, "name": "Puber Release"},
         "worktree_path": str(work),
     }
     fake = root / "fake"; fake.mkdir()
@@ -660,7 +1260,7 @@ with tempfile.TemporaryDirectory() as directory:
 
     rejected_case("task_id", payload_changes={"_kent": {**success["_kent"], "task_id": "task-00000000-0000-4000-8000-000000000000"}})
     rejected_case("project", task_changes={"summary": {**task["summary"], "project_id": "foreign-project"}})
-    for revision in (87, 88, 91, 94, 96):
+    for revision in (87, 88, 91, 94, 95, 96):
         rejected_case(f"workflow_revision_{revision}", task_changes={"workflow": {**task["workflow"], "version": revision}})
     rejected_case("current_node", task_changes={"status": {"node_ids": ["foreign-node"]}})
     rejected_case("current_script", task_changes={"current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-publish"), "current_node": {"node_id": node["id"]}}]})
@@ -791,6 +1391,7 @@ dynamic_payload = {
     "verification_summary": "source-only fixture",
     "pr_url": "https://github.com/rovkinmax/Puber/pull/7",
     "branch_name": "release/99.0.0",
+    "pr_base_branch": "master",
     "merge_strategy": "rebase",
     "pr_head_oid": dynamic_contract["head_oid"],
     "pr_base_oid": dynamic_contract["base_oid"],
@@ -798,14 +1399,14 @@ dynamic_payload = {
     "ci_report": dynamic_runtime.canonical_bytes(dynamic_report).decode("utf-8"),
     "pr_feedback_cursor": dynamic_runtime.canonical_bytes(dynamic_cursor).decode("utf-8"),
 }
-dynamic_adapter._packet(dynamic_payload)
+dynamic_adapter._packet(dynamic_payload, require_report=True)
 dynamic_bad = dict(dynamic_payload)
 dynamic_bad["ci_report"] = dynamic_runtime.canonical_bytes({
     **dynamic_report,
     "contract": {**dynamic_contract, "head_oid": dynamic_sha("c")},
 }).decode("utf-8")
 try:
-    dynamic_adapter._packet(dynamic_bad)
+    dynamic_adapter._packet(dynamic_bad, require_report=True)
 except Exception:
     pass
 else:
@@ -825,6 +1426,16 @@ dynamic_after = {**dynamic_before, "headRefOid": dynamic_sha("c")}
 dynamic_state = {
     "task_short_id": "PUB-99",
     "controller_commit": dynamic_contract["head_oid"],
+}
+dynamic_graph = json.loads(
+    (ROOT / ".kent/workflows/puber-release-current.json").read_text()
+)
+dynamic_native = {
+    "task_id": "task-12345678-1234-4234-8234-123456789abc",
+    "node_id": next(
+        item["id"] for item in dynamic_graph["nodes"]
+        if item["key"] == "ci_watch"
+    ),
 }
 with contextlib.ExitStack() as stack:
     stack.enter_context(patch.object(dynamic_adapter, "_checkpoint", lambda *_: None))
@@ -851,8 +1462,12 @@ with contextlib.ExitStack() as stack:
         "ci_watch",
         dynamic_payload,
         dynamic_state,
+        native_context=dynamic_native,
     )
-assert dynamic_changed["transition"] == "ci_watch_state_changed"
+assert dynamic_changed["transition"] == "ci_watch_state_changed", (
+    f"{dynamic_changed.get('blocker_reason')!r}; "
+    f"{dynamic_changed.get('pr_report')!r}"
+)
 assert dynamic_changed["pr_head_oid"] == dynamic_sha("c")
 assert json.loads(dynamic_changed["pr_report"])["reason"] == "source_changed"
 
@@ -882,6 +1497,13 @@ with contextlib.ExitStack() as stack:
         "merge_watch",
         dynamic_payload,
         dynamic_state,
+        native_context={
+            **dynamic_native,
+            "node_id": next(
+                item["id"] for item in dynamic_graph["nodes"]
+                if item["key"] == "merge_watch"
+            ),
+        },
     )
 assert dynamic_waiting["transition"] == "merge_watch_still_waiting"
 print("workflow-puber-release-intent: dynamic-ci-carrier=passed")

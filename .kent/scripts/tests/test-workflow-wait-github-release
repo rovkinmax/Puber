@@ -13,6 +13,8 @@ import subprocess
 import tempfile
 import contextlib
 import shutil
+import uuid
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 publish_spec = importlib.util.spec_from_loader("publish_fixture", SourceFileLoader("publish_fixture", str(ROOT / ".kent/scripts/tests/test-workflow-puber-release-publish")))
@@ -28,6 +30,16 @@ def reset_kit_imports() -> None:
 
 def sh(args, cwd, **kwargs):
     return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+
+def native_transition_id(graph: dict, edge_key: str) -> str:
+    edges = [edge for edge in graph["edges"] if edge["key"] == edge_key]
+    assert len(edges) == 1, edge_key
+    groups = [
+        group for group in graph["transition_groups"]
+        if group["id"] == edges[0]["transition_group_id"]
+    ]
+    assert len(groups) == 1, edge_key
+    return groups[0]["transition_id"]
 
 def materialize_shared_observer(work: Path) -> None:
     source = ROOT / ".kent/scripts/workflow_github_observation.py"
@@ -60,7 +72,95 @@ def initial_ci_contract(head: str, base: str) -> str:
         sort_keys=True,
     )
 
-def test_monitor(rebased: bool, prepared=None) -> None:
+def pack_agent_transition_commentary(
+    work: Path,
+    task_path: Path,
+    graph: dict,
+    environment: dict[str, str],
+    transition_key: str,
+    task_short_id: str,
+    values: dict[str, str],
+    producer_commentary: str | None = None,
+) -> str:
+    """Build disposable Agent producer evidence through the selected Kit API."""
+    script = work / ".kent/scripts/workflow-checkpoint"
+    loader = SourceFileLoader("wait_fixture_checkpoint_adapter", str(script))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None and spec.loader is not None
+    checkpoint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checkpoint)
+    previous_kit_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "workflowkit" or name.startswith("workflowkit.")
+    }
+    previous_path = list(sys.path)
+    for name in previous_kit_modules:
+        del sys.modules[name]
+    try:
+        with patch.dict(os.environ, environment):
+            delivery = checkpoint.delivery_module()
+            identity = checkpoint.current_delivery_identity(
+                work.resolve(),
+                task_short_id,
+            )
+            detail = json.loads(task_path.read_text(encoding="utf-8"))
+            native_graph = {
+                "workflow_id": detail["summary"]["workflow_id"],
+                "expected_version": detail["workflow"]["version"],
+                "graph": {
+                    key: graph[key]
+                    for key in ("nodes", "transition_groups", "edges")
+                },
+            }
+            transition = native_transition_id(graph, transition_key)
+            contract = delivery.transition_contract_reference(
+                identity,
+                detail,
+                native_graph,
+                transition,
+            )
+            producer_refs = []
+            if producer_commentary is not None:
+                if not isinstance(producer_commentary, str):
+                    raise AssertionError("fixture upstream producer commentary is invalid")
+                producer_locator = delivery.producer_locator(producer_commentary)
+                if producer_locator is not None:
+                    producer_refs.append(producer_locator)
+            locator, packet_bytes = delivery.pack_delivery(
+                work.resolve(),
+                {
+                    "schema": "workflow-pack-delivery-v1",
+                    "transition": transition,
+                    "values": values,
+                    "transition_contract_ref": contract,
+                    "delivery_mode": "preserve",
+                    "producer_refs": producer_refs,
+                },
+                identity=identity,
+                task_detail=detail,
+                graph=native_graph,
+            )
+            packet = delivery.packet_decode(packet_bytes)
+            if (
+                packet.get("transition") != transition
+                or delivery.producer_locator(packet.get("commentary")) != locator
+            ):
+                raise AssertionError("fixture Agent producer packet is not exact")
+            return packet["commentary"]
+    finally:
+        sys.path[:] = previous_path
+        for name in list(sys.modules):
+            if name == "workflowkit" or name.startswith("workflowkit."):
+                del sys.modules[name]
+        sys.modules.update(previous_kit_modules)
+
+def test_monitor(
+    rebased: bool,
+    prepared=None,
+    *,
+    publish_blocker_only: bool = False,
+) -> None:
     with (contextlib.nullcontext(prepared["root"]) if prepared else tempfile.TemporaryDirectory()) as directory:
         root = Path(directory); bare = root / "origin.git"
         if prepared:
@@ -73,7 +173,7 @@ def test_monitor(rebased: bool, prepared=None) -> None:
         os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(kit_root)
         head = target
         assert head != base_oid
-        graph = json.loads((work / ".kent/workflows/puber-release-kit-5af.json").read_text())
+        graph = json.loads((work / ".kent/workflows/puber-release-current.json").read_text())
         publish_node = next(n for n in graph["nodes"] if n["key"] == "publish")
         monitor_node = next(n for n in graph["nodes"] if n["key"] == "monitor")
         ci_prepare_node = next(n for n in graph["nodes"] if n["key"] == "ci_prepare")
@@ -84,14 +184,29 @@ def test_monitor(rebased: bool, prepared=None) -> None:
             "current_nodes": [{"node_id": publish_node["id"]}], "current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-publish"), "current_node": {"node_id": publish_node["id"]}}],
             # Native Task lock stays at initial K; publication observes the
             # prepared controller head H and the rebased merged target T.
-            "execution_target": {"commit_oid": base_oid}, "label_ids": [], "live_sessions": [], "project": {}, "retained_session_count": 0,
-            "source_workspace": {}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 95, "name": "Puber Release"}, "worktree_path": str(work),
+            "execution_target": {"commit_oid": base_oid}, "label_ids": [], "live_sessions": [], "project": {"default_workspace_id": "workspace-12345678-1234-4234-8234-123456789abc"}, "retained_session_count": 0,
+            "source_workspace": {"is_primary": True, "workspace_id": "workspace-12345678-1234-4234-8234-123456789abc", "root_path": str(work.resolve())}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
+            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 97, "name": "Puber Release"}, "worktree_path": str(work.resolve()),
         }
         if prepared:
             task = prepared["task"]
             assert task["execution_target"]["commit_oid"] == base_oid != head
+            workspace_id = "workspace-12345678-1234-4234-8234-123456789abc"
+            source_root = (root / "primary").resolve()
+            task["project"] = {"default_workspace_id": workspace_id}
+            task["source_workspace"] = {
+                "is_primary": True,
+                "workspace_id": workspace_id,
+                "root_path": str(source_root),
+            }
+            task["worktree_path"] = str(work.resolve())
         fake = root / "monitor-fake"; fake.mkdir()
+        fake_home = root / "home"
+        kit_bin = fake_home / ".kent/bin"
+        kit_bin.mkdir(parents=True)
+        (kit_bin / "kent-prepare-github-ci").symlink_to(
+            kit_root / "scripts/prepare-github-ci"
+        )
         task_path = prepared["task_path"] if prepared else fake / "task.json"
         task_path.write_text(json.dumps(task), encoding="utf-8")
         kent = fake / "kent"
@@ -105,6 +220,9 @@ def test_monitor(rebased: bool, prepared=None) -> None:
         kent.write_text("#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\n" +
             f"task=Path({str(task_path)!r}); sessions=Path({str(sessions_path)!r}); comments=Path({str(comments_path)!r}); owner={owner_id!r}\n" +
             "args=sys.argv[1:]\n" +
+            "if args[:1] == ['project']: print(json.loads(task.read_text())['summary']['project_id']); sys.exit(0)\n" +
+            "if args[:3] == ['workflow','graph','inspect']:\n" +
+            " graph=json.loads((Path.cwd()/'.kent/workflows/puber-release-current.json').read_text()); workflow=json.loads(task.read_text())['summary']['workflow_id']; print(json.dumps({'workflow_id':workflow,'expected_version':graph['workflow']['version'],'graph':{key:graph[key] for key in ('nodes','transition_groups','edges')}})); sys.exit(0)\n" +
             "if args[:2] == ['task','show']: print(task.read_text()); sys.exit(0)\n" +
             "if args[:2] == ['task','sessions']:\n" +
             " assert args[2] == json.loads(task.read_text())['summary']['id']\n" +
@@ -147,7 +265,7 @@ if args[:2] == ["release","edit"]:
 if args[0] != "api": sys.exit(2)
 endpoint=args[-1] if "--paginate" in args else args[1]
 if len(args) > 1 and args[1] == "graphql":
- print(json.dumps([{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":False,"endCursor":None}}}}}}]))
+ print(json.dumps({"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":False,"endCursor":None}}}}}}))
  sys.exit(0)
 if "--include" in args:
  from urllib.parse import urlsplit,parse_qs
@@ -174,7 +292,7 @@ if endpoint.endswith("/rules/branches/master"):
 if endpoint.endswith("/branches/master/protection"):
  print("404",file=sys.stderr); sys.exit(1)
 if endpoint.endswith("/git/ref/heads/master"):
- print(json.dumps({"ref":"refs/heads/master","node_id":"master","url":"https://api.github.com/ref","object":{"type":"commit","sha":target}})); sys.exit(0)
+ print(json.dumps({"ref":"refs/heads/master","node_id":"master","url":"https://api.github.com/ref","object":{"type":"commit","sha":os.environ.get("PUBER_MASTER", target)}})); sys.exit(0)
 if "/issues/7/comments" in endpoint:
  print(json.dumps([[]])); sys.exit(0)
 if "/pulls/7/reviews" in endpoint or "/pulls/7/comments" in endpoint:
@@ -326,7 +444,57 @@ sys.exit(3)
             sh(["git", "push", "--quiet", "origin", target + ":refs/heads/fixture-merged"], work)
             if prepared is None:
                 sh(["git", "--git-dir", bare_path, "update-ref", "refs/heads/master", target], work)
-        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "KENT_ENGINEERING_KIT_ROOT": str(kit_root), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "KENT_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(task_path), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": head, "PUBER_PR_BASE": base_oid, "PUBER_BODY": str(body_file), "PUBER_APK": str(apk_file), "PUBER_CHECKSUM": str(checksum_file), "PUBER_CALLS": str(calls_file)}
+        env = {**os.environ, "HOME": str(fake_home), "PATH": str(fake) + os.pathsep + os.environ.get("PATH", ""), "PYTHONDONTWRITEBYTECODE": "1", "KENT_ENGINEERING_KIT_ROOT": str(kit_root), "PUBER_KENT_BIN": str(kent), "PUBER_GH_BIN": str(gh), "KENT_GH_BIN": str(gh), "PUBER_FAKE_TASK": str(task_path), "PUBER_TARGET": target, "PUBER_BARE": bare_path, "PUBER_PR_HEAD": head, "PUBER_PR_BASE": base_oid, "PUBER_BODY": str(body_file), "PUBER_APK": str(apk_file), "PUBER_CHECKSUM": str(checksum_file), "PUBER_CALLS": str(calls_file)}
+        fixture_owner = {
+            "KENT_SESSION_ID": owner_id,
+            "KENT_STEP_ID": str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"puber-wait-fixture:{task_id}:{work.resolve()}",
+                )
+            ),
+        }
+        archive_owner = {
+            "KENT_SESSION_ID": owner_id,
+            "KENT_STEP_ID": str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"puber-wait-ci-archive:{task_id}:{work.resolve()}",
+                )
+            ),
+        }
+        env.update(fixture_owner)
+        seed_ledger = subprocess.run(
+            [
+                str(work / ".kent/scripts/workflow-evidence-ledger"),
+                "append",
+                "--task",
+                "PUB-99",
+                "--workspace",
+                str(work.resolve()),
+            ],
+            cwd=work,
+            input=json.dumps(
+                {
+                    "node_key": "profile_generation",
+                    "evidence_type": "baseline_profile_generation",
+                    "summary": "Completed profile generation for release fixture.",
+                    "artifacts": [],
+                    "checks": [],
+                    "decisions": [],
+                    "context": {
+                        "manifest_path": ".kent/context/delivery.md",
+                        "files_read": [],
+                        "model_calls": 0,
+                        "compaction_count": 0,
+                    },
+                }
+            ),
+            text=True,
+            capture_output=True,
+            env=env,
+        )
+        assert seed_ledger.returncode == 0, seed_ledger.stderr
         os.environ.update({key: env[key] for key in ("KENT_ENGINEERING_KIT_ROOT", "PUBER_KENT_BIN", "PUBER_GH_BIN", "PUBER_FAKE_TASK", "PUBER_TARGET", "PUBER_BARE", "PUBER_BODY", "PUBER_APK", "PUBER_CHECKSUM", "PUBER_CALLS")})
         probe = subprocess.run([str(gh), "api", "repos/rovkinmax/Puber/pulls/7"], cwd=work, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         assert probe.returncode == 0, probe.stderr
@@ -352,13 +520,14 @@ sys.exit(3)
         ci_input = {
             "entry_transition": "ship_pr_ci_watch",
             "_kent":{"task_id":task_id,"node_id":ci_prepare_node["id"]},
-            "workspace_path":str(work),"operation_id":"a"*64,"task_short_id":"PUB-99",
+            "workspace_path":str(work.resolve()),"operation_id":"a"*64,"task_short_id":"PUB-99",
             "release_type":"minor","release_version":"99.0.0","release_tag":"v99.0.0",
             "release_branch":"release/99.0.0","release_base_oid":base_oid,"candidate_oid":head,
             "release_head_oid":head,"profile_report":profile_report,"profile_report_digest":profile_digest,
             "release_preparation_report":preparation_report,"release_preparation_report_digest":preparation_digest,
             "verification_summary":"fixture preparation passed","pr_url":"https://github.com/rovkinmax/Puber/pull/7",
             "branch_name":"release/99.0.0","merge_strategy":"rebase","pr_head_oid":head,"pr_base_oid":base_oid,
+            "pr_base_branch":"master",
         }
         if prepared:
             ship_edge = next(
@@ -421,19 +590,84 @@ sys.exit(3)
         published_result = subprocess.run([str(work/".kent/scripts/workflow-puber-release-publish")], cwd=work, input=json.dumps(publish_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         assert published_result.returncode == 0, published_result.stderr
         published = json.loads(published_result.stdout)
-        assert published["transition"] == "monitor_release", (published, published_result.stderr)
+        assert published["transition"] == native_transition_id(graph, "monitor_release"), (published, published_result.stderr)
+        assert published["entry_transition"] == "monitor_release", published
+        producer_locator = publish_fixture.helper._kit_modules().get(
+            "producer_locator"
+        )
+        assert callable(producer_locator), "qualified producer locator is unavailable"
+        if prepared:
+            assert producer_locator(published.get("commentary")) is not None, (
+                "Publish dropped its authenticated incoming producer ancestry"
+            )
+        if publish_blocker_only:
+            retry_edge = next(
+                edge for edge in graph["edges"]
+                if edge["key"] == "publish_needs_user_action"
+            )
+            retry_payload = {
+                parameter["key"]: (
+                    "fixture retry after successful publication"
+                    if parameter["key"] == "blocker_reason"
+                    else "publish_needs_user_action"
+                    if parameter["key"] == "entry_transition"
+                    else published.get(
+                        parameter["key"],
+                        publish_payload.get(parameter["key"]),
+                    )
+                )
+                for parameter in retry_edge["parameters"]
+            }
+            retry_payload["_kent"] = {
+                "task_id": task_id,
+                "node_id": publish_node["id"],
+            }
+            retry_payload["commentary"] = published["commentary"]
+            env["KENT_STEP_ID"] = str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"puber-publish-blocker:{task_id}:{work.resolve()}",
+                )
+            )
+            publish_blocked = subprocess.run(
+                [
+                    str(work / ".kent/scripts/workflow-puber-release-publish")
+                ],
+                cwd=work,
+                input=json.dumps(retry_payload),
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env={**env, "PUBER_MASTER": "d" * 40},
+            )
+            assert publish_blocked.returncode == 0, publish_blocked.stderr
+            publish_blocked_output = json.loads(publish_blocked.stdout)
+            assert publish_blocked_output["transition"] == native_transition_id(
+                graph,
+                "publish_needs_user_action",
+            ), publish_blocked_output
+            assert producer_locator(
+                publish_blocked_output.get("commentary")
+            ) is not None, "Publish blocker dropped its authenticated producer ancestry"
         if rebased:
             env["PUBER_MASTER"] = "d" * 40  # Master advancing after publication is not Monitor drift.
         task.update({"current_nodes":[{"node_id":monitor_node["id"]}],"current_scripts":[{"path": str(work.resolve() / ".kent/scripts/workflow-wait-github-release"),"current_node":{"node_id":monitor_node["id"]}}],"status":{"node_ids":[monitor_node["id"]]}})
         task_path.write_text(json.dumps(task), encoding="utf-8")
         monitor_payload = {"entry_transition": "monitor_release",
             "_kent":{"task_id":task_id,"node_id":monitor_node["id"]}}
-        monitor_payload.update({key: published[key] for key in ("release_version","release_tag","target_commit","pr_url","tag_push_status","release_notes_path","publication_report","publication_report_digest","release_run")})
+        monitor_edge = next(
+            edge for edge in graph["edges"] if edge["key"] == "monitor_release"
+        )
+        monitor_payload.update({
+            item["key"]: published[item["key"]]
+            for item in monitor_edge["parameters"]
+            if item["key"] != "entry_transition"
+        })
         monitor_payload["commentary"] = "private-transport-commentary"
         result = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         assert result.returncode == 0, result.stderr
         output = json.loads(result.stdout)
-        assert output["transition"] == "release_release_published", output
+        assert output["transition"] == native_transition_id(graph, "release_release_published"), output
         assert json.loads(output["publication_report"])["unresolved"] is False
         assert "private-transport-commentary" not in result.stdout + result.stderr
         release_report = json.loads(output["release_report"])
@@ -445,6 +679,13 @@ sys.exit(3)
         assert release_report["checksum"]["checksum_asset_id"] == 2
         assert release_report["checksum"]["apk_checksum_equal"] is True
         assert body_file.read_text(encoding="utf-8").startswith("puber_release_notes_v1")
+
+        direct_api_guard_patch = patch.object(
+            publish_fixture.helper,
+            "github_provider_read_guard",
+            return_value=lambda: None,
+        )
+        direct_api_guard_patch.start()
 
         def rejected(label: str, action, expected_message: str | None = None) -> None:
             try:
@@ -485,7 +726,7 @@ sys.exit(3)
                     env=env,
                 )
                 assert green.returncode == 0, green.stderr
-                assert json.loads(green.stdout)["transition"] == "release_release_published", (
+                assert json.loads(green.stdout)["transition"] == native_transition_id(graph, "release_release_published"), (
                     mode,
                     green.stdout,
                 )
@@ -549,7 +790,7 @@ sys.exit(3)
             os.environ["PUBER_MODE"] = "normal"
             env["PUBER_MODE"] = "normal"
             already_correct = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-            assert already_correct.returncode == 0 and json.loads(already_correct.stdout)["transition"] == "release_release_published"
+            assert already_correct.returncode == 0 and json.loads(already_correct.stdout)["transition"] == native_transition_id(graph, "release_release_published")
             assert not any("release" in line and "edit" in line for line in calls_file.read_text(encoding="utf-8").splitlines())
 
             body_file.write_text("", encoding="utf-8")
@@ -578,13 +819,21 @@ sys.exit(3)
             retry = {"entry_transition": "monitor_needs_user_action",
                 "_kent": dict(monitor_payload["_kent"])}
             retry["commentary"] = "private-retry-commentary"
-            retry.update({key: blocked[key] for key in ("blocker_reason", "workspace_path", "operation_id", "pr_url", "branch_name", "release_version", "release_tag", "target_commit", "tag_push_status", "release_notes_path", "publication_report", "publication_report_digest", "release_run")})
+            retry_edge = next(
+                edge for edge in graph["edges"]
+                if edge["key"] == "monitor_needs_user_action"
+            )
+            retry.update({
+                parameter["key"]: blocked[parameter["key"]]
+                for parameter in retry_edge["parameters"]
+                if parameter["key"] != "entry_transition"
+            })
             calls_file.write_text("", encoding="utf-8")
             os.environ["PUBER_MODE"] = "no_discovery"
             env["PUBER_MODE"] = "no_discovery"
             body_file.write_text((work / published["release_notes_path"]).read_text(encoding="utf-8"), encoding="utf-8")
             retry_result = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(retry), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-            assert retry_result.returncode == 0 and json.loads(retry_result.stdout)["transition"] == "release_release_published"
+            assert retry_result.returncode == 0 and json.loads(retry_result.stdout)["transition"] == native_transition_id(graph, "release_release_published")
             assert "private-retry-commentary" not in retry_result.stdout + retry_result.stderr
             for transport_checkpoint_path in (work / ".kent/runtime").rglob("*.json"):
                 assert "private-transport-commentary" not in transport_checkpoint_path.read_text()
@@ -595,7 +844,7 @@ sys.exit(3)
             env["PUBER_MODE"] = "edit_lost_ack"
             body_file.write_text("", encoding="utf-8")
             lost_ack = subprocess.run([str(work/".kent/scripts/workflow-wait-github-release")], cwd=work, input=json.dumps(monitor_payload), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-            assert lost_ack.returncode == 0 and json.loads(lost_ack.stdout)["transition"] == "release_release_published"
+            assert lost_ack.returncode == 0 and json.loads(lost_ack.stdout)["transition"] == native_transition_id(graph, "release_release_published")
 
             os.environ["PUBER_MODE"] = "normal"
             env["PUBER_MODE"] = "edit_mismatch"
@@ -609,6 +858,80 @@ sys.exit(3)
             assert edit_failure.returncode == 0 and json.loads(edit_failure.stdout)["transition"] == "monitor_needs_user_action"
 
 
+        # Re-run Monitor with the exact incoming Publisher producer footer.
+        # The adversarial calls above intentionally replace commentary to
+        # verify private transport text is not forwarded; that replacement
+        # must not be used to build the subsequent authenticated lifecycle.
+        task.update({
+            "current_nodes": [{"node_id": monitor_node["id"]}],
+            "current_scripts": [{
+                "path": str(work.resolve() / ".kent/scripts/workflow-wait-github-release"),
+                "current_node": {"node_id": monitor_node["id"]},
+            }],
+            "status": {"node_ids": [monitor_node["id"]]},
+        })
+        task_path.write_text(json.dumps(task), encoding="utf-8")
+        authenticated_monitor_payload = dict(monitor_payload)
+        authenticated_monitor_payload["commentary"] = published.get(
+            "commentary",
+            "",
+        )
+        os.environ["PUBER_MODE"] = "normal"
+        env["PUBER_MODE"] = "normal"
+        authenticated_monitor = subprocess.run(
+            [str(work / ".kent/scripts/workflow-wait-github-release")],
+            cwd=work,
+            input=json.dumps(authenticated_monitor_payload),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        assert authenticated_monitor.returncode == 0, authenticated_monitor.stderr
+        output = json.loads(authenticated_monitor.stdout)
+        assert output["transition"] == native_transition_id(
+            graph,
+            "release_release_published",
+        )
+        if prepared:
+            assert producer_locator(output.get("commentary")) is not None, (
+                "Monitor dropped its authenticated incoming producer ancestry"
+            )
+        if publish_blocker_only:
+            env["KENT_STEP_ID"] = str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"puber-monitor-blocker:{task_id}:{work.resolve()}",
+                )
+            )
+            monitor_blocked_payload = dict(authenticated_monitor_payload)
+            monitor_blocked_payload["commentary"] = output["commentary"]
+            monitor_blocked = subprocess.run(
+                [
+                    str(work / ".kent/scripts/workflow-wait-github-release")
+                ],
+                cwd=work,
+                input=json.dumps(monitor_blocked_payload),
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env={**env, "PUBER_MODE": "block"},
+            )
+            assert monitor_blocked.returncode == 0, monitor_blocked.stderr
+            monitor_blocked_output = json.loads(monitor_blocked.stdout)
+            assert monitor_blocked_output["transition"] == native_transition_id(
+                graph,
+                "monitor_needs_user_action",
+            )
+            assert producer_locator(
+                monitor_blocked_output.get("commentary")
+            ) is not None, "Monitor blocker dropped its authenticated producer ancestry"
+            print(
+                "isolated Publish and Monitor blockers retained producer ancestry"
+            )
+            direct_api_guard_patch.stop()
+            return
+
         # Actual Publisher -> Monitor -> Cleanup carrier on the same linked H root.
         cleanup_node = next(node for node in graph["nodes"] if node["key"] == "cleanup")
         task.update({
@@ -621,6 +944,48 @@ sys.exit(3)
         history = [{"session_id":f"history-{i}","status":"idle","root":str(work)} for i in range(5)]
         assert len(history) == 5 and all(row["root"] == str(work) for row in history)
         env["KENT_SESSION_ID"] = owner_id
+        cleanup_agent_owner = {
+            "KENT_SESSION_ID": owner_id,
+            "KENT_STEP_ID": str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"puber-cleanup-agent-fixture:{task_id}:{work.resolve()}",
+                )
+            ),
+        }
+        env.update(cleanup_agent_owner)
+        cleanup_agent_evidence = subprocess.run(
+            [
+                str(work / ".kent/scripts/workflow-evidence-ledger"),
+                "append",
+                "--task",
+                "PUB-99",
+                "--workspace",
+                str(work.resolve()),
+            ],
+            cwd=work,
+            input=json.dumps({
+                "node_key": "cleanup",
+                "evidence_type": "cleanup_observation",
+                "summary": "Cleanup Agent reconciled the completed release reports.",
+                "artifacts": [],
+                "checks": ["release publication and monitor reports reconciled"],
+                "decisions": [],
+                "context": {
+                    "manifest_path": ".kent/context/delivery.md",
+                    "files_read": [],
+                    "model_calls": 0,
+                    "compaction_count": 0,
+                },
+            }),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        assert cleanup_agent_evidence.returncode == 0, (
+            cleanup_agent_evidence.stderr or cleanup_agent_evidence.stdout
+        )
         env["PUBER_MODE"] = "normal"
         body_file.write_text((work / published["release_notes_path"]).read_text())
         primary = (root / "primary").resolve()
@@ -681,9 +1046,45 @@ sys.exit(3)
                     "error": None,
                 }],
             )
-        archived = ci_contract.archive_ci_report(work, "PUB-99", ci_report)
+        with patch.dict(os.environ, archive_owner):
+            archived = ci_contract.archive_ci_report(
+                work.resolve(),
+                "PUB-99",
+                ci_report,
+            )
         cleanup_payload = {"task_id":task_id,"incoming_transition":"release_release_published",
-            "parameters":{key:value for key,value in output.items() if key != "transition"}}
+            "parameters": {
+                key: value
+                for key, value in output.items()
+                if key not in {"transition", "commentary"}
+            }}
+        cleanup_agent_values = {
+            "cleanup_report": "disposable Cleanup Agent producer fixture",
+            "workspace_path": str(work.resolve()),
+            "operation_id": "a" * 64,
+            "branch_name": "release/99.0.0",
+            "pr_base_branch": "master",
+            "pr_url": "https://github.com/rovkinmax/Puber/pull/7",
+            "cleanup_mode": "report_only",
+            "cleanup_session_id": owner_id,
+            "task_short_id": "PUB-99",
+            "publication_report": output["publication_report"],
+            "publication_report_digest": output["publication_report_digest"],
+            "release_report": output["release_report"],
+            "release_report_digest": output["release_report_digest"],
+            "release_notes_path": published["release_notes_path"],
+            "release_notes_digest": output["release_notes_digest"],
+        }
+        cleanup_payload["commentary"] = pack_agent_transition_commentary(
+            work,
+            task_path,
+            graph,
+            env,
+            "cleanup_task_janitor",
+            "PUB-99",
+            cleanup_agent_values,
+            producer_commentary=output.get("commentary"),
+        )
         def blocked_route(label, request):
             def snapshot():
                 files = {str(p.relative_to(work)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (work/".kent/runtime").rglob("*") if p.is_file()}
@@ -705,7 +1106,7 @@ sys.exit(3)
             input=json.dumps(cleanup_payload), text=True, capture_output=True, env=env)
         assert cleanup.returncode == 0, cleanup.stderr
         cleaned = json.loads(cleanup.stdout)
-        assert cleaned["transition"] == "cleanup_task_janitor", cleaned
+        assert cleaned["transition"] == native_transition_id(graph, "cleanup_task_janitor"), cleaned
         assert cleaned["cleanup_session_id"] == owner_id
         print("CURRENT CLEANUP AGENT", owner_id, "current_scripts=[]", "idle_history=5", "binding=H")
         assert task["current_scripts"] == [] and task["current_nodes"][0]["session_id"] == owner_id
@@ -731,30 +1132,78 @@ sys.exit(3)
             assert json.loads(status_path.read_text())["target"]["worktree"] is None
             assert all(row["root"] == str(work) for row in history)  # No bulk leave.
             janitor_node = next(n for n in graph["nodes"] if n["key"] == "task_janitor")
-            task.update(current_nodes=[{"node_id":janitor_node["id"]}],current_scripts=[{"path":str(work/".kent/scripts/workflow-task-janitor"),"current_node":{"node_id":janitor_node["id"]}}],status={"node_ids":[janitor_node["id"]]},live_sessions=[])
+            janitor_script = work / ".kent/scripts/workflow-puber-release-janitor"
+            task.update(current_nodes=[{"node_id":janitor_node["id"]}],
+                current_scripts=[{"path":str(janitor_script),
+                    "current_node":{"node_id":janitor_node["id"]}}],
+                status={"node_ids":[janitor_node["id"]]},live_sessions=[])
             task_path.write_text(json.dumps(task))
-            janitor_input = {key: cleaned[key] for key in ("workspace_path", "branch_name", "pr_url", "cleanup_mode", "cleanup_session_id", "cleanup_report", "task_short_id")}
-            janitor = subprocess.run([str(work / ".kent/scripts/workflow-task-janitor")], cwd=work,
-                input=json.dumps(janitor_input), text=True, capture_output=True, env=env)
+            janitor_input = {"_kent":{"task_id":task_id,"node_id":janitor_node["id"]},
+                "commentary":cleaned["commentary"],
+                **{key:value for key,value in cleaned.items()
+                    if key not in {"transition","commentary"}}}
+            cleanup_janitor_edge = next(edge for edge in graph["edges"]
+                if edge.get("key") == "cleanup_task_janitor")
+            assert {key for key in janitor_input
+                if key not in {"_kent","commentary"}} == {
+                    parameter["key"]
+                    for parameter in cleanup_janitor_edge["parameters"]
+                }
+            origin = sh(["git","remote","get-url","origin"],primary).stdout.strip()
+            sh(["git","config","--add","remote.origin.pushurl",origin],primary)
+            sh(["git","config","--add","remote.origin.pushurl",
+                str(root/"ambiguous-origin.git")],primary)
+            try:
+                janitor_env = {**env,"KENT_STEP_ID":str(uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"puber-janitor-blocked:{task_id}:{work.resolve()}",
+                ))}
+                janitor = subprocess.run([str(janitor_script)], cwd=work,
+                    input=json.dumps(janitor_input), text=True,
+                    capture_output=True, env=janitor_env)
+            finally:
+                subprocess.run(["git","config","--unset-all",
+                    "remote.origin.pushurl"],cwd=primary,text=True,
+                    capture_output=True,check=True)
             assert janitor.returncode == 0, janitor.stderr
             blocked = json.loads(janitor.stdout)
-            assert blocked["transition"] == "task_janitor_blocked", blocked
+            assert blocked["transition"] == native_transition_id(
+                graph, "task_janitor_blocked"), blocked
+            assert blocked["pr_base_branch"] == "master"
             # Native previous_target reuses A and Starter rebinds it to H.
             status = original_status
             status_path.write_text(json.dumps(status))
             task.update(current_nodes=[{"node_id":cleanup_node["id"],"session_id":owner_id,"effective_assignee":"delivery-operator"}],current_scripts=[],status={"node_ids":[cleanup_node["id"]]},live_sessions=[{"session_id":owner_id,"session_name":"Cleanup","node_display_name":"Cleanup"}])
             task_path.write_text(json.dumps(task))
-            janitor_retry = {"task_id":task_id,"incoming_transition":"task_janitor_blocked", "parameters":{
-                "workspace_path":str(work),"operation_id":"a"*64,"branch_name":"release/99.0.0",
-                "cleanup_mode":"report_only","cleanup_report":blocked["cleanup_report"]}}
+            blocked_edge = next(edge for edge in graph["edges"]
+                if edge.get("key") == "task_janitor_blocked")
+            janitor_retry = {"task_id":task_id,
+                "incoming_transition":"task_janitor_blocked",
+                "parameters":{
+                    parameter["key"]:blocked[parameter["key"]]
+                    for parameter in blocked_edge["parameters"]
+                },
+                "commentary":blocked["commentary"]}
+            assert janitor_retry["parameters"]["pr_base_branch"]=="master"
             blocked_route("published retry mode downgrade",{**janitor_retry,"parameters":{**janitor_retry["parameters"],"cleanup_mode":"no_pr"}})
             blocked_route("published retry workspace mismatch",{**janitor_retry,"parameters":{**janitor_retry["parameters"],"workspace_path":str(primary)}})
             blocked_route("published retry branch mismatch",{**janitor_retry,"parameters":{**janitor_retry["parameters"],"branch_name":"release/100.0.0"}})
+            recovery_env = {**env,"KENT_STEP_ID":str(uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"puber-cleanup-retry:{task_id}:{work.resolve()}",
+            ))}
             recovered = subprocess.run([str(work / ".kent/scripts/workflow-release-cleanup")], cwd=work,
-                input=json.dumps(janitor_retry), text=True, capture_output=True, env=env)
+                input=json.dumps(janitor_retry), text=True, capture_output=True, env=recovery_env)
             assert recovered.returncode == 0, recovered.stderr
             recovery = json.loads(recovered.stdout)
-            assert recovery["transition"] == "cleanup_task_janitor", recovery
+            assert recovery["transition"] == native_transition_id(graph, "cleanup_task_janitor"), recovery
+            assert recovery["pr_base_branch"]=="master"
+            assert recovery["cleanup_mode"]=="report_only"
+            assert {key for key in recovery
+                if key not in {"transition","commentary"}} == {
+                    parameter["key"]
+                    for parameter in cleanup_janitor_edge["parameters"]
+                }
             assert recovery["cleanup_report"].splitlines()[0] == cleaned["cleanup_report"].splitlines()[0]
             assert recovery["publication_report_digest"] == cleaned["publication_report_digest"]
             second_leave = subprocess.run([str(native),"leave","--session",owner_id],cwd=work,text=True,capture_output=True,env=env)
@@ -768,6 +1217,7 @@ sys.exit(3)
         assert task["execution_target"]["commit_oid"] == base_oid
         assert sh(["git", "rev-parse", "HEAD"], work).stdout.strip() == head
         print("Publisher -> Monitor -> Cleanup on H, actual target T:", head, target, "rebased=", rebased)
+        direct_api_guard_patch.stop()
 
 if __name__ == "__main__":
     test_monitor(False)
@@ -775,5 +1225,14 @@ if __name__ == "__main__":
     os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(publish_fixture.KIT)
     reset_kit_imports()
     publish_fixture.test_clean_master_to_exactly_one_release_pr(lambda prepared: test_monitor(True, prepared))
+    os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(publish_fixture.KIT)
+    reset_kit_imports()
+    publish_fixture.test_clean_master_to_exactly_one_release_pr(
+        lambda prepared: test_monitor(
+            True,
+            prepared,
+            publish_blocker_only=True,
+        )
+    )
 
 print("workflow-wait-github-release: passed scenarios=happy,all_jobs_extra_renamed_and_skipped,aggregate_failure,incomplete_and_query_error,pinned_switch_id_attempt_head_sha_head_branch,no_discovery_on_blocker,run_job_api_rows,release_asset_api_matrix,remote_tag,body_correct,edit_lost_ack,edit_failure,post_edit_readback")

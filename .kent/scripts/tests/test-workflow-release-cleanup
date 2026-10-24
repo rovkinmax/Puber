@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """R2 real-Agent/outcome guards; only disposable external observations are fake."""
 from __future__ import annotations
-import copy, hashlib, importlib.util, json, os, shutil, subprocess, sys, tempfile
+import copy, hashlib, importlib.util, io, json, os, shutil, subprocess, sys, tempfile, uuid
 from pathlib import Path
 from importlib.machinery import SourceFileLoader
 from unittest.mock import patch
@@ -12,7 +12,10 @@ KIT=Path(os.environ['PUBER_STAGE_A_KIT_ROOT']).resolve()
 os.environ['KENT_ENGINEERING_KIT_ROOT']=str(KIT)
 A='5db1f81c-55ed-45e8-aa18-602e2b82591b'
 B='07b2d24a-81c8-4b2c-9153-c049226b8938'
+PUBLISH_SESSION='c435a38c-ade6-4fcf-85e6-08ce1f07d55e'
+PUBLISH_STEP='b9508d17-c393-4e0c-849a-85f764457c78'
 TASK='task-12345678-1234-4234-8234-123456789abc'
+NOT_APPLICABLE_BRANCH='not-applicable'
 
 def load(path,name):
     spec=importlib.util.spec_from_loader(name,SourceFileLoader(name,str(path)))
@@ -43,6 +46,116 @@ def prepared_failure(f,label,mode,expected_comments):
 def sh(argv,cwd,**kw):
     return subprocess.run(argv,cwd=cwd,text=True,capture_output=True,check=True,**kw)
 
+def add_script_ci_archive(f):
+    runtime=load(f.work/'.kent/scripts/workflow_runtime_contracts.py','cleanup_script_ci_runtime')
+    contract=runtime.validate_ci_contract({
+        'schema':'github-ci-contract-v1',
+        'repository':'rovkinmax/Puber',
+        'pull_number':7,
+        'head_oid':'a'*40,
+        'base_oid':'b'*40,
+        'require_ci':True,
+    })
+    classification=runtime.classify_github_checks([{
+        'workflow_name':'PR Checks',
+        'check_name':'Build',
+        'event':'pull_request',
+        'bucket':'pass',
+        'state':'SUCCESS',
+        'link':'https://github.com/rovkinmax/Puber/actions/runs/1',
+    }],require_ci=True)
+    report=runtime.build_dynamic_ci_report(contract=contract,attempts=[{
+        'sequence':1,
+        'head_oid':contract['head_oid'],
+        'base_oid':contract['base_oid'],
+        'retry':None,
+        'checks':classification['checks'],
+        'check_count':classification['check_count'],
+        'checks_sha256':classification['checks_sha256'],
+        'reason':classification['state'],
+        'watcher_exit_code':0,
+        'error':None,
+    }])
+    report_raw=runtime.canonical_bytes(report)
+    report_sha256=hashlib.sha256(report_raw).hexdigest()
+    task_dir=f.work/'.kent/runtime/PUB-99'
+    ledger=task_dir/'evidence-ledger.jsonl'
+    records=[json.loads(line) for line in ledger.read_text().splitlines()]
+    identity={
+        'task_id':TASK,
+        'task_short_id':'PUB-99',
+        'project_id':f.helper.PROJECT_ID,
+        'workspace_path':str(f.work),
+        'invocation_kind':'script',
+        'node_id':f.node,
+        'transition_branch_key':None,
+    }
+    archive=runtime.build_script_ci_archive_record(
+        task_short_id='PUB-99',
+        workspace_path=str(f.work),
+        script_identity=identity,
+        report_sha256=report_sha256,
+        sequence=len(records)+1,
+        previous_hash=records[-1]['event_hash'],
+    )
+    artifact=task_dir/f'ci-report-{report_sha256}.json'
+    artifact.write_bytes(report_raw)
+    artifact.chmod(0o600)
+    with ledger.open('ab') as stream:
+        stream.write(runtime.canonical_bytes(archive)+b'\n')
+    sh([str(f.work/'.kent/scripts/workflow-evidence-ledger'),'append',
+        '--task','PUB-99','--workspace',str(f.work)],f.work,input=json.dumps({
+            'node_key':'cleanup',
+            'evidence_type':'cleanup_observation',
+            'summary':'Ordinary Agent evidence follows the typed Script CI archive.',
+            'artifacts':[],
+            'checks':[],
+            'decisions':[],
+            'context':{'manifest_path':'.kent/context/delivery.md','files_read':[],
+                'model_calls':0,'compaction_count':0},
+        }),env={**f.env,'KENT_SESSION_ID':PUBLISH_SESSION,
+            'KENT_STEP_ID':PUBLISH_STEP})
+    return runtime,archive,artifact
+
+def native_transition_id(graph, edge_key):
+    edges=[edge for edge in graph['edges'] if edge.get('key')==edge_key]
+    assert len(edges)==1,edge_key
+    groups=[group for group in graph['transition_groups']
+        if group.get('id')==edges[0].get('transition_group_id')]
+    assert len(groups)==1,edge_key
+    return groups[0]['transition_id']
+
+def reconstruct_script_producer(root,helper,env,metadata,output,source_commentary):
+    previous_modules={name:module for name,module in sys.modules.items()
+        if name=='workflowkit' or name.startswith('workflowkit.')}
+    previous_path=list(sys.path)
+    for name in previous_modules:
+        del sys.modules[name]
+    try:
+        with patch.dict(os.environ,env):
+            delivery=helper._qualified_delivery_module(
+                root,
+                required=('producer_locator','reconstruct_producer',
+                    'observe_script_identity','packet_decode'),
+            )
+            locator=delivery.producer_locator(output.get('commentary'))
+            assert locator
+            identity=delivery.observe_script_identity(
+                root,None,metadata,native_read=helper._provider_native_read)
+            producer=delivery.reconstruct_producer(
+                root,locator,identity=identity)
+            source_locator=delivery.producer_locator(source_commentary)
+            refs=delivery.packet_decode(
+                producer['binding']['producer_refs'].encode('utf-8'))['refs']
+            assert refs==[source_locator],(refs,source_locator)
+            return producer
+    finally:
+        sys.path[:]=previous_path
+        for name in list(sys.modules):
+            if name=='workflowkit' or name.startswith('workflowkit.'):
+                del sys.modules[name]
+        sys.modules.update(previous_modules)
+
 class Fixture:
     def __init__(self,base,closed=False,checkpoint=True):
         self.base=base
@@ -52,7 +165,7 @@ class Fixture:
         sh(['git','worktree','add','--quiet','-b','release/99.0.0',str(self.work),'HEAD'],primary)
         self.primary=primary.resolve(); self.work=self.work.resolve(); self.k=k; self.h=h
         self.helper=load(self.work/'.kent/scripts/workflow-puber-release-intent','agent_cleanup_helper')
-        self.graph=json.loads((self.work/'.kent/workflows/puber-release-kit-5af.json').read_text())
+        self.graph=json.loads((self.work/'.kent/workflows/puber-release-current.json').read_text())
         self.node=next(n['id'] for n in self.graph['nodes'] if n['key']=='cleanup')
         self.cp=pub.fixture_checkpoint(self.work,k,h,TASK)
         if checkpoint:self.helper.write_profile_checkpoint(self.work,'PUB-99',self.cp)
@@ -60,9 +173,11 @@ class Fixture:
             'current_nodes':[{'node_id':self.node,'session_id':A,'effective_assignee':'delivery-operator'}],
             'current_scripts':[],'execution_target':{'commit_oid':k if checkpoint else h},'label_ids':[],
             'live_sessions':[{'session_id':A,'session_name':'Cleanup','node_display_name':'Cleanup'}],
-            'project':{},'retained_session_count':6,'source_workspace':{},'status':{'node_ids':[self.node]},
+            'project':{'default_workspace_id':'workspace-fixture'},'retained_session_count':6,
+            'source_workspace':{'is_primary':True,'workspace_id':'workspace-fixture','root_path':str(self.primary)},
+            'status':{'node_ids':[self.node]},
             'summary':{'id':TASK,'short_id':'PUB-99','project_id':self.helper.PROJECT_ID,'workflow_id':self.helper.WORKFLOW_ID},
-            'workflow':{'workflow_id':self.helper.WORKFLOW_ID,'version':95,'name':'Puber Release'},'worktree_path':str(self.work)}
+            'workflow':{'workflow_id':self.helper.WORKFLOW_ID,'version':97,'name':'Puber Release'},'worktree_path':str(self.work)}
         self.task_path=base/'task.json';self.task_path.write_text(json.dumps(self.task))
         self.comments_path=base/'comments.json';self.comments_path.write_text('[]')
         self.world={'prs':[],'releases':[],'runs':[],'artifacts':[],'remote_tag':None,'visibility':True,'error':None,
@@ -77,7 +192,15 @@ args=sys.argv[1:]
 task=Path('''+repr(str(self.task_path))+''')
 comments=Path('''+repr(str(self.comments_path))+''')
 mode=os.environ.get('PUBER_FIXTURE_KENT_MODE','')
-if args[:2] == ['task','show']:
+if args[:1] == ['project']:
+    print('''+repr(self.helper.PROJECT_ID)+''')
+elif args[:3] == ['workflow','graph','inspect']:
+    graph=Path('''+repr(str(self.work/'.kent/workflows/puber-release-current.json'))+''')
+    value=json.loads(graph.read_text())
+    print(json.dumps({'workflow_id':value['workflow']['id'],
+        'expected_version':value['workflow']['version'],
+        'graph':{key:value[key] for key in ('nodes','transition_groups','edges')}}))
+elif args[:2] == ['task','show']:
     print(task.read_text())
 elif args[:2] == ['task','search']:
     if mode == 'comment_search_error':
@@ -151,14 +274,72 @@ page=int(q['page'][0]);assert q['per_page']==['100'];current=rows[(page-1)*100:p
 if w.get('error')=='truncated' and key:emit({'total_count':len(rows)+1,key:current})
 emit({key:current,'total_count':len(rows)} if key else current,next_page=len(rows)>page*100)
 ''');self.gh.chmod(0o755)
-        self.env={**os.environ,'HOME':str(base/'home'),'KENT_SESSION_ID':A,'PUBER_KENT_BIN':str(self.kent),'PUBER_GH_BIN':str(self.gh),'PUBER_KENT_WORKTREE_BIN':str(self.status),'KENT_WORKTREE_WRAPPER':str(self.status),'KENT_ENGINEERING_KIT_ROOT':str(KIT),'PYTHONDONTWRITEBYTECODE':'1'}
+        home=base/'home';kit_bin=home/'.kent/bin';kit_bin.mkdir(parents=True)
+        (kit_bin/'kent-prepare-github-ci').symlink_to(KIT/'scripts/prepare-github-ci')
+        self.env={**os.environ,'HOME':str(home),'PATH':str(base)+os.pathsep+os.environ.get('PATH',''),
+            'KENT_SESSION_ID':A,'KENT_STEP_ID':'61ca2493-4ea9-4a89-8c24-7c2054a751b2',
+            'PUBER_KENT_BIN':str(self.kent),'PUBER_GH_BIN':str(self.gh),
+            'PUBER_KENT_WORKTREE_BIN':str(self.status),'KENT_WORKTREE_WRAPPER':str(self.status),
+            'KENT_ENGINEERING_KIT_ROOT':str(KIT),'PYTHONDONTWRITEBYTECODE':'1'}
         sh([str(self.work/'.kent/scripts/workflow-evidence-ledger'),'append','--task','PUB-99','--workspace',str(self.work)],self.work,input=json.dumps({'node_key':'cleanup','evidence_type':'cleanup_observation','summary':'Current Agent ordinary evidence, not cancellation authority.','artifacts':[],'checks':[],'decisions':[],'context':{'manifest_path':'.kent/context/delivery.md','files_read':[],'model_calls':0,'compaction_count':0}}),env=self.env)
         self.request={'task_id':TASK,'incoming_transition':'merge_watch_close_without_merge' if closed else 'release_cancel_cleanup','parameters':self.params(closed)}
+        self.request['commentary']=self.native_commentary()
+    def native_commentary(self):
+        """Create the incoming footer through the exact K native pack API."""
+        checkpoint=load(self.work/'.kent/scripts/workflow-checkpoint','cleanup_native_pack_adapter')
+        nodes={node['key']:node for node in self.graph['nodes']}
+        source_node=nodes['waiting_pr']
+        detail=copy.deepcopy(self.task)
+        detail['current_nodes']=[{'node_id':source_node['id'],'session_id':B,
+            'effective_assignee':'delivery-operator'}]
+        detail['live_sessions']=[{'session_id':B,'session_name':'Waiting PR',
+            'node_display_name':'Waiting PR'}]
+        detail['status']={'node_ids':[source_node['id']]}
+        graph={'workflow_id':self.helper.WORKFLOW_ID,'expected_version':97,
+            'graph':{key:self.graph[key] for key in ('nodes','transition_groups','edges')}}
+        source_step='07b2d24a-81c8-4b2c-9153-c049226b8939'
+        source_env={**self.env,'KENT_SESSION_ID':B,'KENT_STEP_ID':source_step}
+        self.task_path.write_text(json.dumps(detail))
+        kit_modules={name:module for name,module in sys.modules.items()
+            if name=='workflowkit' or name.startswith('workflowkit.')}
+        original_path=list(sys.path)
+        for name in kit_modules:
+            del sys.modules[name]
+        try:
+            with patch.dict(os.environ,source_env):
+                delivery=checkpoint.delivery_module()
+                identity=checkpoint.current_delivery_identity(self.work,'PUB-99')
+                transition=native_transition_id(self.graph,'release_cancel_cleanup')
+                contract=delivery.transition_contract_reference(
+                    identity,detail,graph,transition)
+                source_values=self.params(False)
+                # The shared Agent packer requires a non-empty closed carrier;
+                # the current Cleanup request separately observes an absent PR
+                # as an empty URL.
+                source_values['pr_url']=NOT_APPLICABLE_BRANCH
+                locator,packet_bytes=delivery.pack_delivery(
+                    self.work,
+                    {'schema':'workflow-pack-delivery-v1','transition':transition,
+                     'values':source_values,'transition_contract_ref':contract,
+                     'delivery_mode':'preserve','producer_refs':[]},
+                    identity=identity,task_detail=detail,graph=graph)
+                packet=delivery.packet_decode(packet_bytes)
+                assert packet['transition']==transition
+                assert delivery.producer_locator(packet['commentary'])==locator
+                return packet['commentary']
+        finally:
+            self.task_path.write_text(json.dumps(self.task))
+            sys.path[:]=original_path
+            for name in list(sys.modules):
+                if name=='workflowkit' or name.startswith('workflowkit.'):
+                    del sys.modules[name]
+            sys.modules.update(kit_modules)
     def pr(self,**extra):
         return {'id':7,'number':7,'html_url':'https://github.com/rovkinmax/Puber/pull/7','state':'closed','merged':False,'merged_at':None,'merge_commit_sha':None,
             'head':{'ref':'release/99.0.0','sha':self.h,'repo':{'full_name':'rovkinmax/Puber'}},'base':{'ref':'master','sha':self.k,'repo':{'full_name':'rovkinmax/Puber'}},**extra}
     def params(self,closed):
-        common={'workspace_path':str(self.work),'branch_name':'release/99.0.0','pr_url':'https://github.com/rovkinmax/Puber/pull/7' if closed else ''}
+        common={'workspace_path':str(self.work),'operation_id':'a'*64,'branch_name':'release/99.0.0','pr_url':'https://github.com/rovkinmax/Puber/pull/7' if closed else '',
+            'pr_base_branch':'master' if closed else NOT_APPLICABLE_BRANCH}
         return {**common,**({'operation_id':'a'*64,'merge_strategy':'rebase','pr_head_oid':self.h,'pr_base_oid':self.k} if closed else {'cleanup_reason':'No matching PR and no current publication evidence'})}
     def save(self):self.world_path.write_text(json.dumps(self.world))
     def snapshot(self):
@@ -171,15 +352,328 @@ emit({key:current,'total_count':len(rows)} if key else current,next_page=len(row
         return subprocess.run([str(self.work/'.kent/scripts/workflow-release-cleanup')],cwd=self.work,input=json.dumps(request or self.request),text=True,capture_output=True,env=env or self.env)
     def blocked(self,label,request=None,env=None):
         before=self.snapshot();r=self.invoke(request,env)
-        assert r.returncode==2 and not r.stdout,(label,r.stdout,r.stderr)
-        assert self.snapshot()==before,(label,'seal/checkpoint/evidence changed')
+        assert r.returncode==2 and not r.stdout,(label,r.stdout,r.stderr[-2400:])
+        after=self.snapshot()
+        assert after==before,(label,'seal/checkpoint/evidence changed',
+            r.stderr,
+            {path:(before.get(path),after.get(path))
+                for path in sorted(set(before)|set(after))
+                if before.get(path)!=after.get(path)})
         print('zero-effect guard:',label)
+    def invoke_puber_janitor(self,cleanup_output,label,*,ambiguous_origin=True):
+        janitor_node=next(n for n in self.graph['nodes'] if n['key']=='task_janitor')
+        script=self.work/'.kent/scripts/workflow-puber-release-janitor'
+        task=copy.deepcopy(self.task)
+        task.update(current_nodes=[],current_scripts=[{'path':str(script),
+            'current_node':{'node_id':janitor_node['id']}}],
+            status={'node_ids':[janitor_node['id']]},live_sessions=[])
+        self.task_path.write_text(json.dumps(task))
+        input_fields={key:value for key,value in cleanup_output.items()
+            if key not in {'transition','commentary'}}
+        cleanup_edge=next(e for e in self.graph['edges']
+            if e.get('key')=='cleanup_task_janitor')
+        assert set(input_fields)=={p['key'] for p in cleanup_edge['parameters']}
+        payload={'_kent':{'task_id':TASK,'node_id':janitor_node['id']},
+            'commentary':cleanup_output['commentary'],**input_fields}
+        env={**self.env,'KENT_STEP_ID':str(uuid.uuid5(
+            uuid.NAMESPACE_URL,f'{label}:{TASK}:{self.work}'))}
+        origin=sh(['git','remote','get-url','origin'],self.primary).stdout.strip()
+        if ambiguous_origin:
+            sh(['git','config','--add','remote.origin.pushurl',origin],self.primary)
+            sh(['git','config','--add','remote.origin.pushurl',
+                str(self.base/'ambiguous-origin.git')],self.primary)
+        try:
+            result=subprocess.run([str(script)],cwd=self.work,
+                input=json.dumps(payload),text=True,capture_output=True,env=env)
+            assert result.returncode==0,result.stderr
+            output=json.loads(result.stdout)
+            expected_route=('task_janitor_blocked' if ambiguous_origin
+                else 'task_janitor_preserved')
+            assert output['transition']==native_transition_id(
+                self.graph,expected_route),output
+            assert output['pr_base_branch']=='master'
+            producer=reconstruct_script_producer(
+                self.work,self.helper,env,payload['_kent'],output,
+                cleanup_output['commentary'])
+            assert producer['producer_kind']=='puber-release-janitor'
+            assert producer['identity']['node_id']==janitor_node['id']
+            assert {key:value for key,value in producer['inputs'].items()
+                if key!='commentary'}==input_fields
+            assert producer['result']['transition']==native_transition_id(
+                self.graph,expected_route)
+            assert producer['inputs']['pr_base_branch']=='master'
+            assert producer['result']['pr_base_branch']=='master'
+            assert producer['result']['cleanup_report']==output['cleanup_report']
+            return output,producer
+        finally:
+            if ambiguous_origin:
+                subprocess.run(['git','config','--unset-all',
+                    'remote.origin.pushurl'],cwd=self.primary,
+                    text=True,capture_output=True,check=True)
+            self.task_path.write_text(json.dumps(self.task))
+    def inspect_shared_janitor_payload(self,cleanup_output,label):
+        janitor_node=next(n for n in self.graph['nodes']
+            if n['key']=='task_janitor')
+        script=self.work/'.kent/scripts/workflow-puber-release-janitor'
+        task=copy.deepcopy(self.task)
+        task.update(current_nodes=[],current_scripts=[{'path':str(script),
+            'current_node':{'node_id':janitor_node['id']}}],
+            status={'node_ids':[janitor_node['id']]},live_sessions=[])
+        self.task_path.write_text(json.dumps(task))
+        input_fields={key:value for key,value in cleanup_output.items()
+            if key not in {'transition','commentary'}}
+        payload={'_kent':{'task_id':TASK,'node_id':janitor_node['id']},
+            'commentary':'test-only unannotated shared-call probe',
+            **input_fields}
+        observed=[]
+        class SharedJanitorProbe:
+            complete=None
+            @staticmethod
+            def format_cleanup_report(original,report,*,runtime=None):
+                return report
+            def main(self):
+                observed.append(json.load(sys.stdin))
+                self.complete(
+                    'task_janitor_done',
+                    'Janitor preserved the fixture because no deletion was attempted.',
+                )
+                return 0
+        class CapturedStdout:
+            def __init__(self):
+                self.buffer=io.BytesIO()
+            def write(self,value):
+                self.buffer.write(value.encode('utf-8'))
+                return len(value)
+            def flush(self):
+                pass
+        env={**self.env,'KENT_STEP_ID':str(uuid.uuid5(
+            uuid.NAMESPACE_URL,f'{label}:{TASK}:{self.work}'))}
+        module=load(script,f'janitor_probe_{label.replace("-","_")}')
+        output_stream=CapturedStdout()
+        try:
+            with patch.dict(os.environ,env), patch.object(
+                module.helper,'read_zero_argument',return_value=payload
+            ), patch.object(
+                module,'_load_janitor',return_value=SharedJanitorProbe()
+            ), patch.object(sys,'stdout',output_stream):
+                assert module.main()==0
+            assert len(observed)==1
+            output=json.loads(output_stream.buffer.getvalue())
+            assert observed[0]['pr_base_branch']=='not-applicable'
+            assert input_fields['pr_base_branch']=='master'
+            assert output['pr_base_branch']=='master'
+            return observed[0],output
+        finally:
+            self.task_path.write_text(json.dumps(self.task))
+    def retry_cleanup_after_janitor(self,janitor_output,label):
+        edge=next(e for e in self.graph['edges']
+            if e.get('key')=='task_janitor_blocked')
+        parameters={p['key']:janitor_output[p['key']]
+            for p in edge['parameters']}
+        request={'task_id':TASK,'incoming_transition':'task_janitor_blocked',
+            'parameters':parameters,'commentary':janitor_output['commentary']}
+        env={**self.env,'KENT_STEP_ID':str(uuid.uuid5(
+            uuid.NAMESPACE_URL,f'{label}:{TASK}:{self.work}'))}
+        result=self.invoke(request,env)
+        assert result.returncode==0,result.stderr
+        output=json.loads(result.stdout)
+        cleanup_edge=next(e for e in self.graph['edges']
+            if e.get('key')=='cleanup_task_janitor')
+        assert output['transition']==native_transition_id(
+            self.graph,'cleanup_task_janitor'),output
+        assert {key for key in output if key not in {'transition','commentary'}}=={
+            p['key'] for p in cleanup_edge['parameters']}
+        assert output['pr_base_branch']=='master'
+        assert output['cleanup_mode']=='report_only'
+        return output
     def complete(self):
         before=self.task['execution_target']['commit_oid'];r=self.invoke();assert r.returncode==0,r.stderr
-        value=json.loads(r.stdout);assert value['transition']=='cleanup_task_janitor' and value['cleanup_session_id']==A
+        value=json.loads(r.stdout);assert value['transition']==native_transition_id(self.graph,'cleanup_task_janitor') and value['cleanup_session_id']==A
         assert not (self.work/'.kent/runtime/PUB-99/release-profile-checkpoint.json').exists()
         assert json.loads(self.task_path.read_text())['execution_target']['commit_oid']==before
         return value
+
+def verify_janitor_marker_formatting(f):
+    cleanup=f.complete()
+    script=f.work/'.kent/scripts/workflow-puber-release-janitor'
+    module=load(script,'janitor_marker_formatting')
+    module._INPUT_PAYLOAD={key:value for key,value in cleanup.items()
+        if key not in {'transition','commentary'}}
+    module._PRODUCER_REFS=[]
+    original=cleanup['cleanup_report']
+    raw_report=original+'\nJanitor intentionally preserved the fixture.'
+    shared=module._load_janitor()
+    module._SHARED_JANITOR=shared
+    shared._ORIGINAL_CLEANUP_REPORT=original
+    shared._CLEANUP_REPORT_RUNTIME=shared.runtime_contracts()
+    module._OUTPUT_TEMPLATES=module._prepare_output_templates()
+    output_stream=io.StringIO()
+    with patch.object(sys,'stdout',output_stream):
+        module._complete('task_janitor_done',raw_report)
+    output=json.loads(output_stream.getvalue())
+    formatted=shared.format_cleanup_report(
+        original,raw_report,runtime=shared._CLEANUP_REPORT_RUNTIME)
+    assert output['cleanup_report']==formatted
+    assert output['cleanup_report'].splitlines()[-1].startswith(
+        'TERMINAL_EVIDENCE_V1 ')
+    assert sum(line.startswith('TERMINAL_EVIDENCE_V1 ')
+        for line in output['cleanup_report'].splitlines())==1
+    assert shared._CLEANUP_REPORT_RUNTIME.validate_cleanup_report(
+        output['cleanup_report'])
+
+def _janitor_callback_fixture(f,cleanup,name):
+    script=f.work/'.kent/scripts/workflow-puber-release-janitor'
+    module=load(script,name)
+    module._INPUT_PAYLOAD={key:value for key,value in cleanup.items()
+        if key not in {'transition','commentary'}}
+    module._INPUT_PAYLOAD['commentary']='Incoming cleanup commentary.'
+    module._PRODUCER_REFS=[]
+    module._SHARED_JANITOR=module._load_janitor()
+    module._SHARED_JANITOR._ORIGINAL_CLEANUP_REPORT=cleanup['cleanup_report']
+    module._SHARED_JANITOR._CLEANUP_REPORT_RUNTIME=(
+        module._SHARED_JANITOR.runtime_contracts())
+    module._OUTPUT_TEMPLATES=module._prepare_output_templates()
+    return module,module._SHARED_JANITOR
+
+def _capture_janitor_callback(module,transition,report):
+    module._EMITTED=False
+    stream=io.StringIO()
+    with patch.object(sys,'stdout',stream):
+        module._complete(transition,report)
+    return json.loads(stream.getvalue())
+
+def verify_janitor_formatter_variants(f):
+    cleanup=f.complete()
+    module,shared=_janitor_callback_fixture(
+        f,cleanup,'janitor_formatter_variants')
+    valid=cleanup['cleanup_report']
+    cases=[
+        ('markerless','Original markerless report',
+            'Original markerless report\nJanitor intentionally preserved fixture.',
+            shared._CLEANUP_REPORT_RUNTIME),
+        ('invalid','Original report\nTERMINAL_EVIDENCE_V1 invalid',
+            'Original report\nTERMINAL_EVIDENCE_V1 invalid\nJanitor intentionally preserved fixture.',
+            shared._CLEANUP_REPORT_RUNTIME),
+        ('runtime unavailable',valid,
+            valid+'\nJanitor intentionally preserved fixture.',None),
+    ]
+    for label,original,raw,runtime in cases:
+        shared._ORIGINAL_CLEANUP_REPORT=original
+        shared._CLEANUP_REPORT_RUNTIME=runtime
+        module._INPUT_PAYLOAD['cleanup_report']=original
+        expected=shared.format_cleanup_report(original,raw,runtime=runtime)
+        output=_capture_janitor_callback(
+            module,'task_janitor_done',raw)
+        assert output['cleanup_report']==expected,label
+        if label=='markerless':
+            assert 'TERMINAL_EVIDENCE_V1 ' not in output['cleanup_report']
+        elif label=='invalid':
+            try: runtime.validate_cleanup_report(output['cleanup_report'])
+            except Exception: pass
+            else: raise AssertionError('invalid evidence became valid')
+        elif label=='runtime unavailable':
+            assert output['cleanup_report']==valid
+    shared._ORIGINAL_CLEANUP_REPORT=(
+        'Historical Janitor removed managed worktree /old-root.')
+    module._INPUT_PAYLOAD['cleanup_report']=shared._ORIGINAL_CLEANUP_REPORT
+    assert module._target_and_transition(
+        'task_janitor_done',
+        shared._ORIGINAL_CLEANUP_REPORT
+        +'\nJanitor intentionally preserved current worktree.',
+    )==('task_janitor_preserved','done')
+    shared._ORIGINAL_CLEANUP_REPORT=(
+        'Historical Janitor intentionally preserved /old-root.')
+    module._INPUT_PAYLOAD['cleanup_report']=shared._ORIGINAL_CLEANUP_REPORT
+    assert module._target_and_transition(
+        'task_janitor_done',
+        shared._ORIGINAL_CLEANUP_REPORT
+        +'\nJanitor removed managed worktree /current-root.',
+    )==('task_janitor_done','done')
+    print('Janitor canonical marker variants and current-delta disposition: passed')
+
+def verify_janitor_post_delete_output(f):
+    cleanup=f.complete()
+    module,shared=_janitor_callback_fixture(
+        f,cleanup,'janitor_post_delete_output')
+    original=cleanup['cleanup_report']
+    raw=original+f'\nJanitor removed managed worktree {f.work}.'
+    moved=f.base/'removed-task-root'
+    f.work.rename(moved)
+    def unchanged(*args,**kwargs):
+        raise AssertionError('post-delete callback attempted a root read/render')
+    with patch.object(module.helper,'render_exact',side_effect=unchanged), \
+         patch.object(module.helper,'capture_script_output',side_effect=unchanged):
+        output=_capture_janitor_callback(
+            module,'task_janitor_done',raw)
+    assert output['transition']==native_transition_id(
+        f.graph,'task_janitor_done')
+    assert output['cleanup_report']==shared.format_cleanup_report(
+        original,raw,runtime=shared._CLEANUP_REPORT_RUNTIME)
+    assert shared._CLEANUP_REPORT_RUNTIME.validate_cleanup_report(
+        output['cleanup_report'])
+    assert output['commentary']=='Incoming cleanup commentary.'
+    assert 'KENT_PACKET_SOURCE_V1' not in output['commentary']
+    assert {key:value for key,value in output.items()
+        if key not in {'transition','cleanup_report','commentary'}}=={
+            key:module._INPUT_PAYLOAD[key] for key in module.OUTPUT_FIELDS
+            if key!='cleanup_report'}
+    blocked_raw=original+'\nJanitor could not confirm safe completion.'
+    blocked=_capture_janitor_callback(
+        module,'task_janitor_blocked',blocked_raw)
+    assert blocked['transition']==native_transition_id(
+        f.graph,'task_janitor_blocked')
+    assert blocked['cleanup_report']==shared.format_cleanup_report(
+        original,blocked_raw,runtime=shared._CLEANUP_REPORT_RUNTIME)
+    assert shared._CLEANUP_REPORT_RUNTIME.validate_cleanup_report(
+        blocked['cleanup_report'])
+    assert blocked['commentary']=='Incoming cleanup commentary.'
+    assert {key:value for key,value in blocked.items()
+        if key not in {'transition','cleanup_report','commentary'}}=={
+            key:module._INPUT_PAYLOAD[key] for key in module.OUTPUT_FIELDS
+            if key!='cleanup_report'}
+    print('cached exact Janitor completion after root removal, without new producer: passed')
+
+def verify_janitor_post_effect_failure(f):
+    cleanup=f.complete()
+    script=f.work/'.kent/scripts/workflow-puber-release-janitor'
+    module=load(script,'janitor_post_effect_failure')
+    janitor_node=next(n for n in f.graph['nodes'] if n['key']=='task_janitor')
+    task=copy.deepcopy(f.task)
+    task.update(current_nodes=[],current_scripts=[{'path':str(script),
+        'current_node':{'node_id':janitor_node['id']}}],
+        status={'node_ids':[janitor_node['id']]},live_sessions=[])
+    f.task_path.write_text(json.dumps(task))
+    fields={key:value for key,value in cleanup.items()
+        if key not in {'transition','commentary'}}
+    payload={'_kent':{'task_id':TASK,'node_id':janitor_node['id']},
+        'commentary':cleanup['commentary'],**fields}
+    moved=f.base/'removed-before-error'
+    class FailingJanitor:
+        @staticmethod
+        def prepare_provider_guard():
+            return None
+        @staticmethod
+        def format_cleanup_report(original,report,*,runtime=None):
+            return report
+        def main(self):
+            f.work.rename(moved)
+            raise RuntimeError('simulated post-effect Janitor failure')
+    output=io.StringIO()
+    error_output=io.StringIO()
+    env={**f.env,'KENT_STEP_ID':str(uuid.uuid5(
+        uuid.NAMESPACE_URL,f'post-effect-failure:{TASK}:{f.work}'))}
+    with patch.dict(os.environ,env), \
+         patch.object(module.helper,'read_zero_argument',return_value=payload), \
+         patch.object(module,'_load_janitor',return_value=FailingJanitor()), \
+         patch.object(sys,'stdout',output), \
+         patch.object(sys,'stderr',error_output):
+        assert module.main()==2
+    failure=json.loads(error_output.getvalue())
+    assert output.getvalue()==''
+    assert failure['effect_status']=='unknown'
+    assert 'destructive_action' not in failure
+    assert moved.is_dir() and not f.work.exists()
+    print('post-effect Janitor failure reports unknown effect, never no-effect/done: passed')
 
 def retention_path(f):
     return f.work/'build/kent-workflow/PUB-99/release-cleanup-retention.json'
@@ -200,6 +694,19 @@ def prepared_failure(f,label,mode,expected_comments):
     assert all(row.get('record_kind')!='terminal_evidence_seal_v1'
         for row in map(json.loads,ledger_before.splitlines()))
     print('zero-effect guard:',label)
+
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve(),closed=True)
+    verify_janitor_marker_formatting(f)
+    verify_janitor_formatter_variants(f)
+
+with tempfile.TemporaryDirectory() as d:
+    verify_janitor_post_delete_output(
+        Fixture(Path(d).resolve(),closed=True))
+
+with tempfile.TemporaryDirectory() as d:
+    verify_janitor_post_effect_failure(
+        Fixture(Path(d).resolve(),closed=True))
 
 # Every negative uses the correct current A unless testing caller identity itself.
 with tempfile.TemporaryDirectory() as d:
@@ -244,7 +751,10 @@ with tempfile.TemporaryDirectory() as d:
     ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl';ledger_bytes=ledger.read_bytes()
     entry=json.loads(ledger_bytes.splitlines()[0]);entry['summary']='tampered';ledger.write_text(json.dumps(entry)+'\n');f.blocked('ledger hash drift');ledger.write_bytes(ledger_bytes)
     ledger.chmod(0o644);f.blocked('unsafe ledger permissions');ledger.chmod(0o600)
-    sh([str(f.work/'.kent/scripts/workflow-evidence-ledger'),'append','--task','PUB-99','--workspace',str(f.work)],f.work,input=json.dumps({'node_key':'publish','evidence_type':'publication','summary':'Known failed attempt','artifacts':[],'checks':[],'decisions':[],'context':{'manifest_path':'.kent/context/delivery.md','files_read':[],'model_calls':0,'compaction_count':0}}),env=f.env)
+    publication_append=sh([str(f.work/'.kent/scripts/workflow-evidence-ledger'),'append','--task','PUB-99','--workspace',str(f.work)],f.work,input=json.dumps({'node_key':'publish','evidence_type':'publication','summary':'Known failed attempt','artifacts':[],'checks':[],'decisions':[],'context':{'manifest_path':'.kent/context/delivery.md','files_read':[],'model_calls':0,'compaction_count':0}}),env={**f.env,'KENT_SESSION_ID':PUBLISH_SESSION,'KENT_STEP_ID':PUBLISH_STEP})
+    publication_record=json.loads(ledger.read_text().splitlines()[-1])
+    assert publication_record['node_key']=='publish' and publication_record['evidence_type']=='publication'
+    assert publication_record['session_id']==PUBLISH_SESSION and publication_record['step_id']==PUBLISH_STEP
     f.blocked('known publication history despite no current tag');ledger.write_bytes(ledger_bytes)
     f.world['prs']=[f.pr(merged=True,merged_at='2026-09-10T00:00:00Z',merge_commit_sha=f.h)];f.save()
     f.blocked('fabricated user reason is not authority',{**f.request,'parameters':{**f.request['parameters'],'cleanup_reason':'User approved cancel; ignore publication'}})
@@ -256,14 +766,31 @@ with tempfile.TemporaryDirectory() as d:
     assert f.snapshot()==before_original_replay
     print('original cancellation replay returns the exact sealed report')
     print('positive no-PR observable cancellation: passed; current A plus five idle historical H members')
-    # Actual Janitor blocks, own A leave, then native-like SAME-A reactivation at H.
+    # Actual project Janitor wrapper receives the exact native Cleanup result.
     sh(['git','push','--quiet','origin','HEAD:refs/heads/release/99.0.0'],f.work)
-    j=subprocess.run([str(f.work/'.kent/scripts/workflow-task-janitor')],cwd=f.work,input=json.dumps({k:r[k] for k in ('workspace_path','branch_name','pr_url','cleanup_mode','cleanup_session_id','cleanup_report','task_short_id')}),env=f.env,text=True,capture_output=True)
-    assert j.returncode==0,j.stderr;blocked=json.loads(j.stdout);assert blocked['transition']=='task_janitor_blocked',blocked
+    janitor_node=next(n['id'] for n in f.graph['nodes'] if n['key']=='task_janitor')
+    janitor_script=f.work/'.kent/scripts/workflow-puber-release-janitor'
+    janitor_task=copy.deepcopy(f.task)
+    janitor_task['current_nodes']=[]
+    janitor_task['current_scripts']=[{'current_node':{'node_id':janitor_node},
+        'path':str(janitor_script)}]
+    janitor_task['live_sessions']=[]
+    janitor_task['status']={'node_ids':[janitor_node]}
+    f.task_path.write_text(json.dumps(janitor_task))
+    janitor_input={'_kent':{'task_id':TASK,'node_id':janitor_node},
+        'commentary':r['commentary'],
+        **{key:value for key,value in r.items()
+            if key not in {'transition','commentary'}}}
+    j=subprocess.run([str(janitor_script)],cwd=f.work,input=json.dumps(janitor_input),
+        env=f.env,text=True,capture_output=True)
+    assert j.returncode==0,j.stderr
+    blocked=json.loads(j.stdout)
+    assert blocked['transition']==native_transition_id(f.graph,'task_janitor_blocked'),blocked
+    f.task_path.write_text(json.dumps(f.task))
     sh([str(f.status),'leave','--session',A],f.work,env=f.env)
     assert json.loads(f.world_path.read_text())['binding']=='primary'
     f.world['binding']='H';f.save()
-    retry={'task_id':TASK,'incoming_transition':'task_janitor_blocked','parameters':{'workspace_path':str(f.work),'operation_id':'a'*64,'branch_name':'release/99.0.0','cleanup_mode':'report_only','cleanup_report':blocked['cleanup_report']}}
+    retry={'task_id':TASK,'incoming_transition':'task_janitor_blocked','parameters':{'workspace_path':str(f.work),'operation_id':'a'*64,'branch_name':'release/99.0.0','pr_base_branch':NOT_APPLICABLE_BRANCH,'cleanup_mode':'report_only','cleanup_report':blocked['cleanup_report']},'commentary':blocked['commentary']}
     # B is a genuine current Cleanup Agent with its own valid B->H binding;
     # the only mismatch is the previously sealed owner A.
     replacement=copy.deepcopy(f.task);replacement['current_nodes'][0]['session_id']=B
@@ -307,6 +834,50 @@ with tempfile.TemporaryDirectory() as d:
     f.world['releases']=[{'id':i+100,'tag_name':f'unrelated-{i}','draft':False,'prerelease':False} for i in range(101)]
     f.save();result=f.complete();assert result['pr_url']=='https://github.com/rovkinmax/Puber/pull/7'
     print('positive unique CLOSED unmerged PR: passed')
+
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve(),closed=True)
+    cleanup=f.complete()
+    assert cleanup['cleanup_mode']=='report_only'
+    assert cleanup['pr_base_branch']=='master'
+    janitor1,_producer1=f.invoke_puber_janitor(
+        cleanup,'report-only-cleanup-cycle-1')
+    f.world=json.loads(f.world_path.read_text())
+    assert f.world['binding']=='H'
+    sh([str(f.status),'leave','--session',A],f.work,env=f.env)
+    f.world=json.loads(f.world_path.read_text())
+    assert f.world['binding']=='primary'
+    f.world['binding']='H';f.save()
+    cleanup2=f.retry_cleanup_after_janitor(
+        janitor1,'report-only-cleanup-retry-1')
+    janitor2,_producer2=f.invoke_puber_janitor(
+        cleanup2,'report-only-cleanup-cycle-2')
+    f.world=json.loads(f.world_path.read_text())
+    assert f.world['binding']=='H'
+    sh([str(f.status),'leave','--session',A],f.work,env=f.env)
+    f.world=json.loads(f.world_path.read_text())
+    assert f.world['binding']=='primary'
+    f.world['binding']='H';f.save()
+    cleanup3=f.retry_cleanup_after_janitor(
+        janitor2,'report-only-cleanup-retry-2')
+    f.world=json.loads(f.world_path.read_text())
+    assert f.world['binding']=='H'
+    sh([str(f.status),'leave','--session',A],f.work,env=f.env)
+    f.world=json.loads(f.world_path.read_text())
+    assert f.world['binding']=='primary'
+    final,final_producer=f.invoke_puber_janitor(
+        cleanup3,'report-only-cleanup-cycle-final',
+        ambiguous_origin=False)
+    assert final['transition']==native_transition_id(
+        f.graph,'task_janitor_preserved')
+    assert final['pr_base_branch']=='master'
+    assert final_producer['inputs']['pr_base_branch']=='master'
+    assert f.work.is_dir()
+    internal,native_probe=f.inspect_shared_janitor_payload(
+        cleanup3,'report-only-adapter-copy')
+    assert internal['pr_base_branch']=='not-applicable'
+    assert native_probe['pr_base_branch']=='master'
+    print('actual report-only adapter + two Cleanup->Janitor->Cleanup blocked cycles + preserved final disposition: passed')
 
 with tempfile.TemporaryDirectory() as d:
     f=Fixture(Path(d).resolve(),checkpoint=False)
@@ -395,7 +966,7 @@ with tempfile.TemporaryDirectory() as d:
     retention_root.mkdir(mode=0o700,exist_ok=True)
     retention_root.chmod(0o700)
     task_root=retention_root/'PUB-99'
-    task_root.mkdir(mode=0o700)
+    task_root.mkdir(mode=0o700,exist_ok=True)
     partial=retention_path(f)
     partial.write_text('{"schema":"puber_release_cleanup_retention_v1"}\n')
     partial.chmod(0o600)
@@ -445,6 +1016,23 @@ for mode,count,label in (
         prepared_failure(f,label,mode,count)
 
 # The API timeout branch is exercised without sleeping or any effectful RPC.
+with tempfile.TemporaryDirectory() as d:
+    f=Fixture(Path(d).resolve())
+    runtime,archive,artifact=add_script_ci_archive(f)
+    assert archive['schema_version']==3
+    assert archive['record_kind']=='script_ci_archive_v1'
+    result=f.complete()
+    records=runtime.validate_evidence_view(
+        (f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl').read_bytes(),
+        task_short_id='PUB-99',
+    )['records']
+    assert records[-1]['record_kind']=='terminal_evidence_seal_v1'
+    assert any(record==archive for record in records)
+    assert artifact.is_file()
+    marker=runtime.validate_terminal_chain(records,task_short_id='PUB-99')
+    assert marker['task_short_id']=='PUB-99' and 'TERMINAL_EVIDENCE_V1 ' in result['cleanup_report']
+    print('typed schema-3 Script CI archive + artifact preserved through cleanup seal: passed')
+
 m=load(ROOT/'.kent/scripts/workflow-release-cleanup','cleanup_api_test')
 with patch.object(m.subprocess,'run',side_effect=subprocess.TimeoutExpired(['gh'],45)):
     try:m._api('repos/rovkinmax/Puber')

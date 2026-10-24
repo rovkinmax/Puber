@@ -137,8 +137,8 @@ class Fixture:
             path.write_bytes(raw)
         (self.root / ".gitignore").write_text(".kent/runtime/\n", encoding="utf-8")
         (self.root / ".kent/workflows").mkdir(parents=True)
-        (self.root / ".kent/workflows/puber-release-kit-5af.json").write_bytes(
-            (ROOT / ".kent/workflows/puber-release-kit-5af.json").read_bytes()
+        (self.root / module.helper.GRAPH_PATH).write_bytes(
+            (ROOT / module.helper.GRAPH_PATH).read_bytes()
         )
         (self.root / ".kent").mkdir(exist_ok=True)
         (self.root / ".kent/workflow-profile.toml").write_bytes(
@@ -277,6 +277,40 @@ def test_report_and_checkpoint_contract() -> None:
         assert module.helper.read_profile_checkpoint(root, "PUB-99") == value
 
 
+def test_network_free_stage_forwards_only_valid_producer_commentary() -> None:
+    legacy = "prior human note"
+    assert module._forward_producer_commentary({"commentary": legacy}) == legacy
+
+    locator = (
+        "build/kent-workflow/PUB-99/packets/base-"
+        + "a" * 64
+        + ".json"
+    )
+    commentary = f"prior human note\nKENT_PACKET_SOURCE_V1 {locator}"
+    original = module.helper._qualified_delivery_module
+    module.helper._qualified_delivery_module = lambda *_args, **_kwargs: (
+        SimpleNamespace(
+            producer_locator=lambda value: (
+                locator if value == commentary else None
+            )
+        )
+    )
+    try:
+        assert module._forward_producer_commentary(
+            {"commentary": commentary}
+        ) == commentary
+        try:
+            module._forward_producer_commentary(
+                {"commentary": commentary + "\nKENT_PACKET_SOURCE_V1 " + locator}
+            )
+        except module.ProfileError:
+            pass
+        else:
+            raise AssertionError("duplicate producer commentary was forwarded")
+    finally:
+        module.helper._qualified_delivery_module = original
+
+
 def test_success_acquires_generates_releases_then_records_completed_checkpoint():
     fixture = Fixture()
     try:
@@ -370,6 +404,7 @@ def test_release_failure_keeps_generating_checkpoint_and_generated_bytes():
 
 
 test_report_and_checkpoint_contract()
+test_network_free_stage_forwards_only_valid_producer_commentary()
 test_success_acquires_generates_releases_then_records_completed_checkpoint()
 test_generator_failure_preserves_checkpoint_outputs_and_lease()
 test_ambiguous_prior_owner_blocks_without_acquire_release_or_restore()

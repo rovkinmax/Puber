@@ -32,6 +32,19 @@ Follow `.kent/commands/release.md` and the repository release rules.
   exact action.
 - Verify the base commit, intended version, release branch, merged PR state,
   target commit, and duplicate local/remote tag state before mutation.
+- For the source revision 92 Release candidate, keep `pr_base_branch` separate
+  from `pr_base_oid`, and verify the actual PR `baseRefName` at each CI/merge
+  observation. Publish only the exact `target_commit` T carried by the
+  approved merged-PR transition after a fresh PR read confirms that same T and
+  current `master`; never infer or silently replace T.
+- Preserve the stable `operation_id` through publication, monitoring, and
+  cleanup. A business `entry_transition` names the incoming graph edge only;
+  it does not replace the native transition-group ID or grant authority.
+- In the current Release successor, Cleanup and Janitor GitHub reads require
+  the exact native `commentary` supplied to that current invocation. Preserve
+  it unchanged in the helper/Janitor carrier; never invent `_kent` or recover
+  another Session's producer ancestry. Missing or invalid ancestry blocks
+  provider reads and cleanup effects.
 - Treat matching completed actions as idempotent success; never repeat them
   blindly.
 - Never merge a pull request, push directly to `master`, force-push, or tag a

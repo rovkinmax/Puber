@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import copy, json, os, re, subprocess, tempfile, sys
+import copy, json, os, re, subprocess, tempfile, sys, uuid
 sys.dont_write_bytecode = True
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
@@ -361,19 +361,29 @@ with tempfile.TemporaryDirectory() as directory:
     carrier = {key: preparation[key] for key in revisioned_carrier if key in preparation}
     carrier.update({key: checkpoint[key] for key in ('profile_report','profile_report_digest','release_preparation_report','release_preparation_report_digest')})
     carrier.update(workspace_path=str(work), task_short_id='PUB-99', verification_summary='Actual fixture packaging evidence',
-        pr_url='https://github.com/rovkinmax/Puber/pull/7', branch_name='release/99.0.0', merge_strategy='rebase', pr_head_oid=head, pr_base_oid=policy)
+        pr_url='https://github.com/rovkinmax/Puber/pull/7', branch_name='release/99.0.0', merge_strategy='rebase', pr_head_oid=head, pr_base_oid=policy, pr_base_branch='master')
     assert not {"ci_contract", "ci_report", "pr_feedback_cursor"} & set(carrier)
     actual_pr = dict(url=carrier['pr_url'], headRefOid=head, baseRefOid=policy, headRefName=carrier['branch_name'],
         baseRefName='master', state='OPEN', mergedAt=None, mergeCommit=None)
     methods = dict(full_name='rovkinmax/Puber', default_branch='master', allow_merge_commit=True, allow_squash_merge=False, allow_rebase_merge=True)
     rules = [{'type':'required_linear_history'}]
     checks = [dict(workflow='PR Checks',name=name,bucket='pass',state='SUCCESS',link='https://github.com/rovkinmax/Puber/actions/runs/1') for name in ('Build','Detekt','Unit Tests')]
+    workspace_id = 'workspace-12345678-1234-4234-8234-123456789abc'
     task = {key: [] for key in ('actions','current_nodes','current_scripts','label_ids','live_sessions')}
-    task.update(attention_count=0, retained_session_count=0, project={}, source_workspace={}, worktree_path=str(work),
+    task.update(attention_count=0, retained_session_count=0,
+        project={'default_workspace_id':workspace_id},
+        source_workspace={'is_primary':True,'workspace_id':workspace_id,'root_path':str(work.resolve())},
+        worktree_path=str(work.resolve()),
         body='release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n',
         execution_target={'commit_oid':policy}, status={},
         summary={'id':task_id,'short_id':'PUB-99','project_id':helper.PROJECT_ID,'workflow_id':helper.WORKFLOW_ID},
         workflow={'workflow_id':helper.WORKFLOW_ID,'version':helper.WORKFLOW_REVISION,'name':'Puber Release'})
+    native_task_path = base / 'native-task.json'
+    native_graph_path = base / 'native-graph.json'
+    native_graph_path.write_text(json.dumps({
+        'workflow_id': helper.WORKFLOW_ID,
+        'graph': runtime_graph,
+    }), encoding='utf-8')
     original_run = helper.run
     executions = []
     def github_command(_root, args, **kwargs):
@@ -392,7 +402,7 @@ with tempfile.TemporaryDirectory() as directory:
 
     def shared_process(command, *, input_text, **kwargs):
         path = Path(command[0]); payload = json.loads(input_text)
-        assert set(payload) <= set(adapter.SHARED_INPUTS)
+        assert set(payload) <= set(adapter.SHARED_INPUTS) | {'_kent', 'commentary'}
         executions.append(path.name)
         if path.name == 'workflow-prepare-github-ci':
             try:
@@ -408,7 +418,8 @@ with tempfile.TemporaryDirectory() as directory:
                 artifact = ci_contract.archive_ci_report(work, 'PUB-99', json.loads(request['ci_report']))
                 return subprocess.CompletedProcess(args, 0, json.dumps({'ci_report_artifact':artifact}).encode(), b'')
             raise AssertionError(args)
-        output = io.StringIO()
+        output = io.BytesIO()
+        text_output = io.TextIOWrapper(output, encoding='utf-8', write_through=True)
         class FixtureObserver:
             def __init__(self, *_args, **_kwargs):
                 pass
@@ -435,11 +446,10 @@ with tempfile.TemporaryDirectory() as directory:
 
         def archive_read_json(_tool, _workspace, _args, **kwargs):
             request = json.loads(kwargs['input_bytes'])
-            assert request['operation'] == 'archive_ci_report'
-            artifact = ci_contract.archive_ci_report(
-                work,
-                'PUB-99',
-                json.loads(request['ci_report']),
+            assert request['operation'] == 'archive_script_ci_report'
+            artifact = ci_contract.archive_script_ci_report(
+                request,
+                evidence_command='.kent/scripts/workflow-evidence-ledger',
             )
             return {'ci_report_artifact': artifact}
 
@@ -451,33 +461,128 @@ with tempfile.TemporaryDirectory() as directory:
         with contextlib.ExitStack() as stack:
             stack.enter_context(patch.object(shared, 'github_observation', return_value=observation))
             stack.enter_context(patch.object(sys, 'stdin', io.StringIO(input_text)))
-            stack.enter_context(contextlib.redirect_stdout(output))
+            stack.enter_context(contextlib.redirect_stdout(text_output))
+            stack.enter_context(patch.object(ci_contract.Path, 'cwd', return_value=work))
             code = shared.main()
-        return subprocess.CompletedProcess(command, code, output.getvalue(), '')
+        text_output.flush()
+        return subprocess.CompletedProcess(command, code, output.getvalue().decode('utf-8'), '')
 
-    def invoke(operation, incoming, values):
+    def invoke(operation, incoming, values, *, native_commentary=None):
+        invoke_index[0] += 1
+        os.environ['KENT_SESSION_ID'] = fixture_session
+        os.environ['KENT_STEP_ID'] = str(uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"puber-graph-step:{work.resolve()}:{invoke_index[0]}",
+        ))
         node = by_key[operation]['id']
         task.update(current_nodes=[{'node_id':node}],current_scripts=[{'path':str(work.resolve() / '.kent/scripts/workflow-puber-release-ci'),'current_node':{'node_id':node}}],status={'node_ids':[node]})
-        fields = {field['key']:values[field['key']] for field in edge(incoming)['parameters']}
+        native_task_path.write_text(json.dumps(task), encoding='utf-8')
+        fields = {
+            field['key']: values[field['key']]
+            for field in runtime_edge(incoming)['parameters']
+            if field['key'] != 'entry_transition'
+        }
+        if native_commentary is None:
+            native_commentary = (
+                ''
+                if incoming == 'ship_pr_ci_watch'
+                else values.get('commentary', 'Rendered native commentary')
+            )
         payload = {
             **fields,
             'entry_transition':incoming,
-            'commentary':('' if incoming == 'ship_pr_ci_watch' else 'Rendered native commentary'),
+            'commentary':native_commentary,
             '_kent':{'task_id':task_id,'node_id':node},
         }
-        output = io.StringIO()
-        with patch.object(sys,'stdin',io.BytesIO(helper.canonical_bytes(payload))) as stream, contextlib.redirect_stdout(output):
+        output = io.BytesIO()
+        text_output = io.TextIOWrapper(output, encoding='utf-8', write_through=True)
+        with patch.object(sys,'stdin',io.BytesIO(helper.canonical_bytes(payload))) as stream, \
+             contextlib.redirect_stdout(text_output), \
+             patch.object(Path, 'cwd', return_value=work):
             # The real helper expects stdin.buffer; use a text wrapper just as a Script process.
             with patch.object(sys,'stdin',io.TextIOWrapper(stream,encoding='utf-8')):
                 code = adapter.main()
-        assert code == 0, output.getvalue()
-        result = json.loads(output.getvalue())
+        text_output.flush()
+        output_text = output.getvalue().decode('utf-8')
+        assert code == 0, output_text
+        result = json.loads(output_text)
         assert set(result) - {'transition','commentary'} == {field['key'] for field in runtime_edge(result['transition'])['parameters']}
         assert task['execution_target']['commit_oid'] == policy
         return result
 
+    invoke_index = [0]
+    fixture_session = str(uuid.uuid5(
+        uuid.NAMESPACE_URL,
+        f"puber-graph-session:{work.resolve()}",
+    ))
+    seed_ledger = subprocess.run(
+        [
+            str(work / '.kent/scripts/workflow-evidence-ledger'),
+            'append',
+            '--task',
+            'PUB-99',
+            '--workspace',
+            str(work),
+        ],
+        input=json.dumps({
+            'node_key': 'ci_prepare',
+            'evidence_type': 'workflow_setup',
+            'summary': 'Initial release-workflow evidence before CI observation.',
+            'artifacts': [],
+            'checks': [],
+            'decisions': [],
+            'context': {
+                'manifest_path': '.kent/context/delivery.md',
+                'files_read': [],
+                'model_calls': 0,
+                'compaction_count': 0,
+            },
+        }),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=work,
+        env={
+            **os.environ,
+            'KENT_SESSION_ID': fixture_session,
+            'KENT_STEP_ID': str(uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"puber-graph-seed-step:{work.resolve()}",
+            )),
+        },
+        check=False,
+    )
+    assert seed_ledger.returncode == 0, seed_ledger.stderr or seed_ledger.stdout
+    test_home = base / 'home'
+    test_cli_bin = test_home / '.kent' / 'bin'
+    test_cli_bin.mkdir(parents=True)
+    (test_cli_bin / 'kent-prepare-github-ci').symlink_to(
+        KIT / 'scripts' / 'prepare-github-ci'
+    )
+    test_bin = test_home / 'bin'
+    test_bin.mkdir(parents=True)
+    fake_kent = test_bin / 'kent'
+    fake_kent.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "args = sys.argv[1:]\n"
+        "if args[:1] == ['project']:\n"
+        " print(os.environ['PUBER_FAKE_PROJECT_ID']); sys.exit(0)\n"
+        "if args[:2] == ['task', 'show']:\n"
+        " print(open(os.environ['PUBER_D13_NATIVE_STATE'], encoding='utf-8').read()); sys.exit(0)\n"
+        "if args[:3] == ['workflow', 'graph', 'inspect']:\n"
+        " print(open(os.environ['PUBER_D13_NATIVE_GRAPH'], encoding='utf-8').read()); sys.exit(0)\n"
+        "sys.exit(2)\n",
+        encoding='utf-8',
+    )
+    fake_kent.chmod(0o755)
     test_env = {f'KENT_{kind}_WATCH_{key}':value for kind in ('CI','PR') for key,value in (
         ('TEST_MODE','1'),('MAX_ERRORS','1'),('MAX_POLLS','1'),('INTERVAL_SECONDS','0'))}
+    test_env['HOME'] = str(test_home)
+    test_env['PATH'] = str(test_bin) + os.pathsep + os.environ.get('PATH', '')
+    test_env['PUBER_FAKE_PROJECT_ID'] = helper.PROJECT_ID
+    test_env['PUBER_D13_NATIVE_STATE'] = str(native_task_path)
+    test_env['PUBER_D13_NATIVE_GRAPH'] = str(native_graph_path)
     class FixtureObserver:
         def read_pr(self, _url):
             return {
@@ -495,8 +600,14 @@ with tempfile.TemporaryDirectory() as directory:
         def effects(command, **kwargs):
             return shared_process(command,**kwargs) if Path(command[0]).name in adapter.SHARED_PATHS.values() else original_run(command,**kwargs)
         helper.run.side_effect = effects
-        initial = invoke('ci_prepare','ship_pr_ci_watch',carrier)
+        initial = invoke(
+            'ci_prepare',
+            'ship_pr_ci_watch',
+            carrier,
+            native_commentary='Rendered native commentary',
+        )
         assert initial['transition'] == 'ci_prepare_ready_initial', initial
+        assert initial.get('commentary') != 'Rendered native commentary'
         admitted = helper.validate_task(work.resolve(), task_id, 'ci_prepare', task)
         assert admitted['commit'] == policy and admitted['controller_commit'] == head
         assert admitted['task']['execution_target']['commit_oid'] == policy
@@ -525,10 +636,12 @@ with tempfile.TemporaryDirectory() as directory:
         assert 'ci_report' not in initial and initial['verification_summary'] == carrier['verification_summary']
         passed = invoke('ci_watch','ci_prepare_ready_initial',initial)
         assert passed['transition'] == 'ci_watch_passed', passed
+        assert 'KENT_PACKET_SOURCE_V1 ' in passed['commentary']
         report = runtime.validate_dynamic_ci_report(json.loads(passed['ci_report']))
         assert report['attempts'][-1]['head_oid'] == head
         retry = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
         assert retry['transition'] == 'ci_prepare_ready_retry' and retry['ci_report'] == passed['ci_report'], retry
+        assert 'KENT_PACKET_SOURCE_V1 ' in retry['commentary']
         for label, altered in (
             ('failed',[{**row,'bucket':'fail','state':'FAILURE'} if row['name']=='Build' else row for row in checks]),
             ('missing',[row for row in checks if row['name']!='Build']),
@@ -565,19 +678,29 @@ with tempfile.TemporaryDirectory() as directory:
         # A changed H cannot borrow the old preparation checkpoint or go green.
         actual_pr['headRefOid'] = advanced
         bad_head = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
-        assert bad_head['transition'] == 'ci_prepare_needs_user_action', bad_head
+        assert bad_head['transition'] == 'ci_prepare_failed', bad_head
+        assert {'workspace_path', 'task_short_id', 'ci_preparation_diagnostic'} <= set(bad_head)
+        assert 'ci_report' not in bad_head and 'ci_contract' not in bad_head
+        ci_contract.validate_ci_preparation_diagnostic(
+            bad_head['ci_preparation_diagnostic']
+        )
         actual_pr['headRefOid'] = head
         # Production requires new preparation for H changes. Independently execute the
         # actual shared new-H cycle and verify its omitted report is not synthesized.
         newer_head = fixture.target_with_changes(work, head, {'docs/new-ci-head.txt':b'new H source\n'})
         actual_pr['headRefOid'] = newer_head
-        fresh_cycle = ci_contract.prepare_ci_payload(reprepared, gh_bin='/fixture/gh')
+        with patch.object(Path, 'cwd', return_value=work):
+            fresh_cycle = ci_contract.prepare_ci_payload(reprepared, gh_bin='/fixture/gh')
         assert fresh_cycle['transition'] == 'ci_prepare_ready_initial' and 'ci_report' not in fresh_cycle
         assert json.loads(fresh_cycle['ci_contract'])['head_oid'] == newer_head
         actual_pr['headRefOid'] = head
         methods['allow_squash_merge'] = True
         ambiguous = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
-        assert ambiguous['transition'] == 'ci_prepare_needs_user_action', ambiguous
+        assert ambiguous['transition'] == 'ci_prepare_failed', ambiguous
+        assert 'ci_report' not in ambiguous and 'ci_contract' not in ambiguous
+        ci_contract.validate_ci_preparation_diagnostic(
+            ambiguous['ci_preparation_diagnostic']
+        )
         methods['allow_squash_merge'] = False
         # A genuinely merged PR has actual base B distinct from prior policy P.
         target = fixture.rebased_target(work, policy, head)
@@ -589,6 +712,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert published['pr_base_oid'] == policy != advanced
         assert published['entry_transition'] == 'merge_watch_pr_merged'
         assert all(value in published['commentary'] for value in ('99.0.0','v99.0.0',target))
+        assert 'Rendered native commentary' not in published['commentary']
         files = list((work/'.kent/runtime/PUB-99').glob('ci-report-*.json'))
         assert files and all(runtime.validate_dynamic_ci_report(json.loads(path.read_bytes())) for path in files)
         assert {'workflow-prepare-github-ci','workflow-wait-github-ci','workflow-wait-github-pr'} <= set(executions)

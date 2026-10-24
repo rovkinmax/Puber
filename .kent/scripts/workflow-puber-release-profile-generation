@@ -478,9 +478,44 @@ def _assert_owned_output_hashes(expected: Mapping[str, str]) -> None:
         raise ProfileError("profile output ownership could not be proven")
 
 
-def _emit_failure(base: Mapping[str, Any], reason: str) -> int:
+def _forward_producer_commentary(
+    payload: Mapping[str, Any],
+) -> str | None:
+    """Preserve exact incoming producer ancestry across this network-free Script."""
+    commentary = payload.get("commentary")
+    if commentary is None:
+        return None
+    if not isinstance(commentary, str):
+        raise ProfileError("native producer commentary is invalid")
+    if "KENT_PACKET_SOURCE_V1" not in commentary:
+        return commentary
+    try:
+        delivery = helper._qualified_delivery_module(
+            ROOT,
+            required=("producer_locator",),
+        )
+        locator = delivery.producer_locator(commentary)
+    except Exception as error:
+        raise ProfileError("native producer commentary is malformed") from error
+    if not isinstance(locator, str) or not locator:
+        raise ProfileError("native producer footer is missing its source locator")
+    return commentary
+
+
+def _emit_failure(
+    base: Mapping[str, Any],
+    reason: str,
+    *,
+    commentary: str | None = None,
+) -> int:
     fields = {**base, "blocker_reason": reason}
-    helper.emit_exact(ROOT, "profile_generation_needs_user_action", "profile_generation", fields)
+    helper.emit_exact(
+        ROOT,
+        "profile_generation_needs_user_action",
+        "profile_generation",
+        fields,
+        commentary=commentary,
+    )
     return 0
 
 
@@ -578,6 +613,7 @@ def main() -> int:
                 raw_payload, current,
             ),
         )
+        producer_commentary = _forward_producer_commentary(payload)
     except helper.ContractError as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 2
@@ -685,6 +721,7 @@ def main() -> int:
                         "profile_report": helper.canonical_json(report),
                         "profile_report_digest": existing["profile_report_digest"],
                     },
+                    commentary=producer_commentary,
                 )
                 return 0
 
@@ -710,6 +747,7 @@ def main() -> int:
                     "prior profile generation has an ambiguous owner/outcome; "
                     "preserve the checkpoint, generated files, and lease state; "
                     + _owner_summary(observations),
+                    commentary=producer_commentary,
                 )
             try:
                 _assert_owned_output_hashes(existing["output_hashes"])
@@ -718,12 +756,14 @@ def main() -> int:
                 return _emit_failure(
                     _base_transition_fields(payload),
                     f"prior profile acquisition is not safe to retry: {error}",
+                    commentary=producer_commentary,
                 )
             current_serials = _inventory(adapter)
             if current_serials != serials:
                 return _emit_failure(
                     _base_transition_fields(payload),
                     "TV emulator inventory changed; preserve the original checkpoint",
+                    commentary=producer_commentary,
                 )
             before = _profile_bytes()
         else:
@@ -763,6 +803,7 @@ def main() -> int:
                 _base_transition_fields(payload),
                 "TV Script lease acquisition was refused or ambiguous; "
                 "preserve the acquisition checkpoint; " + summary,
+                commentary=producer_commentary,
             )
 
         resource = lease.resource
@@ -873,6 +914,7 @@ def main() -> int:
                 "profile_report": report,
                 "profile_report_digest": report_digest,
             },
+            commentary=producer_commentary,
         )
         return 0
     except KeyboardInterrupt as error:
@@ -885,7 +927,11 @@ def main() -> int:
         print(json.dumps({"error": reason}, ensure_ascii=False), file=sys.stderr)
         return 2
     try:
-        return _emit_failure(_base_transition_fields(payload), reason)
+        return _emit_failure(
+            _base_transition_fields(payload),
+            reason,
+            commentary=producer_commentary,
+        )
     except helper.ContractError as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 2

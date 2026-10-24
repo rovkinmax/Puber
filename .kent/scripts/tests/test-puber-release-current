@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import copy
+import importlib.util
+import json
+import runpy
+import subprocess
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from unittest.mock import patch
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[3]
+BUILDER_PATH = ROOT / ".kent/workflows/builders/puber_release_current.py"
+builder = runpy.run_path(str(BUILDER_PATH))
+assert builder["check"]() == []
+
+graph_path = ROOT / ".kent/workflows/puber-release-current.json"
+graph = json.loads(graph_path.read_text(encoding="utf-8"))
+original = json.loads(
+    (ROOT / ".kent/workflows/puber-release-kit-5af.json").read_text(
+        encoding="utf-8"
+    )
+)
+builder["validate_graph"](graph, original)
+assert graph["workflow"]["version"] == 97
+assert graph["workflow"]["source_revision"] == 92
+assert len(graph["nodes"]) == 18
+assert len(graph["transition_groups"]) == 53
+assert len(graph["edges"]) == 53
+expected_old_groups = copy.deepcopy(original["transition_groups"])
+failure_group_id = next(
+    edge["transition_group_id"]
+    for edge in original["edges"]
+    if edge["key"] == "ci_prepare_needs_user_action"
+)
+next(group for group in expected_old_groups if group["id"] == failure_group_id)[
+    "transition_id"
+] = "ci_prepare_failed"
+assert graph["transition_groups"][:51] == expected_old_groups
+
+edges = {edge["key"]: edge for edge in graph["edges"]}
+for key in (
+    "ship_pr_ci_watch",
+    "ci_waiting_pr",
+    "ci_fix",
+    "pr_fix",
+    "waiting_pr_merge_watch",
+    "waiting_pr_needs_user_action",
+    "ci_watch_passed",
+    "ci_watch_failed",
+    "ci_watch_pr_merged",
+    "ci_watch_state_changed",
+    "ci_watch_needs_user_action",
+    "merge_watch_still_waiting",
+    "merge_watch_state_changed",
+    "merge_watch_pr_merged",
+    "merge_watch_needs_user_action",
+    "ci_prepare_ready_initial",
+    "ci_prepare_ready_retry",
+    "ci_prepare_already_merged",
+    "waiting_pr_ci_recheck",
+    "cleanup_task_janitor",
+):
+    assert "pr_base_branch" in {
+        parameter["key"] for parameter in edges[key]["parameters"]
+    }, key
+
+assert tuple(
+    parameter["key"] for parameter in edges["pr_feedback"]["parameters"]
+) == builder["FULL_PR_FEEDBACK_FIELDS"]
+assert "target_commit" in {
+    parameter["key"]
+    for parameter in edges["merge_watch_pr_merged"]["parameters"]
+}
+assert "operation_id" in {
+    parameter["key"]
+    for parameter in edges["cleanup_task_janitor"]["parameters"]
+}
+for key in (
+    "task_janitor_done",
+    "task_janitor_blocked",
+    "task_janitor_needs_user_action",
+    "task_janitor_retry",
+    "task_janitor_preserved",
+):
+    names = [parameter["key"] for parameter in edges[key]["parameters"]]
+    assert names.index("operation_id") < names.index("pr_base_branch")
+
+assert {
+    "merge_watch_pr_merged",
+    "publish_needs_user_action",
+    "profile_generation_needs_user_action",
+} <= {
+    key for key, edge in edges.items() if edge.get("requires_approval") is True
+}
+assert tuple(
+    parameter["key"] for parameter in edges["ci_prepare_failed"]["parameters"]
+) == builder["CI_PREPARATION_FAILURE_FIELDS"]
+assert tuple(
+    parameter["key"] for parameter in edges["ci_monitor_retry_preparation"]["parameters"]
+) == builder["CI_PREPARATION_RETRY_FIELDS"]
+assert tuple(
+    parameter["key"]
+    for parameter in edges["ci_monitor_preparation_needs_user_action"]["parameters"]
+) == builder["CI_PREPARATION_USER_ACTION_FIELDS"]
+assert edges["ci_prepare_failed"]["requires_approval"] is False
+assert edges["ci_monitor_retry_preparation"]["requires_approval"] is False
+assert edges["ci_monitor_preparation_needs_user_action"]["requires_approval"] is True
+assert all(
+    "entry_transition" not in {parameter["key"] for parameter in edges[key]["parameters"]}
+    for key in (
+        "ci_prepare_failed",
+        "ci_monitor_retry_preparation",
+        "ci_monitor_preparation_needs_user_action",
+    )
+)
+assert not any(
+    "puber-engineering-delivery" in str(item)
+    for item in builder["_expected_manifest"]()["external_roots"]
+)
+assert builder["_expected_manifest"]()["runtime_attested"] is False
+
+intent_spec = importlib.util.spec_from_loader(
+    "puber_release_intent_current_test",
+    SourceFileLoader(
+        "puber_release_intent_current_test",
+        str(ROOT / ".kent/scripts/workflow-puber-release-intent"),
+    ),
+)
+intent = importlib.util.module_from_spec(intent_spec)
+assert intent_spec and intent_spec.loader
+intent_spec.loader.exec_module(intent)
+
+assert intent.WORKFLOW_REVISION == 97
+assert intent.SOURCE_REVISION == 92
+assert intent.GRAPH_PATH == ".kent/workflows/puber-release-current.json"
+assert intent.normalize_transport_nulls(
+    {"ci_contract": None, "ci_report": None, "pr_feedback_cursor": "uninitialized"},
+    "ci_prepare_already_merged",
+) == {
+    "ci_contract": None,
+    "ci_report": None,
+    "pr_feedback_cursor": "uninitialized",
+}
+for invalid in ("", "null", " null ", 0, False, []):
+    try:
+        intent.normalize_transport_nulls(
+            {"ci_report": invalid},
+            "ci_prepare_already_merged",
+        )
+    except intent.ContractError:
+        pass
+    else:
+        raise AssertionError(f"invalid CI absence/value accepted: {invalid!r}")
+for key in ("ci_report", "target_commit"):
+    try:
+        intent.normalize_transport_nulls(
+            {key: None},
+            "ci_watch_passed",
+        )
+    except intent.ContractError:
+        pass
+    else:
+        raise AssertionError(f"unauthorized null accepted for {key}")
+
+# The business route remains the input carrier; native completion uses the
+# graph's transition-group ID and returns the edge key only as the Script hint.
+minimal_graph = {
+    "nodes": [{"id": "node-script", "key": "ci_watch", "kind": "script"}],
+    "transition_groups": [
+        {
+            "id": "group-native-id",
+            "source_node_id": "source-id",
+            "transition_id": "native-transition-id",
+        }
+    ],
+    "edges": [
+        {
+            "key": "ci_prepare_ready_initial",
+            "target_node_id": "node-script",
+            "transition_group_id": "group-native-id",
+            "parameters": [
+                {"key": "workspace_path"},
+                {"key": "entry_transition"},
+            ],
+        }
+    ],
+}
+with patch.object(intent, "output_edge", return_value=minimal_graph["edges"][0]), \
+     patch.object(intent, "_node_id", return_value="node-script"), \
+     patch.object(
+         intent.json,
+         "loads",
+         side_effect=lambda _text: minimal_graph,
+     ), \
+     patch("builtins.print") as printed:
+    intent.emit_exact(
+        ROOT,
+        "ci_prepare_ready_initial",
+        "ci_watch",
+        {"workspace_path": "/tmp/work"},
+    )
+assert json.loads(printed.call_args.args[0]) == {
+    "transition": "native-transition-id",
+    "workspace_path": "/tmp/work",
+    "entry_transition": "ci_prepare_ready_initial",
+}
+
+print("puber-release-current: passed non-attested graph, carrier, route and null-contract checks")

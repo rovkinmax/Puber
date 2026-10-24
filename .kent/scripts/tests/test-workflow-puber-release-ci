@@ -1,0 +1,1684 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import importlib.util
+import hashlib
+import io
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import tomllib
+import uuid
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from contextlib import nullcontext
+from unittest.mock import patch
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[3]
+spec = importlib.util.spec_from_loader(
+    "puber_release_ci_typed_test",
+    SourceFileLoader(
+        "puber_release_ci_typed_test",
+        str(ROOT / ".kent/scripts/workflow-puber-release-ci"),
+    ),
+)
+ci = importlib.util.module_from_spec(spec)
+assert spec and spec.loader
+spec.loader.exec_module(ci)
+
+task_id = "task-12345678-1234-4234-8234-123456789abc"
+task_short_id = "PUB-99"
+node_id = "native-ci-prepare-node"
+native_context = {"task_id": task_id, "node_id": node_id}
+
+
+def canonical(value) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def native_transition_id(graph: dict, edge_key: str) -> str:
+    edges = [edge for edge in graph["edges"] if edge.get("key") == edge_key]
+    assert len(edges) == 1, edge_key
+    groups = [
+        group for group in graph["transition_groups"]
+        if group.get("id") == edges[0].get("transition_group_id")
+    ]
+    assert len(groups) == 1, edge_key
+    return groups[0]["transition_id"]
+
+
+def validate_context(value: object) -> dict:
+    assert isinstance(value, dict)
+    assert value.get("schema") == "workflow-delivery-context-v2"
+    assert value.get("phase") == "post_pr"
+    assert set(value) <= {
+        "schema", "phase", "pr_url", "branch_name", "pr_base_branch",
+        "merge_strategy", "pr_feedback_cursor", "ci_contract", "ci_report",
+    }
+    for key in (
+        "pr_url", "branch_name", "pr_base_branch", "merge_strategy",
+        "pr_feedback_cursor",
+    ):
+        assert isinstance(value.get(key), str) and value[key]
+    return dict(value)
+
+
+def validated_resume(raw: str) -> str | None:
+    try:
+        validate_context(json.loads(raw))
+    except (AssertionError, TypeError, ValueError):
+        return None
+    return raw
+
+
+def unwrap_context(payload: dict) -> dict:
+    result = dict(payload)
+    raw = result.pop("delivery_context", None)
+    if raw is None:
+        return result
+    context = validate_context(json.loads(raw))
+    for key in (
+        "pr_url", "branch_name", "pr_base_branch", "merge_strategy",
+        "pr_feedback_cursor", "ci_contract", "ci_report",
+    ):
+        if key in payload:
+            if key in context:
+                if payload[key] != context[key]:
+                    raise ValueError("delivery context conflict")
+            elif payload[key] != "":
+                raise ValueError("delivery context conflict")
+        result.pop(key, None)
+        if key in context:
+            result[key] = context[key]
+    return result
+
+
+def make_modules(child_holder: dict | None = None) -> dict:
+    holder = child_holder if child_holder is not None else {}
+
+    def validate_diagnostic(value: object) -> dict:
+        assert isinstance(value, str)
+        parsed = json.loads(value)
+        assert set(parsed) <= {
+            "schema", "code", "classification", "input_strings_sha256",
+            "resume_context",
+        }
+        assert parsed["schema"] == "workflow-ci-preparation-diagnostic-v1"
+        assert parsed["classification"] in {
+            "transient", "archive_blocked", "identity_conflict", "invalid_input",
+        }
+        return parsed
+
+    def producer_locator(commentary: str) -> str | None:
+        if commentary == "Kent producer packet: child-locator":
+            return "child-locator"
+        return None
+
+    def observe(*_args, **_kwargs):
+        return {
+            "task_id": task_id,
+            "task_short_id": task_short_id,
+            "project_id": "project-fixture",
+            "workspace_path": str(ROOT),
+            "invocation_kind": "script",
+            "node_id": node_id,
+            "transition_branch_key": None,
+        }
+
+    def reconstruct(_root, locator, *, identity, **_kwargs):
+        assert locator == "child-locator"
+        assert identity["task_id"] == task_id
+        return holder["child"]
+
+    return {
+        "validate_ci_preparation_diagnostic": validate_diagnostic,
+        "typed_preparation_failure": lambda _payload, _error: {},
+        "validate_delivery_context": validate_context,
+        "_validated_resume_context": validated_resume,
+        "unwrap_delivery_context_payload": unwrap_context,
+        "kit_canonical_bytes": canonical,
+        "producer_locator": producer_locator,
+        "observe_script_identity": observe,
+        "producer_reference_closure": lambda *_args, **_kwargs: [],
+        "producer_github_retry_constraints": lambda _producers: [],
+        "merge_github_retry_constraints": lambda _constraints: None,
+        "reconstruct_producer": reconstruct,
+        "packet_decode": lambda raw: json.loads(raw),
+        "packet_json": canonical,
+    }
+
+
+release_payload = {
+    "workspace_path": str(ROOT),
+    "operation_id": "operation-1",
+    "task_short_id": task_short_id,
+    "release_type": "minor",
+    "release_version": "99.0.0",
+    "release_tag": "v99.0.0",
+    "release_branch": "release/99.0.0",
+    "release_base_oid": "a" * 40,
+    "candidate_oid": "b" * 40,
+    "release_head_oid": "c" * 40,
+    "profile_report": '{"profile":"exact"}',
+    "profile_report_digest": "d" * 64,
+    "release_preparation_report": '{"preparation":"exact"}',
+    "release_preparation_report_digest": "e" * 64,
+    "verification_summary": "source-only fixture",
+    "pr_url": "https://github.com/rovkinmax/Puber/pull/7",
+    "branch_name": "release/99.0.0",
+    "merge_strategy": "rebase",
+    "pr_head_oid": "c" * 40,
+    "pr_base_oid": "a" * 40,
+    "pr_base_branch": "master",
+}
+state = {
+    "task_id": task_id,
+    "task_short_id": task_short_id,
+    "controller_commit": release_payload["release_head_oid"],
+}
+observed = {
+    "url": release_payload["pr_url"],
+    "headRefOid": release_payload["pr_head_oid"],
+    "baseRefOid": release_payload["pr_base_oid"],
+    "headRefName": release_payload["branch_name"],
+    "baseRefName": release_payload["pr_base_branch"],
+    "state": "OPEN",
+    "mergedAt": None,
+    "mergeCommit": None,
+}
+
+# The exact initial route alone receives the established absent-cursor value.
+# The wrapper's native input remains unchanged; only the actual child input is
+# expanded and the child receives the exact native _kent object.
+initial = dict(release_payload)
+incoming_commentary = (
+    "release handoff\nKent producer packet:"
+    "build/kent-workflow/PUB-99/packets/base-" + "a" * 64 + ".json"
+)
+with patch.object(ci.helper, "_kit_modules", return_value=make_modules()):
+    child_input = ci._child_payload(
+        "ci_prepare",
+        initial,
+        native_context,
+        {"key": "ship_pr_ci_watch"},
+        incoming_commentary,
+    )
+assert "pr_feedback_cursor" not in initial
+assert "delivery_context" not in initial
+assert child_input["pr_feedback_cursor"] == "uninitialized"
+context_text = child_input["delivery_context"]
+context_value = json.loads(context_text)
+assert context_value == {
+    "schema": "workflow-delivery-context-v2",
+    "phase": "post_pr",
+    "pr_url": release_payload["pr_url"],
+    "branch_name": release_payload["branch_name"],
+    "pr_base_branch": "master",
+    "merge_strategy": "rebase",
+    "pr_feedback_cursor": "uninitialized",
+}
+assert child_input["_kent"] == native_context
+assert child_input["commentary"] == incoming_commentary
+
+# Later complete flat values can be serialized, but supplied invalid cursor or
+# packet strings are passed through unchanged and never repaired into context.
+later = {
+    **release_payload,
+    "pr_feedback_cursor": "uninitialized",
+}
+with patch.object(ci.helper, "_kit_modules", return_value=make_modules()):
+    later_child = ci._child_payload(
+        "ci_prepare",
+        later,
+        native_context,
+        {"key": "ci_waiting_pr"},
+    )
+assert later_child["delivery_context"] == canonical(context_value).decode("utf-8")
+for bad in ("", "null", " null "):
+    supplied = {**later, "pr_feedback_cursor": bad}
+    with patch.object(ci.helper, "_kit_modules", return_value=make_modules()):
+        unchanged = ci._child_payload(
+            "ci_prepare",
+            supplied,
+            native_context,
+            {"key": "ci_waiting_pr"},
+        )
+    assert unchanged["pr_feedback_cursor"] == bad
+    assert "delivery_context" not in unchanged
+bad_packet = {**later, "ci_report": ""}
+with patch.object(ci.helper, "_kit_modules", return_value=make_modules()):
+    unchanged = ci._child_payload(
+        "ci_prepare",
+        bad_packet,
+        native_context,
+        {"key": "ci_waiting_pr"},
+    )
+assert unchanged["ci_report"] == ""
+assert "delivery_context" not in unchanged
+
+# A supplied valid context is retained byte-for-byte; conflicting flat state is
+# not rewritten or used as a candidate.
+spaced_context = json.dumps(context_value, ensure_ascii=False, indent=2)
+supplied_context = {
+    **later,
+    "delivery_context": spaced_context,
+}
+with patch.object(ci.helper, "_kit_modules", return_value=make_modules()):
+    preserved = ci._child_payload(
+        "ci_prepare",
+        supplied_context,
+        native_context,
+        {"key": "ci_waiting_pr"},
+    )
+assert preserved["delivery_context"] == spaced_context
+conflict = {**supplied_context, "branch_name": "release/other"}
+with patch.object(ci.helper, "_kit_modules", return_value=make_modules()):
+    rejected = ci._child_payload(
+        "ci_prepare",
+        conflict,
+        native_context,
+        {"key": "ci_waiting_pr"},
+    )
+assert rejected["delivery_context"] == spaced_context
+assert rejected["branch_name"] == "release/other"
+
+# Genuine _kent forwarding is preserved by the shared command adapter.
+captured = {}
+
+
+def fake_run(argv, *, input_text, **kwargs):
+    captured.update(argv=argv, input=json.loads(input_text), kwargs=kwargs)
+    return subprocess.CompletedProcess(
+        argv,
+        0,
+        ci.helper.canonical_json({"transition": "ci_prepare_ready_initial"}),
+        "",
+    )
+
+
+with patch.object(ci.helper, "child_env", return_value={}), \
+     patch.object(ci.helper, "run", side_effect=fake_run):
+    child_output = ci._run_shared("ci_prepare", child_input)
+assert child_output == {"transition": "ci_prepare_ready_initial"}
+assert captured["input"] == child_input
+assert captured["input"]["_kent"] == native_context
+
+# The actual child producer owns the exact child string map and typed result.
+child_strings = {
+    key: value for key, value in child_input.items()
+    if isinstance(key, str) and isinstance(value, str)
+}
+diagnostic = {
+    "schema": "workflow-ci-preparation-diagnostic-v1",
+    "code": "preparation_failed",
+    "classification": "transient",
+    "input_strings_sha256": ci.helper.sha256_bytes(
+        ci.helper.canonical_bytes(child_strings)
+    ),
+    "resume_context": context_text,
+}
+diagnostic_text = ci.helper.canonical_json(diagnostic)
+child_result = {
+    "transition": "ci_prepare_failed",
+    "workspace_path": str(ROOT),
+    "task_short_id": task_short_id,
+    "ci_preparation_diagnostic": diagnostic_text,
+}
+holder = {
+    "child": {
+        "schema": "workflow-producer-source-v1",
+        "identity": {
+            "invocation_kind": "script",
+            "node_id": node_id,
+            "transition_branch_key": None,
+        },
+        "producer_kind": "prepare-ci",
+        "inputs": child_strings,
+        "result": child_result,
+        "binding": {},
+    }
+}
+modules = make_modules(holder)
+shared_failure = {
+    **child_result,
+    "commentary": "Kent producer packet: child-locator",
+}
+with patch.object(ci.helper, "_kit_modules", return_value=modules):
+    assert ci._validate_preparation_failure(
+        shared_failure,
+        child_input,
+        release_payload,
+    ) == (diagnostic_text, "child-locator")
+
+invalid_shared = {
+    **shared_failure,
+    "ci_preparation_diagnostic": ci.helper.canonical_json({
+        **diagnostic,
+        "input_strings_sha256": "f" * 64,
+    }),
+}
+with patch.object(ci.helper, "_kit_modules", return_value=modules):
+    try:
+        ci._validate_preparation_failure(
+            invalid_shared,
+            child_input,
+            release_payload,
+        )
+    except ci.helper.ContractError:
+        pass
+    else:
+        raise AssertionError("diagnostic with a changed child digest was accepted")
+
+# A verified child failure is remapped to the narrow Agent route; no fake CI
+# nulls, blocker prose, or entry_transition are invented.
+original_inputs = {
+    **release_payload,
+    "entry_transition": "ship_pr_ci_watch",
+}
+with patch.object(ci, "_checkpoint", lambda *_: None), \
+     patch.object(ci.helper, "resolve_merge_strategy", return_value="rebase"), \
+     patch.object(ci, "_read_actual_pr", side_effect=[observed, observed]), \
+     patch.object(ci, "_child_payload", return_value=child_input), \
+     patch.object(ci, "_run_shared", return_value=shared_failure), \
+     patch.object(
+         ci,
+         "_validate_preparation_failure",
+         return_value=(diagnostic_text, "child-locator"),
+     ):
+    result = ci.transport(
+        "ci_prepare",
+        release_payload,
+        state,
+        native_context,
+        incoming_edge={"key": "ship_pr_ci_watch"},
+        original_inputs=original_inputs,
+    )
+assert result["transition"] == "ci_prepare_failed"
+assert result["ci_preparation_diagnostic"] == diagnostic_text
+assert result["_producer_refs"] == ["child-locator"]
+assert result["_original_inputs"] == original_inputs
+assert "blocker_reason" not in result
+assert not ({"ci_contract", "ci_report", "pr_feedback_cursor"} & set(result))
+
+# The native Script's own pre-child failures use the qualified typed failure
+# constructor and bind the untouched original native string map.
+prechild_error = ci.helper.ContractError("target_branch_changed")
+
+
+def typed_preparation_failure(inputs, error):
+    assert error is prechild_error
+    return {
+        "transition": "ci_prepare_failed",
+        "workspace_path": str(ROOT),
+        "task_short_id": task_short_id,
+        "ci_preparation_diagnostic": ci.helper.canonical_json({
+            "schema": "workflow-ci-preparation-diagnostic-v1",
+            "code": "target_branch_changed",
+            "classification": "identity_conflict",
+            "input_strings_sha256": ci.helper.sha256_bytes(
+                ci.helper.canonical_bytes(inputs)
+            ),
+        }),
+    }
+
+
+prechild_modules = make_modules()
+prechild_modules["typed_preparation_failure"] = typed_preparation_failure
+with patch.object(ci, "_checkpoint", side_effect=prechild_error), \
+     patch.object(ci.helper, "_kit_modules", return_value=prechild_modules):
+    prechild = ci.transport(
+        "ci_prepare",
+        release_payload,
+        state,
+        native_context,
+        incoming_edge={"key": "ship_pr_ci_watch"},
+        native_commentary="Kent producer packet: child-locator",
+        original_inputs=original_inputs,
+    )
+assert prechild["transition"] == "ci_prepare_failed"
+assert prechild["_producer_refs"] == ["child-locator"]
+assert prechild["ci_preparation_diagnostic"]
+assert "blocker_reason" not in prechild
+
+# A repeated retry resolves only explicit producer references: the newest
+# wrapper points at its failed child and previous pack, whose ancestry retains
+# the original full carrier. Native graph binding is recomputed from the exact
+# Agent source/group/edge projection, without constructing an Agent identity.
+context_value = json.loads(context_text)
+child_strings = {
+    key: value for key, value in child_input.items()
+    if isinstance(key, str) and isinstance(value, str)
+}
+retry_diagnostic = {
+    "schema": "workflow-ci-preparation-diagnostic-v1",
+    "code": "preparation_failed",
+    "classification": "transient",
+    "input_strings_sha256": ci.helper.sha256_bytes(
+        ci.helper.canonical_bytes(child_strings)
+    ),
+    "resume_context": context_text,
+}
+retry_diagnostic_text = ci.helper.canonical_json(retry_diagnostic)
+retry_child_result = {
+    "transition": "ci_prepare_failed",
+    "workspace_path": str(ROOT),
+    "task_short_id": task_short_id,
+    "ci_preparation_diagnostic": retry_diagnostic_text,
+}
+route_key = ci.RETRY_ROUTE
+native_group = {
+    "id": "native-retry-group",
+    "source_node_id": "native-monitor-node",
+    "transition_id": route_key,
+}
+native_edge = {
+    "id": "native-retry-edge",
+    "transition_group_id": native_group["id"],
+    "key": route_key,
+    "target_node_id": node_id,
+    "requires_approval": False,
+    "context_mode": "new_session",
+    "parameters": [{"key": key} for key in ci.RETRY_FIELDS],
+}
+native_graph = {
+    "workflow_id": ci.helper.WORKFLOW_ID,
+    "expected_version": 8,
+    "graph": {
+        "nodes": [
+            {"id": node_id, "key": "ci_prepare", "kind": "script"},
+            {"id": "native-monitor-node", "key": "ci_monitor", "kind": "agent"},
+        ],
+        "transition_groups": [native_group],
+        "edges": [native_edge],
+    },
+}
+native_projection = {
+    "source": native_graph["graph"]["nodes"][1],
+    "group": native_group,
+    "edges": [native_edge],
+}
+contract_digest = ci.helper.sha256_bytes(canonical(native_projection))
+native_identity = {
+    "task_id": task_id,
+    "task_short_id": task_short_id,
+    "project_id": "project-fixture",
+    "workspace_path": str(ROOT),
+    "invocation_kind": "script",
+    "node_id": node_id,
+    "transition_branch_key": None,
+}
+agent_identity = {
+    "task_id": task_id,
+    "task_short_id": task_short_id,
+    "project_id": "project-fixture",
+    "workspace_path": str(ROOT),
+    "session_id": "monitor-session",
+    "step_id": "monitor-step",
+}
+
+
+def pack_producer(locator: str, refs: list[str]) -> dict:
+    return {
+        "schema": "workflow-producer-source-v2",
+        "identity": agent_identity,
+        "producer_kind": "pack-delivery",
+        "inputs": {},
+        "result": {
+            "transition": route_key,
+            "workspace_path": str(ROOT),
+            "task_short_id": task_short_id,
+            "delivery_context": context_text,
+        },
+        "binding": {
+            "transition_contract_sha256": contract_digest,
+            "native_graph_version": "8",
+            "producer_refs": canonical({"refs": refs}).decode("utf-8"),
+        },
+        "locator": locator,
+    }
+
+
+initial_child = {
+    "schema": "workflow-producer-source-v1",
+    "identity": native_identity,
+    "producer_kind": "prepare-ci",
+    "inputs": child_strings,
+    "result": child_result,
+    "binding": {},
+    "locator": "child-initial",
+}
+initial_wrapper = {
+    "schema": "workflow-producer-source-v1",
+    "identity": native_identity,
+    "producer_kind": "puber-release-ci",
+    "inputs": {**release_payload, "entry_transition": "ship_pr_ci_watch"},
+    "result": {
+        "transition": "ci_prepare_failed",
+        "workspace_path": str(ROOT),
+        "task_short_id": task_short_id,
+        "ci_preparation_diagnostic": diagnostic_text,
+    },
+    "binding": {
+        "producer_refs": canonical({"refs": ["child-initial"]}).decode("utf-8"),
+    },
+    "locator": "wrapper-initial",
+}
+prior_pack = pack_producer("pack-prior", ["wrapper-initial"])
+retry_child = {
+    **initial_child,
+    "locator": "child-retry",
+    "result": retry_child_result,
+}
+retry_wrapper_inputs = {
+    "workspace_path": str(ROOT),
+    "task_short_id": task_short_id,
+    "delivery_context": context_text,
+    "commentary": "Kent producer packet: pack-prior",
+}
+retry_wrapper = {
+    "schema": "workflow-producer-source-v1",
+    "identity": native_identity,
+    "producer_kind": "puber-release-ci",
+    "inputs": retry_wrapper_inputs,
+    "result": {
+        "transition": "ci_prepare_failed",
+        "workspace_path": str(ROOT),
+        "task_short_id": task_short_id,
+        "ci_preparation_diagnostic": retry_diagnostic_text,
+    },
+    "binding": {
+        "producer_refs": canonical({
+            "refs": ["child-retry", "pack-prior"],
+        }).decode("utf-8"),
+    },
+    "locator": "wrapper-retry",
+}
+current_pack = pack_producer("pack-current", ["wrapper-retry"])
+producers = {
+    producer["locator"]: producer
+    for producer in (
+        current_pack,
+        retry_wrapper,
+        retry_child,
+        prior_pack,
+        initial_wrapper,
+        initial_child,
+    )
+}
+
+
+def retry_observe(_root, _task, context, *, native_read, return_details=False):
+    assert context == native_context
+    assert callable(native_read)
+    if return_details:
+        return native_identity, {"summary": {}}, native_graph
+    return native_identity
+
+
+retry_modules = make_modules()
+retry_modules.update(
+    producer_locator=lambda commentary: (
+        "pack-current"
+        if commentary == "Kent producer packet: pack-current"
+        else None
+    ),
+    observe_script_identity=retry_observe,
+    producer_reference_closure=lambda *_args, **_kwargs: [],
+    reconstruct_producer=lambda _root, locator, **_kwargs: producers[locator],
+)
+retry_native_payload = {
+    "workspace_path": str(ROOT),
+    "task_short_id": task_short_id,
+    "delivery_context": context_text,
+    "commentary": "Kent producer packet: pack-current",
+}
+with patch.object(ci.helper, "_kit_modules", return_value=retry_modules), \
+     patch.object(ci, "_checkpoint", lambda *_: None):
+    restored, pack_locator, restored_diagnostic = ci._restore_retry_payload(
+        retry_native_payload,
+        native_context,
+        state,
+    )
+assert pack_locator == "pack-current"
+assert restored_diagnostic == retry_diagnostic_text
+assert restored["profile_report"] == release_payload["profile_report"]
+assert restored["release_preparation_report"] == release_payload["release_preparation_report"]
+assert restored["verification_summary"] == release_payload["verification_summary"]
+assert restored["delivery_context"] == context_text
+assert restored["pr_feedback_cursor"] == "uninitialized"
+
+
+def actual_typed_roundtrip(candidate_value: str) -> None:
+    """Exercise the real shared CI CLI and Kit producer/Agent protocols.
+
+    The dirty Kit source is read-only input. A private, disposable copy of its
+    required files gets a local fixture commit so both project and Kit
+    fail-closed source selectors continue to require exact clean revisions.
+    Neither fixture revision is a released/qualified production source.
+    """
+    candidate_root = Path(candidate_value).expanduser().resolve(strict=True)
+    checkpoint_source = candidate_root / "templates/project/workflow-checkpoint"
+    janitor_source = candidate_root / "templates/project/workflow-task-janitor"
+    cli_source = candidate_root / "scripts/prepare-github-ci"
+    workflowkit_source = candidate_root / "workflowkit"
+    assert checkpoint_source.is_file()
+    assert janitor_source.is_file()
+    assert cli_source.is_file()
+    assert workflowkit_source.is_dir()
+    source_files = [
+        checkpoint_source,
+        janitor_source,
+        cli_source,
+        *sorted(workflowkit_source.rglob("*.py")),
+    ]
+
+    def source_digests() -> dict[str, str]:
+        return {
+            str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in source_files
+        }
+
+    before_digests = source_digests()
+    before_status = subprocess.run(
+        ["git", "-C", str(candidate_root), "status", "--short"],
+        check=True,
+        capture_output=True,
+    ).stdout
+    before_head = subprocess.run(
+        ["git", "-C", str(candidate_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+    ).stdout.decode().strip()
+    kit_modules_before = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "workflowkit" or name.startswith("workflowkit.")
+    }
+    original_path = list(sys.path)
+    for name in kit_modules_before:
+        del sys.modules[name]
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="puber-d13-ci-roundtrip-") as temporary:
+            temp_root = Path(temporary).resolve()
+            fixture_root = temp_root / "project"
+            fixture_root.mkdir()
+            for name in (
+                "scripts", "workflows", "commands", "context",
+                "subagents", "adapters", "skills",
+            ):
+                source = ROOT / ".kent" / name
+                if source.is_dir():
+                    shutil.copytree(source, fixture_root / ".kent" / name)
+            for name in ("workflow-profile.toml", "project-contract.md"):
+                shutil.copy2(ROOT / ".kent" / name, fixture_root / ".kent" / name)
+            shutil.copy2(ROOT / ".gitignore", fixture_root / ".gitignore")
+            shutil.copy2(
+                checkpoint_source,
+                fixture_root / ".kent/scripts/workflow-checkpoint",
+            )
+            shutil.copy2(
+                janitor_source,
+                fixture_root / ".kent/scripts/workflow-task-janitor",
+            )
+
+            candidate_kit = temp_root / "candidate-kit"
+            candidate_kit.mkdir()
+            (candidate_kit / "scripts").mkdir()
+            (candidate_kit / "templates/project").mkdir(parents=True)
+            shutil.copytree(workflowkit_source, candidate_kit / "workflowkit")
+            shutil.copy2(
+                cli_source,
+                candidate_kit / "scripts/prepare-github-ci",
+            )
+            shutil.copy2(
+                checkpoint_source,
+                candidate_kit / "templates/project/workflow-checkpoint",
+            )
+            shutil.copy2(
+                janitor_source,
+                candidate_kit / "templates/project/workflow-task-janitor",
+            )
+            subprocess.run(
+                ["git", "-C", str(candidate_kit), "init", "-q"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(candidate_kit), "add", "-A"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(candidate_kit),
+                    "-c", "user.name=Disposable fixture",
+                    "-c", "user.email=fixture.invalid",
+                    "commit", "-qm", "Disposable D13 CI candidate",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            candidate_commit = subprocess.run(
+                ["git", "-C", str(candidate_kit), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+            ).stdout.decode().strip()
+            assert subprocess.run(
+                ["git", "-C", str(candidate_kit), "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+            ).stdout == b""
+
+            profile_path = fixture_root / ".kent/workflow-profile.toml"
+            profile_text = profile_path.read_text(encoding="utf-8")
+            profile_value = tomllib.loads(profile_text)
+            assert profile_value["command_versions"] == {
+                "runtime_contracts": "2.2.0",
+                "verify": "2.0.0",
+                "evidence": "2.1.0",
+                "janitor": "3.1.0",
+                "wait_pr": "4.1.0",
+                "wait_ci": "4.1.0",
+                "prepare_ci": "3.1.0",
+                "github_observation": "1.1.0",
+                "checkpoint": "1.2.0",
+            }
+            assert profile_value["policies"]["delivery_reliability"] == "v1"
+            old_kit_root = profile_value["puber_runtime"]["kit_source"]["root"]
+            profile_text = profile_text.replace(
+                f'root = "{old_kit_root}"',
+                f'root = "{candidate_kit}"',
+                1,
+            )
+            profile_path.write_text(profile_text, encoding="utf-8")
+
+            # Give the copied helper an exact fixture-only pin. Its production
+            # equality and clean-tree checks remain unchanged.
+            intent_path = fixture_root / ".kent/scripts/workflow-puber-release-intent"
+            intent_text = intent_path.read_text(encoding="utf-8")
+            old_pin = f'KIT_COMMIT = "{ci.helper.KIT_COMMIT}"'
+            assert old_pin in intent_text
+            intent_path.write_text(
+                intent_text.replace(
+                    old_pin,
+                    f'KIT_COMMIT = "{candidate_commit}"',
+                    1,
+                ),
+                encoding="utf-8",
+            )
+
+            git = lambda *args: subprocess.run(
+                ["git", "-C", str(fixture_root), *args],
+                check=True,
+                capture_output=True,
+            ).stdout.decode().strip()
+            subprocess.run(
+                ["git", "-C", str(fixture_root), "init", "-q"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(fixture_root), "add", "-A"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git", "-C", str(fixture_root),
+                    "-c", "user.name=Disposable fixture",
+                    "-c", "user.email=fixture.invalid",
+                    "commit", "-qm", "Disposable Puber CI fixture",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            project_commit = git("rev-parse", "HEAD")
+
+            fixture_spec = importlib.util.spec_from_loader(
+                "puber_release_ci_candidate_roundtrip",
+                SourceFileLoader(
+                    "puber_release_ci_candidate_roundtrip",
+                    str(fixture_root / ".kent/scripts/workflow-puber-release-ci"),
+                ),
+            )
+            assert fixture_spec and fixture_spec.loader
+            fixture_ci = importlib.util.module_from_spec(fixture_spec)
+            fixture_spec.loader.exec_module(fixture_ci)
+
+            graph_value = json.loads(
+                (fixture_root / fixture_ci.helper.GRAPH_PATH).read_text(encoding="utf-8")
+            )
+            graph = {
+                "workflow_id": graph_value["workflow"]["id"],
+                "expected_version": graph_value["workflow"]["version"],
+                "graph": {
+                    key: graph_value[key]
+                    for key in ("nodes", "transition_groups", "edges")
+                },
+            }
+            nodes = {node["key"]: node for node in graph["graph"]["nodes"]}
+            prepare_node = nodes["ci_prepare"]
+            monitor_node = nodes["ci_monitor"]
+            task_id_fixture = f"task-{uuid.uuid4()}"
+            task_short_fixture = "PUB-99"
+            project_id_fixture = fixture_ci.helper.PROJECT_ID
+            workspace_id = "workspace-d13-candidate-fixture"
+            native_detail = {
+                "actions": [],
+                "attention_count": 0,
+                "body": "",
+                "current_nodes": [{"node_id": prepare_node["id"]}],
+                "current_scripts": [{
+                    "current_node": {"node_id": prepare_node["id"]},
+                    "path": str(
+                        fixture_root / fixture_ci.helper.SCRIPT_PATHS["ci_prepare"]
+                    ),
+                }],
+                "execution_target": {"commit_oid": project_commit},
+                "label_ids": [],
+                "live_sessions": [],
+                "project": {"default_workspace_id": workspace_id},
+                "retained_session_count": 0,
+                "source_workspace": {
+                    "is_primary": True,
+                    "workspace_id": workspace_id,
+                    "root_path": str(fixture_root),
+                },
+                "status": {"node_ids": [prepare_node["id"]]},
+                "summary": {
+                    "id": task_id_fixture,
+                    "short_id": task_short_fixture,
+                    "project_id": project_id_fixture,
+                    "workflow_id": graph["workflow_id"],
+                },
+                "workflow": {
+                    "workflow_id": graph["workflow_id"],
+                    "version": graph["expected_version"],
+                    "name": fixture_ci.helper.WORKFLOW_NAME,
+                },
+                "worktree_path": str(fixture_root),
+            }
+            native_state = temp_root / "native-state.json"
+            native_state.write_text(
+                json.dumps(
+                    {"project_id": project_id_fixture, "task_detail": native_detail},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            native_graph_path = temp_root / "native-graph.json"
+            native_graph_path.write_text(
+                json.dumps(graph, ensure_ascii=False, sort_keys=True),
+                encoding="utf-8",
+            )
+
+            fake_bin = temp_root / "bin"
+            fake_bin.mkdir()
+            fake_kent = fake_bin / "kent"
+            fake_kent.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                "from pathlib import Path\n"
+                "state = json.loads(Path(os.environ['PUBER_D13_NATIVE_STATE']).read_text())\n"
+                "graph = json.loads(Path(os.environ['PUBER_D13_NATIVE_GRAPH']).read_text())\n"
+                "args = sys.argv[1:]\n"
+                "if args[:1] == ['project']:\n"
+                "    print(state['project_id'])\n"
+                "elif args[:2] == ['task', 'show']:\n"
+                "    print(json.dumps(state['task_detail']))\n"
+                "elif args[:3] == ['workflow', 'graph', 'inspect']:\n"
+                "    print(json.dumps(graph))\n"
+                "else:\n"
+                "    raise SystemExit(2)\n",
+                encoding="utf-8",
+            )
+            fake_kent.chmod(0o755)
+            fake_gh = fake_bin / "gh"
+            fake_gh.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                "from pathlib import Path\n"
+                "calls = os.environ.get('PUBER_D13_GH_CALLS')\n"
+                "if calls:\n"
+                "    with Path(calls).open('a', encoding='utf-8') as stream:\n"
+                "        stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                "failure = os.environ.get('PUBER_D13_FAKE_GH_FAIL', '0')\n"
+                "if failure in {'known', 'unknown'}:\n"
+                "    retry_after = '20' if failure == 'known' else 'not-a-duration'\n"
+                "    sys.stderr.write(\n"
+                "        '< HTTP/2.0 429 Too Many Requests\\r\\n'\n"
+                "        '< Retry-After: ' + retry_after + '\\r\\n\\r\\n'\n"
+                "        '{\\\"message\\\":\\\"API rate limit exceeded\\\"}\\r\\n'\n"
+                "        '* Request took 0.01s\\r\\n'\n"
+                "    )\n"
+                "    raise SystemExit(1)\n"
+                "print(json.dumps({"
+                "'state':'OPEN',"
+                "'url':'https://github.com/rovkinmax/Puber/pull/7',"
+                "'headRefName':'release/99.0.0',"
+                "'baseRefName':'main',"
+                f"'headRefOid':'{project_commit}',"
+                f"'baseRefOid':'{'a' * 40}',"
+                "'mergedAt':None,'mergeCommit':None}))\n",
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+            gh_calls = temp_root / "github-calls.jsonl"
+            home = temp_root / "home"
+            tool_dir = home / ".kent/bin"
+            tool_dir.mkdir(parents=True)
+            prepare_cli = tool_dir / "kent-prepare-github-ci"
+            prepare_cli.symlink_to(candidate_kit / "scripts/prepare-github-ci")
+            environment = {
+                "HOME": str(home),
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "PYTHONPATH": str(candidate_kit),
+                "KENT_ENGINEERING_KIT_ROOT": str(candidate_kit),
+                "KENT_PREPARE_GITHUB_CI_BIN": str(prepare_cli),
+                "KENT_GH_BIN": str(fake_gh),
+                "PUBER_KENT_BIN": str(fake_kent),
+                "PUBER_D13_NATIVE_STATE": str(native_state),
+                "PUBER_D13_NATIVE_GRAPH": str(native_graph_path),
+                "PUBER_D13_GH_CALLS": str(gh_calls),
+                "PUBER_D13_FAKE_GH_FAIL": "known",
+            }
+
+            class CapturedStdout:
+                def __init__(self) -> None:
+                    self.buffer = io.BytesIO()
+
+                def write(self, value: str) -> int:
+                    encoded = value.encode("utf-8")
+                    self.buffer.write(encoded)
+                    return len(value)
+
+                def flush(self) -> None:
+                    return None
+
+            native_context_fixture = {
+                "task_id": task_id_fixture,
+                "node_id": prepare_node["id"],
+            }
+
+            def observe_script(native_context: dict) -> dict:
+                with patch.dict(os.environ, environment):
+                    checkpoint_adapter = (
+                        fixture_ci.helper._qualified_checkpoint_module(
+                            fixture_root,
+                            required=("delivery_module",),
+                        )
+                    )
+                    delivery_api = checkpoint_adapter.delivery_module()
+                    return delivery_api.observe_script_identity(
+                        fixture_root,
+                        task_short_fixture,
+                        native_context,
+                        native_read=fixture_ci.helper._provider_native_read,
+                    )
+
+            fixture_release = {
+                **release_payload,
+                "workspace_path": str(fixture_root),
+                "operation_id": "f" * 64,
+                "task_short_id": task_short_fixture,
+                "pr_url": "https://github.com/rovkinmax/Puber/pull/7",
+                "branch_name": "release/99.0.0",
+                "release_head_oid": project_commit,
+                "pr_base_branch": "main",
+                "pr_head_oid": project_commit,
+                "pr_base_oid": "a" * 40,
+            }
+            profile_report_value = {
+                "schema": "puber_profile_report_v1",
+                "operation_id": fixture_release["operation_id"],
+                "task_short_id": task_short_fixture,
+                "release_type": fixture_release["release_type"],
+                "release_version": fixture_release["release_version"],
+                "release_tag": fixture_release["release_tag"],
+                "release_branch": fixture_release["release_branch"],
+                "release_base_oid": fixture_release["release_base_oid"],
+                "candidate_oid": fixture_release["candidate_oid"],
+                "tv_serial": "emulator-5554",
+                "command": (
+                    ".kent/scripts/workflow-puber-release-profile-generation:"
+                    "tools/generate-baseline-profile.sh"
+                ),
+                "lease_state": "released",
+                "generation_state": "passed",
+                "network_isolation_state": "passed",
+                "elapsed_ms": 1,
+                "baseline_before_sha256": "1" * 64,
+                "baseline_after_sha256": "1" * 64,
+                "startup_before_sha256": "2" * 64,
+                "startup_after_sha256": "2" * 64,
+                "changed_profiles": [],
+            }
+            profile_report = fixture_ci.helper.canonical_json(profile_report_value)
+            profile_report_digest = fixture_ci.helper.sha256_bytes(
+                profile_report.encode("utf-8")
+            )
+            preparation_report_value = {
+                **fixture_ci.helper.VALIDATION_SIGNING,
+                "schema": "puber_release_preparation_report_v2",
+                "operation_id": fixture_release["operation_id"],
+                "task_short_id": task_short_fixture,
+                "release_type": fixture_release["release_type"],
+                "release_version": fixture_release["release_version"],
+                "release_tag": fixture_release["release_tag"],
+                "release_branch": fixture_release["release_branch"],
+                "release_base_oid": fixture_release["release_base_oid"],
+                "candidate_oid": fixture_release["candidate_oid"],
+                "release_head_oid": project_commit,
+                "profile_report_digest": profile_report_digest,
+                "compile_command": "./tools/agentw :app:compileProdReleaseArtProfile",
+                "compile_state": "passed",
+                "assemble_command": "./tools/agentw :app:assembleProdRelease",
+                "assemble_state": "passed",
+                "final_changed_paths": ["app/build.gradle.kts"],
+                "version_file_sha256": "3" * 64,
+                "baseline_profile_sha256": "1" * 64,
+                "startup_profile_sha256": "2" * 64,
+                "no_profile_diff": True,
+                "elapsed_ms": 1,
+            }
+            preparation_report = fixture_ci.helper.canonical_json(
+                preparation_report_value
+            )
+            preparation_report_digest = fixture_ci.helper.sha256_bytes(
+                preparation_report.encode("utf-8")
+            )
+            fixture_release.update(
+                profile_report=profile_report,
+                profile_report_digest=profile_report_digest,
+                release_preparation_report=preparation_report,
+                release_preparation_report_digest=preparation_report_digest,
+            )
+            fixture_ci.helper.write_profile_checkpoint(
+                fixture_root,
+                task_short_fixture,
+                {
+                    "schema": "puber_release_profile_checkpoint_v2",
+                    "task_id": task_id_fixture,
+                    "task_short_id": task_short_fixture,
+                    "operation_id": fixture_release["operation_id"],
+                    "release_branch": fixture_release["release_branch"],
+                    "release_base_oid": fixture_release["release_base_oid"],
+                    "candidate_oid": fixture_release["candidate_oid"],
+                    "release_head_oid": project_commit,
+                    "candidate_serials": ["emulator-5554"],
+                    "state": "completed",
+                    "resource_serial": "emulator-5554",
+                    "profile_report": profile_report,
+                    "profile_report_digest": profile_report_digest,
+                    "release_preparation_report": preparation_report,
+                    "release_preparation_report_digest": preparation_report_digest,
+                    "output_hashes": {
+                        "app/src/main/generated/baselineProfiles/baseline-prof.txt": (
+                            "1" * 64
+                        ),
+                        "app/src/main/generated/baselineProfiles/startup-prof.txt": (
+                            "2" * 64
+                        ),
+                    },
+                },
+            )
+            initial_native = {
+                **fixture_release,
+                "entry_transition": "ship_pr_ci_watch",
+            }
+            observed_pr = {
+                "url": fixture_release["pr_url"],
+                "headRefOid": fixture_release["pr_head_oid"],
+                "baseRefOid": fixture_release["pr_base_oid"],
+                "headRefName": fixture_release["branch_name"],
+                "baseRefName": fixture_release["pr_base_branch"],
+                "state": "OPEN",
+                "mergedAt": None,
+                "mergeCommit": None,
+            }
+            checkpoint_calls: list[tuple[dict, dict]] = []
+            restored_carriers: list[dict] = []
+            real_restore = fixture_ci._restore_retry_payload
+            real_checkpoint = fixture_ci._checkpoint
+
+            def checked_checkpoint(payload, checked_state) -> None:
+                assert checked_state["task_id"] == task_id_fixture
+                assert checked_state["task_short_id"] == task_short_fixture
+                assert checked_state["controller_commit"] == project_commit
+                assert all(
+                    payload.get(key) == fixture_release[key]
+                    for key in fixture_ci.RELEASE_IMMUTABLE_FIELDS
+                )
+                checkpoint_calls.append((dict(payload), dict(checked_state)))
+                real_checkpoint(payload, checked_state)
+
+            def capture_restored(*args, **kwargs):
+                restored, locator, diagnostic_text = real_restore(*args, **kwargs)
+                restored_carriers.append(dict(restored))
+                return restored, locator, diagnostic_text
+
+            shared_results: list[subprocess.CompletedProcess] = []
+            original_helper_run = fixture_ci.helper.run
+
+            def observe_shared_run(command, **kwargs):
+                result = original_helper_run(command, **kwargs)
+                shared_results.append(result)
+                return result
+
+            def run_native(
+                payload: dict,
+                *,
+                expect_provider_block: bool = False,
+            ) -> dict | None:
+                stdin = type("Input", (), {})()
+                stdin.buffer = io.BytesIO(
+                    json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                )
+                stdout = CapturedStdout()
+                stderr = io.StringIO()
+                read_pr_patch = (
+                    patch.object(
+                        fixture_ci,
+                        "_read_actual_pr",
+                        return_value=observed_pr,
+                    )
+                    if not expect_provider_block
+                    else nullcontext()
+                )
+                merge_strategy_patch = (
+                    patch.object(
+                        fixture_ci.helper,
+                        "resolve_merge_strategy",
+                        return_value="rebase",
+                    )
+                    if not expect_provider_block
+                    else nullcontext()
+                )
+                with (
+                    patch.dict(os.environ, environment),
+                    patch.object(fixture_ci.sys, "stdin", stdin),
+                    patch.object(fixture_ci.sys, "stdout", stdout),
+                    patch.object(fixture_ci.sys, "stderr", stderr),
+                    patch.object(
+                        fixture_ci.sys,
+                        "argv",
+                        ["workflow-puber-release-ci"],
+                    ),
+                    patch.object(fixture_ci, "_checkpoint", side_effect=checked_checkpoint),
+                    patch.object(
+                        fixture_ci,
+                        "_restore_retry_payload",
+                        side_effect=capture_restored,
+                    ),
+                    patch.object(
+                        fixture_ci.helper,
+                        "run",
+                        side_effect=observe_shared_run,
+                    ),
+                    read_pr_patch,
+                    merge_strategy_patch,
+                ):
+                    result_code = fixture_ci.main()
+                child_detail = ""
+                if shared_results and shared_results[-1].returncode:
+                    last = shared_results[-1]
+                    child_detail = (
+                        f"; child exit={last.returncode}; stdout={last.stdout!r}; "
+                        f"stderr={last.stderr!r}"
+                    )
+                if expect_provider_block:
+                    assert result_code == 2, (
+                        "provider-blocked wrapper pre-read unexpectedly continued: "
+                        + stderr.getvalue()
+                        + child_detail
+                    )
+                    assert not stdout.buffer.getvalue()
+                    return None
+                assert result_code == 0, stderr.getvalue() + child_detail
+                return fixture_ci.helper._json_one(stdout.buffer.getvalue())
+
+            def gh_call_count() -> int:
+                return len(gh_calls.read_text(encoding="utf-8").splitlines()) if gh_calls.exists() else 0
+
+            failure = run_native({
+                "_kent": native_context_fixture,
+                **initial_native,
+            })
+            assert failure["transition"] == "ci_prepare_failed", failure
+            assert "ci_preparation_diagnostic" in failure
+            assert "ci_contract" not in failure and "ci_report" not in failure
+            with patch.dict(os.environ, environment):
+                delivery = fixture_ci.helper._kit_modules()
+            script_identity = observe_script(native_context_fixture)
+            initial_locator = delivery["producer_locator"](failure["commentary"])
+            assert isinstance(initial_locator, str)
+            agent_common = {
+                "task_id": task_id_fixture,
+                "task_short_id": task_short_fixture,
+                "project_id": project_id_fixture,
+                "workspace_path": str(fixture_root),
+            }
+            initial_wrapper = delivery["reconstruct_producer"](
+                fixture_root,
+                initial_locator,
+                identity=script_identity,
+            )
+            initial_refs = json.loads(
+                initial_wrapper["binding"]["producer_refs"]
+            )["refs"]
+            assert len(initial_refs) == 1
+            initial_child = delivery["reconstruct_producer"](
+                fixture_root,
+                initial_refs[0],
+                identity=script_identity,
+            )
+            known_constraint = json.loads(
+                initial_child["binding"]["github_retry_constraint"]
+            )
+            assert (
+                known_constraint.get("schema") == "github-provider-retry-v1"
+                and known_constraint.get("provider_host") == "github.com"
+                and known_constraint.get("kind") == "not_before"
+                and type(known_constraint.get("not_before_unix_ms")) is int
+            )
+            assert gh_call_count() > 0
+
+            def pack_retry(source_locator: str):
+                identity = {
+                    **agent_common,
+                    "session_id": str(uuid.uuid4()),
+                    "step_id": str(uuid.uuid4()),
+                }
+                detail = {
+                    **native_detail,
+                    "current_nodes": [{
+                        "node_id": monitor_node["id"],
+                        "session_id": identity["session_id"],
+                    }],
+                    "live_sessions": [],
+                }
+                child_refs = json.loads(
+                    delivery["reconstruct_producer"](
+                        fixture_root,
+                        source_locator,
+                        identity=identity,
+                    )["binding"]["producer_refs"]
+                )["refs"]
+                assert len(child_refs) == 1
+                context_raw = delivery["reconstruct_producer"](
+                    fixture_root,
+                    child_refs[0],
+                    identity=identity,
+                )["inputs"]["delivery_context"]
+                transition_reference = delivery["transition_contract_reference"](
+                    identity,
+                    detail,
+                    graph,
+                    fixture_ci.RETRY_ROUTE,
+                )
+                locator, packed_bytes = delivery["pack_delivery"](
+                    fixture_root,
+                    {
+                        "schema": "workflow-pack-delivery-v1",
+                        "transition": fixture_ci.RETRY_ROUTE,
+                        "values": {
+                            "workspace_path": str(fixture_root),
+                            "task_short_id": task_short_fixture,
+                            "delivery_context": context_raw,
+                        },
+                        "transition_contract_ref": transition_reference,
+                        "delivery_mode": "preserve",
+                        "producer_refs": [source_locator, *child_refs],
+                    },
+                    identity=identity,
+                    task_detail=detail,
+                    graph=graph,
+                )
+                packed = delivery["packet_decode"](packed_bytes)
+                assert packed["transition"] == fixture_ci.RETRY_ROUTE
+                assert packed["delivery_context"] == context_raw
+                assert isinstance(packed.get("commentary"), str)
+                return locator, packed
+
+            first_pack_locator, first_pack = pack_retry(initial_locator)
+            first_retry_input = {
+                "_kent": native_context_fixture,
+                "commentary": first_pack["commentary"],
+                **{
+                    key: value
+                    for key, value in first_pack.items()
+                    if key not in {"transition", "commentary"}
+                },
+            }
+            calls_before_known_block = gh_call_count()
+            run_native(first_retry_input, expect_provider_block=True)
+            assert gh_call_count() == calls_before_known_block, (
+                "known cooldown did not stop the Puber wrapper provider pre-read"
+            )
+            second_failure = run_native(first_retry_input)
+            assert gh_call_count() == calls_before_known_block, (
+                "known cooldown did not stop the shared prepare-CI query"
+            )
+            assert second_failure["transition"] == "ci_prepare_failed"
+            second_locator = delivery["producer_locator"](
+                second_failure["commentary"]
+            )
+            assert isinstance(second_locator, str)
+            second_wrapper = delivery["reconstruct_producer"](
+                fixture_root,
+                second_locator,
+                identity={
+                    **agent_common,
+                    "session_id": str(uuid.uuid4()),
+                    "step_id": str(uuid.uuid4()),
+                },
+            )
+            second_refs = json.loads(
+                second_wrapper["binding"]["producer_refs"]
+            )["refs"]
+            assert len(second_refs) == 2
+            second_child = next(
+                ref for ref in second_refs
+                if delivery["reconstruct_producer"](
+                    fixture_root,
+                    ref,
+                    identity={
+                        **agent_common,
+                        "session_id": str(uuid.uuid4()),
+                        "step_id": str(uuid.uuid4()),
+                    },
+                )["producer_kind"] == "prepare-ci"
+            )
+            second_child_packet = delivery["reconstruct_producer"](
+                fixture_root,
+                second_child,
+                identity=script_identity,
+            )
+            assert json.loads(
+                second_child_packet["binding"]["github_retry_constraint"]
+            ) == known_constraint
+
+            # A repeated Agent pack references the latest wrapper and its
+            # exact failed child; the wrapper itself carries prior pack ancestry.
+            second_pack_identity = {
+                **agent_common,
+                "session_id": str(uuid.uuid4()),
+                "step_id": str(uuid.uuid4()),
+            }
+            second_detail = {
+                **native_detail,
+                "current_nodes": [{
+                    "node_id": monitor_node["id"],
+                    "session_id": second_pack_identity["session_id"],
+                }],
+                "live_sessions": [],
+            }
+            second_child_producer = delivery["reconstruct_producer"](
+                fixture_root,
+                second_child,
+                identity=second_pack_identity,
+            )
+            second_context = second_child_producer["inputs"]["delivery_context"]
+            second_contract = delivery["transition_contract_reference"](
+                second_pack_identity,
+                second_detail,
+                graph,
+                fixture_ci.RETRY_ROUTE,
+            )
+            second_pack_locator, second_pack_bytes = delivery["pack_delivery"](
+                fixture_root,
+                {
+                    "schema": "workflow-pack-delivery-v1",
+                    "transition": fixture_ci.RETRY_ROUTE,
+                    "values": {
+                        "workspace_path": str(fixture_root),
+                        "task_short_id": task_short_fixture,
+                        "delivery_context": second_context,
+                    },
+                    "transition_contract_ref": second_contract,
+                    "delivery_mode": "preserve",
+                    "producer_refs": [second_locator, second_child],
+                },
+                identity=second_pack_identity,
+                task_detail=second_detail,
+                graph=graph,
+            )
+            second_pack = delivery["packet_decode"](second_pack_bytes)
+            assert second_pack["delivery_context"] == second_context
+            assert first_pack_locator in delivery["producer_reference_closure"](
+                fixture_root,
+                second_pack_locator,
+                identity=second_pack_identity,
+            )
+            final_native = {
+                "_kent": native_context_fixture,
+                "commentary": second_pack["commentary"],
+                **{
+                    key: value
+                    for key, value in second_pack.items()
+                    if key not in {"transition", "commentary"}
+                },
+            }
+            environment["PUBER_D13_FAKE_GH_FAIL"] = "0"
+            remaining_ms = (
+                known_constraint["not_before_unix_ms"]
+                - time.time_ns() // 1_000_000
+            )
+            if remaining_ms > 0:
+                time.sleep(remaining_ms / 1000 + 0.05)
+            final_result = run_native(final_native)
+            assert final_result["transition"] == "ci_prepare_ready_initial"
+            assert all(
+                final_result.get(key) == fixture_release[key]
+                for key in fixture_ci.RELEASE_RESTORE_FIELDS
+            )
+            assert final_result["pr_base_branch"] == "main"
+            assert len(restored_carriers) == 3
+            assert len(checkpoint_calls) == 4
+            for restored_carrier in restored_carriers:
+                assert all(
+                    restored_carrier.get(key) == fixture_release[key]
+                    for key in fixture_ci.RELEASE_RESTORE_FIELDS
+                )
+                assert (
+                    restored_carrier["delivery_context"]
+                    == first_pack["delivery_context"]
+                )
+            assert subprocess.run(
+                ["git", "-C", str(fixture_root), "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+            ).stdout == b""
+
+            # A second private initial-route scenario proves unknown timing is
+            # retained and blocks the next real Script wrapper before its
+            # provider pre-read. The native Kent state here is a disposable
+            # fixture, not an installed/runtime Task claim.
+            environment["PUBER_D13_FAKE_GH_FAIL"] = "unknown"
+            unknown_failure = run_native({
+                "_kent": native_context_fixture,
+                **initial_native,
+            })
+            assert unknown_failure["transition"] == "ci_prepare_failed"
+            script_identity = observe_script(native_context_fixture)
+            unknown_locator = delivery["producer_locator"](
+                unknown_failure["commentary"]
+            )
+            assert isinstance(unknown_locator, str)
+            unknown_wrapper = delivery["reconstruct_producer"](
+                fixture_root,
+                unknown_locator,
+                identity=script_identity,
+            )
+            unknown_refs = json.loads(
+                unknown_wrapper["binding"]["producer_refs"]
+            )["refs"]
+            assert len(unknown_refs) == 1
+            unknown_child = delivery["reconstruct_producer"](
+                fixture_root,
+                unknown_refs[0],
+                identity=script_identity,
+            )
+            unknown_constraint = json.loads(
+                unknown_child["binding"]["github_retry_constraint"]
+            )
+            assert unknown_constraint == {
+                "schema": "github-provider-retry-v1",
+                "provider_host": "github.com",
+                "kind": "unknown",
+            }
+            unknown_pack_locator, unknown_pack = pack_retry(unknown_locator)
+            unknown_retry_input = {
+                "_kent": native_context_fixture,
+                "commentary": unknown_pack["commentary"],
+                **{
+                    key: value
+                    for key, value in unknown_pack.items()
+                    if key not in {"transition", "commentary"}
+                },
+            }
+            calls_before_unknown_block = gh_call_count()
+            run_native(unknown_retry_input, expect_provider_block=True)
+            assert gh_call_count() == calls_before_unknown_block, (
+                "unknown provider timing did not stop the Puber wrapper pre-read"
+            )
+
+            janitor_node = nodes["task_janitor"]
+            janitor_script = fixture_root / ".kent/scripts/workflow-puber-release-janitor"
+            janitor_native_detail = {
+                **native_detail,
+                "current_nodes": [{"node_id": janitor_node["id"]}],
+                "current_scripts": [{
+                    "current_node": {"node_id": janitor_node["id"]},
+                    "path": str(janitor_script),
+                }],
+                "status": {"node_ids": [janitor_node["id"]]},
+            }
+            native_state.write_text(
+                json.dumps(
+                    {
+                        "project_id": project_id_fixture,
+                        "task_detail": janitor_native_detail,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            janitor_input = {
+                "_kent": {
+                    "task_id": task_id_fixture,
+                    "node_id": janitor_node["id"],
+                },
+                "workspace_path": str(fixture_root),
+                "operation_id": fixture_release["operation_id"],
+                "branch_name": fixture_release["branch_name"],
+                "pr_base_branch": "not-applicable",
+                "pr_url": "",
+                "cleanup_mode": "closed_without_merge",
+                "cleanup_report": "Release PR closed without merge.",
+                "cleanup_session_id": str(uuid.uuid4()),
+                "task_short_id": task_short_fixture,
+                "publication_report": "",
+                "publication_report_digest": "",
+                "release_report": "",
+                "release_report_digest": "",
+                "release_notes_path": "",
+                "release_notes_digest": "",
+                "commentary": failure["commentary"],
+            }
+            janitor_identity = observe_script({
+                "task_id": task_id_fixture,
+                "node_id": janitor_node["id"],
+            })
+            calls_before_janitor = gh_call_count()
+            janitor_result = subprocess.run(
+                [str(janitor_script)],
+                cwd=fixture_root,
+                input=json.dumps(janitor_input, ensure_ascii=False),
+                text=True,
+                capture_output=True,
+                env=environment,
+                check=False,
+            )
+            assert janitor_result.returncode == 0, (
+                janitor_result.stdout + janitor_result.stderr
+            )
+            janitor_output = json.loads(janitor_result.stdout)
+            assert janitor_output["transition"] == native_transition_id(
+                graph["graph"],
+                "task_janitor_preserved",
+            )
+            assert gh_call_count() == calls_before_janitor, (
+                "non-network Janitor unexpectedly queried GitHub"
+            )
+            janitor_locator = delivery["producer_locator"](
+                janitor_output["commentary"]
+            )
+            assert isinstance(janitor_locator, str)
+            janitor_producer = delivery["reconstruct_producer"](
+                fixture_root,
+                janitor_locator,
+                identity=janitor_identity,
+            )
+            assert janitor_producer["producer_kind"] == "puber-release-janitor"
+            assert json.loads(
+                janitor_producer["binding"]["producer_refs"]
+            )["refs"] == [initial_locator]
+            assert json.loads(
+                janitor_producer["binding"]["github_retry_constraint"]
+            ) == known_constraint
+            assert subprocess.run(
+                ["git", "-C", str(fixture_root), "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+            ).stdout == b""
+            print(
+                "workflow-puber-release-ci: actual shared CLI, known/unknown "
+                "provider constraints, wrapper/child zero-query guards, Agent "
+                "packing, Release restoration, Janitor non-network propagation "
+                f"and producer ancestry passed (disposable fixture Kit {candidate_commit})"
+            )
+    finally:
+        sys.path[:] = original_path
+        for name in list(sys.modules):
+            if name == "workflowkit" or name.startswith("workflowkit."):
+                del sys.modules[name]
+        sys.modules.update(kit_modules_before)
+        after_digests = source_digests()
+        after_status = subprocess.run(
+            ["git", "-C", str(candidate_root), "status", "--short"],
+            check=True,
+            capture_output=True,
+        ).stdout
+        after_head = subprocess.run(
+            ["git", "-C", str(candidate_root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+        ).stdout.decode().strip()
+        assert before_digests == after_digests, "read-only Kit source changed during fixture"
+        assert before_status == after_status, "read-only Kit status changed during fixture"
+        assert before_head == after_head, "read-only Kit HEAD changed during fixture"
+
+
+candidate_value = os.environ.get("PUBER_D13_KIT_CANDIDATE_ROOT")
+if candidate_value:
+    actual_typed_roundtrip(candidate_value)
+
+print(
+    "workflow-puber-release-ci: passed S4 context normalization, typed producer "
+    "binding, repeated retry restoration and failure-route checks"
+)

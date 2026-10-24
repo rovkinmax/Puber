@@ -3,19 +3,21 @@ from __future__ import annotations
 
 import importlib.util
 import base64
+import hashlib
 import json
 import os
 import re
 import stat
 import subprocess
 import shutil
-import io
+import tomllib
 from urllib.parse import urlencode
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 CALLER_SESSION_ID = os.environ.get("KENT_SESSION_ID", "")
+CALLER_STEP_ID = os.environ.get("KENT_STEP_ID", "")
 sys.dont_write_bytecode = True
 _helper_path = Path(__file__).with_name("workflow-puber-release-intent")
 _spec = importlib.util.spec_from_loader("puber_release_runtime", SourceFileLoader("puber_release_runtime", str(_helper_path)))
@@ -28,6 +30,11 @@ CI_REPORT_NAME = re.compile(r"ci-report-([0-9a-f]{64})\.json")
 RETENTION_BASENAME = "release-cleanup-retention.json"
 RETENTION_SCHEMA = "puber_release_cleanup_retention_v1"
 RETENTION_LIMIT = 8 * 1024 * 1024
+NOT_APPLICABLE_BRANCH = "not-applicable"
+_PROVIDER_READ_GUARD = None
+_PROVIDER_POLICY_ENABLED = False
+_PROVIDER_PACKET_FILES: set[str] = set()
+_PROVIDER_PACKET_LIMIT = 0
 
 ENTRY_OUTCOMES = {
     "release_release_published": "published", "release_cancel_cleanup": "cancel",
@@ -173,7 +180,13 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
     if not active_present and not tombstone_present:
         raise helper.ContractError("terminal evidence task ledger/tombstone is missing")
     selected_dir = active_dir if active_present else tombstone_dir
-    allowed_entries = {"evidence-ledger.jsonl", "fix-checkpoint.json", "smoke-checkpoint.json"}
+    allowed_entries = {
+        "evidence-ledger.jsonl",
+        "evidence-recovery.json",
+        "evidence-continuation.jsonl",
+        "fix-checkpoint.json",
+        "smoke-checkpoint.json",
+    }
     if allow_profile_checkpoint:
         allowed_entries.add("release-profile-checkpoint.json")
     def safe_file(path: Path, label: str) -> None:
@@ -199,9 +212,6 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
     ledger = selected_dir / "evidence-ledger.jsonl"
     component(ledger, "evidence ledger", False)
     try:
-        raw_lines = ledger.read_text(encoding="utf-8").splitlines()
-        if not raw_lines or any(not line.strip() or "\x00" in line for line in raw_lines):
-            raise helper.ContractError("terminal evidence ledger contains empty or NUL data")
         ledger_path = ROOT / ".kent" / "scripts" / "workflow-evidence-ledger"
         ledger_spec = importlib.util.spec_from_loader(
             "cleanup_inventory_evidence_reader",
@@ -209,10 +219,37 @@ def _validate_terminal_marker_ledger(task_short_id: str, marker: dict[str, objec
         )
         ledger_module = importlib.util.module_from_spec(ledger_spec)
         ledger_spec.loader.exec_module(ledger_module)
-        records = ledger_module.load_entries(
-            io.StringIO("\n".join(raw_lines) + "\n"),
-            task=task_short_id,
-        )
+        descriptors = [os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)]
+        try:
+            for component_name in (".kent", "runtime"):
+                descriptors.append(
+                    ledger_module._open_directory(
+                        descriptors[-1], component_name, create=False,
+                    )
+                )
+            descriptors.append(
+                ledger_module._open_directory(
+                    descriptors[-1], selected_dir.name, create=False,
+                )
+            )
+            opened = os.fstat(descriptors[-1])
+            observed = selected_dir.lstat()
+            if (
+                opened.st_dev != observed.st_dev
+                or opened.st_ino != observed.st_ino
+                or opened.st_uid != os.getuid()
+                or opened.st_mode & 0o022
+            ):
+                raise helper.ContractError(
+                    "terminal evidence directory identity changed during admission"
+                )
+            view = ledger_module.load_evidence_view(
+                descriptors[-1], task=task_short_id,
+            )
+            records = view["records"]
+        finally:
+            for descriptor in reversed(descriptors):
+                os.close(descriptor)
         has_seal = any(
             record.get("record_kind") == "terminal_evidence_seal_v1"
             for record in records
@@ -456,6 +493,8 @@ def _read_ledger(state: dict, marker_hint: dict | None = None) -> tuple[list[dic
         entries = os.listdir(descriptors[-1])
         allowed = {
             "evidence-ledger.jsonl",
+            "evidence-recovery.json",
+            "evidence-continuation.jsonl",
             "fix-checkpoint.json",
             "smoke-checkpoint.json",
             helper.CHECKPOINT_BASENAME,
@@ -480,13 +519,10 @@ def _read_ledger(state: dict, marker_hint: dict | None = None) -> tuple[list[dic
             except FileNotFoundError:
                 continue
             raise helper.ContractError(f"{stage} checkpoint completion/resource release is unproven; preserve and settle it in its owning stage")
-        descriptor = ledger._open_runtime_component(descriptors[-1], "evidence-ledger.jsonl", directory=False)
-        descriptors.append(descriptor)
-        if os.fstat(descriptor).st_size > 8 * 1024 * 1024:
-            raise helper.ContractError("cleanup ledger exceeds bound")
-        raw = os.read(descriptor, 8 * 1024 * 1024 + 1)
-        ledger._revalidate_file_link(descriptors[-2], "evidence-ledger.jsonl", descriptor)
-        records = ledger.load_entries(io.StringIO(raw.decode("utf-8")), task=state["task_short_id"])
+        view = ledger.load_evidence_view(
+            descriptors[-1], task=state["task_short_id"],
+        )
+        records = view["records"]
         if len(records) > 8192:
             raise helper.ContractError("cleanup ledger record limit exceeded")
         seals = [i for i,r in enumerate(records) if r.get("record_kind") == "terminal_evidence_seal_v1"]
@@ -604,6 +640,111 @@ def _retention_read(
     try:
         entries = os.listdir(directory)
         allowed = {RETENTION_BASENAME}
+        packet_prefix = (
+            f"build/kent-workflow/{task_short_id}/packets/"
+        )
+        packet_names = {
+            path[len(packet_prefix):]
+            for path in _PROVIDER_PACKET_FILES
+            if path.startswith(packet_prefix)
+        }
+        if len(packet_names) != len(_PROVIDER_PACKET_FILES):
+            raise helper.ContractError(
+                "Cleanup producer artifact closure is not task-local"
+            )
+        if packet_names:
+            if (
+                type(_PROVIDER_PACKET_LIMIT) is not int
+                or not 0 < _PROVIDER_PACKET_LIMIT <= RETENTION_LIMIT
+            ):
+                raise helper.ContractError(
+                    "Cleanup producer artifact size contract is unavailable"
+                )
+            allowed.add("packets")
+            try:
+                packet_directory = os.open(
+                    "packets",
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=directory,
+                )
+            except OSError as error:
+                raise helper.ContractError(
+                    "Cleanup producer artifact directory is unsafe"
+                ) from error
+            try:
+                packet_metadata = os.fstat(packet_directory)
+                if (
+                    packet_metadata.st_uid != os.getuid()
+                    or stat.S_IMODE(packet_metadata.st_mode) != 0o700
+                    or set(os.listdir(packet_directory)) != packet_names
+                ):
+                    raise helper.ContractError(
+                        "Cleanup producer artifacts differ from authenticated ancestry"
+                    )
+                for name in sorted(packet_names):
+                    match = re.fullmatch(
+                        r"(?:base|emitted)-([0-9a-f]{64})\.json",
+                        name,
+                    )
+                    if match is None:
+                        raise helper.ContractError(
+                            "Cleanup producer artifact name is invalid"
+                        )
+                    descriptor = os.open(
+                        name,
+                        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                        dir_fd=packet_directory,
+                    )
+                    try:
+                        before = os.fstat(descriptor)
+                        if (
+                            not stat.S_ISREG(before.st_mode)
+                            or before.st_uid != os.getuid()
+                            or stat.S_IMODE(before.st_mode) != 0o600
+                            or before.st_nlink != 1
+                            or before.st_size > _PROVIDER_PACKET_LIMIT
+                        ):
+                            raise helper.ContractError(
+                                "Cleanup producer artifact file is unsafe"
+                            )
+                        raw = bytearray()
+                        while len(raw) <= _PROVIDER_PACKET_LIMIT:
+                            chunk = os.read(
+                                descriptor,
+                                min(
+                                    65536,
+                                    _PROVIDER_PACKET_LIMIT + 1 - len(raw),
+                                ),
+                            )
+                            if not chunk:
+                                break
+                            raw.extend(chunk)
+                        after = os.fstat(descriptor)
+                        if (
+                            len(raw) != before.st_size
+                            or hashlib.sha256(raw).hexdigest() != match.group(1)
+                            or (
+                                before.st_dev,
+                                before.st_ino,
+                                before.st_size,
+                                before.st_mtime_ns,
+                                before.st_ctime_ns,
+                            )
+                            != (
+                                after.st_dev,
+                                after.st_ino,
+                                after.st_size,
+                                after.st_mtime_ns,
+                                after.st_ctime_ns,
+                            )
+                        ):
+                            raise helper.ContractError(
+                                "Cleanup producer artifact changed during read"
+                            )
+                    finally:
+                        os.close(descriptor)
+            finally:
+                os.close(packet_directory)
         if allowed_temporary is not None:
             if (
                 not re.fullmatch(r"\.release-cleanup-retention-[0-9a-f]{24}\.tmp", allowed_temporary)
@@ -1204,6 +1345,7 @@ def _select_original_input(
             "workspace_path",
             "operation_id",
             "branch_name",
+            "pr_base_branch",
             "cleanup_mode",
             "cleanup_report",
         }
@@ -1232,11 +1374,13 @@ def _select_original_input(
         if "branch_name" in original_parameters
         else identity["branch"]
     )
+    expected_pr_base_branch = original_parameters["pr_base_branch"]
     if (
         prefix != value["report_prefix"]
         or marker_line != expected_marker
         or parameters["workspace_path"] != expected_workspace_path
         or parameters["branch_name"] != expected_branch_name
+        or parameters["pr_base_branch"] != expected_pr_base_branch
         or parameters["cleanup_mode"] != prior["cleanup_mode"]
     ):
         raise helper.ContractError(
@@ -1275,6 +1419,13 @@ def _select_original_input(
 
 def _api(endpoint: str, *, absent=False):
     """A bounded existing gh CLI read; only an explicit visible-resource 404 is absent."""
+    if _PROVIDER_POLICY_ENABLED:
+        guard = _PROVIDER_READ_GUARD
+        if not callable(guard):
+            raise helper.ContractError(
+                "GitHub provider guard is unavailable; no provider read was attempted"
+            )
+        guard()
     binary = os.environ.get("PUBER_GH_BIN") or shutil.which("gh")
     if not binary:
         raise helper.ContractError("GitHub reader is unavailable")
@@ -1299,6 +1450,124 @@ def _api(endpoint: str, *, absent=False):
     if absent and value is None:
         raise helper.ContractError("HTTP200 null is not an absence proof")
     return value, headers
+
+
+def _prepare_agent_provider_read_guard(
+    task_id: str,
+    task_short_id: str,
+    commentary: object,
+):
+    global _PROVIDER_PACKET_FILES, _PROVIDER_PACKET_LIMIT
+    _PROVIDER_PACKET_FILES = set()
+    _PROVIDER_PACKET_LIMIT = 0
+    profile_path = ROOT / ".kent/workflow-profile.toml"
+    if profile_path.is_symlink() or not profile_path.is_file():
+        raise helper.ContractError("Release profile is unavailable for provider admission")
+    try:
+        profile = tomllib.loads(profile_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
+        raise helper.ContractError("Release profile is invalid for provider admission") from error
+    policies = profile.get("policies", {})
+    if not isinstance(policies, dict) or policies.get("delivery_reliability") != "v1":
+        return None
+    if not isinstance(commentary, str) or not commentary:
+        raise helper.ContractError(
+            "native Cleanup Agent producer commentary is required"
+        )
+    checkpoint = helper._qualified_checkpoint_module(
+        ROOT,
+        required=(
+            "current_delivery_identity",
+            "delivery_native_read",
+            "delivery_module",
+        ),
+    )
+    delivery_loader = getattr(checkpoint, "delivery_module", None)
+    if not callable(delivery_loader):
+        raise helper.ContractError("qualified GitHub delivery API is unavailable")
+    delivery = delivery_loader()
+    if not all(
+        callable(getattr(delivery, name, None))
+        for name in (
+            "producer_locator",
+            "producer_reference_closure",
+            "prepare_github_provider_read_guard",
+        )
+    ):
+        raise helper.ContractError("qualified GitHub provider guard API is unavailable")
+    packet_limit = getattr(delivery, "PACKET_LIMIT", None)
+    if type(packet_limit) is not int or not 0 < packet_limit <= RETENTION_LIMIT:
+        raise helper.ContractError("qualified producer artifact byte bound is invalid")
+    try:
+        locator = delivery.producer_locator(commentary)
+        if not isinstance(locator, str) or not locator:
+            raise ValueError("Cleanup Agent source footer is absent")
+        # The Puber runtime helper scrubs Kent execution variables at import.
+        # Reintroduce only the inherited current Agent IDs for the bounded
+        # native readback, then restore the scrubbed process environment.
+        previous_session = os.environ.pop("KENT_SESSION_ID", None)
+        previous_step = os.environ.pop("KENT_STEP_ID", None)
+        try:
+            os.environ["KENT_SESSION_ID"] = CALLER_SESSION_ID
+            os.environ["KENT_STEP_ID"] = CALLER_STEP_ID
+            identity = checkpoint.current_delivery_identity(ROOT, task_short_id)
+        finally:
+            os.environ.pop("KENT_SESSION_ID", None)
+            os.environ.pop("KENT_STEP_ID", None)
+            if previous_session is not None:
+                os.environ["KENT_SESSION_ID"] = previous_session
+            if previous_step is not None:
+                os.environ["KENT_STEP_ID"] = previous_step
+        if (
+            not isinstance(identity, dict)
+            or identity.get("task_id") != task_id
+            or identity.get("task_short_id") != task_short_id
+            or identity.get("workspace_path") != str(ROOT)
+            or identity.get("session_id") != CALLER_SESSION_ID
+        ):
+            raise ValueError("native current Cleanup Agent identity differs")
+        closure = delivery.producer_reference_closure(
+            ROOT,
+            locator,
+            identity=identity,
+        )
+        if (
+            not isinstance(closure, list)
+            or not closure
+            or any(not isinstance(path, str) for path in closure)
+        ):
+            raise ValueError("Cleanup Agent producer closure is incomplete")
+        _PROVIDER_PACKET_FILES = set(closure)
+        _PROVIDER_PACKET_LIMIT = packet_limit
+        prepared = delivery.prepare_github_provider_read_guard(
+            ROOT,
+            [locator],
+            identity,
+        )
+        blocked_type = getattr(delivery, "GitHubProviderRetryBlocked", None)
+        if not isinstance(blocked_type, type):
+            raise ValueError("qualified provider block type is missing")
+    except Exception as error:
+        raise helper.ContractError(
+            "Cleanup Agent producer ancestry or native identity is invalid"
+        ) from error
+
+    def require_provider_read() -> None:
+        try:
+            prepared()
+        except blocked_type as error:
+            state = getattr(error, "state", None)
+            if state not in {"not_before", "unknown"}:
+                state = "unknown"
+            raise helper.ContractError(
+                f"GitHub provider read is blocked by inherited retry state: {state}"
+            ) from None
+        except Exception:
+            raise helper.ContractError(
+                "GitHub provider retry guard failed closed"
+            ) from None
+
+    return require_provider_read
 
 
 def _pages(endpoint: str, *, array_key=None) -> list:
@@ -1340,7 +1609,15 @@ def _release_identity(state: dict) -> dict:
     return {"version":version,"tag":tag,"branch":branch,"head":state["controller_commit"],"checkpoint":checkpoint}
 
 
-def _observe(state: dict, identity: dict, records: list[dict]) -> dict:
+def _observe(
+    state: dict,
+    identity: dict,
+    records: list[dict],
+    expected_pr_base_branch: str,
+) -> dict:
+    expected_pr_base_branch = helper.require_string(
+        expected_pr_base_branch, "pr_base_branch"
+    )
     repo, _headers = _api(f"repos/{helper.REPOSITORY}")
     if (not isinstance(repo, dict) or repo.get("id") != 994786793 or repo.get("full_name") != helper.REPOSITORY
             or repo.get("default_branch") != "master" or not isinstance(repo.get("permissions"), dict) or repo["permissions"].get("pull") is not True
@@ -1362,10 +1639,13 @@ def _observe(state: dict, identity: dict, records: list[dict]) -> dict:
             if any(not isinstance(value.get(side), dict) or not isinstance(value[side].get("repo"), dict) for side in ("head","base")):
                 raise helper.ContractError("PR repository/head/base observation is UNKNOWN")
             if (value.get("head", {}).get("ref") != identity["branch"] or value.get("head", {}).get("sha") != identity["head"]
-                    or value.get("base", {}).get("ref") != "master"
+                    or not isinstance(value.get("base", {}).get("ref"), str)
+                    or not value["base"]["ref"].strip()
+                    or expected_pr_base_branch == NOT_APPLICABLE_BRANCH
+                    or value.get("base", {}).get("ref") != expected_pr_base_branch
                     or not helper.SHA1.fullmatch(str(value["base"].get("sha", "")))
                     or any(value.get(side, {}).get("repo", {}).get("full_name") != helper.REPOSITORY for side in ("head","base"))):
-                raise helper.ContractError("matching PR head/base identity is foreign or drifted")
+                raise helper.ContractError("matching PR head/target identity is foreign or drifted")
         if row["base"]["sha"] != detail["base"]["sha"]:
             raise helper.ContractError("PR base changed during discovery")
         if detail["merged"]:
@@ -1430,14 +1710,30 @@ def _verify_outcome(state: dict, identity: dict, facts: dict, outcome: str, carr
         raise helper.ContractError("Cleanup carrier workspace drifted")
     if carrier.get("branch_name") and carrier["branch_name"] != identity["branch"]:
         raise helper.ContractError("Cleanup carrier branch drifted")
+    expected_base_branch = helper.require_string(
+        carrier.get("pr_base_branch"), "pr_base_branch"
+    )
+    if outcome == "cancel":
+        if expected_base_branch != NOT_APPLICABLE_BRANCH:
+            raise helper.ContractError(
+                "no-PR cleanup must mark its absent target branch not-applicable"
+            )
+    elif (
+        len(facts["prs"]) != 1
+        or facts["prs"][0]["base"].get("ref") != expected_base_branch
+        or expected_base_branch == NOT_APPLICABLE_BRANCH
+    ):
+        raise helper.ContractError(
+            "Cleanup target branch differs from the independently observed PR"
+        )
     if outcome != "published":
         if _observable_outcome(facts, carrier) != outcome:
             raise helper.ContractError("unpublished cleanup conflicts with publication indicators")
         expected_url = facts["prs"][0]["html_url"] if outcome == "closed" else ""
         if carrier.get("pr_url", "") != expected_url:
             raise helper.ContractError("Cleanup carrier cannot hide or replace the independently found PR")
-        if outcome == "closed" and (carrier.get("pr_head_oid") != identity["head"] or carrier.get("pr_base_oid") != facts["prs"][0]["base"].get("sha")):
-            raise helper.ContractError("closed PR head/base proof differs from fresh observation")
+        if outcome == "closed" and carrier.get("pr_head_oid") != identity["head"]:
+            raise helper.ContractError("closed PR head proof differs from fresh observation")
         return None, None
     if len(facts["prs"]) != 1 or facts["prs"][0]["merged"] is not True:
         raise helper.ContractError("publication evidence is partial or has no exact merged PR")
@@ -1467,8 +1763,19 @@ def _verify_outcome(state: dict, identity: dict, facts: dict, outcome: str, carr
         prepared = {"release_head_oid":identity["head"], **{key:helper.git_blob_sha256(ROOT, identity["head"], path) for key,path in (
             ("version_file_sha256","app/build.gradle.kts"), ("baseline_profile_sha256","app/src/main/generated/baselineProfiles/baseline-prof.txt"), ("startup_profile_sha256","app/src/main/generated/baselineProfiles/startup-prof.txt"))}}
         helper.qualify_merged_target(ROOT, state, target, prepared)
-    actual_run, actual_job = helper.read_release_run(ROOT, run, target, identity["tag"])
-    actual_release = helper.read_release(ROOT, identity["tag"], target)
+    actual_run, actual_job = helper.read_release_run(
+        ROOT,
+        run,
+        target,
+        identity["tag"],
+        provider_guard=_PROVIDER_READ_GUARD,
+    )
+    actual_release = helper.read_release(
+        ROOT,
+        identity["tag"],
+        target,
+        provider_guard=_PROVIDER_READ_GUARD,
+    )
     if release["jobs"] != {"run":actual_run,"job":actual_job} or release["assets"] != actual_release["assets"] or release["checksum"] != actual_release["checksum"] or release["release"] != {key:actual_release[key] for key in helper.RELEASE_METADATA_KEYS}:
         raise helper.ContractError("published artifacts/run/report differ from actual read-only observation")
     body = (ROOT / publication["notes_report"]["path"]).read_text()
@@ -1538,24 +1845,54 @@ def _admit_sealed_controller(parameters: dict, state: dict) -> None:
 
 
 def main() -> int:
+    global _PROVIDER_READ_GUARD, _PROVIDER_POLICY_ENABLED
+    global _PROVIDER_PACKET_FILES, _PROVIDER_PACKET_LIMIT
+    _PROVIDER_READ_GUARD = None
+    _PROVIDER_POLICY_ENABLED = False
+    _PROVIDER_PACKET_FILES = set()
+    _PROVIDER_PACKET_LIMIT = 0
+    provided = None
+    native_commentary = None
     try:
         provided = helper.read_zero_argument()
-        if set(provided) != {"task_id","incoming_transition","parameters"} or not isinstance(provided["parameters"], dict):
-            raise helper.ContractError("Cleanup Agent input must contain exactly task_id/incoming_transition/parameters; no _kent")
+        required_input = {"task_id", "incoming_transition", "parameters"}
+        if (
+            not isinstance(provided, dict)
+            or frozenset(provided) not in {
+                frozenset(required_input),
+                frozenset(required_input | {"commentary"}),
+            }
+            or not isinstance(provided["parameters"], dict)
+        ):
+            raise helper.ContractError(
+                "Cleanup Agent input must contain exactly task_id/incoming_transition/parameters and optional native commentary; no _kent"
+            )
+        native_commentary = provided.get("commentary")
+        if native_commentary is not None and (
+            not isinstance(native_commentary, str)
+            or len(native_commentary.encode("utf-8")) > 8192
+        ):
+            raise helper.ContractError("Cleanup Agent native commentary is invalid")
         provided_payload = provided["parameters"]
+        task = helper.task_show(ROOT, provided["task_id"])
+        task_short_id = helper._safe_task_short_id(
+            task.get("summary", {}).get("short_id")
+            if isinstance(task.get("summary"), dict)
+            else None
+        )
         janitor_previous = None
         if provided["incoming_transition"] == "task_janitor_blocked":
             if not isinstance(provided_payload.get("cleanup_report"), str):
                 raise helper.ContractError("Janitor recovery is missing its sealed report")
-            task = helper.task_show(ROOT, provided["task_id"])
-            task_short_id = helper._safe_task_short_id(
-                task.get("summary", {}).get("short_id")
-                if isinstance(task.get("summary"), dict)
-                else None
-            )
             janitor_previous, _marker_line, _suffix, _prefix = _parse_janitor_report(
                 provided_payload["cleanup_report"], task_short_id
             )
+        _PROVIDER_READ_GUARD = _prepare_agent_provider_read_guard(
+            provided["task_id"],
+            task_short_id,
+            native_commentary,
+        )
+        _PROVIDER_POLICY_ENABLED = _PROVIDER_READ_GUARD is not None
         allowed_notes_path = provided_payload.get("release_notes_path")
         if allowed_notes_path is None and janitor_previous is not None:
             allowed_notes_path = janitor_previous.get("release_notes_path")
@@ -1576,7 +1913,14 @@ def main() -> int:
         _preflight_cleanup_inventory(state, marker)
         retained = _preflight_retention(state, marker)
         identity = _release_identity(state)
-        raw = _select_original_input(provided, retained, marker, identity)
+        business_input = dict(provided)
+        business_input.pop("commentary", None)
+        raw = _select_original_input(
+            business_input,
+            retained,
+            marker,
+            identity,
+        )
         payload = raw["parameters"]
         prior = None; marker_line = None; suffix = None; prefix = None
         carrier = dict(payload)
@@ -1587,7 +1931,25 @@ def main() -> int:
             carrier = {**payload, **{key:prior[key] for key in ("publication_report","publication_report_digest","release_report","release_report_digest","release_notes_path","release_notes_digest")}}
             if payload.get("cleanup_mode") != prior["cleanup_mode"]:
                 raise helper.ContractError("sealed cleanup mode cannot be changed")
-        facts = _observe(state, identity, records)
+        facts = _observe(
+            state,
+            identity,
+            records,
+            helper.require_string(carrier.get("pr_base_branch"), "pr_base_branch"),
+        )
+        operation_id = helper.require_string(
+            carrier.get("operation_id"), "operation_id"
+        )
+        if not helper.HEX64.fullmatch(operation_id):
+            raise helper.ContractError("Cleanup original operation identity is invalid")
+        checkpoint_value = identity.get("checkpoint")
+        if (
+            checkpoint_value is not None
+            and checkpoint_value.get("operation_id") != operation_id
+        ):
+            raise helper.ContractError(
+                "Cleanup operation identity differs from the release checkpoint"
+            )
         outcome = _observable_outcome(facts, carrier)
         hint = raw["incoming_transition"]
         if hint not in ENTRY_OUTCOMES:
@@ -1646,7 +2008,12 @@ def main() -> int:
         if publication is not None:
             carrier["pr_url"] = publication["pr_url"]
         # Outcome and caller are re-read before any new seal, not selected by the hint.
-        confirmed = _observe(state,identity,records)
+        confirmed = _observe(
+            state,
+            identity,
+            records,
+            carrier["pr_base_branch"],
+        )
         if confirmed != facts or _read_ledger(state, marker) != (records,marker) or _caller(state,prior) != (session,session_identity):
             raise helper.ContractError("cleanup outcome/owner changed before sealing")
         _verify_outcome(state,identity,confirmed,outcome,carrier,marker)
@@ -1753,7 +2120,12 @@ def main() -> int:
         )
         _retain_task_comment(state, retained_value, retained_digest)
         if checkpoint_receipt is not None and not blocker and not (prior and prior["unresolved"]):
-            latest = _observe(state,identity,records)
+            latest = _observe(
+                state,
+                identity,
+                records,
+                carrier["pr_base_branch"],
+            )
             expected_marker = fresh["kit"]["parse_terminal_marker_line"](report.splitlines()[-1])
             current_records, current_marker = _read_ledger(state, expected_marker)
             expected_ledger_records = (
@@ -1788,11 +2160,23 @@ def main() -> int:
                 ROOT, state["task_short_id"], current_checkpoint[1]
             )
             _validate_terminal_marker_ledger(state["task_short_id"],final_marker,fresh["kit"])
-        fields = {"cleanup_report":report,"workspace_path":str(ROOT),"branch_name":identity["branch"],"pr_url":carrier.get("pr_url", ""),"cleanup_mode":"report_only","cleanup_session_id":session,"task_short_id":state["task_short_id"],**{key:carrier.get(key,"") for key in ("publication_report","publication_report_digest","release_report","release_report_digest","release_notes_path","release_notes_digest")}}
-        helper.emit_exact(ROOT,"cleanup_task_janitor","task_janitor",fields)
+        fields = {"cleanup_report":report,"workspace_path":str(ROOT),"operation_id":carrier["operation_id"],"branch_name":identity["branch"],"pr_base_branch":carrier["pr_base_branch"],"pr_url":carrier.get("pr_url", ""),"cleanup_mode":"report_only","cleanup_session_id":session,"task_short_id":state["task_short_id"],**{key:carrier.get(key,"") for key in ("publication_report","publication_report_digest","release_report","release_report_digest","release_notes_path","release_notes_digest")}}
+        helper.emit_exact(
+            ROOT,
+            "cleanup_task_janitor",
+            "task_janitor",
+            fields,
+            commentary=native_commentary,
+        )
         return 0
     except (helper.ContractError, OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
-        print(json.dumps({"error":str(error),"destructive_action":False},ensure_ascii=False),file=sys.stderr)
+        failure = {
+            "error": str(error),
+            "destructive_action": False,
+        }
+        if isinstance(native_commentary, str):
+            failure["commentary"] = native_commentary
+        print(json.dumps(failure, ensure_ascii=False), file=sys.stderr)
         return 2
 
 if __name__ == "__main__":

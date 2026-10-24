@@ -2,17 +2,34 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib.machinery
+from functools import partial
 import json
 import os
 from pathlib import Path
 import sys
-import time
+import stat
 import tomllib
+import time
 from typing import Any
 
 sys.dont_write_bytecode = True
 
 MAX_PROFILE_BYTES = 64 * 1024
+
+
+class _TechnicalFailure(RuntimeError):
+    """A producer-capture failure that must not trigger another observation."""
+
+
+class _LocalProviderRetryBlocked(RuntimeError):
+    """A locally captured provider constraint blocks another process."""
+
+    code = "query_failed"
+
+    def __init__(self, state: str) -> None:
+        self.state = state if state in {"not_before", "unknown"} else "unknown"
+        super().__init__("github_provider_retry_blocked")
 
 
 def _sibling(name: str) -> Any:
@@ -22,6 +39,7 @@ def _sibling(name: str) -> Any:
     spec = importlib.util.spec_from_file_location(
         "kent_{}".format(name.replace(".", "_")),
         path,
+        loader=importlib.machinery.SourceFileLoader("kent_{}".format(name.replace(".", "_")), str(path)),
     )
     if spec is None or spec.loader is None:
         raise RuntimeError("{} support module is unavailable".format(name))
@@ -49,6 +67,21 @@ def _canonical(runtime: Any, value: object) -> str:
     return runtime.canonical_bytes(value).decode("utf-8")
 
 
+def _retry_delay_seconds(
+    error: Exception,
+    *,
+    interval: int,
+    failure_count: int,
+) -> int:
+    delay = getattr(error, "retry_delay_seconds", None)
+    if not callable(delay):
+        return interval
+    return max(
+        interval,
+        int(delay(interval=interval, failure_count=failure_count)),
+    )
+
+
 def _profile_ci_enabled(workspace: Path) -> bool:
     path = workspace / ".kent" / "workflow-profile.toml"
     try:
@@ -65,6 +98,95 @@ def _profile_ci_enabled(workspace: Path) -> bool:
     return isinstance(capabilities, dict) and (
         capabilities.get("ci_monitoring") is True
     )
+
+
+def _delivery_protocol_profile_enabled(workspace: Path) -> bool:
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptors: list[int] = []
+    try:
+        root_fd = os.open(workspace, directory_flags)
+        descriptors.append(root_fd)
+        kent_fd = os.open(".kent", directory_flags, dir_fd=root_fd)
+        descriptors.append(kent_fd)
+        profile_fd = os.open(
+            "workflow-profile.toml",
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+            dir_fd=kent_fd,
+        )
+        with os.fdopen(profile_fd, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_nlink != 1
+                or before.st_uid != os.getuid()
+                or before.st_mode & 0o7022
+                or before.st_size > 64 * 1024
+            ):
+                raise ValueError("unsafe current delivery profile")
+            raw = stream.read(64 * 1024 + 1)
+            after = os.fstat(stream.fileno())
+            if (
+                len(raw) > 64 * 1024
+                or len(raw) != before.st_size
+                or (before.st_dev, before.st_ino, before.st_size,
+                    before.st_mtime_ns, before.st_ctime_ns)
+                != (after.st_dev, after.st_ino, after.st_size,
+                    after.st_mtime_ns, after.st_ctime_ns)
+            ):
+                raise ValueError("current delivery profile changed during read")
+    except FileNotFoundError:
+        return False
+    except OSError as error:
+        raise ValueError("current delivery profile is unavailable") from error
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+    try:
+        profile = tomllib.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        raise ValueError("current delivery profile is invalid") from error
+    policies = profile.get("policies", {})
+    versions = profile.get("command_versions", {})
+    return bool(
+        isinstance(policies, dict)
+        and policies.get("delivery_reliability") == "v1"
+    ) or bool(
+        isinstance(versions, dict)
+        and (
+            versions.get("runtime_contracts") in {"2.1.0", "2.2.0"}
+            or versions.get("prepare_ci") in {"3.0.0", "3.1.0"}
+        )
+    )
+
+
+def _current_delivery_protocol(
+    workspace: Path,
+    payload: dict[str, object],
+) -> dict[str, object] | None:
+    if not _delivery_protocol_profile_enabled(workspace):
+        return None
+    checkpoint = _sibling("workflow-checkpoint")
+    task = payload.get("task_short_id")
+    if task is not None and not isinstance(task, str):
+        raise ValueError("task_short_id is invalid")
+    result = checkpoint.current_script_delivery_protocol(
+        workspace,
+        task=task,
+        native_context=payload.get("_kent"),
+    )
+    if result is None:
+        return None
+    if result["node_key"] != "merge_watch":
+        raise ValueError("native Script is not the current PR watcher")
+    if result["target_required"]:
+        target = payload.get("pr_base_branch")
+        if not isinstance(target, str) or not target or target != target.strip():
+            raise ValueError("pr_base_branch is required by the current graph")
+    return result
 
 
 def _contract(
@@ -151,6 +273,8 @@ def _pr_report(
     checks: list[dict[str, object]] | None = None,
     observed_cursor: str | None = None,
     error: Exception | None = None,
+    expected_pr_base_branch: str | None = None,
+    observed_base_ref_name: object = None,
 ) -> str:
     value: dict[str, object] = {
         "reason": reason,
@@ -164,6 +288,9 @@ def _pr_report(
     }
     if observed_cursor is not None:
         value["observed_feedback_cursor"] = observed_cursor
+    if expected_pr_base_branch is not None:
+        value["expected_pr_base_branch"] = expected_pr_base_branch
+        value["observed_base_ref_name"] = observed_base_ref_name
     if error is not None:
         if hasattr(error, "as_dict"):
             value["safe_error"] = error.as_dict()
@@ -179,15 +306,34 @@ def _emit(
     values: dict[str, object],
     *,
     cursor: str | None = None,
+    producer_payload: dict[str, object] | None = None,
+    github_retry_constraint: str | None = None,
 ) -> None:
     result = dict(values)
     if cursor is not None:
         result["pr_feedback_cursor"] = cursor
-    print(json.dumps(
+    encoded = (json.dumps(
         {"transition": transition, **result},
         ensure_ascii=False,
         sort_keys=True,
-    ))
+    ) + "\n").encode("utf-8")
+    root = Path.cwd().resolve()
+    profile_path = root / ".kent/workflow-profile.toml"
+    profile = tomllib.loads(profile_path.read_text()) if profile_path.is_file() else {}
+    if profile.get("policies", {}).get("delivery_reliability") is not None:
+        checkpoint = _sibling("workflow-checkpoint")
+        if github_retry_constraint is None:
+            encoded = checkpoint.emit_producer_result(
+                root, producer_payload, encoded, "wait-pr")
+        else:
+            encoded = checkpoint.emit_producer_result(
+                root,
+                producer_payload,
+                encoded,
+                "wait-pr",
+                github_retry_constraint=github_retry_constraint,
+            )
+    sys.stdout.buffer.write(encoded)
 
 
 def main() -> int:
@@ -197,11 +343,32 @@ def main() -> int:
         raise ValueError("stdin is not valid JSON: {}".format(error))
     if not isinstance(payload, dict):
         raise ValueError("stdin must be one JSON object")
+    pending_constraint: str | None = None
+    producer_emit = partial(_emit, producer_payload=payload)
+
+    def emit(*args: Any, **kwargs: Any) -> None:
+        try:
+            if pending_constraint is not None:
+                kwargs.setdefault(
+                    "github_retry_constraint",
+                    pending_constraint,
+                )
+            producer_emit(*args, **kwargs)
+        except Exception as error:
+            raise _TechnicalFailure("producer_capture_failed") from error
 
     workspace = Path(_text(payload, "workspace_path")).expanduser().resolve()
     pr_url = _text(payload, "pr_url")
     branch_name = _text(payload, "branch_name")
     merge_strategy = _text(payload, "merge_strategy")
+    expected_base_branch = payload.get("pr_base_branch")
+    if expected_base_branch is not None and (
+        not isinstance(expected_base_branch, str)
+        or not expected_base_branch
+        or expected_base_branch != expected_base_branch.strip()
+        or expected_base_branch.startswith("-")
+    ):
+        raise ValueError("pr_base_branch is invalid")
     initial_head = _text(payload, "pr_head_oid")
     initial_base = _text(payload, "pr_base_oid")
     if not workspace.is_dir():
@@ -226,12 +393,41 @@ def main() -> int:
         "branch_name": branch_name,
         "merge_strategy": merge_strategy,
     }
+    if expected_base_branch is not None:
+        values["pr_base_branch"] = expected_base_branch
     if contract_text is not None:
         values["ci_contract"] = contract_text
     if report_text is not None:
         values["ci_report"] = report_text
     if "task_short_id" in payload:
         values["task_short_id"] = _text(payload, "task_short_id")
+    delivery_protocol = _current_delivery_protocol(workspace, payload)
+    checkpoint = None
+    provider_guard = None
+    if delivery_protocol is not None:
+        checkpoint = _sibling("workflow-checkpoint")
+        provider_identity = delivery_protocol.get("identity")
+        if not isinstance(provider_identity, dict):
+            raise ValueError("native delivery identity is unavailable")
+
+        def provider_guard() -> None:
+            checkpoint.require_github_provider_read(
+                workspace,
+                payload,
+                provider_identity,
+            )
+            if pending_constraint is not None:
+                constraint = runtime.parse_canonical_json(
+                    pending_constraint,
+                    label="GitHub provider retry constraint",
+                    max_bytes=1024,
+                )
+                state = runtime.evaluate_github_retry_constraint(
+                    constraint,
+                    now_unix_ms=time.time_ns() // 1_000_000,
+                )
+                if state != "clear":
+                    raise _LocalProviderRetryBlocked(state)
 
     test_mode = os.environ.get("KENT_PR_WATCH_TEST_MODE") == "1"
     interval = max(
@@ -254,27 +450,85 @@ def main() -> int:
                 workspace,
                 gh_bin=gh_bin,
                 timeout=timeout,
+                provider_guard=provider_guard,
             )
             observed = watcher.observe_pr(pr_url)
-            errors = 0
             pr = observed["pr"]
             state = str(pr.get("state") or "").upper()
             head_oid = str(pr["headRefOid"])
             base_oid = str(pr["baseRefOid"])
+            if (
+                expected_base_branch is not None
+                and pr.get("baseRefName") != expected_base_branch
+            ):
+                emit(
+                    "merge_watch_state_changed",
+                    {
+                        **values,
+                        "pr_report": _pr_report(
+                            pr=pr,
+                            reason="pr_base_branch_changed",
+                            expected_pr_base_branch=expected_base_branch,
+                            observed_base_ref_name=pr.get("baseRefName"),
+                        ),
+                    },
+                    cursor=acknowledged_text,
+                )
+                return 0
+            if pr.get("headRefName") != branch_name:
+                raise observation.ObservationError("invalid_observation")
             if state == "MERGED":
-                _emit(
+                merged_values = {
+                    "workspace_path": values["workspace_path"],
+                    "pr_url": values["pr_url"],
+                    "branch_name": values["branch_name"],
+                    "merge_strategy": values["merge_strategy"],
+                    **(
+                        {"pr_base_branch": expected_base_branch}
+                        if expected_base_branch is not None
+                        else {}
+                    ),
+                    "merge_report": _merge_report(pr),
+                }
+                emit(
                     "merge_watch_pr_merged",
-                    {**values, "merge_report": _merge_report(pr)},
+                    merged_values,
                     cursor=acknowledged_text,
                 )
                 return 0
 
+            classification = runtime.classify_github_checks(
+                observed["checks"],
+                require_ci=(
+                    contract["require_ci"]
+                    if contract is not None
+                    else False
+                ),
+            )
+            if classification["state"] in {
+                "invalid_observation",
+                "observation_limit",
+            }:
+                emit(
+                    "merge_watch_state_changed",
+                    {
+                        **values,
+                        "pr_report": _pr_report(
+                            pr=pr,
+                            reason=classification["state"],
+                            checks=list(classification.get("checks", [])),
+                            observed_cursor=None,
+                        ),
+                    },
+                    cursor=acknowledged_text,
+                )
+                return 0
             current = runtime.make_dynamic_pr_feedback_cursor(
                 repository=repository,
                 pull_number=pull_number,
                 items=observed["feedback_items"],
                 review_decision=str(pr.get("reviewDecision") or ""),
-                checks=observed["checks"],
+                checks=classification["checks"],
             )
             delta = runtime.diff_dynamic_pr_feedback_cursor(
                 acknowledged,
@@ -296,14 +550,6 @@ def main() -> int:
                 _canonical(runtime, current)
                 if delta["transition"] == "state_changed"
                 else None
-            )
-            classification = runtime.classify_github_checks(
-                observed["checks"],
-                require_ci=(
-                    contract["require_ci"]
-                    if contract is not None
-                    else False
-                ),
             )
             reason = ""
             if state == "CLOSED":
@@ -332,11 +578,6 @@ def main() -> int:
                 )
             elif classification["state"] == "failed":
                 reason = "checks_failed"
-            elif classification["state"] in {
-                "invalid_observation",
-                "observation_limit",
-            }:
-                reason = classification["state"]
 
             if reason:
                 report = {
@@ -347,19 +588,15 @@ def main() -> int:
                         checks=list(classification.get("checks", [])),
                         observed_cursor=observed_text,
                     ),
-                    "pr_head_oid": head_oid,
-                    "pr_base_oid": base_oid,
                 }
-                if observed_text is not None:
-                    report["observed_feedback_cursor"] = observed_text
-                _emit(
+                emit(
                     "merge_watch_state_changed",
                     report,
                     cursor=acknowledged_text,
                 )
                 return 0
             if max_polls and polls >= max_polls:
-                _emit(
+                emit(
                     "merge_watch_still_waiting",
                     {
                         **values,
@@ -369,13 +606,69 @@ def main() -> int:
                     cursor=acknowledged_text,
                 )
                 return 0
+            errors = 0
             time.sleep(interval)
+        except _TechnicalFailure:
+            raise
         except Exception as error:
+            if isinstance(error, _LocalProviderRetryBlocked) or (
+                checkpoint is not None
+                and checkpoint.is_github_provider_read_blocked(error)
+            ):
+                blocked = observation.ObservationError("query_failed")
+                emit(
+                    "merge_watch_state_changed",
+                    {
+                        **values,
+                        "pr_report": _pr_report(
+                            pr={},
+                            reason="github_query_failed",
+                            error=blocked,
+                        ),
+                    },
+                    cursor=acknowledged_text,
+                )
+                return 0
             errors += 1
-            if errors < max_errors:
-                time.sleep(interval)
+            captured_constraint = observation.provider_retry_constraint(
+                error,
+                interval=interval,
+                failure_count=errors,
+            )
+            if captured_constraint is not None:
+                current_constraints = []
+                if pending_constraint is not None:
+                    current_constraints.append(
+                        runtime.parse_canonical_json(
+                            pending_constraint,
+                            label="GitHub provider retry constraint",
+                            max_bytes=1024,
+                        )
+                    )
+                current_constraints.append(
+                    runtime.parse_canonical_json(
+                        captured_constraint,
+                        label="GitHub provider retry constraint",
+                        max_bytes=1024,
+                    )
+                )
+                merged = runtime.merge_github_retry_constraints(
+                    current_constraints,
+                )
+                pending_constraint = _canonical(runtime, merged)
+            if (
+                errors < max_errors
+                and not getattr(error, "provider_retry_unknown", False)
+            ):
+                time.sleep(
+                    _retry_delay_seconds(
+                        error,
+                        interval=interval,
+                        failure_count=errors,
+                    )
+                )
                 continue
-            _emit(
+            emit(
                 "merge_watch_state_changed",
                 {
                     **values,
@@ -384,8 +677,6 @@ def main() -> int:
                         reason="github_query_failed",
                         error=error,
                     ),
-                    "pr_head_oid": initial_head,
-                    "pr_base_oid": initial_base,
                 },
                 cursor=acknowledged_text,
             )
