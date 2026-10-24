@@ -138,16 +138,18 @@ existing context bytes. Only the exact initial PR route may use the shared
 preparer's established absent-cursor value when cursor and CI packets are
 actually absent. Malformed values are not normalized into retry context.
 
-This remains a non-attested source candidate. It now selects the qualified
-immutable Kit K `9e7da4ee800d3e0e9c1bbd0d419cd87faa011dfc` and pins the complete
+This remains a non-attested source candidate. It now selects the clean primary
+Kit K `5fcfe0d1a3d3ad08a149f34da0457d6527951251` at
+`/Users/rovkinmax/dev/llm-staf/kent-engineering-kit` and pins the complete
 approved helper family in `.kent/workflow-profile.toml`; the materialized
 shared helpers and Release Janitor adapter are source-bound in the current
 manifest. Final project closure C and configured source gates remain pending,
 so `runtime_attested` stays false. No live Workflow, Task, default, or runtime
-pin is changed. The v90 and 5af-named v95/source-91 graph/spec/manifest
-snapshots remain historical and byte-stable. This source candidate does not
-activate a Workflow; any future live effect requires its separate explicit
-authority and compatibility checks.
+pin is changed. The original clean 045/K9 Kit remains preserved for other
+consumers. The v90 and 5af-named v95/source-91 graph/spec/manifest snapshots
+remain historical and byte-stable. This source candidate does not activate a
+Workflow; any future live effect requires its separate explicit authority and
+compatibility checks.
 
 The profile-owned `mobile_script_resource_lock` adapter is a Puber context
 wrapper, not a second lock implementation. It invokes the same

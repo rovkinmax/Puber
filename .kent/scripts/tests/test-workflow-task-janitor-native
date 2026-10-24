@@ -19,10 +19,10 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
 KIT = Path(os.environ["KENT_ENGINEERING_KIT_ROOT"]).resolve(strict=True)
-PIN = "9e7da4ee800d3e0e9c1bbd0d419cd87faa011dfc"
+PIN = "5fcfe0d1a3d3ad08a149f34da0457d6527951251"
 head = subprocess.check_output(["git", "-C", str(KIT), "rev-parse", "HEAD"], text=True).strip()
 if head != PIN:
-    raise SystemExit("Janitor qualification requires the selected immutable Kit")
+    raise SystemExit("Janitor qualification requires the selected exact Kit")
 if subprocess.check_output(
     ["git", "-C", str(KIT), "status", "--porcelain=v1", "--untracked-files=all"],
     text=True,
@@ -178,6 +178,93 @@ class PuberJanitorTest(fixtures.WorkflowJanitorTest):
         )
         self.assertEqual(
             result.returncode, 0, result.stdout + result.stderr,
+        )
+
+    def test_puber_wrapper_and_shared_provider_loaders_use_profile_kit(self) -> None:
+        expected_root = repr(str(KIT))
+        project_root = repr(str(ROOT))
+        code = f"""
+import importlib, importlib.machinery, importlib.util, subprocess, tomllib
+from pathlib import Path
+
+project = Path({project_root})
+expected_root = Path({expected_root}).resolve(strict=True)
+def load(name, path):
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+intent = load(
+    "puber_janitor_root_intent",
+    project / ".kent/scripts/workflow-puber-release-intent",
+)
+wrapper = load(
+    "puber_janitor_root_wrapper",
+    project / ".kent/scripts/workflow-puber-release-janitor",
+)
+profile = tomllib.loads((project / ".kent/workflow-profile.toml").read_text())
+configured_root = profile["puber_runtime"]["kit_source"]["root"]
+assert configured_root == str(expected_root), configured_root
+head = subprocess.check_output(
+    ["git", "-C", str(expected_root), "rev-parse", "HEAD"], text=True,
+).strip()
+status = subprocess.check_output(
+    ["git", "-C", str(expected_root), "status", "--porcelain=v1", "--untracked-files=all"],
+    text=True,
+)
+assert head == wrapper.helper.KIT_COMMIT == intent.KIT_COMMIT
+assert not status, status
+delivery = wrapper.helper._qualified_delivery_module(
+    project,
+    required=("observe_script_identity",),
+)
+shared = wrapper._load_janitor()
+checkpoint = shared.checkpoint_module()
+checkpoint_path = (project / ".kent/scripts/workflow-checkpoint").resolve(strict=True)
+assert Path(checkpoint.__file__).resolve() == checkpoint_path
+assert checkpoint.delivery_module() is delivery
+shared_delivery, observation, runtime = shared.provider_modules(checkpoint)
+wrapper.helper._kit_modules()
+assert delivery is shared_delivery
+modules = (
+    importlib.import_module("workflowkit"),
+    delivery,
+    observation,
+    runtime,
+    importlib.import_module("workflowkit.release"),
+    importlib.import_module("workflowkit.revision"),
+    importlib.import_module("workflowkit.ci_contract"),
+    importlib.import_module("workflowkit.merge_strategy"),
+)
+for module in modules:
+    module_path = Path(module.__file__).resolve()
+    assert module_path.is_relative_to(expected_root), (module.__name__, module_path)
+print(
+    "puber-janitor-provider-root-loader: passed "
+    f"root={{expected_root}} commit={{head}} modules={{len(modules)}}"
+)
+"""
+        child_env = dict(os.environ)
+        child_env.pop("KENT_ENGINEERING_KIT_ROOT", None)
+        child_env["PYTHONDONTWRITEBYTECODE"] = "1"
+        result = subprocess.run(
+            [sys.executable, "-I", "-B", "-c", code],
+            cwd=ROOT,
+            env=child_env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(
+            result.returncode,
+            0,
+            result.stdout + result.stderr,
+        )
+        self.assertIn(
+            "puber-janitor-provider-root-loader: passed",
+            result.stdout,
         )
 
     def test_sealed_accepted_plan_cache_is_preserved_before_native_delete(self) -> None:
