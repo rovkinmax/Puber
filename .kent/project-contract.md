@@ -110,16 +110,44 @@ has no signing, release, tag, publication, deployment, or credential effect.
 The tracked graph is a source artifact only. S05 never applies, relinks, or
 mutates a live Kent Workflow, Task, default, canonical state, or project link.
 
-## Private Release proposal cohort
+## Current Release successor source candidate
 
-The profile selects the private Kit5af-named Release proposal
-`.kent/workflows/puber-release-kit-5af.json` at source revision 91/native
-proposal version 95. It preserves the existing 18/51/51 topology and adds the
-exact 21 `entry_transition` business-route carriers; the profile-generation
-Script and all native approval gates remain unchanged. This is preparation
-material only: future qualified Kit K and project commit C are unknown,
-`runtime_attested` remains false, and no live Workflow/Task/default/pin is
-changed. Historical Release v90 graph/spec/manifest bytes remain frozen.
+The profile selects `.kent/workflows/puber-release-current.json` at proposed
+native version 97/source revision 92. It preserves 18 nodes and Script/Agent
+kinds, with 53 transition groups and 53 edges after the S4 CI-recovery
+transitions are added. The 20 ordinary Script routes retain their
+business-only `entry_transition` hints; the typed failure/retry/user-action
+routes have no synthetic route hint. Existing unrelated approval gates remain
+unchanged; the CI failure becomes a typed Agent handoff, while the separate
+CI Monitor user-action route remains approval-gated. It adds explicit
+`pr_base_branch` continuity, carries the original release `operation_id`
+through publication/cleanup, and forwards exact merged target T to the
+existing Publish approval path. The actual PR target branch is compared by
+name; it is not inferred from the mutable base OID. Native completion uses each
+transition group's `transition_id`.
+
+CI preparation failure carries a closed typed diagnostic, never fabricated CI
+packets or a blocker carrier. The project wrapper validates the actual child
+producer and exact child-input digest, captures its final native output with
+explicit child/retry producer references, and preserves original input bytes.
+The CI Monitor can retry only through the existing qualified Agent packer and
+the exact validated post-PR v2 context. The retry Script authenticates the
+native graph contract, restores the full Release carrier from referenced
+producer ancestry, rechecks the completed checkpoint, and preserves all
+existing context bytes. Only the exact initial PR route may use the shared
+preparer's established absent-cursor value when cursor and CI packets are
+actually absent. Malformed values are not normalized into retry context.
+
+This remains a non-attested source candidate. It now selects the qualified
+immutable Kit K `9e7da4ee800d3e0e9c1bbd0d419cd87faa011dfc` and pins the complete
+approved helper family in `.kent/workflow-profile.toml`; the materialized
+shared helpers and Release Janitor adapter are source-bound in the current
+manifest. Final project closure C and configured source gates remain pending,
+so `runtime_attested` stays false. No live Workflow, Task, default, or runtime
+pin is changed. The v90 and 5af-named v95/source-91 graph/spec/manifest
+snapshots remain historical and byte-stable. This source candidate does not
+activate a Workflow; any future live effect requires its separate explicit
+authority and compatibility checks.
 
 The profile-owned `mobile_script_resource_lock` adapter is a Puber context
 wrapper, not a second lock implementation. It invokes the same

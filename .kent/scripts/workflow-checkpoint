@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
+import importlib.machinery
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -13,12 +16,23 @@ import stat
 import subprocess
 import sys
 import time
+import tomllib
 
 
 TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 STAGES = ("fix", "smoke")
 JSON_INPUT_TIMEOUT_SECONDS = 2.0
 MAX_JSON_INPUT_BYTES = 1024 * 1024
+
+
+class GitHubProviderReadBlocked(RuntimeError):
+    """A guard refusal with no serialized deadline or provider detail."""
+
+    code = "query_failed"
+
+    def __init__(self, state: str = "unknown") -> None:
+        self.state = state if state in {"not_before", "unknown"} else "unknown"
+        super().__init__("github_provider_retry_blocked")
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,6 +46,24 @@ def parse_args() -> argparse.Namespace:
         subparser.add_argument("--stage", required=True, choices=STAGES)
         subparser.add_argument("--task", required=True)
         subparser.add_argument("--workspace", type=Path, default=Path.cwd())
+    provider_read = subparsers.add_parser(
+        "require-github-provider-read",
+        help="Check inherited GitHub retry constraints before a provider read.",
+    )
+    provider_read.add_argument("--task", required=True)
+    provider_read.add_argument("--workspace", type=Path, default=Path.cwd())
+    packing = subparsers.add_parser(
+        "pack-delivery",
+        help="Pack exact producer-owned strings into native completion JSON; never submit it.",
+    )
+    packing.add_argument("--task", required=True)
+    packing.add_argument("--workspace", type=Path, default=Path.cwd())
+    feedback = subparsers.add_parser(
+        "derive-feedback-decision",
+        help="Create an immutable Agent acknowledgement derivative; never submit it.",
+    )
+    feedback.add_argument("--task", required=True)
+    feedback.add_argument("--workspace", type=Path, default=Path.cwd())
     return parser.parse_args()
 
 
@@ -144,13 +176,733 @@ def require_ignored(root: Path, path: Path) -> None:
 
 
 def decode_payload(raw: str) -> dict[str, object]:
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("duplicate checkpoint JSON key")
+            result[key] = value
+        return result
+
+    def constant(value):
+        raise ValueError(f"invalid checkpoint JSON constant: {value}")
+
     try:
-        payload = json.loads(raw)
+        payload = json.loads(raw, object_pairs_hook=pairs, parse_constant=constant)
     except json.JSONDecodeError as error:
         raise ValueError(f"checkpoint input is not valid JSON: {error}") from error
     if not isinstance(payload, dict):
         raise ValueError("checkpoint input must be one JSON object")
     return payload
+
+
+def delivery_module():
+    """Use the existing installed first-party CLI/module source seam.
+
+    Source receipts/installation qualify this closure; legacy checkpoint calls
+    never resolve or depend on the installed Kit.
+    """
+    tool = Path.home() / ".kent" / "bin" / "kent-prepare-github-ci"
+    if not tool.is_symlink():
+        raise ValueError("qualified first-party Kit CLI symlink is unavailable")
+    script = tool.resolve(strict=True)
+    root = script.parent.parent
+    source = root / "workflowkit" / "delivery.py"
+    if script.name != "prepare-github-ci" or script.parent.name != "scripts":
+        raise ValueError("first-party Kit CLI source layout mismatch")
+    for path in (script, root / "workflowkit", source):
+        metadata = path.lstat()
+        if path.is_symlink() or metadata.st_uid != os.getuid() or metadata.st_mode & 0o022:
+            raise ValueError("unsafe first-party Kit source")
+    sys.path.insert(0, str(root))
+    from workflowkit import delivery
+    if Path(delivery.__file__).resolve() != source:
+        raise ValueError("unexpected first-party delivery module")
+    return delivery
+
+
+def current_delivery_identity(root: Path, task: str) -> dict:
+    source = Path(__file__).with_name("workflow-evidence-ledger")
+    metadata = source.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o022:
+        raise ValueError("unsafe native identity observer")
+    loader = importlib.machinery.SourceFileLoader("checkpoint_native_identity", str(source))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    if spec is None:
+        raise ValueError("native identity observer is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module.native_current_identity(root, task)
+
+
+def delivery_native_read(root: Path, arguments: list[str], *, structured=True):
+    """Bounded read-only native observation; never execute caller argv."""
+    with subprocess.Popen(
+        ["kent", *arguments], cwd=root, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    ) as process:
+        deadline = time.monotonic() + 15
+        raw = bytearray()
+        try:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ValueError("native delivery readback timed out")
+                readable, _, _ = select.select([process.stdout], [], [], remaining)
+                if not readable:
+                    continue
+                chunk = os.read(process.stdout.fileno(), 65536)
+                if not chunk:
+                    break
+                raw.extend(chunk)
+                if len(raw) > MAX_JSON_INPUT_BYTES:
+                    raise ValueError("native delivery readback exceeds byte limit")
+            code = process.wait(timeout=max(0.01, deadline - time.monotonic()))
+            if code != 0:
+                raise ValueError("native delivery readback failed")
+        except BaseException:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            raise
+    text = raw.decode("utf-8")
+    return decode_payload(text) if structured else text.strip()
+
+
+def _delivery_protocol_profile_enabled(root: Path) -> bool:
+    root_fd = os.open(
+        root,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+    )
+    descriptors = [root_fd]
+    try:
+        kent_fd = open_child_directory(root_fd, ".kent", create=False)
+        descriptors.append(kent_fd)
+        descriptor = os.open(
+            "workflow-profile.toml",
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=kent_fd,
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_nlink != 1
+                or before.st_uid != os.getuid()
+                or before.st_mode & 0o7022
+                or before.st_size > 64 * 1024
+            ):
+                raise ValueError("unsafe current delivery profile")
+            raw = stream.read(64 * 1024 + 1)
+            after = os.fstat(stream.fileno())
+            if (
+                len(raw) > 64 * 1024
+                or len(raw) != before.st_size
+                or (before.st_dev, before.st_ino, before.st_size,
+                    before.st_mtime_ns, before.st_ctime_ns)
+                != (after.st_dev, after.st_ino, after.st_size,
+                    after.st_mtime_ns, after.st_ctime_ns)
+            ):
+                raise ValueError("current delivery profile changed during read")
+    finally:
+        close_descriptors(*descriptors)
+    profile = tomllib.loads(raw.decode("utf-8"))
+    policies = profile.get("policies", {})
+    versions = profile.get("command_versions", {})
+    return bool(
+        isinstance(policies, dict)
+        and policies.get("delivery_reliability") == "v1"
+    ) or bool(
+        isinstance(versions, dict)
+        and (
+            versions.get("runtime_contracts") in {"2.1.0", "2.2.0"}
+            or versions.get("prepare_ci") in {"3.0.0", "3.1.0"}
+        )
+    )
+
+
+def current_script_delivery_protocol(
+    root: Path,
+    *,
+    task: str | None,
+    native_context: object,
+) -> dict[str, object] | None:
+    """Select current waiter behavior from actual native Script graph readback."""
+    root = root.expanduser().resolve(strict=True)
+    if not _delivery_protocol_profile_enabled(root):
+        return None
+    if not isinstance(native_context, dict):
+        raise ValueError("current delivery requires native Script context")
+    module = delivery_module()
+    observed = module.observe_script_delivery_graph(
+        root,
+        task,
+        native_context,
+        native_read=delivery_native_read,
+    )
+    protocol = module.prepare_ci_protocol(observed)
+    target_required = module.pr_base_branch_required(observed)
+    context_schema = module.delivery_context_schema(observed)
+    identity = observed.identity
+    current_nodes = [
+        node for node in observed.graph["graph"]["nodes"]
+        if node.get("id") == identity["node_id"]
+    ]
+    if len(current_nodes) != 1 or not isinstance(current_nodes[0].get("key"), str):
+        raise ValueError("current native Script node is unresolved")
+    return {
+        "protocol": protocol,
+        "target_required": target_required,
+        "context_schema": context_schema,
+        "node_key": current_nodes[0]["key"],
+        "identity": identity,
+    }
+
+
+def delivery_reliability_enabled(root: Path) -> bool:
+    """Read only the qualified checkout policy, without loading installed Kit."""
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    descriptors = [root_fd]
+    try:
+        kent_fd = open_child_directory(root_fd, ".kent", create=False)
+        descriptors.append(kent_fd)
+        descriptor = os.open(
+            "workflow-profile.toml", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=kent_fd,
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            metadata = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+                    or metadata.st_uid != os.getuid() or metadata.st_mode & 0o022
+                    or metadata.st_size > MAX_JSON_INPUT_BYTES):
+                raise ValueError("unsafe delivery policy profile")
+            raw = stream.read(MAX_JSON_INPUT_BYTES + 1)
+            after = os.fstat(stream.fileno())
+            if (len(raw) > MAX_JSON_INPUT_BYTES
+                    or (metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
+                    != (after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
+                raise ValueError("delivery policy profile changed during read")
+    finally:
+        close_descriptors(*descriptors)
+    profile = tomllib.loads(raw.decode("utf-8"))
+    policies = profile.get("policies", {})
+    if not isinstance(policies, dict):
+        raise ValueError("invalid delivery policy table")
+    policy = policies.get("delivery_reliability")
+    if policy not in (None, "v1"):
+        raise ValueError("unsupported delivery reliability policy")
+    return policy == "v1"
+
+
+def emit_producer_result(
+    root: Path,
+    payload: dict,
+    result,
+    producer_kind: str,
+    *,
+    github_retry_constraint: str | None = None,
+) -> bytes:
+    """Shared Script adapter; return bytes, never print or complete a Task.
+
+    Supply original serialized bytes (or text) when legacy wire formatting must
+    remain byte-identical. Dict results retain the existing ensure_ascii=False
+    json.dumps encoding. Only opted-in policy resolves installed Kit/native
+    identity, using the actual injected _kent context, not Agent environment.
+    """
+    raw = (result if isinstance(result, bytes) else result.encode("utf-8")
+           if isinstance(result, str) else
+           json.dumps(result, ensure_ascii=False).encode("utf-8"))
+    if not delivery_reliability_enabled(root):
+        return raw
+    if not isinstance(payload, dict):
+        raise ValueError("producer workflow input must be an object")
+    if github_retry_constraint is not None and not isinstance(
+        github_retry_constraint,
+        str,
+    ):
+        raise ValueError("GitHub provider retry constraint must be canonical JSON")
+    module = delivery_module()
+    output = module.packet_decode(raw)
+    inputs = {key: value for key, value in payload.items()
+              if isinstance(value, str)}
+    binding = {}
+    incoming_commentary = payload.get("commentary")
+    if isinstance(incoming_commentary, str):
+        incoming_locator = module.producer_locator(incoming_commentary)
+        if incoming_locator is not None:
+            binding["producer_refs"] = json.dumps(
+                {"refs": [incoming_locator]},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+    capture_args = {
+        "root": root,
+        "task": None,
+        "native_context": payload.get("_kent"),
+        "producer_kind": producer_kind,
+        "inputs": inputs,
+        "result": output,
+        "native_read": delivery_native_read,
+        "binding": binding,
+    }
+    if github_retry_constraint is not None:
+        capture_args["github_retry_constraint"] = github_retry_constraint
+    _, emitted = module.capture_script_producer(**capture_args)
+    return emitted
+
+
+def _validated_provider_refs(refs: object) -> list[str]:
+    if (
+        not isinstance(refs, list)
+        or len(refs) > 64
+        or any(not isinstance(reference, str) for reference in refs)
+        or len(refs) != len(set(refs))
+    ):
+        raise ValueError("invalid GitHub provider producer references")
+    return refs
+
+
+def provider_refs_from_payload(root: Path, payload: object) -> list[str]:
+    if not isinstance(payload, dict):
+        raise ValueError("GitHub provider guard input must be an object")
+    commentary = payload.get("commentary")
+    if commentary is None:
+        return []
+    if not isinstance(commentary, str):
+        raise ValueError("GitHub provider commentary is invalid")
+    module = delivery_module()
+    locator = module.producer_locator(commentary)
+    return [] if locator is None else [locator]
+
+
+def require_github_provider_refs(
+    root: Path,
+    refs: object,
+    identity: dict,
+) -> None:
+    module = delivery_module()
+    require_read = getattr(module, "require_github_provider_read", None)
+    if not callable(require_read):
+        raise GitHubProviderReadBlocked()
+    try:
+        require_read(root, _validated_provider_refs(refs), identity)
+    except BaseException as error:
+        blocked_type = getattr(module, "GitHubProviderRetryBlocked", None)
+        if isinstance(blocked_type, type) and isinstance(error, blocked_type):
+            raise GitHubProviderReadBlocked(
+                getattr(error, "state", "unknown"),
+            ) from None
+        raise
+
+
+def require_github_provider_read(
+    root: Path,
+    payload: object,
+    identity: dict,
+) -> None:
+    require_github_provider_refs(
+        root,
+        provider_refs_from_payload(root, payload),
+        identity,
+    )
+
+
+def is_github_provider_read_blocked(error: BaseException) -> bool:
+    return isinstance(error, GitHubProviderReadBlocked)
+
+
+def require_github_provider_read_command(root: Path, task: str) -> int:
+    if not TASK_KEY.fullmatch(task):
+        raise ValueError("invalid task key")
+    request = read_json_input("require-github-provider-read")
+    if not isinstance(request, dict) or set(request) != {"refs"}:
+        raise ValueError("invalid GitHub provider guard request")
+    refs = _validated_provider_refs(request["refs"])
+    identity = current_delivery_identity(root, task)
+    try:
+        require_github_provider_refs(root, refs, identity)
+    except GitHubProviderReadBlocked as error:
+        sys.stdout.write(json.dumps(
+            {"allowed": False, "state": error.state},
+            sort_keys=True,
+            separators=(",", ":"),
+        ) + "\n")
+        return 3
+    sys.stdout.write('{"allowed":true}\n')
+    return 0
+
+
+def pack_delivery_command(root: Path, task: str) -> int:
+    if not TASK_KEY.fullmatch(task):
+        raise ValueError("invalid task key")
+    request = read_json_input("pack-delivery")
+    module = delivery_module()
+    identity = current_delivery_identity(root, task)
+    detail = delivery_native_read(root, [
+        "task", "show", identity["task_id"], "--project", identity["project_id"], "--json",
+    ])
+    workflow = detail.get("summary", {}).get("workflow_id")
+    if not isinstance(workflow, str) or not re.fullmatch(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+        workflow,
+    ):
+        raise ValueError("native Task Workflow identity is unavailable")
+    graph = delivery_native_read(root, ["workflow", "graph", "inspect", workflow, "--json"])
+    _, raw = module.pack_delivery(
+        root, request, identity=identity, task_detail=detail, graph=graph,
+    )
+    # These bytes already exist as emitted-<sha256>.json. The owner alone may
+    # submit that immutable artifact once; unknown completion needs readback.
+    sys.stdout.buffer.write(raw)
+    sys.stdout.buffer.flush()
+    return 0
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _feedback_source_graph(
+    root: Path,
+    task: str,
+    agent_identity: dict,
+    source: dict,
+    delivery,
+) -> None:
+    """Bind a feedback source to its actual waiter node and graph transition."""
+    from workflowkit.profile import ProjectProfile
+
+    source_identity = source.get("identity")
+    if not isinstance(source_identity, dict):
+        raise ValueError("feedback source identity is incomplete")
+    for key in ("task_id", "task_short_id", "project_id", "workspace_path"):
+        if source_identity.get(key) != agent_identity.get(key):
+            raise ValueError("feedback source belongs to another Task or workspace")
+    if source_identity.get("invocation_kind") != "script":
+        raise ValueError("feedback source is not a native Script producer")
+
+    routes = {
+        ("wait-pr", "merge_watch_state_changed"): ("merge_watch", "wait_pr"),
+        ("wait-ci", "ci_watch_state_changed"): ("ci_watch", "wait_ci"),
+    }
+    transition = source.get("result", {}).get("transition")
+    route = routes.get((source.get("producer_kind"), transition))
+    if route is None:
+        raise ValueError("feedback source is not a supported waiter state change")
+    node_key, command_key = route
+
+    profile = ProjectProfile.load(root)
+    if (
+        profile.delivery_reliability_policy() != "v1"
+        or not profile.capability("pull_requests")
+        or (command_key == "wait_ci" and not profile.capability("ci_monitoring"))
+    ):
+        raise ValueError("feedback source is outside the qualified delivery profile")
+    configured_script = profile.command(command_key)
+    if not configured_script:
+        raise ValueError("feedback waiter command is not configured")
+
+    detail = delivery_native_read(root, [
+        "task", "show", agent_identity["task_id"],
+        "--project", agent_identity["project_id"], "--json",
+    ])
+    summary = detail.get("summary") if isinstance(detail, dict) else None
+    workflow_id = summary.get("workflow_id") if isinstance(summary, dict) else None
+    if (
+        not isinstance(summary, dict)
+        or summary.get("id") != agent_identity["task_id"]
+        or summary.get("short_id") != task
+        or summary.get("project_id") != agent_identity["project_id"]
+        or not isinstance(workflow_id, str)
+        or re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-"
+            r"[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+            workflow_id,
+        ) is None
+    ):
+        raise ValueError("feedback Task Workflow identity is unavailable")
+    graph = delivery_native_read(root, [
+        "workflow", "graph", "inspect", workflow_id, "--json",
+    ])
+    definition = graph.get("graph") if isinstance(graph, dict) else None
+    if (
+        not isinstance(graph, dict)
+        or graph.get("workflow_id") != workflow_id
+        or not isinstance(definition, dict)
+        or any(
+            not isinstance(definition.get(key), list)
+            or len(definition[key]) > limit
+            or any(not isinstance(row, dict) for row in definition[key])
+            for key, limit in (
+                ("nodes", 4096),
+                ("transition_groups", 8192),
+                ("edges", 16384),
+            )
+        )
+    ):
+        raise ValueError("feedback native Workflow graph is incomplete")
+
+    node_id = source_identity.get("node_id")
+    nodes = [
+        row for row in definition["nodes"]
+        if row.get("id") == node_id
+    ]
+    if (
+        not isinstance(node_id, str)
+        or len(nodes) != 1
+        or nodes[0].get("kind") != "script"
+        or nodes[0].get("key") != node_key
+        or delivery._script_path(root, nodes[0].get("script_path"))
+        != delivery._script_path(root, configured_script)
+    ):
+        raise ValueError("feedback Script does not match the qualified waiter node")
+    groups = [
+        row for row in definition["transition_groups"]
+        if row.get("source_node_id") == node_id
+        and row.get("transition_id") == transition
+    ]
+    if len(groups) != 1 or not isinstance(groups[0].get("id"), str):
+        raise ValueError("feedback source transition is missing or ambiguous")
+    edges = [
+        row for row in definition["edges"]
+        if row.get("transition_group_id") == groups[0]["id"]
+    ]
+    if not edges:
+        raise ValueError("feedback source transition has no edges")
+    for edge in edges:
+        parameters = edge.get("parameters")
+        if not isinstance(parameters, list) or any(
+            not isinstance(parameter, dict)
+            or not isinstance(parameter.get("key"), str)
+            for parameter in parameters
+        ):
+            raise ValueError("feedback source transition fields are invalid")
+        fields = {parameter["key"] for parameter in parameters}
+        if not {"pr_url", "pr_report", "pr_feedback_cursor"} <= fields:
+            raise ValueError("feedback source transition lacks its cursor carrier")
+
+
+def derive_feedback_decision(
+    root: Path,
+    task: str,
+    request: dict[str, object],
+) -> dict[str, str]:
+    """Create a narrow Agent derivative over one exact waiter report."""
+    keys = {"schema", "producer_ref", "decision", "reason"}
+    if (
+        not isinstance(request, dict)
+        or set(request) != keys
+        or request.get("schema") != "workflow-feedback-decision-request-v1"
+    ):
+        raise ValueError("invalid feedback decision request")
+    producer_ref = request["producer_ref"]
+    decision = request["decision"]
+    reason = request["reason"]
+    if (
+        not isinstance(producer_ref, str)
+        or not isinstance(decision, str)
+        or decision not in {
+            "acknowledge_all_reported_feedback",
+            "preserve_acknowledged_cursor",
+        }
+        or not isinstance(reason, str)
+        or not reason.strip()
+        or len(reason.encode("utf-8")) > 4096
+        or any(ord(character) < 32 and character not in "\t\n\r" for character in reason)
+    ):
+        raise ValueError("invalid feedback decision request values")
+
+    delivery = delivery_module()
+    identity = current_delivery_identity(root, task)
+    source = delivery.reconstruct_producer(
+        root,
+        producer_ref,
+        identity=identity,
+    )
+    if source.get("schema") != "workflow-producer-source-v1":
+        raise ValueError("feedback source must be a native Script producer")
+    delivery.producer_reference_closure(
+        root,
+        producer_ref,
+        identity=identity,
+    )
+    _feedback_source_graph(root, task, identity, source, delivery)
+
+    inputs = source.get("inputs")
+    result = source.get("result")
+    if not isinstance(inputs, dict) or not isinstance(result, dict):
+        raise ValueError("feedback source carrier is incomplete")
+    for carrier in (inputs, result):
+        if carrier.get("workspace_path", str(root)) != str(root):
+            raise ValueError("feedback source workspace changed")
+        if carrier.get("task_short_id", task) != task:
+            raise ValueError("feedback source Task changed")
+    pr_url = inputs.get("pr_url")
+    result_pr_url = result.get("pr_url")
+    if (
+        not isinstance(pr_url, str)
+        or not isinstance(result_pr_url, str)
+        or result_pr_url != pr_url
+    ):
+        raise ValueError("feedback source PR identity changed")
+    from workflowkit.github_observation import parse_pr_url
+    from workflowkit import runtime as runtime_contracts
+
+    repository, pull_number = parse_pr_url(pr_url)
+    report_raw = result.get("pr_report")
+    if (
+        not isinstance(report_raw, str)
+        or len(report_raw.encode("utf-8")) > MAX_JSON_INPUT_BYTES
+    ):
+        raise ValueError("feedback source report is missing or oversized")
+    try:
+        report = decode_payload(report_raw)
+    except (UnicodeError, ValueError, RecursionError) as error:
+        raise ValueError("feedback source report is invalid") from error
+    if not isinstance(report.get("reason"), str) or not report["reason"]:
+        raise ValueError("feedback source report reason is missing")
+    report_url = report.get("url")
+    if report_url not in (None, ""):
+        if not isinstance(report_url, str) or parse_pr_url(report_url) != (
+            repository,
+            pull_number,
+        ):
+            raise ValueError("feedback report identifies another pull request")
+
+    old_cursor = result.get(
+        "pr_feedback_cursor",
+        inputs.get("pr_feedback_cursor", "uninitialized"),
+    )
+    input_cursor = inputs.get("pr_feedback_cursor")
+    result_cursor = result.get("pr_feedback_cursor")
+    if (
+        input_cursor is not None
+        and result_cursor is not None
+        and input_cursor != result_cursor
+    ):
+        raise ValueError("feedback source rewrote the acknowledged cursor")
+    if not isinstance(old_cursor, str):
+        raise ValueError("feedback source acknowledged cursor is invalid")
+    old_validated = runtime_contracts.validate_dynamic_pr_feedback_cursor(
+        old_cursor
+    )
+    if old_validated != "uninitialized" and (
+        old_validated["repository"] != repository
+        or old_validated["pull_number"] != pull_number
+    ):
+        raise ValueError("acknowledged cursor identifies another pull request")
+
+    raw_context = inputs.get("delivery_context")
+    if raw_context is not None:
+        if not isinstance(raw_context, str) or len(
+            raw_context.encode("utf-8")
+        ) > MAX_JSON_INPUT_BYTES:
+            raise ValueError("feedback source delivery context is invalid")
+        try:
+            context = runtime_contracts.validate_delivery_context(
+                decode_payload(raw_context)
+            )
+        except (UnicodeError, ValueError, RecursionError) as error:
+            raise ValueError("feedback source delivery context is invalid") from error
+        if (
+            context.get("phase") != "post_pr"
+            or context.get("pr_url") != pr_url
+            or context.get("pr_feedback_cursor") != old_cursor
+        ):
+            raise ValueError("feedback source delivery context changed")
+        for field in (
+            "branch_name",
+            "merge_strategy",
+            "pr_base_branch",
+            "ci_contract",
+            "ci_report",
+        ):
+            if field in inputs and field in context and inputs[field] != context[field]:
+                raise ValueError("feedback source delivery packet changed")
+
+    candidate_present = "observed_feedback_cursor" in report
+    candidate = report.get("observed_feedback_cursor")
+    validated_candidate = None
+    if candidate_present:
+        if not isinstance(candidate, str):
+            raise ValueError("feedback source candidate cursor is invalid")
+        validated_candidate = runtime_contracts.validate_dynamic_pr_feedback_cursor(
+            candidate
+        )
+        if (
+            validated_candidate == "uninitialized"
+            or validated_candidate["repository"] != repository
+            or validated_candidate["pull_number"] != pull_number
+        ):
+            raise ValueError("feedback candidate cursor identifies another PR")
+    if decision == "acknowledge_all_reported_feedback":
+        if not candidate_present:
+            raise ValueError("feedback acknowledgement has no candidate cursor")
+        assert isinstance(candidate, str)
+        new_cursor = candidate
+    else:
+        new_cursor = old_cursor
+
+    derivative_result = dict(result)
+    if "pr_feedback_cursor" in result or decision == "acknowledge_all_reported_feedback":
+        derivative_result["pr_feedback_cursor"] = new_cursor
+    old_digest = _sha256_text(old_cursor)
+    new_digest = _sha256_text(new_cursor)
+    feedback_decision = {
+        "schema": "workflow-feedback-decision-v1",
+        "source_ref": producer_ref,
+        "decision": decision,
+        "old_cursor_sha256": old_digest,
+        "new_cursor_sha256": new_digest,
+        "reason_sha256": _sha256_text(reason),
+    }
+    binding = {
+        "producer_refs": json.dumps(
+            {"refs": [producer_ref]},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        "feedback_decision": json.dumps(
+            feedback_decision,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+    }
+    locator, _emitted = delivery.capture_producer(
+        root,
+        identity=identity,
+        producer_kind="feedback-decision",
+        inputs={
+            "decision": decision,
+            "producer_ref": producer_ref,
+            "reason": reason,
+        },
+        result=derivative_result,
+        binding=binding,
+    )
+    return {
+        "schema": "workflow-feedback-decision-receipt-v1",
+        "producer_ref": locator,
+        "source_ref": producer_ref,
+        "decision": decision,
+        "old_cursor_sha256": old_digest,
+        "new_cursor_sha256": new_digest,
+    }
+
+
+def derive_feedback_decision_command(root: Path, task: str) -> int:
+    if not TASK_KEY.fullmatch(task):
+        raise ValueError("invalid task key")
+    request = read_json_input("derive-feedback-decision")
+    receipt = derive_feedback_decision(root, task, request)
+    sys.stdout.write(
+        json.dumps(receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    )
+    return 0
 
 
 def read_json_input(label: str) -> dict[str, object]:
@@ -298,6 +1050,12 @@ def write_checkpoint(
 def main() -> int:
     args = parse_args()
     root = repository_root(args.workspace)
+    if args.command == "pack-delivery":
+        return pack_delivery_command(root, args.task)
+    if args.command == "derive-feedback-decision":
+        return derive_feedback_decision_command(root, args.task)
+    if args.command == "require-github-provider-read":
+        return require_github_provider_read_command(root, args.task)
     path = checkpoint_path(root, args.task, args.stage)
 
     if args.command == "write":

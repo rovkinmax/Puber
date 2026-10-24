@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -18,14 +19,261 @@ assert _spec and _spec.loader
 _spec.loader.exec_module(helper)
 CI_FIELDS = ("ci_contract", "ci_report", "pr_feedback_cursor")
 SHARED_INPUTS = ("workspace_path", "pr_url", "branch_name", "merge_strategy", "task_short_id",
-                 "pr_head_oid", "pr_base_oid", *CI_FIELDS)
-SHARED_OUTPUTS = (*SHARED_INPUTS, "pr_report")
+                 "pr_head_oid", "pr_base_oid", "pr_base_branch", *CI_FIELDS,
+                 "delivery_context")
+SHARED_OUTPUTS = (*SHARED_INPUTS, "pr_report", "ci_preparation_diagnostic")
+PREPARATION_FAILURE = "ci_prepare_failed"
+PREPARATION_DIAGNOSTIC = "ci_preparation_diagnostic"
+DELIVERY_CONTEXT_SCHEMA = "workflow-delivery-context-v2"
+RETRY_ROUTE = "ci_monitor_retry_preparation"
+RETRY_FIELDS = ("workspace_path", "task_short_id", "delivery_context")
+RELEASE_RESTORE_FIELDS = (
+    "workspace_path",
+    "operation_id",
+    "task_short_id",
+    "release_type",
+    "release_version",
+    "release_tag",
+    "release_branch",
+    "release_base_oid",
+    "candidate_oid",
+    "release_head_oid",
+    "profile_report",
+    "profile_report_digest",
+    "release_preparation_report",
+    "release_preparation_report_digest",
+    "verification_summary",
+    "pr_url",
+    "branch_name",
+    "merge_strategy",
+    "pr_head_oid",
+    "pr_base_oid",
+    "pr_base_branch",
+)
+RELEASE_IMMUTABLE_FIELDS = (
+    "operation_id",
+    "task_short_id",
+    "release_type",
+    "release_version",
+    "release_tag",
+    "release_branch",
+    "release_base_oid",
+    "candidate_oid",
+    "release_head_oid",
+    "profile_report",
+    "profile_report_digest",
+    "release_preparation_report",
+    "release_preparation_report_digest",
+    "verification_summary",
+)
 SHARED_PATHS = {"ci_prepare": "workflow-prepare-github-ci", "ci_watch": "workflow-wait-github-ci",
                 "merge_watch": "workflow-wait-github-pr"}
 
 
 def _runtime():
     return helper._runtime_contracts_module(ROOT)
+
+
+def _native_read(root: Path, arguments: list[str], *, structured: bool = True):
+    if root != ROOT:
+        raise helper.ContractError("native identity workspace mismatch")
+    try:
+        result = subprocess.run(
+            [helper._kent_bin(root), *arguments],
+            cwd=root,
+            env=helper.child_env(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise helper.ContractError("native identity read failed") from error
+    if result.returncode != 0 or len(result.stdout) > 8 * 1024 * 1024:
+        raise helper.ContractError("native identity read failed")
+    if not structured:
+        try:
+            return result.stdout.decode("utf-8").strip()
+        except UnicodeDecodeError as error:
+            raise helper.ContractError("native identity read is not UTF-8") from error
+    return helper._json_one(result.stdout)
+
+
+def _producer_api(modules: Mapping[str, Any], name: str):
+    function = modules.get(name)
+    if not callable(function):
+        raise helper.ContractError(
+            f"qualified Kit producer API is unavailable: {name}"
+        )
+    return function
+
+
+def _incoming_producer_refs(commentary: str | None) -> list[str]:
+    """Retain only the exact native producer locator as output ancestry."""
+    if commentary is None:
+        return []
+    if not isinstance(commentary, str):
+        raise helper.ContractError("native producer commentary is invalid")
+    locator_reader = _producer_api(
+        helper._kit_modules(),
+        "producer_locator",
+    )
+    try:
+        locator = locator_reader(commentary)
+    except (TypeError, ValueError, UnicodeError):
+        raise helper.ContractError(
+            "native producer commentary is invalid"
+        ) from None
+    if locator is None:
+        return []
+    if not isinstance(locator, str) or not locator:
+        raise helper.ContractError("native producer locator is invalid")
+    return [locator]
+
+
+def _delivery_context_modules(modules: Mapping[str, Any]) -> tuple[Any, Any, Any, Any]:
+    validate = modules.get("validate_delivery_context")
+    resume = modules.get("_validated_resume_context")
+    unwrap = modules.get("unwrap_delivery_context_payload")
+    canonical_bytes = modules.get("kit_canonical_bytes")
+    if not all(callable(item) for item in (validate, resume, unwrap, canonical_bytes)):
+        raise helper.ContractError(
+            "qualified Kit delivery-context validators are unavailable"
+        )
+    return validate, resume, unwrap, canonical_bytes
+
+
+def _valid_post_pr_context(
+    payload: Mapping[str, Any],
+) -> str | None:
+    """Build only producer-owned v2 context; never repair supplied state."""
+    modules = helper._kit_modules()
+    validate, resume, unwrap, canonical_bytes = _delivery_context_modules(modules)
+    for key in ("pr_feedback_cursor", "ci_contract", "ci_report"):
+        if key not in payload:
+            continue
+        value = payload[key]
+        if (
+            not isinstance(value, str)
+            or not value
+            or value.strip() != value
+            or value == "null"
+        ):
+            return None
+    if "delivery_context" in payload:
+        raw = payload["delivery_context"]
+        if not isinstance(raw, str) or not raw:
+            return None
+        try:
+            context = validate(helper._json_one(raw.encode("utf-8")))
+            if context.get("schema") != DELIVERY_CONTEXT_SCHEMA:
+                return None
+            if resume(raw) != raw:
+                return None
+            unwrapped = unwrap(payload)
+        except (TypeError, ValueError, UnicodeError, helper.ContractError):
+            return None
+        if unwrapped.get("delivery_context") is not None:
+            return None
+        return raw
+
+    cursor = payload.get("pr_feedback_cursor")
+    if (
+        not isinstance(cursor, str)
+        or not cursor
+        or cursor.strip() != cursor
+        or cursor == "null"
+    ):
+        return None
+
+    required = (
+        "pr_url", "branch_name", "merge_strategy", "pr_base_branch",
+    )
+    if any(
+        not isinstance(payload.get(key), str)
+        or not payload[key]
+        or payload[key].strip() != payload[key]
+        for key in required
+    ):
+        return None
+    if payload["merge_strategy"] not in {"merge", "squash", "rebase"}:
+        return None
+    context = {
+        "schema": DELIVERY_CONTEXT_SCHEMA,
+        "phase": "post_pr",
+        "pr_url": payload["pr_url"],
+        "branch_name": payload["branch_name"],
+        "pr_base_branch": payload["pr_base_branch"],
+        "merge_strategy": payload["merge_strategy"],
+        "pr_feedback_cursor": cursor,
+    }
+    for key in ("ci_contract", "ci_report"):
+        if key not in payload:
+            continue
+        packet = payload[key]
+        if (
+            not isinstance(packet, str)
+            or not packet
+            or packet.strip() != packet
+            or packet == "null"
+        ):
+            return None
+        context[key] = packet
+    try:
+        validated = validate(context)
+        raw = canonical_bytes(validated).decode("utf-8")
+        if resume(raw) != raw:
+            return None
+        child_payload = dict(payload)
+        child_payload["delivery_context"] = raw
+        unwrapped = unwrap(child_payload)
+    except (TypeError, ValueError, UnicodeError, helper.ContractError):
+        return None
+    if any(unwrapped.get(key) != payload.get(key) for key in context if key != "schema" and key != "phase"):
+        return None
+    return raw
+
+
+def _child_payload(
+    operation: str,
+    payload: Mapping[str, Any],
+    native_context: Mapping[str, Any] | None,
+    incoming_edge: Mapping[str, Any] | None,
+    native_commentary: str | None = None,
+) -> dict[str, Any]:
+    selected = {key: payload[key] for key in SHARED_INPUTS if key in payload}
+    if native_commentary is not None:
+        selected["commentary"] = native_commentary
+    if operation == "ci_prepare":
+        initial_entry = (
+            isinstance(incoming_edge, Mapping)
+            and incoming_edge.get("key") == "ship_pr_ci_watch"
+        )
+        initial_context_allowed = initial_entry and not any(
+            key in payload
+            for key in (*CI_FIELDS, "delivery_context")
+        )
+        if initial_entry:
+            if initial_context_allowed:
+                selected["pr_feedback_cursor"] = "uninitialized"
+        context = (
+            _valid_post_pr_context(
+                selected,
+            )
+            if not initial_entry or initial_context_allowed
+            else None
+        )
+        if context is not None:
+            selected["delivery_context"] = context
+    if (
+        not isinstance(native_context, Mapping)
+        or set(native_context) != helper.KENT_KEYS
+        or not all(isinstance(value, str) and value for value in native_context.values())
+    ):
+        raise helper.ContractError(
+            "shared CI invocation requires the original native Script context"
+        )
+    return {**selected, "_kent": dict(native_context)}
 
 
 def _pull_number(pr_url: str) -> int:
@@ -50,15 +298,22 @@ def _same_pr_transport_identity(before: Mapping[str, Any], after: Mapping[str, A
 def _read_actual_pr(payload: Mapping[str, Any]) -> dict:
     observer = helper._github_observer(ROOT)
     pr = observer.read_pr(helper.canonical_pr_url(payload["pr_url"]))
+    expected_base_branch = helper.require_string(
+        payload.get("pr_base_branch"), "pr_base_branch"
+    )
+    actual_base_branch = pr.get("baseRefName")
     if (pr.get("url") != payload["pr_url"] or pr.get("headRefName") != payload["branch_name"]
-            or pr.get("baseRefName") != "master" or pr.get("state") not in {"OPEN", "MERGED", "CLOSED"}
+            or not isinstance(actual_base_branch, str) or not actual_base_branch.strip()
+            or not expected_base_branch or pr.get("state") not in {"OPEN", "MERGED", "CLOSED"}
             or any(not helper.SHA1.fullmatch(str(pr.get(key, ""))) for key in ("headRefOid", "baseRefOid"))):
         raise helper.ContractError("actual PR identity is incomplete or drifted")
     return pr
 
 
-def _run_shared(operation: str, payload: Mapping[str, Any]) -> dict:
-    selected = {key: payload[key] for key in SHARED_INPUTS if key in payload}
+def _run_shared(
+    operation: str,
+    child_payload: Mapping[str, Any],
+) -> dict:
     environment = helper.child_env()
     # Native CI/PR Script nodes own the bounded wait.  In production the
     # shared watcher must continue polling until a terminal/material state,
@@ -66,10 +321,594 @@ def _run_shared(operation: str, payload: Mapping[str, Any]) -> dict:
     if operation == "ci_watch" and environment.get("KENT_CI_WATCH_TEST_MODE") != "1":
         environment["KENT_CI_WATCH_MAX_POLLS"] = "0"
     result = helper.run([str(ROOT / ".kent/scripts" / SHARED_PATHS[operation])], cwd=ROOT,
-        env=environment, input_text=helper.canonical_json(selected), check=False)
+        env=environment, input_text=helper.canonical_json(child_payload), check=False)
     if result.returncode:
         raise helper.ContractError("shared CI command failed; inspect its scoped diagnostic")
     return helper._json_one(result.stdout.encode())
+
+
+def _validate_preparation_failure(
+    shared: Mapping[str, Any],
+    child_input: Mapping[str, Any],
+    payload: Mapping[str, Any],
+) -> tuple[str, str]:
+    """Validate the exact child packet, producer, and child-input digest."""
+    expected_fields = {
+        "transition",
+        "workspace_path",
+        "task_short_id",
+        "ci_preparation_diagnostic",
+        "commentary",
+    }
+    if set(shared) != expected_fields:
+        raise helper.ContractError(
+            "typed CI preparation failure has an unexpected carrier shape"
+        )
+    if (
+        shared.get("transition") != "ci_prepare_failed"
+        or shared.get("workspace_path") != payload.get("workspace_path")
+        or shared.get("task_short_id") != payload.get("task_short_id")
+    ):
+        raise helper.ContractError(
+            "typed CI preparation failure identity differs from the release carrier"
+        )
+    diagnostic_text = shared.get("ci_preparation_diagnostic")
+    if not isinstance(diagnostic_text, str) or not diagnostic_text:
+        raise helper.ContractError(
+            "typed CI preparation diagnostic is absent"
+        )
+    modules = helper._kit_modules()
+    validator = modules.get("validate_ci_preparation_diagnostic")
+    if not callable(validator):
+        raise helper.ContractError(
+            "qualified Kit CI preparation diagnostic validator is unavailable"
+        )
+    diagnostic = validator(diagnostic_text)
+    if helper.canonical_json(diagnostic) != diagnostic_text:
+        raise helper.ContractError(
+            "typed CI preparation diagnostic is not canonical"
+        )
+    locator_reader = _producer_api(modules, "producer_locator")
+    reconstruct = _producer_api(modules, "reconstruct_producer")
+    closure = _producer_api(modules, "producer_reference_closure")
+    observe = _producer_api(modules, "observe_script_identity")
+    locator = locator_reader(shared["commentary"])
+    if not isinstance(locator, str) or not locator:
+        raise helper.ContractError(
+            "typed CI preparation failure has no child producer locator"
+        )
+    identity = observe(
+        ROOT,
+        payload["task_short_id"],
+        dict(child_input["_kent"]),
+        native_read=_native_read,
+    )
+    closure(ROOT, locator, identity=identity)
+    child = reconstruct(ROOT, locator, identity=identity)
+    if (
+        child.get("producer_kind") != "prepare-ci"
+        or child.get("schema") != "workflow-producer-source-v1"
+        or child.get("identity", {}).get("node_id") != child_input["_kent"].get("node_id")
+        or child.get("identity", {}).get("invocation_kind") != "script"
+        or child.get("identity", {}).get("transition_branch_key") is not None
+        or child.get("inputs") != {
+            key: value for key, value in child_input.items()
+            if isinstance(key, str) and isinstance(value, str)
+        }
+        or child.get("result") != {
+            key: value for key, value in shared.items()
+            if key != "commentary"
+        }
+    ):
+        raise helper.ContractError(
+            "typed CI preparation result differs from its actual child producer"
+        )
+    expected_digest = helper.sha256_bytes(
+        helper.canonical_bytes(child["inputs"])
+    )
+    if diagnostic.get("input_strings_sha256") != expected_digest:
+        raise helper.ContractError(
+            "typed CI preparation diagnostic does not bind the original input strings"
+        )
+    return diagnostic_text, locator
+
+
+def _decode_references(raw: Any, packet_decode, packet_json) -> list[str]:
+    if not isinstance(raw, str) or not raw:
+        raise helper.ContractError("producer ancestry reference packet is missing")
+    try:
+        packet = packet_decode(raw.encode("utf-8"))
+    except (UnicodeError, ValueError) as error:
+        raise helper.ContractError("producer ancestry reference packet is invalid") from error
+    references = packet.get("refs")
+    if (
+        set(packet) != {"refs"}
+        or packet_json(packet).decode("utf-8") != raw
+        or not isinstance(references, list)
+        or not references
+        or len(references) > 64
+        or any(not isinstance(item, str) or not item for item in references)
+        or len(set(references)) != len(references)
+    ):
+        raise helper.ContractError("producer ancestry references are not exact")
+    return references
+
+
+def _native_retry_contract(
+    native_context: Mapping[str, Any],
+    modules: Mapping[str, Any],
+) -> tuple[dict, dict, dict, str]:
+    observe = _producer_api(modules, "observe_script_identity")
+    identity, detail, graph = observe(
+        ROOT,
+        None,
+        dict(native_context),
+        native_read=_native_read,
+        return_details=True,
+    )
+    if (
+        identity.get("workspace_path") != str(ROOT)
+        or not isinstance(detail, dict)
+        or not isinstance(graph, dict)
+        or graph.get("workflow_id") != helper.WORKFLOW_ID
+    ):
+        raise helper.ContractError("native retry Task/Workflow identity is invalid")
+    definition = graph.get("graph")
+    version = graph.get("expected_version")
+    if (
+        type(version) is not int
+        or version < 0
+        or not isinstance(definition, dict)
+        or any(
+            not isinstance(definition.get(key), list)
+            or any(not isinstance(item, dict) for item in definition[key])
+            for key in ("nodes", "transition_groups", "edges")
+        )
+    ):
+        raise helper.ContractError("native retry graph observation is invalid")
+    nodes = definition["nodes"]
+    current_node = [
+        node for node in nodes
+        if node.get("id") == native_context.get("node_id")
+    ]
+    if (
+        len(current_node) != 1
+        or current_node[0].get("key") != "ci_prepare"
+        or current_node[0].get("kind") != "script"
+    ):
+        raise helper.ContractError("native retry Script node is not ci_prepare")
+    source_nodes = [
+        node for node in nodes
+        if node.get("key") == "ci_monitor" and node.get("kind") == "agent"
+    ]
+    groups = [
+        group for group in definition["transition_groups"]
+        if len(source_nodes) == 1
+        and group.get("source_node_id") == source_nodes[0].get("id")
+        and group.get("transition_id") == RETRY_ROUTE
+    ]
+    if len(source_nodes) != 1 or len(groups) != 1:
+        raise helper.ContractError("native retry transition group is missing or ambiguous")
+    group = groups[0]
+    if not isinstance(group.get("id"), str) or not group["id"]:
+        raise helper.ContractError("native retry transition group ID is invalid")
+    edges = sorted(
+        (
+            edge for edge in definition["edges"]
+            if edge.get("transition_group_id") == group["id"]
+        ),
+        key=lambda edge: edge.get("id", ""),
+    )
+    target_keys = {node.get("id"): node.get("key") for node in nodes}
+    if (
+        len(edges) != 1
+        or not isinstance(edges[0].get("id"), str)
+        or target_keys.get(edges[0].get("target_node_id")) != "ci_prepare"
+        or edges[0].get("requires_approval") is not False
+        or edges[0].get("context_mode") != "new_session"
+        or tuple(
+            item.get("key") for item in edges[0].get("parameters", [])
+        ) != RETRY_FIELDS
+    ):
+        raise helper.ContractError("native retry edge differs from the exact S4 carrier")
+    projection = {
+        "source": source_nodes[0],
+        "group": group,
+        "edges": edges,
+    }
+    packet_json = _producer_api(modules, "packet_json")
+    digest = helper.sha256_bytes(packet_json(projection))
+    return identity, detail, graph, digest
+
+
+def _producer_ancestry(
+    root_locator: str,
+    *,
+    identity: Mapping[str, Any],
+    modules: Mapping[str, Any],
+) -> dict[str, dict]:
+    reconstruct = _producer_api(modules, "reconstruct_producer")
+    closure = _producer_api(modules, "producer_reference_closure")
+    packet_decode = _producer_api(modules, "packet_decode")
+    packet_json = _producer_api(modules, "packet_json")
+    closure(ROOT, root_locator, identity=dict(identity))
+    found: dict[str, dict] = {}
+    active: set[str] = set()
+
+    def visit(locator: str) -> None:
+        if locator in active:
+            raise helper.ContractError("producer ancestry contains a cycle")
+        if locator in found:
+            return
+        if len(found) >= 32:
+            raise helper.ContractError("producer ancestry exceeds its bounded closure")
+        active.add(locator)
+        producer = reconstruct(ROOT, locator, identity=dict(identity))
+        if not isinstance(producer, dict) or producer.get("locator") != locator:
+            raise helper.ContractError("producer reconstruction is not exact")
+        found[locator] = producer
+        raw = producer.get("binding", {}).get("producer_refs")
+        if raw is not None:
+            for reference in _decode_references(raw, packet_decode, packet_json):
+                visit(reference)
+        active.remove(locator)
+
+    visit(root_locator)
+    return found
+
+
+def _restore_retry_payload(
+    payload: Mapping[str, Any],
+    native_context: Mapping[str, Any],
+    state: Mapping[str, Any],
+) -> tuple[dict, str, str]:
+    modules = helper._kit_modules()
+    validate_context, resume, unwrap, _canonical_bytes = _delivery_context_modules(modules)
+    locator_reader = _producer_api(modules, "producer_locator")
+    packet_decode = _producer_api(modules, "packet_decode")
+    packet_json = _producer_api(modules, "packet_json")
+    commentary = payload.get("commentary")
+    if not isinstance(commentary, str):
+        raise helper.ContractError("retry route lacks native producer commentary")
+    pack_locator = locator_reader(commentary)
+    if not isinstance(pack_locator, str) or not pack_locator:
+        raise helper.ContractError("retry route has no Agent pack producer locator")
+    identity, _detail, native_graph, contract_digest = _native_retry_contract(
+        native_context,
+        modules,
+    )
+    producers = _producer_ancestry(
+        pack_locator,
+        identity=identity,
+        modules=modules,
+    )
+    pack = producers[pack_locator]
+    result = pack.get("result")
+    binding = pack.get("binding")
+    inherited_constraints = _producer_api(
+        modules,
+        "producer_github_retry_constraints",
+    )(producers)
+    merge_retry_constraints = _producer_api(
+        modules,
+        "merge_github_retry_constraints",
+    )
+    merged_constraint = merge_retry_constraints(inherited_constraints)
+    expected_binding = {
+        "transition_contract_sha256",
+        "native_graph_version",
+        "producer_refs",
+    }
+    if merged_constraint is not None:
+        expected_binding.add("github_retry_constraint")
+    if (
+        pack.get("producer_kind") != "pack-delivery"
+        or not isinstance(result, dict)
+        or set(result) != {"transition", *RETRY_FIELDS}
+        or result.get("transition") != RETRY_ROUTE
+        or result.get("workspace_path") != str(ROOT)
+        or result.get("task_short_id") != payload.get("task_short_id")
+        or result.get("delivery_context") != payload.get("delivery_context")
+        or not isinstance(binding, dict)
+        or set(binding) != expected_binding
+        or binding.get("transition_contract_sha256") != contract_digest
+        or pack.get("schema") != "workflow-producer-source-v2"
+        or pack.get("inputs") != {}
+    ):
+        raise helper.ContractError("Agent retry pack does not match its native producer contract")
+    if merged_constraint is not None:
+        if binding.get("github_retry_constraint") != helper.canonical_json(
+            merged_constraint
+        ):
+            raise helper.ContractError(
+                "Agent retry pack changed its inherited GitHub retry constraint"
+            )
+    graph_version = binding.get("native_graph_version")
+    if (
+        not isinstance(graph_version, str)
+        or not graph_version.isdecimal()
+        or str(int(graph_version)) != graph_version
+    ):
+        raise helper.ContractError("Agent retry pack graph version is invalid")
+    if int(graph_version) > native_graph["expected_version"]:
+        raise helper.ContractError("Agent retry pack references a future native graph")
+    direct_refs = _decode_references(
+        binding.get("producer_refs"),
+        packet_decode,
+        packet_json,
+    )
+    direct_wrappers = [
+        producers[reference]
+        for reference in direct_refs
+        if reference in producers
+        and producers[reference].get("producer_kind") == "puber-release-ci"
+        and producers[reference].get("result", {}).get("transition")
+        == PREPARATION_FAILURE
+    ]
+    if len(direct_wrappers) != 1:
+        raise helper.ContractError(
+            "Agent retry pack must directly reference one exact CI failure wrapper"
+        )
+    failure_wrapper = direct_wrappers[0]
+    wrapper_result = failure_wrapper.get("result")
+    if (
+        not isinstance(wrapper_result, dict)
+        or set(wrapper_result) != {
+            "transition", "workspace_path", "task_short_id",
+            PREPARATION_DIAGNOSTIC,
+        }
+        or failure_wrapper.get("schema") != "workflow-producer-source-v1"
+        or failure_wrapper.get("identity", {}).get("invocation_kind") != "script"
+        or failure_wrapper.get("identity", {}).get("node_id") != native_context.get("node_id")
+        or wrapper_result.get("workspace_path") != str(ROOT)
+        or wrapper_result.get("task_short_id") != payload.get("task_short_id")
+    ):
+        raise helper.ContractError("referenced CI wrapper failure is not the exact S4 result")
+    diagnostic_text = wrapper_result.get(PREPARATION_DIAGNOSTIC)
+    diagnostic_validator = _producer_api(
+        modules,
+        "validate_ci_preparation_diagnostic",
+    )
+    try:
+        diagnostic = diagnostic_validator(diagnostic_text)
+    except (TypeError, ValueError) as error:
+        raise helper.ContractError("referenced CI failure diagnostic is invalid") from error
+    if helper.canonical_json(diagnostic) != diagnostic_text:
+        raise helper.ContractError("referenced CI failure diagnostic is not canonical")
+    failure_inputs = failure_wrapper.get("inputs")
+    if (
+        not isinstance(failure_inputs, dict)
+        or failure_inputs.get("workspace_path") != str(ROOT)
+        or failure_inputs.get("task_short_id") != payload.get("task_short_id")
+    ):
+        raise helper.ContractError("CI failure wrapper input identity is invalid")
+    wrapper_binding = failure_wrapper.get("binding")
+    if not isinstance(wrapper_binding, dict):
+        raise helper.ContractError("CI failure wrapper binding is invalid")
+    wrapper_refs = _decode_references(
+        wrapper_binding.get("producer_refs"),
+        packet_decode,
+        packet_json,
+    )
+    child_refs = [
+        reference for reference in wrapper_refs
+        if reference in producers
+        and producers[reference].get("producer_kind") == "prepare-ci"
+    ]
+    prior_pack_refs = [
+        reference for reference in wrapper_refs
+        if reference in producers
+        and producers[reference].get("producer_kind") == "pack-delivery"
+    ]
+    if len(child_refs) != 1 or len(prior_pack_refs) > 1 or len(wrapper_refs) != len(child_refs) + len(prior_pack_refs):
+        raise helper.ContractError("CI failure wrapper ancestry has unexpected producer kinds")
+    child = producers[child_refs[0]]
+    child_result = child.get("result")
+    if (
+        child.get("schema") != "workflow-producer-source-v1"
+        or child.get("identity", {}).get("invocation_kind") != "script"
+        or child.get("identity", {}).get("node_id") != native_context.get("node_id")
+        or not isinstance(child_result, dict)
+        or child_result != {
+            "transition": PREPARATION_FAILURE,
+            "workspace_path": str(ROOT),
+            "task_short_id": payload.get("task_short_id"),
+            PREPARATION_DIAGNOSTIC: diagnostic_text,
+        }
+    ):
+        raise helper.ContractError("CI failure wrapper differs from its child producer")
+    child_input = child.get("inputs")
+    if not isinstance(child_input, dict):
+        raise helper.ContractError("CI child producer input is invalid")
+    child_identity = child.get("identity")
+    if (
+        not isinstance(child_identity, dict)
+        or child_identity.get("invocation_kind") != "script"
+        or child_identity.get("node_id") != native_context.get("node_id")
+        or child_identity.get("transition_branch_key") is not None
+    ):
+        raise helper.ContractError("CI child producer native Script identity is invalid")
+    child_digest = helper.sha256_bytes(helper.canonical_bytes(child_input))
+    if diagnostic.get("input_strings_sha256") != child_digest:
+        raise helper.ContractError("CI diagnostic digest differs from its exact child inputs")
+    child_context = child_input.get("delivery_context")
+    if child_context != payload.get("delivery_context"):
+        raise helper.ContractError("retry context differs from the failed child bytes")
+    try:
+        context = validate_context(helper._json_one(child_context.encode("utf-8")))
+    except (AttributeError, TypeError, ValueError, UnicodeError) as error:
+        raise helper.ContractError("retry delivery context is invalid") from error
+    if (
+        context.get("schema") != DELIVERY_CONTEXT_SCHEMA
+        or context.get("phase") != "post_pr"
+        or resume(child_context) != child_context
+        or diagnostic.get("classification") not in {
+            "transient", "archive_blocked",
+        }
+        or diagnostic.get("resume_context") != child_context
+    ):
+        raise helper.ContractError("retry context is not the exact validated v2 resume context")
+    if "delivery_context" in failure_inputs:
+        if failure_inputs["delivery_context"] != child_context:
+            raise helper.ContractError("CI wrapper changed its supplied context bytes")
+    else:
+        initial_route = failure_inputs.get("entry_transition") == "ship_pr_ci_watch"
+        if initial_route and any(
+            key in failure_inputs for key in (*CI_FIELDS, "delivery_context")
+        ):
+            raise helper.ContractError(
+                "initial route supplied CI history but was treated as a fresh context"
+            )
+        expected_context = {
+            "schema": DELIVERY_CONTEXT_SCHEMA,
+            "phase": "post_pr",
+        }
+        for key in (
+            "pr_url", "branch_name", "pr_base_branch",
+            "merge_strategy", "pr_feedback_cursor",
+        ):
+            value = child_input.get(key)
+            if not isinstance(value, str) or not value:
+                raise helper.ContractError(
+                    f"failed child context source field is absent: {key}"
+                )
+            expected_context[key] = value
+        for key in ("ci_contract", "ci_report"):
+            if key in child_input:
+                packet = child_input[key]
+                if (
+                    not isinstance(packet, str)
+                    or not packet
+                    or packet.strip() != packet
+                    or packet == "null"
+                ):
+                    raise helper.ContractError(
+                        f"failed child supplied invalid packet bytes: {key}"
+                    )
+                expected_context[key] = packet
+        try:
+            expected_context = validate_context(expected_context)
+            expected_raw = _canonical_bytes(expected_context).decode("utf-8")
+        except (TypeError, ValueError, UnicodeError) as error:
+            raise helper.ContractError(
+                "failed child flat fields cannot produce a valid post-PR context"
+            ) from error
+        if expected_raw != child_context:
+            raise helper.ContractError(
+                "CI wrapper did not preserve producer-owned flat PR/CI values"
+            )
+        if initial_route and child_input.get("pr_feedback_cursor") != "uninitialized":
+            raise helper.ContractError(
+                "initial preparation did not use only the established absent-cursor value"
+            )
+    for key in SHARED_INPUTS:
+        if key not in failure_inputs or key not in child_input:
+            continue
+        if failure_inputs[key] == child_input[key]:
+            continue
+        if (
+            key == "merge_strategy"
+            and failure_inputs[key] == "auto"
+        ) or key == "pr_base_oid":
+            continue
+        raise helper.ContractError(
+            f"CI child input changed its wrapper producer source: {key}"
+        )
+    for key in ("ci_contract", "ci_report"):
+        if key in child_input and (
+            not isinstance(child_input[key], str)
+            or not child_input[key]
+            or child_input[key].strip() != child_input[key]
+            or child_input[key] == "null"
+        ):
+            raise helper.ContractError(
+                f"retry child contains invalid supplied packet bytes: {key}"
+            )
+    unwrapped = unwrap({"delivery_context": child_context, **{
+        key: child_input[key]
+        for key in (
+            "pr_url", "branch_name", "merge_strategy", "pr_base_branch",
+            "pr_feedback_cursor", "ci_contract", "ci_report",
+        )
+        if key in child_input
+    }})
+    if any(
+        unwrapped.get(key) != child_input.get(key)
+        for key in (
+            "pr_url", "branch_name", "merge_strategy", "pr_base_branch",
+            "pr_feedback_cursor", "ci_contract", "ci_report",
+        )
+        if key in child_input
+    ):
+        raise helper.ContractError("retry flat/nested PR or CI fields conflict")
+    complete_wrappers = [
+        producer for producer in producers.values()
+        if producer.get("producer_kind") == "puber-release-ci"
+        and isinstance(producer.get("inputs"), dict)
+        and all(
+            isinstance(producer["inputs"].get(key), str)
+            for key in RELEASE_RESTORE_FIELDS
+        )
+    ]
+    if not complete_wrappers:
+        raise helper.ContractError("retry ancestry lacks the original full Release carrier")
+    original = complete_wrappers[0]["inputs"]
+    for other in complete_wrappers[1:]:
+        if any(
+            other["inputs"].get(key) != original.get(key)
+            for key in RELEASE_IMMUTABLE_FIELDS
+        ):
+            raise helper.ContractError("historical Release producers disagree on immutable proof")
+    restored = {
+        key: original[key]
+        for key in RELEASE_RESTORE_FIELDS
+        if key in original
+    }
+    if (
+        restored.get("release_head_oid") != child_input.get("pr_head_oid")
+        or not helper.SHA1.fullmatch(str(child_input.get("pr_base_oid", "")))
+    ):
+        raise helper.ContractError(
+            "failed child PR head/base differs from the original Release source"
+        )
+    for key in SHARED_INPUTS:
+        if key not in child_input:
+            continue
+        if key in original and original[key] != child_input[key]:
+            if key == "merge_strategy" and original[key] == "auto":
+                pass
+            elif key == "pr_base_oid":
+                pass
+            else:
+                raise helper.ContractError(
+                    f"failed child changed original Release input bytes: {key}"
+                )
+        restored[key] = child_input[key]
+    for key in (
+        "pr_url", "branch_name", "merge_strategy", "pr_base_branch",
+        "pr_feedback_cursor", "ci_contract", "ci_report",
+    ):
+        if key in context:
+            if (
+                key in restored
+                and restored[key] != context[key]
+                and not (
+                    key == "merge_strategy"
+                    and restored[key] == "auto"
+                )
+            ):
+                raise helper.ContractError(
+                    f"retry context conflicts with the original Release carrier: {key}"
+                )
+            restored[key] = context[key]
+    restored["delivery_context"] = child_context
+    if (
+        restored.get("workspace_path") != str(ROOT)
+        or restored.get("task_short_id") != payload.get("task_short_id")
+        or payload.get("workspace_path") != str(ROOT)
+    ):
+        raise helper.ContractError("restored Release carrier Task/workspace identity drifted")
+    return restored, pack_locator, wrapper_result[PREPARATION_DIAGNOSTIC]
 
 
 def _checkpoint(payload: dict, state: dict) -> None:
@@ -85,11 +924,14 @@ def _checkpoint(payload: dict, state: dict) -> None:
     helper.require_string(payload["verification_summary"], "verification_summary")
 
 
-def _packet(value: dict) -> None:
+def _packet(value: dict, *, require_report: bool) -> None:
+    contract_text = value.get("ci_contract")
+    if not isinstance(contract_text, str) or not contract_text:
+        raise helper.ContractError("CI contract is absent from a proof-carrying route")
     runtime = _runtime()
     contract = runtime.validate_ci_contract(
         runtime.parse_canonical_json(
-            value["ci_contract"], label="CI contract", max_bytes=64 * 1024,
+            contract_text, label="CI contract", max_bytes=64 * 1024,
         )
     )
     if (
@@ -100,10 +942,16 @@ def _packet(value: dict) -> None:
         or contract["require_ci"] is not True
     ):
         raise helper.ContractError("release CI contract does not match the observed PR")
-    if value.get("ci_report"):
+    report_text = value.get("ci_report")
+    if report_text is None:
+        if require_report:
+            raise helper.ContractError("CI report is required for this outcome")
+    elif not isinstance(report_text, str) or not report_text:
+        raise helper.ContractError("CI report is neither evidence nor route-authorized absence")
+    else:
         report = runtime.validate_dynamic_ci_report(
             runtime.parse_canonical_json(
-                value["ci_report"], label="CI report", max_bytes=runtime.MAX_DYNAMIC_CI_REPORT_BYTES,
+                report_text, label="CI report", max_bytes=runtime.MAX_DYNAMIC_CI_REPORT_BYTES,
             )
         )
         if report["contract"] != contract:
@@ -116,40 +964,191 @@ def _packet(value: dict) -> None:
     )
 
 
-def transport(operation: str, payload: dict, state: dict) -> dict:
+def _target_change_report(payload: Mapping[str, Any], actual: Mapping[str, Any]) -> str:
+    return helper.canonical_json({
+        "reason": "pr_base_branch_changed",
+        "expected_pr_base_branch": payload["pr_base_branch"],
+        "observed_pr_base_branch": actual["baseRefName"],
+        "expected_pr_base_oid": payload["pr_base_oid"],
+        "observed_pr_base_oid": actual["baseRefOid"],
+        "expected_pr_head_oid": payload["pr_head_oid"],
+        "observed_pr_head_oid": actual["headRefOid"],
+        "pr_state": actual["state"],
+    })
+
+
+def _target_drift_result(
+    operation: str,
+    payload: dict,
+    actual: Mapping[str, Any],
+) -> dict:
     result = dict(payload)
+    result.update(pr_head_oid=actual["headRefOid"], pr_base_oid=actual["baseRefOid"])
+    if operation == "ci_prepare":
+        raise helper.ContractError(
+            "ci_prepare target drift must be emitted through the typed failure route"
+        )
+    _packet(payload, require_report=operation == "merge_watch")
+    result["transition"] = (
+        "ci_watch_state_changed"
+        if operation == "ci_watch"
+        else "merge_watch_state_changed"
+    )
+    result["pr_report"] = _target_change_report(payload, actual)
+    _complete_ci_carrier(result, result["transition"])
+    return result
+
+
+def _complete_ci_carrier(result: dict, transition: str) -> None:
+    nullable = helper.CI_NULLABLE_FIELDS_BY_EDGE[transition]
+    matches = [
+        edge for edge in json.loads(
+            (ROOT / helper.GRAPH_PATH).read_text(encoding="utf-8")
+        ).get("edges", [])
+        if edge.get("key") == transition
+    ]
+    if len(matches) != 1:
+        raise helper.ContractError(
+            f"CI output route is not unique: {transition}"
+        )
+    output_fields = {
+        parameter.get("key")
+        for parameter in matches[0].get("parameters", [])
+        if parameter.get("key") != helper.ENTRY_TRANSITION
+    }
+    for key in set(CI_FIELDS) & output_fields:
+        if key not in result:
+            if key in nullable:
+                result[key] = None
+            elif key == "pr_feedback_cursor":
+                result[key] = "uninitialized"
+            else:
+                raise helper.ContractError(
+                    f"{key} is missing from non-nullable outcome {transition}"
+                )
+        else:
+            value = result[key]
+            if value is None:
+                if key not in nullable:
+                    raise helper.ContractError(
+                        f"{key} absence is not authorized on route {transition}"
+                    )
+            elif (
+                not isinstance(value, str)
+                or not value.strip()
+                or value.strip() == "null"
+            ):
+                raise helper.ContractError(
+                    f"{key} is not a valid packet or route-authorized absence"
+                )
+
+
+def transport(
+    operation: str,
+    payload: dict,
+    state: dict,
+    native_context: Mapping[str, Any] | None = None,
+    incoming_edge: Mapping[str, Any] | None = None,
+    native_commentary: str | None = None,
+    original_inputs: Mapping[str, str] | None = None,
+) -> dict:
+    result = dict(payload)
+    source_pr_head_oid = payload.get("pr_head_oid")
+    source_pr_base_oid = payload.get("pr_base_oid")
+    child_invoked = False
+    retry_pack_locator = None
+    retained_refs = _incoming_producer_refs(native_commentary)
+    retry_entry = (
+        operation == "ci_prepare"
+        and isinstance(incoming_edge, Mapping)
+        and incoming_edge.get("key") == RETRY_ROUTE
+    )
+    original_strings = dict(original_inputs or {
+        key: value for key, value in payload.items()
+        if isinstance(key, str) and isinstance(value, str)
+    })
     try:
-        _checkpoint(payload, state)
+        if retry_entry:
+            retry_payload = dict(payload)
+            retry_payload["commentary"] = native_commentary
+            result, retry_pack_locator, _retry_diagnostic = _restore_retry_payload(
+                retry_payload,
+                native_context or {},
+                state,
+            )
+            _checkpoint(result, state)
+        else:
+            _checkpoint(payload, state)
+        payload = result
         result["merge_strategy"] = helper.resolve_merge_strategy(ROOT, state, payload)
         before = _read_actual_pr(payload)
         result.update(pr_head_oid=before["headRefOid"], pr_base_oid=before["baseRefOid"])
         if before["headRefOid"] != payload["release_head_oid"]:
             raise helper.ContractError("release PR head changed; preparation proof must be rebuilt")
+        if before["baseRefName"] != payload["pr_base_branch"]:
+            if operation == "ci_prepare":
+                raise helper.ContractError("target_branch_changed")
+            return _target_drift_result(operation, payload, before)
         if before["state"] == "MERGED":
             # Reuse the existing genuine merged-PR proof, without acquiring T.
-            merged = helper.pr_state(ROOT, payload["pr_url"])
+            merged = helper.pr_state(
+                ROOT,
+                payload["pr_url"],
+                expected_base_branch=payload["pr_base_branch"],
+            )
             if merged["headRefOid"] != before["headRefOid"] or merged["baseRefOid"] != before["baseRefOid"]:
                 raise helper.ContractError("merged PR readback drifted")
-            result.update({key: result.get(key, "uninitialized" if key == "pr_feedback_cursor" else "") for key in CI_FIELDS})
             result["transition"] = {"ci_prepare": "ci_prepare_already_merged", "ci_watch": "ci_watch_pr_merged", "merge_watch": "merge_watch_pr_merged"}[operation]
             if operation == "merge_watch":
-                result["commentary"] = (f"Подтвердите публикацию Puber {payload['release_version']}: "
+                merge_commit = merged.get("mergeCommit") or {}
+                target = merge_commit.get("oid")
+                if not isinstance(target, str) or not helper.SHA1.fullmatch(target):
+                    raise helper.ContractError(
+                        "merged PR has no exact merge target commit"
+                    )
+                result["target_commit"] = target
+            if result["transition"] in helper.CI_NULLABLE_FIELDS_BY_EDGE:
+                _complete_ci_carrier(result, result["transition"])
+            if operation == "merge_watch":
+                result["_authored_commentary"] = (f"Подтвердите публикацию Puber {payload['release_version']}: "
                     f"тег {payload['release_tag']} строго на merged T={merged['mergeCommit']['oid']}. "
                     "Контроллер и checkpoint остаются H; Publish повторно проверит current master и исходники T.")
+            result["_producer_refs"] = retained_refs
             return result
         if before["state"] == "CLOSED":
             raise helper.ContractError("release PR closed without merge; explicit disposition is required")
-        shared = _run_shared(operation, result)
+        child_input = _child_payload(
+            operation,
+            result,
+            native_context,
+            incoming_edge,
+            native_commentary,
+        )
+        child_invoked = True
+        shared = _run_shared(operation, child_input)
+        child_refs = _incoming_producer_refs(shared.get("commentary"))
+        if child_refs:
+            retained_refs = child_refs
         transition = shared.pop("transition", "")
         if operation == "ci_prepare" and transition in {
             "ci_prepare_ready_initial",
             "ci_prepare_pr_merged",
         }:
             result.pop("ci_report", None)  # The shared preparer archived the previous cycle.
-        result.update({key: value for key, value in shared.items() if key in SHARED_OUTPUTS})
+        result.update({
+            key: value for key, value in shared.items()
+            if key in SHARED_OUTPUTS
+        })
         after = _read_actual_pr(payload)
+        if after["baseRefName"] != payload["pr_base_branch"]:
+            if operation == "ci_prepare":
+                raise helper.ContractError(
+                    "target_branch_changed after the shared child invocation"
+                )
+            return _target_drift_result(operation, payload, after)
         identity_transition = {
             "ci_watch_source_changed",
+            "ci_watch_state_changed",
             "ci_prepare_pr_merged",
             "ci_watch_pr_merged",
             "merge_watch_state_changed",
@@ -160,7 +1159,7 @@ def transport(operation: str, payload: dict, state: dict) -> dict:
         result.update(pr_head_oid=after["headRefOid"], pr_base_oid=after["baseRefOid"])
         transitions = {
             "ci_prepare": {"ci_prepare_ready_initial", "ci_prepare_ready_retry", "ci_prepare_failed", "ci_prepare_pr_merged"},
-            "ci_watch": {"ci_watch_passed", "ci_watch_failed", "ci_watch_source_changed", "ci_watch_pr_merged"},
+            "ci_watch": {"ci_watch_passed", "ci_watch_failed", "ci_watch_source_changed", "ci_watch_state_changed", "ci_watch_pr_merged"},
             "merge_watch": {"merge_watch_still_waiting", "merge_watch_state_changed", "merge_watch_pr_merged"},
         }
         if transition not in transitions[operation]:
@@ -174,25 +1173,108 @@ def transport(operation: str, payload: dict, state: dict) -> dict:
                     "baseRefOid": after["baseRefOid"],
                 }),
             )
-        result["transition"] = (
-            "ci_watch_state_changed"
-            if transition == "ci_watch_source_changed"
-            else (
-                "ci_prepare_already_merged"
-                if transition == "ci_prepare_pr_merged"
-                else transition
+        if transition in {"ci_watch_source_changed", "ci_watch_state_changed"}:
+            result["transition"] = "ci_watch_state_changed"
+        elif transition == "ci_prepare_pr_merged":
+            result["transition"] = "ci_prepare_already_merged"
+        elif transition == "ci_prepare_failed":
+            diagnostic, child_locator = _validate_preparation_failure(
+                {"transition": transition, **shared},
+                child_input,
+                result,
             )
-        )
-        if transition != "ci_watch_source_changed":
-            _packet(result)
-        if transition not in {"ci_prepare_ready_initial", "ci_watch_passed", "ci_prepare_ready_retry"}:
-            result.setdefault("ci_report", "")
+            result = {
+                "transition": PREPARATION_FAILURE,
+                "workspace_path": payload["workspace_path"],
+                "task_short_id": payload["task_short_id"],
+                PREPARATION_DIAGNOSTIC: diagnostic,
+                "_producer_refs": [
+                    child_locator,
+                    *([retry_pack_locator] if retry_pack_locator else []),
+                ],
+                "_original_inputs": original_strings,
+            }
+            retained_refs = result["_producer_refs"]
+            result["ci_preparation_diagnostic"] = diagnostic
+        else:
+            result["transition"] = transition
+            result["_producer_refs"] = retained_refs
+
+        if transition in {
+            "ci_watch_source_changed",
+            "ci_watch_state_changed",
+            "merge_watch_state_changed",
+        }:
+            packet = dict(result)
+            packet["pr_head_oid"] = source_pr_head_oid
+            packet["pr_base_oid"] = source_pr_base_oid
+            _packet(
+                packet,
+                require_report=transition == "merge_watch_state_changed",
+            )
+        elif transition not in {
+            "ci_prepare_pr_merged",
+            "ci_watch_pr_merged",
+            "ci_prepare_failed",
+        }:
+            _packet(
+                result,
+                require_report=transition in {
+                    "ci_prepare_ready_retry",
+                    "ci_watch_passed",
+                    "ci_watch_failed",
+                    "merge_watch_still_waiting",
+                    "merge_watch_state_changed",
+                },
+            )
+        _complete_ci_carrier(result, result["transition"])
         return result
-    except (ValueError, RuntimeError, OSError, KeyError) as error:
+    except (ValueError, RuntimeError, OSError, KeyError, TypeError) as error:
+        if operation == "ci_prepare":
+            if child_invoked or retry_entry:
+                raise
+            modules = helper._kit_modules()
+            typed_failure = _producer_api(modules, "typed_preparation_failure")
+            failure = typed_failure(original_strings, error)
+            validator = _producer_api(
+                modules,
+                "validate_ci_preparation_diagnostic",
+            )
+            diagnostic_text = failure.get(PREPARATION_DIAGNOSTIC)
+            diagnostic = validator(diagnostic_text)
+            if (
+                set(failure) != {
+                    "transition", "workspace_path", "task_short_id",
+                    PREPARATION_DIAGNOSTIC,
+                }
+                or failure.get("transition") != PREPARATION_FAILURE
+                or failure.get("workspace_path") != str(ROOT)
+                or failure.get("task_short_id") != payload.get("task_short_id")
+                or helper.canonical_json(diagnostic) != diagnostic_text
+                or diagnostic.get("input_strings_sha256")
+                != helper.sha256_bytes(
+                    helper.canonical_bytes(original_strings)
+                )
+            ):
+                raise helper.ContractError(
+                    "pre-child CI failure does not bind its original native strings"
+                ) from error
+            return {
+                "transition": PREPARATION_FAILURE,
+                "workspace_path": failure["workspace_path"],
+                "task_short_id": failure["task_short_id"],
+                PREPARATION_DIAGNOSTIC: diagnostic_text,
+                "_producer_refs": _incoming_producer_refs(
+                    native_commentary
+                ),
+                "_original_inputs": original_strings,
+            }
+        constraint = helper.provider_retry_constraint_from_error(ROOT, error)
         result["transition"] = {"ci_prepare": "ci_prepare_needs_user_action", "ci_watch": "ci_watch_needs_user_action", "merge_watch": "merge_watch_needs_user_action"}[operation]
         result["blocker_reason"] = str(error)
-        for key in CI_FIELDS:
-            result.setdefault(key, "uninitialized" if key == "pr_feedback_cursor" else "")
+        result["_producer_refs"] = retained_refs
+        result["_github_retry_constraint"] = constraint
+        _complete_ci_carrier(result, result["transition"])
         return result
 
 
@@ -206,16 +1288,69 @@ def main() -> int:
         operation = next((node["key"] for node in graph["nodes"] if node["id"] == metadata.get("node_id")), None)
         if operation not in SHARED_PATHS:
             raise helper.ContractError("native CI node is not admitted")
-        business, state, _edge = helper.validate_envelope(payload, ROOT, operation)
-        result = transport(operation, business, state)
+        business, state, incoming_edge = helper.validate_envelope(
+            payload,
+            ROOT,
+            operation,
+        )
+        original_inputs = {
+            key: value for key, value in payload.items()
+            if isinstance(key, str) and isinstance(value, str)
+        }
+        result = transport(
+            operation,
+            business,
+            state,
+            metadata,
+            incoming_edge=incoming_edge,
+            native_commentary=payload.get("commentary"),
+            original_inputs=original_inputs,
+        )
         edges = [edge for edge in graph["edges"] if edge["key"] == result["transition"]]
         if len(edges) != 1:
             raise helper.ContractError("CI output edge is ambiguous")
         edge = edges[0]
         target = next(node["key"] for node in graph["nodes"] if node["id"] == edge["target_node_id"])
-        helper.emit_exact(ROOT, result["transition"], target,
-            {field["key"]: result[field["key"]] for field in edge["parameters"]
-             if field["key"] != helper.ENTRY_TRANSITION}, commentary=result.get("commentary"))
+        fields = {
+            field["key"]: result[field["key"]]
+            for field in edge["parameters"]
+            if field["key"] != helper.ENTRY_TRANSITION
+        }
+        output = helper.render_exact(ROOT, result["transition"], target, fields)
+        refs = result.get("_producer_refs", [])
+        constraint = result.get("_github_retry_constraint")
+        if (
+            not isinstance(refs, list)
+            or any(not isinstance(reference, str) or not reference for reference in refs)
+            or len(set(refs)) != len(refs)
+            or (constraint is not None and not isinstance(constraint, str))
+        ):
+            raise helper.ContractError("CI output producer provenance is malformed")
+        authored_commentary = result.get("_authored_commentary")
+        if authored_commentary is not None:
+            if not isinstance(authored_commentary, str):
+                raise helper.ContractError("CI output authored commentary is malformed")
+            output["commentary"] = authored_commentary
+        emitted = helper.capture_script_output(
+            ROOT,
+            payload,
+            output,
+            producer_kind="puber-release-ci",
+            producer_refs=refs,
+            github_retry_constraint=constraint,
+        )
+        if emitted is not None:
+            sys.stdout.buffer.write(emitted)
+            return 0
+        if constraint is not None:
+            raise helper.ContractError(
+                "provider retry failure cannot be represented by the exact native route"
+            )
+        if refs:
+            raise helper.ContractError(
+                "qualified Script producer ancestry cannot be represented by the exact native route"
+            )
+        print(json.dumps(output, ensure_ascii=False, sort_keys=True))
         return 0
     except (ValueError, RuntimeError, OSError, KeyError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)

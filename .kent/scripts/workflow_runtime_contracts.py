@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import math
+import posixpath
 import re
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
@@ -18,9 +19,6 @@ from urllib.parse import urlsplit
 
 class RuntimeContractError(ValueError):
     """Raised when a runtime contract is malformed or inconsistent."""
-
-
-RuntimeValidationError = RuntimeContractError
 
 
 def validate_retained_script_reader(native_kent, *, detail, graph, workspace):
@@ -155,14 +153,14 @@ TERMINAL_SEAL_REQUEST_SCHEMA = "terminal-evidence-seal-request-v1"
 TERMINAL_SEAL_SCHEMA = "terminal_evidence_seal_v1"
 TERMINAL_MARKER_SCHEMA = "terminal_evidence_v1"
 VERIFICATION_REPORT_SCHEMA = "workflow-verification-report-v2"
-PR_CURSOR_SCHEMA = "github-pr-feedback-cursor-v1"
 EXPECTED_CHECKS_SCHEMA = "github-ci-expected-checks-v1"
 CI_REPORT_SCHEMA = "github-ci-report-v2"
 CI_POLICY_SNAPSHOT_SCHEMA = "github-ci-policy-snapshot-v1"
 CI_CONTRACT_SCHEMA = "github-ci-contract-v1"
 DYNAMIC_CI_REPORT_SCHEMA = "github-ci-report-v3"
 DYNAMIC_PR_CURSOR_SCHEMA = "github-pr-feedback-cursor-v2"
-DELIVERY_CONTEXT_SCHEMA = "workflow-delivery-context-v1"
+DELIVERY_CONTEXT_V1_SCHEMA = "workflow-delivery-context-v1"
+DELIVERY_CONTEXT_SCHEMA = "workflow-delivery-context-v2"
 MAX_DELIVERY_CONTEXT_BYTES = 256 * 1024
 
 
@@ -197,142 +195,11 @@ class RejectedObservationHardLimit:
             raise RuntimeContractError("rejected observation prefix is invalid")
 
 
-@dataclass(frozen=True)
-class ExpectedCiClassification:
-    state: str
-    value: Mapping[str, Any] | None
-    projected_observations: (
-        RejectedObservationReceipt | RejectedObservationHardLimit | None
-    )
-    unexpected_observations: (
-        RejectedObservationReceipt | RejectedObservationHardLimit | None
-    )
-    grammar_error: RuntimeContractError | None = None
-
-    def __post_init__(self) -> None:
-        if self.state not in {
-            "ordinary",
-            "observation_limit",
-            "grammar_invalid",
-            "hard_limit",
-        }:
-            raise RuntimeContractError("unsupported expected CI classification state")
-        if self.state in {"ordinary", "observation_limit"}:
-            if not isinstance(self.value, Mapping):
-                raise RuntimeContractError(
-                    "expected CI classification value must be a mapping"
-                )
-            object.__setattr__(
-                self,
-                "value",
-                _freeze_classification_value(self.value),
-            )
-        elif self.value is not None:
-            raise RuntimeContractError(
-                "bounded expected CI classifications must not carry a value"
-            )
-        if self.state == "grammar_invalid":
-            if not isinstance(self.grammar_error, RuntimeContractError):
-                raise RuntimeContractError(
-                    "grammar-invalid classifications require a grammar error"
-                )
-            if not isinstance(
-                self.projected_observations,
-                RejectedObservationReceipt,
-            ) or self.projected_observations.source != "projected_rows" or (
-                self.unexpected_observations is not None
-            ):
-                raise RuntimeContractError(
-                    "grammar-invalid classifications require projected observations"
-                )
-        elif self.state == "observation_limit":
-            if not isinstance(
-                self.projected_observations,
-                RejectedObservationReceipt,
-            ) or not isinstance(
-                self.unexpected_observations,
-                RejectedObservationReceipt,
-            ) or self.projected_observations.source != "projected_rows" or (
-                self.unexpected_observations.source != "unexpected_rows"
-            ):
-                raise RuntimeContractError(
-                    "observation-limit classifications require both receipts"
-                )
-            if self.grammar_error is not None:
-                raise RuntimeContractError(
-                    "observation-limit classifications must not carry a grammar error"
-                )
-        elif self.state == "hard_limit":
-            projected_hard = isinstance(
-                self.projected_observations,
-                RejectedObservationHardLimit,
-            )
-            unexpected_hard = isinstance(
-                self.unexpected_observations,
-                RejectedObservationHardLimit,
-            )
-            projected_receipt = isinstance(
-                self.projected_observations,
-                RejectedObservationReceipt,
-            )
-            valid_projected_hard = (
-                projected_hard
-                and self.projected_observations.source == "projected_rows"
-                and self.unexpected_observations is None
-            )
-            valid_unexpected_hard = (
-                projected_receipt
-                and self.projected_observations.source == "projected_rows"
-                and unexpected_hard
-                and self.unexpected_observations.source == "unexpected_rows"
-            )
-            if not (valid_projected_hard or valid_unexpected_hard):
-                raise RuntimeContractError(
-                    "hard-limit classification has an unreachable receipt shape"
-                )
-            if self.grammar_error is not None:
-                raise RuntimeContractError(
-                    "hard-limit classifications must not carry a grammar error"
-                )
-        else:
-            if not isinstance(
-                self.projected_observations,
-                (RejectedObservationReceipt, type(None)),
-            ) or (
-                isinstance(
-                    self.projected_observations,
-                    RejectedObservationReceipt,
-                )
-                and self.projected_observations.source != "projected_rows"
-            ) or self.unexpected_observations is not None:
-                raise RuntimeContractError(
-                    "ordinary classifications require only projected observations"
-                )
-            if self.grammar_error is not None:
-                raise RuntimeContractError(
-                    "ordinary classifications must not carry a grammar error"
-                )
-
-    def materialize_value(self) -> dict[str, Any]:
-        if self.value is None:
-            raise RuntimeContractError("classification has no ordinary value")
-        materialized = _thaw_classification_value(self.value)
-        if not isinstance(materialized, dict):
-            raise RuntimeContractError(
-                "classification value did not materialize as a mapping"
-            )
-        return materialized
-
-
-class CiAttemptSizeLimit(RuntimeContractError):
-    """Raised only when a canonical CI attempt exceeds its wire limit."""
-
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 TASK_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 REPOSITORY_RE = re.compile(r"^[^/\s]{1,100}/[^/\s]{1,100}$")
 UPPER_TOKEN_RE = re.compile(r"^[A-Z_]{1,64}$")
-IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 LOG_PATH_RE = re.compile(
     r"^build/kent-workflow/verification-report-[0-9a-f]{64}\.log$"
 )
@@ -363,9 +230,6 @@ def canonical_bytes(value: Any) -> bytes:
         raise RuntimeContractError(
             f"value is not canonical JSON: {error}"
         ) from error
-
-
-canonical_json_bytes = canonical_bytes
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -623,7 +487,105 @@ def parse_canonical_json(
     return value
 
 
-canonicalize_json = canonical_bytes
+GITHUB_PROVIDER_RETRY_CONSTRAINT_SCHEMA = "github-provider-retry-v1"
+_MAX_GITHUB_RETRY_UNIX_MS = 9_223_372_036_854_775_807
+
+
+def validate_github_retry_constraint(value: object) -> dict[str, Any]:
+    """Validate the closed, non-secret GitHub provider retry binding."""
+    if not isinstance(value, Mapping):
+        raise RuntimeContractError("GitHub provider retry constraint must be an object")
+    data = dict(value)
+    kind = data.get("kind")
+    expected = (
+        {"schema", "provider_host", "kind", "not_before_unix_ms"}
+        if kind == "not_before"
+        else {"schema", "provider_host", "kind"}
+        if kind == "unknown"
+        else set()
+    )
+    if not expected or set(data) != expected:
+        raise RuntimeContractError("GitHub provider retry constraint fields are invalid")
+    if (
+        data["schema"] != GITHUB_PROVIDER_RETRY_CONSTRAINT_SCHEMA
+        or data["provider_host"] != "github.com"
+    ):
+        raise RuntimeContractError("GitHub provider retry constraint identity is invalid")
+    result: dict[str, Any] = {
+        "schema": GITHUB_PROVIDER_RETRY_CONSTRAINT_SCHEMA,
+        "provider_host": "github.com",
+        "kind": kind,
+    }
+    if kind == "not_before":
+        deadline = data["not_before_unix_ms"]
+        if (
+            not isinstance(deadline, int)
+            or isinstance(deadline, bool)
+            or deadline < 0
+            or deadline > _MAX_GITHUB_RETRY_UNIX_MS
+        ):
+            raise RuntimeContractError("GitHub provider retry deadline is invalid")
+        result["not_before_unix_ms"] = deadline
+    return result
+
+
+def merge_github_retry_constraints(
+    values: Iterable[object | None],
+) -> dict[str, Any] | None:
+    """Monotonically merge provider restrictions; unknown absorbs deadlines."""
+    unknown = False
+    deadline: int | None = None
+    present = False
+    for value in values:
+        if value is None:
+            continue
+        present = True
+        constraint = validate_github_retry_constraint(value)
+        if constraint["kind"] == "unknown":
+            unknown = True
+        else:
+            current = constraint["not_before_unix_ms"]
+            deadline = current if deadline is None else max(deadline, current)
+    if not present:
+        return None
+    if unknown:
+        return {
+            "schema": GITHUB_PROVIDER_RETRY_CONSTRAINT_SCHEMA,
+            "provider_host": "github.com",
+            "kind": "unknown",
+        }
+    assert deadline is not None
+    return {
+        "schema": GITHUB_PROVIDER_RETRY_CONSTRAINT_SCHEMA,
+        "provider_host": "github.com",
+        "kind": "not_before",
+        "not_before_unix_ms": deadline,
+    }
+
+
+def evaluate_github_retry_constraint(
+    value: object | None,
+    *,
+    now_unix_ms: int,
+) -> str:
+    """Pure status evaluation; production callers supply no clock override."""
+    if (
+        not isinstance(now_unix_ms, int)
+        or isinstance(now_unix_ms, bool)
+        or now_unix_ms < 0
+        or now_unix_ms > _MAX_GITHUB_RETRY_UNIX_MS
+    ):
+        raise RuntimeContractError("GitHub provider retry clock value is invalid")
+    if value is None:
+        return "clear"
+    constraint = validate_github_retry_constraint(value)
+    if constraint["kind"] == "unknown":
+        return "unknown"
+    return (
+        "not_before"
+        if now_unix_ms < constraint["not_before_unix_ms"]
+        else "clear"
+    )
 
 
 def _object(value: Any, label: str) -> dict[str, Any]:
@@ -690,12 +652,15 @@ def _validate_delivery_context(value: Mapping[str, Any]) -> dict[str, Any]:
             "pr_feedback_cursor",
             "ci_contract",
             "ci_report",
+            "pr_base_branch",
         }
     else:
         raise RuntimeContractError("delivery context.phase is unsupported")
     data = _closed(data, keys, "delivery context")
-    if data.get("schema") != DELIVERY_CONTEXT_SCHEMA:
+    schema = data.get("schema")
+    if schema not in {DELIVERY_CONTEXT_V1_SCHEMA, DELIVERY_CONTEXT_SCHEMA}:
         raise RuntimeContractError("unsupported delivery context schema")
+    version_two = schema == DELIVERY_CONTEXT_SCHEMA
     required = (
         {"schema", "phase"}
         if phase == "pre_pr"
@@ -708,6 +673,8 @@ def _validate_delivery_context(value: Mapping[str, Any]) -> dict[str, Any]:
             "pr_feedback_cursor",
         }
     )
+    if phase == "post_pr" and version_two:
+        required.add("pr_base_branch")
     if set(data) - {"ci_contract", "ci_report"} != required:
         raise RuntimeContractError("delivery context has missing fields")
     if phase == "post_pr":
@@ -751,6 +718,16 @@ def _validate_delivery_context(value: Mapping[str, Any]) -> dict[str, Any]:
             raise RuntimeContractError(
                 "delivery context.branch_name is invalid"
             )
+        if version_two:
+            base_branch = _string(
+                data["pr_base_branch"],
+                "delivery context.pr_base_branch",
+                max_bytes=4096,
+            )
+            if base_branch != base_branch.strip() or base_branch.startswith("-"):
+                raise RuntimeContractError(
+                    "delivery context.pr_base_branch is invalid"
+                )
         merge_strategy = _string(
             data["merge_strategy"],
             "delivery context.merge_strategy",
@@ -1059,20 +1036,12 @@ class SelectedRuntimeSourceInputs:
     def selected_runtime_source_inputs_sha256(self) -> str:
         return canonical_sha256(self._core_dict())
 
-    @property
-    def commit_oid(self) -> str:
-        return self.project_commit
-
     def as_dict(self) -> dict[str, Any]:
         result = self._core_dict()
         result["selected_runtime_source_inputs_sha256"] = (
             self.selected_runtime_source_inputs_sha256
         )
         return result
-
-    def __json__(self) -> dict[str, Any]:
-        return self.as_dict()
-
 
 def _make_selected_runtime_source_inputs(
     *,
@@ -1176,8 +1145,6 @@ def _policy_string(value: Any, label: str) -> str:
     value = _string(value, label)
     if value != value.strip():
         raise RuntimeContractError(f"{label} must be normalized")
-    if any(ord(character) < 32 or ord(character) == 127 for character in value):
-        raise RuntimeContractError(f"{label} contains a control character")
     lowered = value.casefold()
     if (
         "{" in value
@@ -1792,19 +1759,6 @@ def capture_runtime_source_envelope(
     }
 
 
-def revalidate_runtime_source_envelope(
-    inputs: SelectedRuntimeSourceInputs,
-    previous: Mapping[str, Any],
-    captures: Iterable[tuple[str, str, bytes]],
-) -> dict[str, Any]:
-    fresh = capture_runtime_source_envelope(inputs, captures)
-    if dict(previous) != fresh:
-        raise RuntimeContractError(
-            "runtime source envelope changed during revalidation"
-        )
-    return fresh
-
-
 def validate_runtime_source_envelope(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1914,48 +1868,6 @@ def validate_runtime_source_envelope(
     if len(canonical_bytes(result)) > MAX_SOURCE_PREVIEW_BYTES:
         raise RuntimeContractError("runtime source envelope is too large")
     return result
-
-
-def validate_captured_runtime_source_envelope(
-    value: Mapping[str, Any],
-) -> dict[str, Any]:
-    data = _closed(
-        value,
-        {
-            "runtime_source_envelope",
-            "runtime_source_envelope_digest",
-            "project_commit",
-        },
-        "captured runtime source envelope",
-    )
-    if set(data) != {
-        "runtime_source_envelope",
-        "runtime_source_envelope_digest",
-        "project_commit",
-    }:
-        raise RuntimeContractError(
-            "captured runtime source envelope has missing fields"
-        )
-    envelope = validate_runtime_source_envelope(
-        data["runtime_source_envelope"]
-    )
-    digest = _digest(
-        data["runtime_source_envelope_digest"],
-        "runtime_source_envelope_digest",
-    )
-    if digest != canonical_sha256(envelope):
-        raise RuntimeContractError(
-            "runtime_source_envelope_digest does not match envelope"
-        )
-    if data["project_commit"] != envelope["project_commit"]:
-        raise RuntimeContractError(
-            "captured project_commit does not match envelope"
-        )
-    return {
-        "runtime_source_envelope": envelope,
-        "runtime_source_envelope_digest": digest,
-        "project_commit": envelope["project_commit"],
-    }
 
 
 def parse_runtime_external_captures(raw: bytes | str) -> tuple[
@@ -2305,6 +2217,7 @@ EVIDENCE_RECOVERY_SCHEMA = "evidence-recovery-v2"
 EVIDENCE_BOUNDARY_KIND = "evidence_recovery_boundary_v2"
 EVIDENCE_BOUNDARY_KINDS = {"evidence_recovery_boundary_v1", EVIDENCE_BOUNDARY_KIND}
 EVIDENCE_RECOVERY_FILES = ("evidence-recovery.json", "evidence-continuation.jsonl")
+SCRIPT_CI_ARCHIVE_RECORD_KIND = "script_ci_archive_v1"
 LEGACY_OWNER_PROVENANCE = {
     "schema": "kent-owner-provenance-v1",
     "session_task_binding": "native-readback",
@@ -2327,11 +2240,157 @@ def validate_owner_provenance(value, *, version=None):
     return dict(value)
 
 
+def _script_ci_archive_identity(value: Any, *, task_short_id: str,
+                                workspace_path: str) -> dict[str, Any]:
+    keys = {
+        "task_id", "task_short_id", "project_id", "workspace_path",
+        "invocation_kind", "node_id", "transition_branch_key",
+    }
+    identity = _closed(value, keys, "script CI archive identity")
+    if set(identity) != keys:
+        raise RuntimeContractError("script CI archive identity is incomplete")
+    for key in ("task_id", "task_short_id", "project_id", "workspace_path",
+                "invocation_kind", "node_id"):
+        _string(identity[key], f"script_identity.{key}", max_bytes=4096)
+    branch = identity["transition_branch_key"]
+    if branch is not None:
+        _string(branch, "script_identity.transition_branch_key", max_bytes=4096)
+    if (
+        identity["task_short_id"] != task_short_id
+        or identity["workspace_path"] != workspace_path
+        or identity["invocation_kind"] != "script"
+    ):
+        raise RuntimeContractError("script CI archive identity does not match its record")
+    if not TASK_RE.fullmatch(task_short_id):
+        raise RuntimeContractError("script CI archive task key is invalid")
+    if (
+        not workspace_path.startswith("/")
+        or workspace_path != posixpath.normpath(workspace_path)
+        or "\x00" in workspace_path
+    ):
+        raise RuntimeContractError("script CI archive workspace path is invalid")
+    return identity
+
+
+def build_script_ci_archive_record(
+    *,
+    task_short_id: str,
+    workspace_path: str,
+    script_identity: Mapping[str, Any],
+    report_sha256: str,
+    sequence: int,
+    previous_hash: str,
+) -> dict[str, Any]:
+    """Build the closed Script-owned CI archive row without filesystem effects."""
+    task_short_id = _string(task_short_id, "task_short_id", max_bytes=256)
+    workspace_path = _string(workspace_path, "workspace_path", max_bytes=4096)
+    identity = _script_ci_archive_identity(
+        script_identity,
+        task_short_id=task_short_id,
+        workspace_path=workspace_path,
+    )
+    sequence = _integer(sequence, "sequence", minimum=1)
+    report_sha256 = _digest(report_sha256, "report_sha256")
+    if previous_hash:
+        previous_hash = _digest(previous_hash, "previous_hash")
+    elif not isinstance(previous_hash, str):
+        raise RuntimeContractError("previous_hash must be a string")
+    unsigned = {
+        "schema_version": 3,
+        "record_kind": SCRIPT_CI_ARCHIVE_RECORD_KIND,
+        "sequence": sequence,
+        "task_short_id": task_short_id,
+        "workspace_path": workspace_path,
+        "script_identity": identity,
+        "report_sha256": report_sha256,
+        "artifacts": [
+            f".kent/runtime/{task_short_id}/ci-report-{report_sha256}.json"
+        ],
+        "previous_hash": previous_hash,
+    }
+    return {**unsigned, "event_hash": _event_hash(unsigned)}
+
+
+def validate_script_ci_archive_record(
+    value: Mapping[str, Any],
+    *,
+    task_short_id: str | None = None,
+    workspace_path: str | None = None,
+    sequence: int | None = None,
+    previous_hash: str | None = None,
+) -> dict[str, Any]:
+    """Validate one exact typed Script archive row and optional chain binding."""
+    keys = {
+        "schema_version", "record_kind", "sequence", "task_short_id",
+        "workspace_path", "script_identity", "report_sha256", "artifacts",
+        "previous_hash", "event_hash",
+    }
+    data = _closed(value, keys, "script CI archive record")
+    if set(data) != keys:
+        raise RuntimeContractError("script CI archive record is incomplete")
+    task = _string(data["task_short_id"], "task_short_id", max_bytes=256)
+    workspace = _string(data["workspace_path"], "workspace_path", max_bytes=4096)
+    if (
+        type(data["schema_version"]) is not int
+        or data["schema_version"] != 3
+        or data["record_kind"] != SCRIPT_CI_ARCHIVE_RECORD_KIND
+    ):
+        raise RuntimeContractError("unsupported script CI archive record")
+    actual_sequence = _integer(data["sequence"], "sequence", minimum=1)
+    identity = _script_ci_archive_identity(
+        data["script_identity"], task_short_id=task,
+        workspace_path=workspace,
+    )
+    report_sha256 = _digest(data["report_sha256"], "report_sha256")
+    expected_artifacts = [
+        f".kent/runtime/{task}/ci-report-{report_sha256}.json"
+    ]
+    if data["artifacts"] != expected_artifacts:
+        raise RuntimeContractError("script CI archive artifact locator is invalid")
+    prior = data["previous_hash"]
+    if prior:
+        prior = _digest(prior, "previous_hash")
+    elif not isinstance(prior, str):
+        raise RuntimeContractError("previous_hash must be a string")
+    if task_short_id is not None and task != task_short_id:
+        raise RuntimeContractError("script CI archive task does not match")
+    if workspace_path is not None and workspace != workspace_path:
+        raise RuntimeContractError("script CI archive workspace does not match")
+    if sequence is not None and actual_sequence != sequence:
+        raise RuntimeContractError("script CI archive sequence does not match")
+    if previous_hash is not None and prior != previous_hash:
+        raise RuntimeContractError("script CI archive predecessor does not match")
+    unsigned = {key: item for key, item in data.items() if key != "event_hash"}
+    event_hash = _digest(data["event_hash"], "event_hash")
+    if _event_hash(unsigned) != event_hash:
+        raise RuntimeContractError("script CI archive record has an invalid hash")
+    return data
+
+
+def is_ordinary_evidence_record(record: Mapping[str, Any]) -> bool:
+    """Identify normal legacy ledger events, excluding typed and boundary rows."""
+    if not isinstance(record, Mapping):
+        return False
+    try:
+        version = evidence_identity_version(dict(record))
+    except (RuntimeContractError, TypeError, ValueError):
+        return False
+    return (
+        version in (1, 2)
+        and record.get("record_kind") not in {
+            TERMINAL_SEAL_SCHEMA, *EVIDENCE_BOUNDARY_KINDS,
+        }
+    )
+
+
 def evidence_identity_version(data):
     """Outer record version selects ownership; historical bytes remain opaque."""
     version = data.get("schema_version")
-    if type(version) is not int or version not in (1, 2):
+    if type(version) is not int or version not in (1, 2, 3):
         raise RuntimeContractError("ledger record has unsupported schema")
+    if version == 3:
+        validate_script_ci_archive_record(data)
+        return version
     if version == 2:
         if "run_id" in data or data.get("record_kind") == TERMINAL_SEAL_SCHEMA:
             raise RuntimeContractError("inconsistent evidence identity version")
@@ -2363,6 +2422,13 @@ def _evidence_record(raw: bytes, task: str, sequence: int, previous: str) -> dic
         raise RuntimeContractError("invalid evidence JSON") from error
     data = _object(data, "evidence record")
     evidence_identity_version(data)
+    if data.get("schema_version") == 3:
+        return validate_script_ci_archive_record(
+            data,
+            task_short_id=task,
+            sequence=sequence,
+            previous_hash=previous,
+        )
     if (
         type(data.get("schema_version")) is not int
         or data["schema_version"] not in (1, 2)
@@ -2641,80 +2707,6 @@ def validate_cleanup_report(report: str) -> dict[str, Any]:
     return parse_terminal_marker_line(lines[-1])
 
 
-def classify_terminal_state(
-    *,
-    active: bool,
-    tombstone: bool,
-    sentinel: bool,
-    ledger_valid: bool,
-    marker_valid: bool,
-    managed_worktree: bool = False,
-    workspace_present: bool = True,
-    git_registered: bool = True,
-    same_invocation: bool = False,
-    tombstone_entries: Sequence[str] = (),
-) -> str:
-    values = (
-        active,
-        tombstone,
-        sentinel,
-        ledger_valid,
-        marker_valid,
-        managed_worktree,
-        workspace_present,
-        git_registered,
-        same_invocation,
-    )
-    if any(not isinstance(value, bool) for value in values):
-        raise RuntimeContractError("terminal state flags must be booleans")
-    if not isinstance(tombstone_entries, (tuple, list)):
-        raise RuntimeContractError("tombstone_entries must be a sequence")
-    entries = tuple(
-        _string(item, "tombstone_entries[]", max_bytes=256)
-        for item in tombstone_entries
-    )
-    allowed_entries = ("fix-checkpoint.json", "smoke-checkpoint.json")
-    if entries != tuple(
-        item for item in allowed_entries if item in entries
-    ):
-        return "blocked_unknown_tombstone_entry"
-    if not tombstone and entries:
-        return "blocked_unknown_tombstone_entry"
-    if active and tombstone:
-        return "blocked_conflicting_task_state"
-    if active and sentinel:
-        return "blocked_active_terminal_conflict"
-    if tombstone and not marker_valid:
-        return "blocked_marker_invalid"
-    if tombstone and not ledger_valid and not sentinel:
-        return "blocked_missing_valid_ledger"
-    if tombstone and not sentinel and ledger_valid and marker_valid:
-        return "pre_sentinel_recovery"
-    if sentinel and tombstone and ledger_valid and marker_valid:
-        return "resume_tombstone_cleanup"
-    if (
-        sentinel
-        and tombstone
-        and not ledger_valid
-        and marker_valid
-        and not entries
-    ):
-        return "resume_tombstone_cleanup"
-    if sentinel and tombstone and not ledger_valid and marker_valid:
-        return "blocked_checkpoint_after_ledger_loss"
-    if sentinel and not active and not tombstone and marker_valid:
-        return "acknowledgement_loss"
-    if managed_worktree and same_invocation and not workspace_present and not git_registered:
-        return "acknowledgement_loss"
-    if managed_worktree and not workspace_present and not same_invocation:
-        return "blocked_managed_workspace_evidence_loss"
-    if managed_worktree and workspace_present and not tombstone:
-        return "blocked_managed_workspace_evidence_loss"
-    if not active and not tombstone and not sentinel:
-        return "no_runtime_state"
-    return "blocked_terminal_state"
-
-
 VERIFICATION_CODES = {
     "passed",
     "verification_failed",
@@ -2776,23 +2768,6 @@ def classify_verification_report(
     if code in {"verification_failed", "child_exit_nonzero"}:
         return "needs_changes"
     return "blocked"
-
-
-def classify_ci_report(value: Mapping[str, Any]) -> str:
-    report = validate_ci_report(value)
-    reason = report["attempts"][-1]["reason"]
-    if reason == "all_expected_checks_terminal_green":
-        return "ci_watch_passed"
-    if reason in {"expected_check_failed", "expected_check_skipped"}:
-        return "ci_watch_failed"
-    if reason in {
-        "github_query_failed",
-        "duplicate_observed_check",
-        "expected_contract_invalid",
-        "report_invalid",
-    }:
-        return "ci_watch_blocked"
-    return "ci_watch_waiting"
 
 
 def _check_name(value: Any, label: str) -> str:
@@ -2968,57 +2943,6 @@ def validate_pr_feedback_item(value: Mapping[str, Any]) -> dict[str, Any]:
     raise RuntimeContractError("feedback item kind is unsupported")
 
 
-def check_state_sha256(checks: Sequence[Mapping[str, Any]]) -> str:
-    if not isinstance(checks, Sequence) or isinstance(checks, (str, bytes)):
-        raise RuntimeContractError("check state rows must be a sequence")
-    if len(checks) > 1000:
-        raise RuntimeContractError("check state rows exceed their hard limit")
-    rows = []
-    for index, value in enumerate(checks):
-        data = _object(value, f"check_state[{index}]")
-        allowed = {"name", "context", "status", "state", "conclusion"}
-        unknown = sorted(set(data) - allowed)
-        if unknown:
-            raise RuntimeContractError(
-                f"check_state[{index}] has unknown fields: {unknown}"
-            )
-        identity_keys = [
-            key for key in ("name", "context")
-            if key in data and data[key] is not None
-        ]
-        state_keys = [
-            key for key in ("status", "state")
-            if key in data and data[key] is not None
-        ]
-        if len(identity_keys) != 1 or len(state_keys) != 1:
-            raise RuntimeContractError(
-                f"check_state[{index}] needs exactly one non-null "
-                "name/context and status/state"
-            )
-        rows.append(
-            [
-                _string(
-                    data[identity_keys[0]],
-                    f"check_state[{index}].{identity_keys[0]}",
-                    max_bytes=256,
-                ),
-                _string(
-                    data[state_keys[0]],
-                    f"check_state[{index}].{state_keys[0]}",
-                    max_bytes=64,
-                ),
-                _string(
-                    "" if data.get("conclusion") is None else data["conclusion"],
-                    f"check_state[{index}].conclusion",
-                    nonempty=False,
-                    max_bytes=64,
-                ),
-            ]
-        )
-    rows.sort()
-    return canonical_sha256(rows)
-
-
 def _timestamp(value: Any, label: str) -> str:
     value = _string(value, label, max_bytes=40)
     if not RFC3339_RE.fullmatch(value):
@@ -3051,182 +2975,6 @@ def _timestamp_or_empty(value: Any, label: str) -> str:
     if value == "":
         return ""
     return _upper_state(value, label)
-
-
-def validate_pr_feedback_cursor(value: Any) -> str | dict[str, Any]:
-    if value == "uninitialized":
-        return value
-    data = _object(value, "PR feedback cursor")
-    common = {
-        "schema",
-        "mode",
-        "repository",
-        "pull_number",
-        "head_oid",
-        "base_oid",
-        "pr_state",
-        "review_decision",
-        "merge_state_status",
-        "check_count",
-        "checks_sha256",
-        "item_count",
-        "items_sha256",
-    }
-    mode = data.get("mode")
-    keys = common | ({"items"} if mode == "complete" else set())
-    data = _closed(data, keys, "PR feedback cursor")
-    if set(data) != keys:
-        raise RuntimeContractError("PR feedback cursor has missing fields")
-    if data["schema"] != PR_CURSOR_SCHEMA:
-        raise RuntimeContractError("unsupported PR feedback cursor schema")
-    if mode not in {"complete", "digest_only"}:
-        raise RuntimeContractError("PR feedback cursor.mode is unsupported")
-    repository = _string(data["repository"], "cursor.repository")
-    if not REPOSITORY_RE.fullmatch(repository):
-        raise RuntimeContractError("cursor.repository has an invalid shape")
-    pull = _integer(data["pull_number"], "cursor.pull_number", minimum=1)
-    if pull > 2147483647:
-        raise RuntimeContractError("cursor.pull_number is too large")
-    head = _commit(data["head_oid"], "cursor.head_oid")
-    base = _commit(data["base_oid"], "cursor.base_oid")
-    pr_state = _upper_state(data["pr_state"], "cursor.pr_state")
-    review = _timestamp_or_empty(data["review_decision"], "cursor.review_decision")
-    merge = _timestamp_or_empty(
-        data["merge_state_status"],
-        "cursor.merge_state_status",
-    )
-    check_count = _integer(data["check_count"], "cursor.check_count")
-    if check_count > MAX_FEEDBACK_HARD_LIMIT:
-        raise RuntimeContractError("cursor.check_count exceeds its hard limit")
-    checks_sha = _digest(data["checks_sha256"], "cursor.checks_sha256")
-    item_count = _integer(data["item_count"], "cursor.item_count")
-    if item_count > MAX_FEEDBACK_HARD_LIMIT:
-        raise RuntimeContractError("cursor.item_count exceeds its hard limit")
-    items_sha = _digest(data["items_sha256"], "cursor.items_sha256")
-    result = {
-        "schema": PR_CURSOR_SCHEMA,
-        "mode": mode,
-        "repository": repository,
-        "pull_number": pull,
-        "head_oid": head,
-        "base_oid": base,
-        "pr_state": pr_state,
-        "review_decision": review,
-        "merge_state_status": merge,
-        "check_count": check_count,
-        "checks_sha256": checks_sha,
-        "item_count": item_count,
-        "items_sha256": items_sha,
-    }
-    if mode == "complete":
-        items = data["items"]
-        if not isinstance(items, list) or len(items) > MAX_FEEDBACK_ITEMS:
-            raise RuntimeContractError("complete cursor items exceed its limit")
-        normalized = [validate_pr_feedback_item(item) for item in items]
-        identities = [(item["kind"], item["id"]) for item in normalized]
-        if identities != sorted(identities) or len(set(identities)) != len(identities):
-            raise RuntimeContractError("cursor items must be sorted and unique")
-        if canonical_sha256(normalized) != items_sha:
-            raise RuntimeContractError("cursor items_sha256 is invalid")
-        if item_count != len(normalized):
-            raise RuntimeContractError(
-                "complete cursor item_count does not match items"
-            )
-        result["items"] = normalized
-    if len(canonical_bytes(result)) > MAX_FEEDBACK_BYTES:
-        raise RuntimeContractError("PR feedback cursor exceeds its byte limit")
-    return result
-
-
-def make_pr_feedback_cursor(
-    *,
-    repository: str,
-    pull_number: int,
-    head_oid: str,
-    base_oid: str,
-    pr_state: str,
-    review_decision: str,
-    merge_state_status: str,
-    checks: Sequence[Mapping[str, Any]],
-    items: Sequence[Mapping[str, Any]],
-) -> str | dict[str, Any]:
-    normalized_checks = [
-        _validate_observed_check(item, f"checks[{index}]")
-        for index, item in enumerate(checks)
-    ]
-    if len(normalized_checks) > 1000:
-        raise RuntimeContractError("cursor checks exceed their hard limit")
-    normalized_checks.sort(
-        key=lambda item: (
-            item["workflow_name"],
-            item["check_name"],
-            item["state"],
-        )
-    )
-    normalized_items = [
-        validate_pr_feedback_item(item) for item in items
-    ]
-    if len(normalized_items) > MAX_FEEDBACK_HARD_LIMIT:
-        raise RuntimeContractError("feedback item hard limit exceeded")
-    identities = [(item["kind"], item["id"]) for item in normalized_items]
-    if identities != sorted(identities) or len(set(identities)) != len(identities):
-        raise RuntimeContractError("cursor items must be sorted and unique")
-    item_digest = canonical_sha256(normalized_items)
-    check_digest = check_state_sha256(
-        [
-            {
-                "name": (
-                    f"{item['workflow_name']}::{item['check_name']}"
-                ),
-                "status": item["state"],
-                "conclusion": item["bucket"],
-            }
-            for item in normalized_checks
-        ]
-    )
-    mode = "complete" if len(normalized_items) <= MAX_FEEDBACK_ITEMS else "digest_only"
-    result: dict[str, Any] = {
-        "schema": PR_CURSOR_SCHEMA,
-        "mode": mode,
-        "repository": repository,
-        "pull_number": pull_number,
-        "head_oid": head_oid,
-        "base_oid": base_oid,
-        "pr_state": pr_state,
-        "review_decision": review_decision,
-        "merge_state_status": merge_state_status,
-        "check_count": len(normalized_checks),
-        "checks_sha256": check_digest,
-        "item_count": len(normalized_items),
-        "items_sha256": item_digest,
-    }
-    if mode == "complete":
-        result["items"] = normalized_items
-        if len(canonical_bytes(result)) > MAX_FEEDBACK_BYTES:
-            result.pop("items")
-            result["mode"] = "digest_only"
-    return validate_pr_feedback_cursor(result)
-
-
-def classify_pr_feedback(
-    previous: Any,
-    current: Mapping[str, Any] | str,
-) -> dict[str, Any]:
-    current = validate_pr_feedback_cursor(current)
-    if current == "uninitialized":
-        raise RuntimeContractError("current cursor must be materialized")
-    previous = validate_pr_feedback_cursor(previous)
-    if current["item_count"] > MAX_FEEDBACK_HARD_LIMIT:
-        return {"transition": "feedback_hard_limit", "cursor": current}
-    if previous == "uninitialized":
-        transition = (
-            "state_changed" if current["item_count"] else "still_waiting"
-        )
-    else:
-        transition = (
-            "still_waiting" if previous == current else "state_changed"
-        )
-    return {"transition": transition, "cursor": current}
 
 
 def validate_expected_ci_checks(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -3326,22 +3074,6 @@ def ci_policy_projection_sha256(
     return canonical_sha256(projection)
 
 
-def make_ci_policy_snapshot(
-    target_commit: str,
-    expected: Mapping[str, Any],
-    source_projection: Any | None = None,
-) -> dict[str, Any]:
-    target_commit = _commit(target_commit, "policy target_commit")
-    return {
-        "schema": CI_POLICY_SNAPSHOT_SCHEMA,
-        "target_commit": target_commit,
-        "policy_sha256": ci_policy_projection_sha256(expected),
-        "source_policy_sha256": canonical_sha256(
-            source_projection if source_projection is not None else {}
-        ),
-    }
-
-
 def validate_ci_policy_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
     data = _closed(
         value,
@@ -3369,276 +3101,6 @@ def validate_ci_policy_snapshot(value: Mapping[str, Any]) -> dict[str, Any]:
         "policy_sha256": policy_sha256,
         "source_policy_sha256": source_policy_sha256,
     }
-
-
-def _observed_check_sort_key(value: Mapping[str, Any]) -> tuple[str, ...]:
-    return (
-        value["workflow_name"],
-        value["check_name"],
-        value["bucket"],
-        value["state"],
-        "" if value["link"] is None else value["link"],
-    )
-
-
-def _expected_check_observation_metadata(
-    normalized: Sequence[Mapping[str, Any]],
-    expected_by_identity: Mapping[tuple[str, str], Mapping[str, Any]],
-) -> dict[str, Any]:
-    ordered = sorted(normalized, key=_observed_check_sort_key)
-    expected_rows = [
-        item
-        for item in ordered
-        if (item["workflow_name"], item["check_name"])
-        in expected_by_identity
-    ]
-    unexpected_rows = [
-        item
-        for item in ordered
-        if (item["workflow_name"], item["check_name"])
-        not in expected_by_identity
-    ]
-    return {
-        "expected_checks": expected_rows,
-        "unexpected_check_count": len(unexpected_rows),
-        "unexpected_checks_sha256": canonical_sha256(unexpected_rows),
-    }
-
-
-def _expected_check_result(
-    transition: str,
-    metadata: Mapping[str, Any],
-    **extra: Any,
-) -> dict[str, Any]:
-    result = {"transition": transition}
-    result.update(metadata)
-    result.update(extra)
-    return result
-
-
-def _empty_expected_check_observation_metadata() -> dict[str, Any]:
-    return {
-        "expected_checks": [],
-        "unexpected_check_count": 0,
-        "unexpected_checks_sha256": canonical_sha256([]),
-    }
-
-
-def _project_observed_rows(observed: Sequence[Any]) -> list[dict[str, Any]]:
-    fields = ("workflow_name", "check_name", "bucket", "state", "link")
-    projected = []
-    for item in observed:
-        if isinstance(item, Mapping):
-            projected.append({field: item.get(field) for field in fields})
-        else:
-            projected.append({field: None for field in fields})
-    return projected
-
-
-def _observation_limit_value(
-    receipt: RejectedObservationReceipt,
-) -> dict[str, Any]:
-    return _expected_check_result(
-        "report_invalid",
-        {
-            "expected_checks": [],
-            "unexpected_check_count": receipt.count,
-            "unexpected_checks_sha256": receipt.sha256,
-        },
-        reason="observation_limit",
-    )
-
-
-def classify_expected_ci_checks_with_receipt(
-    expected: Mapping[str, Any],
-    observed: Sequence[Mapping[str, Any]],
-    *,
-    current_repository: str,
-    current_head_oid: str,
-    runtime_source_envelope_digest: str,
-    expected_checks_digest: str,
-) -> ExpectedCiClassification:
-    expected = validate_expected_ci_checks(expected)
-    current_repository = _string(current_repository, "current_repository")
-    if not REPOSITORY_RE.fullmatch(current_repository):
-        raise RuntimeContractError("current_repository has an invalid shape")
-    current_head_oid = _commit(current_head_oid, "current_head_oid")
-    runtime_source_envelope_digest = _digest(
-        runtime_source_envelope_digest,
-        "runtime_source_envelope_digest",
-    )
-    expected_checks_digest = _digest(
-        expected_checks_digest,
-        "expected_checks_sha256",
-    )
-    empty_metadata = _empty_expected_check_observation_metadata()
-    expected_object_digest = expected_ci_checks_sha256(expected)
-    if expected["repository"] != current_repository:
-        return ExpectedCiClassification(
-            "ordinary",
-            _expected_check_result("expected_contract_invalid", empty_metadata),
-            None,
-            None,
-        )
-    if expected["project_commit"] != current_head_oid:
-        return ExpectedCiClassification(
-            "ordinary",
-            _expected_check_result("source_changed", empty_metadata),
-            None,
-            None,
-        )
-    if (
-        expected["runtime_source_envelope_digest"]
-        != runtime_source_envelope_digest
-    ):
-        return ExpectedCiClassification(
-            "ordinary",
-            _expected_check_result("expected_contract_invalid", empty_metadata),
-            None,
-            None,
-        )
-    if expected_object_digest != expected_checks_digest:
-        return ExpectedCiClassification(
-            "ordinary",
-            _expected_check_result("expected_contract_invalid", empty_metadata),
-            None,
-            None,
-        )
-    expected_by_identity = {
-        (item["workflow_name"], item["check_name"]): item
-        for item in expected["checks"]
-    }
-    if not isinstance(observed, Sequence) or isinstance(observed, (str, bytes)):
-        raise RuntimeContractError("observed checks must be a sequence")
-    projected = _project_observed_rows(observed)
-    projected_receipt = _bounded_canonical_observation(
-        projected,
-        "projected_rows",
-    )
-    if isinstance(projected_receipt, RejectedObservationHardLimit):
-        return ExpectedCiClassification(
-            "hard_limit",
-            None,
-            projected_receipt,
-            None,
-        )
-    try:
-        normalized = [
-            _validate_observed_check(item, f"observed[{index}]")
-            for index, item in enumerate(observed)
-        ]
-    except RuntimeContractError as error:
-        return ExpectedCiClassification(
-            "grammar_invalid",
-            None,
-            projected_receipt,
-            None,
-            error,
-        )
-    ordered = sorted(normalized, key=_observed_check_sort_key)
-    expected_rows = [
-        item
-        for item in ordered
-        if (item["workflow_name"], item["check_name"]) in expected_by_identity
-    ]
-    unexpected_rows = [
-        item
-        for item in ordered
-        if (item["workflow_name"], item["check_name"]) not in expected_by_identity
-    ]
-    unexpected_receipt = _bounded_canonical_observation(
-        unexpected_rows,
-        "unexpected_rows",
-    )
-    if isinstance(unexpected_receipt, RejectedObservationHardLimit):
-        return ExpectedCiClassification(
-            "hard_limit",
-            None,
-            projected_receipt,
-            unexpected_receipt,
-        )
-    metadata = {
-        "expected_checks": expected_rows,
-        "unexpected_check_count": unexpected_receipt.count,
-        "unexpected_checks_sha256": unexpected_receipt.sha256,
-    }
-    identities = [
-        (item["workflow_name"], item["check_name"]) for item in normalized
-    ]
-    if unexpected_receipt.count > MAX_CI_UNEXPECTED_OBSERVATIONS:
-        return ExpectedCiClassification(
-            "observation_limit",
-            _observation_limit_value(unexpected_receipt),
-            projected_receipt,
-            unexpected_receipt,
-        )
-    if len(identities) != len(set(identities)):
-        return ExpectedCiClassification(
-            "ordinary",
-            _expected_check_result("duplicate_observed_check", metadata),
-            projected_receipt,
-            None,
-        )
-    observed_by_identity = dict(zip(identities, normalized))
-    if not observed:
-        value = _expected_check_result("no_checks_reported", metadata)
-        return ExpectedCiClassification("ordinary", value, projected_receipt, None)
-    missing = sorted(set(expected_by_identity) - set(observed_by_identity))
-    if missing:
-        value = _expected_check_result(
-            "expected_check_missing", metadata, missing=missing
-        )
-        return ExpectedCiClassification("ordinary", value, projected_receipt, None)
-    for identity, item in observed_by_identity.items():
-        if identity not in expected_by_identity:
-            continue
-        if item["bucket"] == "fail" or item["bucket"] == "cancel":
-            value = _expected_check_result(
-                "expected_check_failed", metadata, check=identity
-            )
-            return ExpectedCiClassification("ordinary", value, projected_receipt, None)
-        if item["bucket"] == "skipping" and not expected_by_identity[identity]["allow_skipped"]:
-            value = _expected_check_result(
-                "expected_check_skipped", metadata, check=identity
-            )
-            return ExpectedCiClassification("ordinary", value, projected_receipt, None)
-        if item["bucket"] == "pending":
-            value = _expected_check_result(
-                "pending_limit", metadata, check=identity
-            )
-            return ExpectedCiClassification("ordinary", value, projected_receipt, None)
-    value = _expected_check_result(
-        "all_expected_checks_terminal_green", metadata
-    )
-    return ExpectedCiClassification("ordinary", value, projected_receipt, None)
-
-
-def classify_expected_ci_checks(
-    expected: Mapping[str, Any],
-    observed: Sequence[Mapping[str, Any]],
-    *,
-    current_repository: str,
-    current_head_oid: str,
-    runtime_source_envelope_digest: str,
-    expected_checks_digest: str,
-) -> dict[str, Any]:
-    classification = classify_expected_ci_checks_with_receipt(
-        expected,
-        observed,
-        current_repository=current_repository,
-        current_head_oid=current_head_oid,
-        runtime_source_envelope_digest=runtime_source_envelope_digest,
-        expected_checks_digest=expected_checks_digest,
-    )
-    if classification.state == "grammar_invalid":
-        if classification.grammar_error is not None:
-            raise classification.grammar_error
-        raise RuntimeContractError("observed checks have invalid grammar")
-    if classification.state == "hard_limit":
-        raise RuntimeContractError("observations exceed their canonical byte limit")
-    if classification.value is None:
-        raise RuntimeContractError("classification has no ordinary value")
-    return classification.materialize_value()
 
 
 CI_REPORT_REASONS = {
@@ -3858,7 +3320,7 @@ def _validate_ci_attempt(value: Mapping[str, Any], label: str) -> dict[str, Any]
         "safe_error": safe_error,
     }
     if len(canonical_bytes(result)) > MAX_CI_ATTEMPT_BYTES:
-        raise CiAttemptSizeLimit(
+        raise RuntimeContractError(
             f"{label} exceeds the {MAX_CI_ATTEMPT_BYTES}-byte limit"
         )
     return result
@@ -3965,94 +3427,6 @@ def discarded_attempt_digest(
         + bytes.fromhex(previous_digest)
         + attempt_bytes
     )
-
-
-def make_observation_limit_attempt(
-    *,
-    sequence: int,
-    head_oid: str,
-    base_oid: str,
-    receipt: RejectedObservationReceipt,
-    watcher_exit_code: int | None = None,
-) -> dict[str, Any]:
-    if not isinstance(receipt, RejectedObservationReceipt):
-        raise RuntimeContractError("observation limit requires a receipt")
-    return _validate_ci_attempt(
-        {
-            "sequence": sequence,
-            "head_oid": head_oid,
-            "base_oid": base_oid,
-            "reason": "report_invalid",
-            "watcher_exit_code": watcher_exit_code,
-            "expected_checks": [],
-            "unexpected_check_count": receipt.count,
-            "unexpected_checks_sha256": receipt.sha256,
-            "retry": None,
-            "safe_error": {
-                "code": "observation_limit",
-                "exit_code": watcher_exit_code,
-                "stdout_sha256": sha256_bytes(b""),
-                "stderr_sha256": sha256_bytes(b""),
-            },
-        },
-        "observation_limit_attempt",
-    )
-
-
-def make_observation_hard_limit_attempt(
-    *,
-    sequence: int,
-    head_oid: str,
-    base_oid: str,
-    hard_limit: RejectedObservationHardLimit,
-    watcher_exit_code: int | None = None,
-) -> dict[str, Any]:
-    if not isinstance(hard_limit, RejectedObservationHardLimit):
-        raise RuntimeContractError("hard limit requires a hard-limit receipt")
-    empty_digest = canonical_sha256([])
-    empty_output_digest = sha256_bytes(b"")
-    return _validate_ci_attempt(
-        {
-            "sequence": sequence,
-            "head_oid": head_oid,
-            "base_oid": base_oid,
-            "reason": "report_invalid",
-            "watcher_exit_code": watcher_exit_code,
-            "expected_checks": [],
-            "unexpected_check_count": 0,
-            "unexpected_checks_sha256": empty_digest,
-            "retry": None,
-            "safe_error": {
-                "code": "hard_limit",
-                "exit_code": watcher_exit_code,
-                "stdout_sha256": empty_output_digest,
-                "stderr_sha256": empty_output_digest,
-            },
-        },
-        "observation_hard_limit_attempt",
-    )
-
-
-def prepare_ci_attempt(
-    value: Mapping[str, Any],
-    projected_receipt: RejectedObservationReceipt,
-) -> dict[str, Any]:
-    if not isinstance(projected_receipt, RejectedObservationReceipt):
-        raise RuntimeContractError("attempt preparation requires a receipt")
-    if projected_receipt.source != "projected_rows":
-        raise RuntimeContractError(
-            "attempt preparation requires a projected_rows receipt"
-        )
-    try:
-        return _validate_ci_attempt(value, "attempt")
-    except CiAttemptSizeLimit:
-        return make_observation_limit_attempt(
-            sequence=value["sequence"],
-            head_oid=value["head_oid"],
-            base_oid=value["base_oid"],
-            receipt=projected_receipt,
-            watcher_exit_code=value.get("watcher_exit_code"),
-        )
 
 
 def make_report_invalid_attempt(
@@ -4241,63 +3615,6 @@ def build_ci_report(
         discarded_attempt_count=len(normalized_discarded),
         discarded_attempts_sha256=discarded_digest,
     )
-
-
-def append_ci_report_attempt(
-    previous_report: Mapping[str, Any],
-    attempt: Mapping[str, Any],
-    *,
-    discarded_attempts: Sequence[Mapping[str, Any]] = (),
-) -> dict[str, Any]:
-    """Append one watcher attempt while preserving the bounded history chain."""
-
-    previous = (
-        validate_ci_report_history(previous_report, discarded_attempts)
-        if discarded_attempts
-        else validate_ci_report(previous_report)
-    )
-    normalized = _normalize_ci_attempt_for_build(attempt, "attempt")
-    if normalized["sequence"] != previous["attempts"][-1]["sequence"] + 1:
-        raise RuntimeContractError(
-            "appended CI attempt sequence is not the next global sequence"
-        )
-    return _bound_ci_report(
-        mode=previous["mode"],
-        repository=previous["repository"],
-        pull_number=previous["pull_number"],
-        runtime_source_envelope_digest=previous[
-            "runtime_source_envelope_digest"
-        ],
-        expected_ci_checks_sha256=previous["expected_ci_checks_sha256"],
-        retained=[*previous["attempts"], normalized],
-        discarded_attempt_count=previous["discarded_attempt_count"],
-        discarded_attempts_sha256=previous["discarded_attempts_sha256"],
-    )
-
-
-def validate_ci_report_history(
-    value: Mapping[str, Any],
-    discarded_attempts: Sequence[Mapping[str, Any]] = (),
-) -> dict[str, Any]:
-    report = validate_ci_report(value)
-    discarded = "0" * 64
-    count = 0
-    for index, attempt in enumerate(discarded_attempts):
-        normalized = _validate_ci_attempt(
-            attempt,
-            f"discarded_attempts[{index}]",
-        )
-        if normalized["sequence"] != index + 1:
-            raise RuntimeContractError(
-                "discarded attempt sequences are not contiguous"
-            )
-        discarded = discarded_attempt_digest(discarded, normalized)
-        count += 1
-    if count != report["discarded_attempt_count"]:
-        raise RuntimeContractError("CI report discarded count is invalid")
-    if discarded != report["discarded_attempts_sha256"]:
-        raise RuntimeContractError("CI report discarded digest is invalid")
-    return report
 
 
 _DYNAMIC_CHECK_BUCKETS = {"pass", "fail", "pending", "skipping", "cancel"}
@@ -5026,11 +4343,6 @@ def validate_ci_archive(value: Mapping[str, Any]) -> dict[str, Any]:
     raise RuntimeContractError("unsupported CI archive schema")
 
 
-def classify_dynamic_ci_report(value: Mapping[str, Any]) -> str:
-    report = validate_dynamic_ci_report(value)
-    return report["attempts"][-1]["reason"]
-
-
 def _validate_dynamic_feedback_item(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -5364,12 +4676,10 @@ __all__ = [
     "DYNAMIC_PR_CURSOR_SCHEMA",
     "CI_REPORT_SCHEMA",
     "CI_POLICY_SNAPSHOT_SCHEMA",
-    "CiAttemptSizeLimit",
-    "ExpectedCiClassification",
     "EXPECTED_CHECKS_SCHEMA",
     "EXTERNAL_CAPTURE_SCHEMA",
+    "GITHUB_PROVIDER_RETRY_CONSTRAINT_SCHEMA",
     "MAX_CANONICAL_JSON_NESTING",
-    "PR_CURSOR_SCHEMA",
     "RuntimeContractError",
     "RuntimeAuthorityBinding",
     "RuntimeExecutionContext",
@@ -5383,55 +4693,43 @@ __all__ = [
     "VERIFICATION_REPORT_SCHEMA",
     "build_ci_report",
     "build_dynamic_ci_report",
-    "append_ci_report_attempt",
+    "build_script_ci_archive_record",
     "append_dynamic_ci_report",
     "build_terminal_marker",
     "build_terminal_seal_record",
     "canonical_bytes",
-    "canonical_json_bytes",
     "canonical_sha256",
     "ci_policy_projection_sha256",
     "capture_runtime_source_envelope",
     "capture_runtime_authority_binding",
     "capture_runtime_execution_context",
-    "check_state_sha256",
-    "classify_expected_ci_checks",
-    "classify_expected_ci_checks_with_receipt",
-    "classify_ci_report",
-    "classify_dynamic_ci_report",
     "classify_github_checks",
-    "classify_pr_feedback",
-    "classify_terminal_state",
     "classify_verification_report",
     "discarded_attempt_digest",
+    "evaluate_github_retry_constraint",
     "expected_ci_checks_sha256",
     "delivery_context_fields",
-    "make_observation_hard_limit_attempt",
-    "make_observation_limit_attempt",
-    "make_pr_feedback_cursor",
     "make_dynamic_pr_feedback_cursor",
-    "make_ci_policy_snapshot",
     "make_report_invalid_attempt",
+    "merge_github_retry_constraints",
+    "is_ordinary_evidence_record",
     "parse_runtime_external_captures",
     "parse_canonical_json",
     "parse_terminal_marker_line",
-    "prepare_ci_attempt",
-    "revalidate_runtime_source_envelope",
     "sha256_bytes",
     "terminal_marker_line",
     "validate_ci_report",
     "validate_delivery_context",
-    "validate_ci_report_history",
     "validate_ci_archive",
     "validate_dynamic_ci_report",
     "validate_dynamic_ci_report_history",
     "validate_ci_contract",
-    "validate_captured_runtime_source_envelope",
     "validate_cleanup_report",
     "validate_expected_ci_checks",
     "validate_ci_policy_snapshot",
-    "validate_pr_feedback_cursor",
     "validate_dynamic_pr_feedback_cursor",
+    "validate_github_retry_constraint",
+    "validate_script_ci_archive_record",
     "validate_pr_feedback_item",
     "validate_runtime_source_envelope",
     "validate_terminal_chain",

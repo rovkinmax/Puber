@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed Puber release runtime shared by all S05 Script nodes."""
 from __future__ import annotations
-import fcntl, hashlib, importlib, importlib.util, json, math, os, re, secrets, shutil, stat, subprocess, sys, tempfile, tomllib
+import fcntl, hashlib, importlib, importlib.machinery, importlib.util, json, math, os, re, secrets, shutil, stat, subprocess, sys, tempfile, tomllib
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -12,15 +12,15 @@ sys.dont_write_bytecode = True
 for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
     os.environ.pop(_name, None)
 ROOT = Path(__file__).resolve().parents[2]
-KIT_COMMIT = "3020962feffa870c8f064e7a0b2657d316a8ec1b"
+KIT_COMMIT = "9e7da4ee800d3e0e9c1bbd0d419cd87faa011dfc"
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
 # Private proposal cohort only; no current Task or live runtime is repinned.
-WORKFLOW_REVISION = 95
-SOURCE_REVISION = 91
+WORKFLOW_REVISION = 97
+SOURCE_REVISION = 92
 REPOSITORY = "rovkinmax/Puber"
-GRAPH_PATH = ".kent/workflows/puber-release-kit-5af.json"
+GRAPH_PATH = ".kent/workflows/puber-release-current.json"
 SCRIPT_PATHS = {
     "ci_prepare": ".kent/scripts/workflow-puber-release-ci",
     "ci_watch": ".kent/scripts/workflow-puber-release-ci",
@@ -33,8 +33,65 @@ SCRIPT_PATHS = {
 TASK_ROOT_KEYS = {"actions","attention_count","body","current_nodes","current_scripts","execution_target","label_ids","live_sessions","project","retained_session_count","source_workspace","status","summary","workflow","worktree_path"}
 KENT_KEYS = {"task_id","node_id"}
 ENTRY_TRANSITION = "entry_transition"
+CI_PREPARATION_RETRY_ROUTE = "ci_monitor_retry_preparation"
+CI_PREPARATION_RETRY_FIELDS = (
+    "workspace_path", "task_short_id", "delivery_context",
+)
 INITIAL_SCRIPT_ENTRY = {"release_intent_gate": "start_release_intent_gate"}
 LEASED_SCRIPT_NODES = {"profile_generation"}
+CI_PACKET_FIELDS = frozenset({"ci_contract", "ci_report", "pr_feedback_cursor"})
+# Route-specific absence policy for the flat Release carrier. Only an actual
+# JSON null is absence; empty strings and the literal text "null" are not.
+CI_NULLABLE_FIELDS_BY_EDGE = {
+    "ci_waiting_pr": frozenset({"ci_contract", "ci_report"}),
+    "ci_fix": frozenset(),
+    "pr_fix": frozenset({"ci_contract", "ci_report"}),
+    "waiting_pr_merge_watch": frozenset(),
+    "pr_feedback": frozenset(),
+    "waiting_pr_needs_user_action": frozenset({"ci_contract", "ci_report"}),
+    "ci_watch_passed": frozenset(),
+    "ci_watch_failed": frozenset(),
+    "ci_watch_pr_merged": frozenset({"ci_report"}),
+    "ci_watch_state_changed": frozenset({"ci_report"}),
+    "ci_watch_needs_user_action": frozenset({"ci_report"}),
+    "merge_watch_still_waiting": frozenset(),
+    "merge_watch_state_changed": frozenset(),
+    "merge_watch_needs_user_action": frozenset(),
+    "ci_prepare_ready_initial": frozenset(),
+    "ci_prepare_ready_retry": frozenset(),
+    "ci_prepare_failed": frozenset(),
+    "ci_prepare_already_merged": frozenset({"ci_contract", "ci_report"}),
+    "waiting_pr_ci_recheck": frozenset({"ci_report"}),
+}
+ROUTE_NULLABLE_FIELDS_BY_EDGE = {
+    **CI_NULLABLE_FIELDS_BY_EDGE,
+    "publish_needs_user_action": frozenset({
+        "target_commit",
+        "release_notes_path",
+        "publication_report",
+        "publication_report_digest",
+    }),
+}
+ROUTE_NULLABLE_FIELDS = frozenset().union(*ROUTE_NULLABLE_FIELDS_BY_EDGE.values())
+CLEANUP_EMPTY_OPTIONAL_FIELDS_BY_EDGE = {
+    # This established string-only Agent->Janitor carrier predates typed JSON
+    # null transport. Keep its explicit empty optional report fields stable;
+    # other nullable Release carriers remain JSON-null-only.
+    "cleanup_task_janitor": frozenset({
+        "publication_report",
+        "publication_report_digest",
+        "release_report",
+        "release_report_digest",
+        "release_notes_path",
+        "release_notes_digest",
+    }),
+}
+NULLABLE_TRANSPORT_FIELDS = CI_PACKET_FIELDS | frozenset({
+    "target_commit",
+    "release_notes_path",
+    "publication_report",
+    "publication_report_digest",
+})
 SHA1 = re.compile(r"^[0-9a-f]{40}$")
 TASK_ID = re.compile(r"^task-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
 TASK_SHORT_ID = re.compile(r"^[A-Z][A-Z0-9]+-[0-9]+$")
@@ -91,6 +148,29 @@ CHECKSUM_KEYS = {"schema", "apk_asset_id", "apk_name", "apk_size", "apk_download
 
 class ContractError(ValueError):
     pass
+
+
+class GitHubProviderReadBlocked(ContractError):
+    """A qualified provider guard denied a GitHub read."""
+
+    def __init__(self, state: str) -> None:
+        if state not in {"not_before", "unknown"}:
+            raise ContractError("GitHub provider retry state is invalid")
+        self.state = state
+        super().__init__(f"GitHub provider retry is blocked: {state}")
+
+
+class GitHubProviderRequestError(ContractError):
+    """Provider command failed without trusted retry timing metadata."""
+
+    github_retry_constraint = (
+        '{"kind":"unknown","provider_host":"github.com",'
+        '"schema":"github-provider-retry-v1"}'
+    )
+
+
+_ACTIVE_GITHUB_PROVIDER_CONTEXT: dict[str, Any] | None = None
+
 
 def _json_one(raw: bytes) -> dict[str, Any]:
     if not raw or len(raw) > 8 * 1024 * 1024:
@@ -211,6 +291,363 @@ def _kent_bin(root: Path) -> str:
     if not Path(candidate).is_file() or not os.access(candidate, os.X_OK):
         raise ContractError("stock Kent executable is unavailable")
     return candidate
+
+
+def _provider_native_read(
+    root: Path,
+    arguments: list[str],
+    *,
+    structured: bool = True,
+) -> Any:
+    if root != ROOT:
+        raise ContractError("provider identity workspace mismatch")
+    try:
+        result = subprocess.run(
+            [_kent_bin(root), *arguments],
+            cwd=root,
+            env=child_env(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ContractError("provider identity read failed") from error
+    if result.returncode != 0 or len(result.stdout) > 8 * 1024 * 1024:
+        raise ContractError("provider identity read failed")
+    if not structured:
+        try:
+            return result.stdout.decode("utf-8").strip()
+        except UnicodeDecodeError as error:
+            raise ContractError("provider identity read is not UTF-8") from error
+    return _json_one(result.stdout)
+
+
+def _qualified_delivery_module(
+    root: Path,
+    *,
+    required: tuple[str, ...] = (
+        "producer_locator",
+        "observe_script_identity",
+        "require_github_provider_read",
+        "GitHubProviderRetryBlocked",
+    ),
+) -> Any:
+    """Load the installed first-party delivery module through the Kit CLI seam."""
+    path = root / ".kent/scripts/workflow-checkpoint"
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise ContractError("qualified workflow checkpoint adapter is unavailable") from error
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or path.is_symlink()
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o022
+    ):
+        raise ContractError("qualified workflow checkpoint adapter is unsafe")
+    try:
+        loader = importlib.machinery.SourceFileLoader(
+            "puber_workflow_checkpoint",
+            str(path),
+        )
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        if spec is None:
+            raise ContractError("qualified workflow checkpoint adapter cannot load")
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        delivery_loader = getattr(module, "delivery_module", None)
+        if not callable(delivery_loader):
+            raise ContractError("qualified workflow delivery loader is unavailable")
+        delivery = delivery_loader()
+        if any(not hasattr(delivery, name) for name in required):
+            raise ContractError("qualified workflow delivery API is unavailable")
+        if "GitHubProviderRetryBlocked" in required and (
+            not isinstance(delivery.GitHubProviderRetryBlocked, type)
+            or not issubclass(
+                delivery.GitHubProviderRetryBlocked,
+                BaseException,
+            )
+        ):
+            raise ContractError("qualified GitHub provider block type is invalid")
+        return delivery
+    except ContractError:
+        raise
+    except (
+        AttributeError,
+        ImportError,
+        OSError,
+        RuntimeError,
+        SyntaxError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise ContractError("qualified GitHub provider API cannot load") from error
+
+
+def _qualified_checkpoint_module(
+    root: Path,
+    *,
+    required: tuple[str, ...] = (),
+) -> Any:
+    """Load the installed checkpoint adapter through its fixed project path."""
+    path = root / ".kent/scripts/workflow-checkpoint"
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise ContractError("qualified workflow checkpoint adapter is unavailable") from error
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or path.is_symlink()
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o022
+    ):
+        raise ContractError("qualified workflow checkpoint adapter is unsafe")
+    try:
+        loader = importlib.machinery.SourceFileLoader(
+            "puber_workflow_checkpoint_native",
+            str(path),
+        )
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        if spec is None:
+            raise ContractError("qualified workflow checkpoint adapter cannot load")
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        if any(not hasattr(module, name) for name in required):
+            raise ContractError("qualified native Agent identity API is unavailable")
+        return module
+    except ContractError:
+        raise
+    except (
+        AttributeError,
+        ImportError,
+        OSError,
+        RuntimeError,
+        SyntaxError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise ContractError("qualified native Agent identity API cannot load") from error
+
+
+def producer_refs_from_commentary(
+    root: Path,
+    commentary: object,
+) -> list[str]:
+    """Parse only the exact qualified producer footer; malformed is not legacy."""
+    if commentary is None:
+        return []
+    if not isinstance(commentary, str):
+        raise ContractError("native producer commentary is invalid")
+    if "KENT_PACKET_SOURCE_V1" not in commentary:
+        return []
+    delivery = _qualified_delivery_module(
+        root,
+        required=("producer_locator",),
+    )
+    try:
+        locator = delivery.producer_locator(commentary)
+    except (TypeError, ValueError, UnicodeError):
+        raise ContractError("native producer commentary is malformed") from None
+    if not isinstance(locator, str) or not locator:
+        raise ContractError("native producer footer has no source locator")
+    return [locator]
+
+
+def capture_script_output(
+    root: Path,
+    payload: Mapping[str, Any],
+    result: Mapping[str, Any],
+    *,
+    producer_kind: str,
+    producer_refs: list[str],
+    github_retry_constraint: str | None = None,
+) -> bytes | None:
+    """Capture a string-only native Script result through the selected Kit API."""
+    if not producer_refs and github_retry_constraint is None:
+        return None
+    if (
+        not isinstance(payload, Mapping)
+        or any(not isinstance(value, str) for value in result.values())
+    ):
+        return None
+    metadata = payload.get("_kent")
+    if not isinstance(metadata, dict):
+        raise ContractError("producer capture requires the actual native Script context")
+    delivery = _qualified_delivery_module(
+        root,
+        required=("capture_script_producer", "packet_json"),
+    )
+    try:
+        binding = {
+            "producer_refs": delivery.packet_json(
+                {"refs": producer_refs}
+            ).decode("utf-8")
+        }
+        _locator, emitted = delivery.capture_script_producer(
+            root,
+            task=None,
+            native_context=dict(metadata),
+            producer_kind=producer_kind,
+            inputs={
+                key: value
+                for key, value in payload.items()
+                if isinstance(key, str) and isinstance(value, str)
+            },
+            result=dict(result),
+            native_read=_provider_native_read,
+            binding=binding,
+            github_retry_constraint=github_retry_constraint,
+        )
+    except Exception as error:
+        raise ContractError("qualified Script producer capture failed") from error
+    if not isinstance(emitted, bytes) or not emitted:
+        raise ContractError("qualified Script producer capture returned no bytes")
+    return emitted
+
+
+def emit_script_transition(
+    root: Path,
+    payload: Mapping[str, Any],
+    transition: str,
+    target: str,
+    fields: Mapping[str, Any],
+    *,
+    producer_kind: str,
+    commentary: str | None = None,
+    provider_error: BaseException | None = None,
+) -> None:
+    """Emit a route while retaining authenticated provider ancestry when possible."""
+    refs = producer_refs_from_commentary(root, payload.get("commentary"))
+    constraint = (
+        provider_retry_constraint_from_error(root, provider_error)
+        if provider_error is not None
+        else None
+    )
+    output = render_exact(
+        root,
+        transition,
+        target,
+        fields,
+        commentary=commentary,
+    )
+    emitted = capture_script_output(
+        root,
+        payload,
+        output,
+        producer_kind=producer_kind,
+        producer_refs=refs,
+        github_retry_constraint=constraint,
+    )
+    if emitted is not None:
+        sys.stdout.buffer.write(emitted)
+        return
+    if constraint is not None:
+        raise ContractError(
+            "provider retry failure cannot be represented by the exact native route"
+        )
+    if refs:
+        raise ContractError(
+            "qualified Script producer ancestry cannot be represented by the exact native route"
+        )
+    print(json.dumps(output, ensure_ascii=False, sort_keys=True))
+
+
+def _admit_first_script_ingress(
+    root: Path,
+    native_context: Mapping[str, Any],
+) -> None:
+    """Require the qualified native source receipt on the initial release Script."""
+    try:
+        delivery = _qualified_delivery_module(
+            root,
+            required=("admit_script_source_ingress",),
+        )
+        admission = delivery.admit_script_source_ingress(
+            root,
+            dict(native_context),
+            kent_path=_kent_bin(root),
+        )
+    except Exception:
+        raise ContractError("native Script source admission failed") from None
+
+    if (
+        getattr(admission, "project_id", None) != PROJECT_ID
+        or getattr(admission, "workflow_id", None) != WORKFLOW_ID
+        or not isinstance(
+            getattr(admission, "source_admission_sha256", None),
+            str,
+        )
+        or not HEX64.fullmatch(admission.source_admission_sha256)
+        or not isinstance(getattr(admission, "receipt_sha256", None), str)
+        or not HEX64.fullmatch(admission.receipt_sha256)
+    ):
+        raise ContractError("native Script source admission result is invalid")
+
+
+def _activate_github_provider_context(
+    root: Path,
+    payload: Mapping[str, Any],
+    state: Mapping[str, Any],
+) -> None:
+    global _ACTIVE_GITHUB_PROVIDER_CONTEXT
+    metadata = payload.get("_kent")
+    task_short_id = state.get("task_short_id")
+    if (
+        not isinstance(metadata, dict)
+        or set(metadata) != KENT_KEYS
+        or any(not isinstance(value, str) or not value for value in metadata.values())
+        or not isinstance(task_short_id, str)
+        or not task_short_id
+    ):
+        _ACTIVE_GITHUB_PROVIDER_CONTEXT = None
+        return
+    commentary = payload.get("commentary", "")
+    if not isinstance(commentary, str):
+        _ACTIVE_GITHUB_PROVIDER_CONTEXT = None
+        return
+    _ACTIVE_GITHUB_PROVIDER_CONTEXT = {
+        "root": root,
+        "task_short_id": task_short_id,
+        "native_context": dict(metadata),
+        "commentary": commentary,
+    }
+
+
+def github_provider_read_guard(root: Path) -> Callable[[], None]:
+    """Build a callback that rechecks native identity and producer ancestry per API call."""
+    context = _ACTIVE_GITHUB_PROVIDER_CONTEXT
+    if context is None or context.get("root") != root:
+        raise ContractError("GitHub provider guard has no exact Script ingress context")
+
+    def require_clear() -> None:
+        delivery = _qualified_delivery_module(root)
+        try:
+            locator = delivery.producer_locator(context["commentary"])
+        except (TypeError, ValueError, UnicodeError):
+            raise ContractError(
+                "GitHub provider source reference is invalid"
+            ) from None
+        refs = [locator] if locator is not None else []
+        identity = delivery.observe_script_identity(
+            root,
+            context["task_short_id"],
+            dict(context["native_context"]),
+            native_read=_provider_native_read,
+        )
+        blocked = delivery.GitHubProviderRetryBlocked
+        try:
+            delivery.require_github_provider_read(root, refs, identity)
+        except blocked as error:
+            state = getattr(error, "state", None)
+            if state not in {"not_before", "unknown"}:
+                raise ContractError(
+                    "GitHub provider guard returned an invalid block state"
+                ) from None
+            raise GitHubProviderReadBlocked(state) from None
+
+    return require_clear
+
 
 def _kent_worktree_bin() -> str:
     candidate = os.environ.get("PUBER_KENT_WORKTREE_BIN", "") or str(Path.home() / ".kent/bin/kent-worktree")
@@ -525,6 +962,32 @@ def validate_cleanup_agent(root: Path, task_id: str, caller: str, *, allowed_not
     state.update(caller_session_id=caller, caller_identity=identity)
     return state
 
+def normalize_transport_nulls(
+    fields: Mapping[str, Any],
+    edge_key: str,
+) -> dict[str, Any]:
+    """Normalize native JSON-null strings only on explicitly nullable routes."""
+    normalized = dict(fields)
+    nullable_fields = ROUTE_NULLABLE_FIELDS_BY_EDGE.get(edge_key, frozenset())
+    for key in NULLABLE_TRANSPORT_FIELDS & set(normalized):
+        value = normalized[key]
+        if value is None:
+            if key not in nullable_fields:
+                raise ContractError(
+                    f"{key} absence is not authorized on route {edge_key}"
+                )
+            normalized[key] = None
+        elif (
+            not isinstance(value, str)
+            or not value.strip()
+            or value.strip() == "null"
+        ):
+            raise ContractError(
+                f"{key} must be a non-empty string or route-authorized JSON null"
+            )
+    return normalized
+
+
 def validate_envelope(
     payload: Mapping[str, Any],
     root: Path,
@@ -535,15 +998,20 @@ def validate_envelope(
     profile_recovery_admission: Callable[[dict[str, Any]], None] | None = None,
     cleanup_recovery_admission: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    global _ACTIVE_GITHUB_PROVIDER_CONTEXT
+    _ACTIVE_GITHUB_PROVIDER_CONTEXT = None
     if not isinstance(payload, Mapping):
         raise ContractError("Script input must be one object")
     metadata = payload.get("_kent")
     if not isinstance(metadata, dict) or set(metadata) != KENT_KEYS:
         raise ContractError("_kent must contain exactly task_id and node_id")
+    if node_key == "release_intent_gate" and ENTRY_TRANSITION not in payload:
+        _admit_first_script_ingress(root, metadata)
     task_id = require_string(metadata.get("task_id"), "_kent.task_id")
     if metadata.get("node_id") != _node_id(root, node_key):
         raise ContractError("_kent.node_id does not match the current Script")
     has_route = ENTRY_TRANSITION in payload
+    ci_preparation_retry = node_key == "ci_prepare" and not has_route
     if node_key in INITIAL_SCRIPT_ENTRY and not has_route:
         # Start -> release_intent_gate is the one explicit initial variant.
         branch = INITIAL_SCRIPT_ENTRY[node_key]
@@ -565,6 +1033,16 @@ def validate_envelope(
         )
         if source.get("kind") != "start" or edge.get("parameters") != []:
             raise ContractError("initial release-intent route is not the exact Start variant")
+    elif ci_preparation_retry:
+        branch = CI_PREPARATION_RETRY_ROUTE
+        edge = graph_edge(root, branch, node_key)
+        parameter_keys = [
+            item.get("key") for item in edge.get("parameters", [])
+        ]
+        if tuple(parameter_keys) != CI_PREPARATION_RETRY_FIELDS:
+            raise ContractError(
+                "CI preparation retry route differs from its exact S4 carrier"
+            )
     else:
         branch = require_string(payload.get(ENTRY_TRANSITION), ENTRY_TRANSITION)
         edge = graph_edge(root, branch, node_key)
@@ -588,6 +1066,8 @@ def validate_envelope(
     expected_payload = set(expected) | {"_kent"}
     if has_route:
         expected_payload.add(ENTRY_TRANSITION)
+    if ci_preparation_retry:
+        expected_payload.add("commentary")
     if "commentary" in payload:
         commentary = payload["commentary"]
         if not isinstance(commentary, str):
@@ -607,19 +1087,33 @@ def validate_envelope(
     }
     if set(business) != expected:
         raise ContractError(f"input fields do not exactly match graph edge {branch}")
+    business = normalize_transport_nulls(business, edge["key"])
+    if ci_preparation_retry:
+        for key in CI_PREPARATION_RETRY_FIELDS:
+            value = business.get(key)
+            if (
+                not isinstance(value, str)
+                or not value
+                or value.strip() != value
+            ):
+                raise ContractError(
+                    f"native CI preparation retry field {key} is invalid"
+                )
     allowed_notes = business.get("release_notes_path") if isinstance(business.get("release_notes_path"), str) else None
+    state = validate_task(
+        root,
+        task_id,
+        node_key,
+        task,
+        allowed_notes_path=allowed_notes,
+        allowed_checkout_head=allowed_checkout_head,
+        profile_recovery_admission=profile_recovery_admission,
+        cleanup_recovery_admission=cleanup_recovery_admission,
+    )
+    _activate_github_provider_context(root, payload, state)
     return (
         business,
-        validate_task(
-            root,
-            task_id,
-            node_key,
-            task,
-            allowed_notes_path=allowed_notes,
-            allowed_checkout_head=allowed_checkout_head,
-            profile_recovery_admission=profile_recovery_admission,
-            cleanup_recovery_admission=cleanup_recovery_admission,
-        ),
+        state,
         edge,
     )
 
@@ -643,9 +1137,28 @@ def output_edge(root: Path, transition: str, target_node: str) -> dict[str, Any]
         raise ContractError(f"output transition is not an exact graph edge: {transition}")
     return matches[0]
 
-def emit_exact(root: Path, transition: str, target_node: str, fields: Mapping[str, Any], *, commentary: str | None = None) -> None:
+def render_exact(
+    root: Path,
+    transition: str,
+    target_node: str,
+    fields: Mapping[str, Any],
+    *,
+    commentary: str | None = None,
+) -> dict[str, Any]:
     edge = output_edge(root, transition, target_node)
     graph = json.loads((root / GRAPH_PATH).read_text(encoding="utf-8"))
+    groups = [
+        item for item in graph.get("transition_groups", [])
+        if item.get("id") == edge.get("transition_group_id")
+    ]
+    if (
+        len(groups) != 1
+        or not isinstance(groups[0].get("transition_id"), str)
+        or not groups[0]["transition_id"]
+    ):
+        raise ContractError(
+            f"output edge has no exact native transition group: {transition}"
+        )
     target = next(
         (item for item in graph.get("nodes", []) if item.get("key") == target_node),
         {},
@@ -669,13 +1182,58 @@ def emit_exact(root: Path, transition: str, target_node: str, fields: Mapping[st
         expected = set(parameter_keys)
     if set(fields) != expected:
         raise ContractError(f"output fields do not exactly match graph edge {transition}")
-    output = {"transition": transition, **dict(fields)}
+    nullable_fields = ROUTE_NULLABLE_FIELDS_BY_EDGE.get(transition, frozenset())
+    empty_optional_fields = CLEANUP_EMPTY_OPTIONAL_FIELDS_BY_EDGE.get(
+        transition,
+        frozenset(),
+    )
+    for key, value in fields.items():
+        if value is None:
+            if key not in NULLABLE_TRANSPORT_FIELDS or key not in nullable_fields:
+                raise ContractError(
+                    f"{key} absence is not authorized on route {transition}"
+                )
+            continue
+        if (
+            key in NULLABLE_TRANSPORT_FIELDS
+            and not (
+                key in empty_optional_fields
+                and value == ""
+            )
+            and (
+            not isinstance(value, str)
+            or not value.strip()
+            or value.strip() == "null"
+            )
+        ):
+            raise ContractError(
+                f"{key} must be a non-empty packet string or route-authorized JSON null"
+            )
+    output = {"transition": groups[0]["transition_id"], **dict(fields)}
     if routed_script:
         output[ENTRY_TRANSITION] = transition
     if commentary is not None:
         if not isinstance(commentary, str) or len(commentary.encode("utf-8")) > 8192:
             raise ContractError("native approval commentary is invalid")
         output["commentary"] = commentary
+    return output
+
+
+def emit_exact(
+    root: Path,
+    transition: str,
+    target_node: str,
+    fields: Mapping[str, Any],
+    *,
+    commentary: str | None = None,
+) -> None:
+    output = render_exact(
+        root,
+        transition,
+        target_node,
+        fields,
+        commentary=commentary,
+    )
     print(json.dumps(output, ensure_ascii=False, sort_keys=True))
 
 def _kit_modules() -> dict[str, Any]:
@@ -785,11 +1343,78 @@ def _kit_modules() -> dict[str, Any]:
     runtime = importlib.import_module("workflowkit.runtime")
     result = {name: getattr(workflowkit, name) for name in ("ProjectProfile","ReleaseSpec","NormalizedGitHubWorkflowSourceV1","preflight_project_revision","capture_runtime_execution_context","capture_runtime_authority_binding","validate_operation_jobs","canonicalize_publication_operation")}
     result.update({name: getattr(runtime, name) for name in ("validate_terminal_seal_request","validate_terminal_marker","parse_terminal_marker_line","terminal_marker_line","validate_cleanup_report","validate_terminal_chain","canonical_sha256")})
-    result.update({name: getattr(runtime, name) for name in ("validate_ci_report", "validate_ci_archive", "parse_canonical_json", "MAX_CI_REPORT_BYTES", "MAX_DYNAMIC_CI_REPORT_BYTES")})
+    result.update({name: getattr(runtime, name) for name in (
+        "validate_ci_report",
+        "validate_ci_archive",
+        "parse_canonical_json",
+        "MAX_CI_REPORT_BYTES",
+        "MAX_DYNAMIC_CI_REPORT_BYTES",
+        "merge_github_retry_constraints",
+    )})
     revision = importlib.import_module("workflowkit.revision")
     result.update({name: getattr(revision, name) for name in ("read_blob_bytes", "tree_mode", "collect_runtime_external_captures", "run_git")})
     ci = importlib.import_module("workflowkit.ci_contract")
     result.update({name: getattr(ci, name) for name in ("normalize_github_workflow", "read_pull_request")})
+    preparation_diagnostic_validator = getattr(
+        ci,
+        "validate_ci_preparation_diagnostic",
+        None,
+    )
+    if callable(preparation_diagnostic_validator):
+        result["validate_ci_preparation_diagnostic"] = (
+            preparation_diagnostic_validator
+        )
+    typed_preparation_failure = getattr(
+        ci,
+        "typed_preparation_failure",
+        None,
+    )
+    if callable(typed_preparation_failure):
+        result["typed_preparation_failure"] = typed_preparation_failure
+    delivery_runtime = getattr(runtime, "validate_delivery_context", None)
+    if callable(delivery_runtime):
+        result["validate_delivery_context"] = delivery_runtime
+    runtime_canonical_bytes = getattr(runtime, "canonical_bytes", None)
+    if callable(runtime_canonical_bytes):
+        result["kit_canonical_bytes"] = runtime_canonical_bytes
+    for name in (
+        "unwrap_delivery_context_payload",
+        "_validated_resume_context",
+    ):
+        function = getattr(ci, name, None)
+        if callable(function):
+            result[name] = function
+    try:
+        delivery = importlib.import_module("workflowkit.delivery")
+    except (ImportError, AttributeError):
+        delivery = None
+    if delivery is not None:
+        delivery_path = Path(delivery.__file__).resolve()
+        if kit_root not in delivery_path.parents:
+            raise ContractError("Kit delivery import escaped the selected root")
+        for name in (
+            "capture_script_producer",
+            "observe_script_identity",
+            "producer_locator",
+            "reconstruct_producer",
+            "producer_reference_closure",
+            "packet_decode",
+            "packet_json",
+            "pack_delivery",
+            "transition_contract_reference",
+        ):
+            function = getattr(delivery, name, None)
+            if callable(function):
+                result[name] = function
+        producer_retry_constraints = getattr(
+            delivery,
+            "_producer_github_retry_constraints",
+            None,
+        )
+        if callable(producer_retry_constraints):
+            result["producer_github_retry_constraints"] = (
+                producer_retry_constraints
+            )
     result["resolve_github_merge_strategy"] = importlib.import_module("workflowkit.merge_strategy").resolve_github_merge_strategy
     result.update({name: getattr(runtime, name) for name in ("validate_expected_ci_checks", "expected_ci_checks_sha256", "validate_ci_policy_snapshot", "ci_policy_projection_sha256")})
     return result
@@ -822,7 +1447,11 @@ def _runtime_contracts_module(root: Path) -> Any:
     ) as error:
         raise ContractError("runtime contract support module cannot load") from error
 
-def _github_observer(root: Path) -> Any:
+def _github_observer(
+    root: Path,
+    *,
+    provider_guard: Callable[[], None] | None = None,
+) -> Any:
     """Load the project-materialized shared read-only GitHub observer."""
     path = root / ".kent/scripts/workflow_github_observation.py"
     if path.is_symlink() or not path.is_file():
@@ -841,6 +1470,11 @@ def _github_observer(root: Path) -> Any:
             root,
             gh_bin=os.environ.get("PUBER_GH_BIN")
             or os.environ.get("KENT_GH_BIN"),
+            provider_guard=(
+                github_provider_read_guard(root)
+                if provider_guard is None
+                else provider_guard
+            ),
         )
     except ContractError:
         raise
@@ -854,6 +1488,55 @@ def _github_observer(root: Path) -> Any:
         ValueError,
     ) as error:
         raise ContractError("shared GitHub observation module cannot load") from error
+
+def provider_retry_constraint_from_error(
+    root: Path,
+    error: BaseException,
+    *,
+    interval: int = 0,
+    failure_count: int = 1,
+) -> str | None:
+    """Expose only the shared observer's closed DTO, never response details."""
+    if isinstance(error, GitHubProviderReadBlocked):
+        return None
+    retained = getattr(error, "github_retry_constraint", None)
+    if isinstance(retained, str):
+        return retained
+    path = root / ".kent/scripts/workflow_github_observation.py"
+    if path.is_symlink() or not path.is_file():
+        raise ContractError("shared GitHub retry adapter is missing or unsafe")
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "puber_github_retry_observation",
+            path,
+        )
+        if spec is None or spec.loader is None:
+            raise ContractError("shared GitHub retry adapter cannot load")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        extract = getattr(module, "provider_retry_constraint", None)
+        if not callable(extract):
+            raise ContractError("shared GitHub retry adapter API is unavailable")
+        return extract(
+            error,
+            interval=interval,
+            failure_count=failure_count,
+        )
+    except ContractError:
+        raise
+    except (
+        AttributeError,
+        ImportError,
+        OSError,
+        RuntimeError,
+        SyntaxError,
+        TypeError,
+        ValueError,
+    ) as load_error:
+        raise ContractError(
+            "shared GitHub retry adapter cannot evaluate failure"
+        ) from load_error
+
 
 def _external_captures(root: Path, profile: Any, selected: Any) -> list[tuple[str, str, bytes]]:
     return list(_kit_modules()["collect_runtime_external_captures"](root, selected))
@@ -1130,27 +1813,63 @@ def remote_master(root: Path) -> str:
         raise ContractError("remote master does not resolve to an exact commit")
     return obj["sha"]
 
-def gh(root: Path, args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+def gh(
+    root: Path,
+    args: list[str],
+    *,
+    input_text: str | None = None,
+    provider_guard: Callable[[], None] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    (
+        github_provider_read_guard(root)
+        if provider_guard is None
+        else provider_guard
+    )()
     return run([os.environ.get("PUBER_GH_BIN", shutil.which("gh") or "gh"), *args], cwd=root, env=child_env(), check=False, input_text=input_text)
 
-def gh_api(root: Path, endpoint: str, *, headers: list[str] | None = None, allow_404: bool = False) -> Any:
+def gh_api(
+    root: Path,
+    endpoint: str,
+    *,
+    headers: list[str] | None = None,
+    allow_404: bool = False,
+    provider_guard: Callable[[], None] | None = None,
+) -> Any:
     args = ["api", endpoint]
     for header in headers or []:
         args.extend(["--header", header])
-    result = gh(root, args)
+    result = gh(root, args, provider_guard=provider_guard)
     if result.returncode != 0:
         if allow_404 and "404" in (result.stderr or ""):
             return None
-        raise ContractError(f"GitHub API request failed: {endpoint}")
+        raise GitHubProviderRequestError("GitHub API request failed")
     return _json_one(result.stdout.encode("utf-8"))
 
-def gh_api_bytes(root: Path, endpoint: str) -> bytes:
+def gh_api_bytes(
+    root: Path,
+    endpoint: str,
+    *,
+    provider_guard: Callable[[], None] | None = None,
+) -> bytes:
+    (
+        github_provider_read_guard(root)
+        if provider_guard is None
+        else provider_guard
+    )()
     binary = run_bytes([os.environ.get("PUBER_GH_BIN", shutil.which("gh") or "gh"), "api", endpoint, "--header", "Accept: application/octet-stream"], cwd=root, env=child_env(), check=False)
     if binary.returncode != 0:
-        raise ContractError(f"GitHub asset download failed: {endpoint}")
+        raise GitHubProviderRequestError("GitHub asset download failed")
     return binary.stdout
 
-def pr_state(root: Path, url: str) -> dict[str, Any]:
+def pr_state(
+    root: Path,
+    url: str,
+    *,
+    expected_base_branch: str = "master",
+) -> dict[str, Any]:
+    expected_base_branch = require_string(
+        expected_base_branch, "expected_pr_base_branch"
+    )
     number = int(urlsplit(url).path.rsplit("/", 1)[1])
     value = gh_api(root, f"repos/{REPOSITORY}/pulls/{number}")
     if not isinstance(value, dict):
@@ -1158,8 +1877,8 @@ def pr_state(root: Path, url: str) -> dict[str, Any]:
     base, head, repo = value.get("base"), value.get("head"), value.get("base", {}).get("repo") if isinstance(value.get("base"), dict) else None
     if value.get("html_url") != url or value.get("state") != "closed" or value.get("merged_at") is None or value.get("merged") is not True:
         raise ContractError("PR is not exact merged evidence")
-    if not isinstance(base, dict) or not isinstance(head, dict) or not isinstance(repo, dict) or base.get("ref") != "master" or base.get("repo", {}).get("full_name") != REPOSITORY or head.get("repo", {}).get("full_name") != REPOSITORY:
-        raise ContractError("PR is not same-repository master evidence")
+    if not isinstance(base, dict) or not isinstance(head, dict) or not isinstance(repo, dict) or base.get("ref") != expected_base_branch or base.get("repo", {}).get("full_name") != REPOSITORY or head.get("repo", {}).get("full_name") != REPOSITORY:
+        raise ContractError("PR is not same-repository evidence for the expected target branch")
     if not SHA1.fullmatch(str(head.get("sha", ""))) or not SHA1.fullmatch(str(base.get("sha", ""))) or not SHA1.fullmatch(str(value.get("merge_commit_sha", ""))):
         raise ContractError("PR OID evidence is not exact")
     return {"url": url, "state": "MERGED", "mergedAt": value["merged_at"], "headRefName": head.get("ref"), "headRefOid": head["sha"], "baseRefName": base["ref"], "baseRefOid": base["sha"], "mergeCommit": {"oid": value["merge_commit_sha"]}, "isCrossRepository": False}
@@ -1168,8 +1887,18 @@ def local_tag(root: Path, tag: str) -> str:
     value = git(root, "rev-parse", f"refs/tags/{tag}^{{commit}}", check=False)
     return value if SHA1.fullmatch(value) else ""
 
-def remote_tag(root: Path, tag: str) -> str:
-    value = gh_api(root, f"repos/{REPOSITORY}/git/ref/tags/{tag}", allow_404=True)
+def remote_tag(
+    root: Path,
+    tag: str,
+    *,
+    provider_guard: Callable[[], None] | None = None,
+) -> str:
+    value = gh_api(
+        root,
+        f"repos/{REPOSITORY}/git/ref/tags/{tag}",
+        allow_404=True,
+        provider_guard=provider_guard,
+    )
     if value is None:
         return ""
     if not isinstance(value, dict) or value.get("ref") != f"refs/tags/{tag}" or not isinstance(value.get("object"), dict):
@@ -1178,7 +1907,11 @@ def remote_tag(root: Path, tag: str) -> str:
     if obj.get("type") == "commit" and SHA1.fullmatch(str(obj.get("sha", ""))):
         return obj["sha"]
     if obj.get("type") == "tag" and SHA1.fullmatch(str(obj.get("sha", ""))):
-        annotated = gh_api(root, f"repos/{REPOSITORY}/git/tags/{obj['sha']}")
+        annotated = gh_api(
+            root,
+            f"repos/{REPOSITORY}/git/tags/{obj['sha']}",
+            provider_guard=provider_guard,
+        )
         if isinstance(annotated, dict) and isinstance(annotated.get("object"), dict) and annotated["object"].get("type") == "commit" and SHA1.fullmatch(str(annotated["object"].get("sha", ""))):
             return annotated["object"]["sha"]
     raise ContractError("remote tag does not resolve to an exact commit")
@@ -1647,10 +2380,15 @@ def _read_release_run_all_jobs(
     run: Mapping[str, Any],
     target: str,
     tag: str,
+    *,
+    provider_guard: Callable[[], None] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Read one pinned run and classify every job reported for that attempt."""
     try:
-        observed = _github_observer(root).observe_run(
+        observed = _github_observer(
+            root,
+            provider_guard=provider_guard,
+        ).observe_run(
             REPOSITORY,
             run["run_id"],
             attempt=run["attempt"],
@@ -1866,7 +2604,14 @@ def discover_release_run(root: Path, tag: str, target: str) -> dict[str, Any]:
         raise ContractError("discovered run identity is invalid")
     return {"schema": "puber_release_run_v1", "state": "selected", "repository": REPOSITORY, "workflow_path": ".github/workflows/release.yml", "workflow_name": "Release", "event": "push", "run_id": row["id"], "attempt": row["run_attempt"], "head_sha": target, "ref": f"refs/tags/{tag}", "head_branch": tag}
 
-def read_release_run(root: Path, run: Mapping[str, Any], target: str, tag: str) -> tuple[dict[str, Any], dict[str, Any]]:
+def read_release_run(
+    root: Path,
+    run: Mapping[str, Any],
+    target: str,
+    tag: str,
+    *,
+    provider_guard: Callable[[], None] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return the legacy effect proof after a complete all-job observation.
 
     The singular ``jobs.job`` carrier remains the exact publication-effect
@@ -1879,12 +2624,27 @@ def read_release_run(root: Path, run: Mapping[str, Any], target: str, tag: str) 
         run,
         target,
         tag,
+        provider_guard=provider_guard,
     )
     return run_api, effect_job
 
-def read_release(root: Path, tag: str, target: str) -> dict[str, Any]:
-    release = gh_api(root, f"repos/{REPOSITORY}/releases/tags/{tag}")
-    remote_target = remote_tag(root, tag)
+def read_release(
+    root: Path,
+    tag: str,
+    target: str,
+    *,
+    provider_guard: Callable[[], None] | None = None,
+) -> dict[str, Any]:
+    release = gh_api(
+        root,
+        f"repos/{REPOSITORY}/releases/tags/{tag}",
+        provider_guard=provider_guard,
+    )
+    remote_target = remote_tag(
+        root,
+        tag,
+        provider_guard=provider_guard,
+    )
     if remote_target != target:
         raise ContractError("remote release tag does not resolve to the exact target")
     if not isinstance(release, dict) or release.get("tag_name") != tag or release.get("target_commitish") != "master" or release.get("name") != f"Puber {tag}" or release.get("draft") is not False or release.get("prerelease") is not False or release.get("html_url") != f"https://github.com/{REPOSITORY}/releases/tag/{tag}":
@@ -1904,8 +2664,16 @@ def read_release(root: Path, tag: str, target: str) -> dict[str, Any]:
         raise ContractError("GitHub Release asset IDs are duplicated")
     apk = next(item for item in normalized_assets if item["name"].endswith(".apk"))
     checksum = next(item for item in normalized_assets if item["name"].endswith(".apk.sha256"))
-    apk_bytes = gh_api_bytes(root, f"repos/{REPOSITORY}/releases/assets/{apk['id']}")
-    checksum_bytes = gh_api_bytes(root, f"repos/{REPOSITORY}/releases/assets/{checksum['id']}")
+    apk_bytes = gh_api_bytes(
+        root,
+        f"repos/{REPOSITORY}/releases/assets/{apk['id']}",
+        provider_guard=provider_guard,
+    )
+    checksum_bytes = gh_api_bytes(
+        root,
+        f"repos/{REPOSITORY}/releases/assets/{checksum['id']}",
+        provider_guard=provider_guard,
+    )
     if len(apk_bytes) != apk["size"] or len(checksum_bytes) != checksum["size"]:
         raise ContractError("downloaded release asset sizes do not match metadata")
     try:

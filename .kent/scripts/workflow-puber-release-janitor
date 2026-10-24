@@ -1,0 +1,460 @@
+#!/usr/bin/env python3
+"""Puber Release adapter for the qualified shared Task Janitor."""
+from __future__ import annotations
+
+import importlib.util
+import io
+import json
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from typing import Any, Mapping
+
+sys.dont_write_bytecode = True
+_HELPER_PATH = Path(__file__).with_name("workflow-puber-release-intent")
+_HELPER_SPEC = importlib.util.spec_from_loader(
+    "puber_release_janitor_runtime",
+    SourceFileLoader("puber_release_janitor_runtime", str(_HELPER_PATH)),
+)
+helper = importlib.util.module_from_spec(_HELPER_SPEC)
+assert _HELPER_SPEC and _HELPER_SPEC.loader
+_HELPER_SPEC.loader.exec_module(helper)
+ROOT = helper.ROOT
+JANITOR_PATH = ROOT / ".kent/scripts/workflow-task-janitor"
+WORKFLOW_ID = helper.WORKFLOW_ID
+OUTPUT_FIELDS = (
+    "workspace_path",
+    "operation_id",
+    "branch_name",
+    "pr_base_branch",
+    "cleanup_mode",
+    "cleanup_report",
+)
+_NATIVE_CONTEXT: dict[str, str] | None = None
+_NATIVE_IDENTITY: dict[str, Any] | None = None
+_INPUT_PAYLOAD: dict[str, Any] | None = None
+_PRODUCER_REFS: list[str] = []
+_EMITTED = False
+_OUTPUT_TEMPLATES: dict[str, dict[str, Any]] = {}
+_SHARED_JANITOR: Any | None = None
+_JANITOR_MAIN_STARTED = False
+
+
+def _load_janitor():
+    try:
+        metadata = JANITOR_PATH.lstat()
+    except OSError as error:
+        raise helper.ContractError(
+            "qualified shared Task Janitor is unavailable"
+        ) from error
+    if JANITOR_PATH.is_symlink() or not JANITOR_PATH.is_file():
+        raise helper.ContractError("shared Task Janitor path is unsafe")
+    if metadata.st_mode & 0o022:
+        raise helper.ContractError("shared Task Janitor is writable by others")
+    loader = SourceFileLoader("puber_shared_task_janitor", str(JANITOR_PATH))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    if spec is None:
+        raise helper.ContractError("shared Task Janitor cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    if not callable(getattr(module, "prepare_provider_guard", None)):
+        raise helper.ContractError(
+            "shared Task Janitor lacks the qualified provider-read guard"
+        )
+    if not callable(getattr(module, "format_cleanup_report", None)):
+        raise helper.ContractError(
+            "shared Task Janitor lacks the canonical cleanup report formatter"
+        )
+    return module
+
+
+def _target_and_transition(transition: str, report: str) -> tuple[str, str]:
+    if transition == "task_janitor_blocked":
+        return "task_janitor_blocked", "cleanup"
+    if transition != "task_janitor_done":
+        raise helper.ContractError("shared Janitor returned an unknown outcome")
+    previous = (_INPUT_PAYLOAD or {}).get("cleanup_report")
+    delta = report
+    if isinstance(previous, str) and report.startswith(previous):
+        delta = report[len(previous):]
+    if (
+        "Janitor removed managed worktree " in delta
+        or "cleanup completed despite the uncertain acknowledgement." in delta
+        or "Janitor kept the primary checkout and removed runtime state:" in delta
+    ):
+        return "task_janitor_done", "done"
+    if any(
+        phrase in delta
+        for phrase in (
+            "Janitor intentionally preserved ",
+            "Janitor preserved ",
+            "Janitor kept the primary checkout and preserved runtime state:",
+        )
+    ):
+        return "task_janitor_preserved", "done"
+    raise helper.ContractError(
+        "shared Janitor completion did not identify a recognized disposition"
+    )
+
+
+def _native_output(transition: str, report: str) -> dict[str, Any]:
+    if _INPUT_PAYLOAD is None:
+        raise helper.ContractError("Puber Janitor input is unavailable")
+    native_transition, target = _target_and_transition(transition, report)
+    template = _OUTPUT_TEMPLATES.get(native_transition)
+    if template is None:
+        fields = {
+            "workspace_path": _INPUT_PAYLOAD["workspace_path"],
+            "operation_id": _INPUT_PAYLOAD["operation_id"],
+            "branch_name": _INPUT_PAYLOAD["branch_name"],
+            "pr_base_branch": _INPUT_PAYLOAD["pr_base_branch"],
+            "cleanup_mode": _INPUT_PAYLOAD["cleanup_mode"],
+            "cleanup_report": _INPUT_PAYLOAD["cleanup_report"],
+        }
+        output = helper.render_exact(ROOT, native_transition, target, fields)
+    else:
+        output = dict(template)
+    shared = _SHARED_JANITOR
+    formatter = getattr(shared, "format_cleanup_report", None)
+    if not callable(formatter):
+        raise helper.ContractError(
+            "shared Janitor cleanup report formatter is unavailable"
+        )
+    output["cleanup_report"] = formatter(
+        getattr(shared, "_ORIGINAL_CLEANUP_REPORT", None),
+        report,
+        runtime=getattr(shared, "_CLEANUP_REPORT_RUNTIME", None),
+    )
+    return output
+
+
+def _prepare_output_templates() -> dict[str, dict[str, Any]]:
+    if _INPUT_PAYLOAD is None:
+        raise helper.ContractError("Puber Janitor input is unavailable")
+    templates: dict[str, dict[str, Any]] = {}
+    routes = {
+        "task_janitor_blocked": "cleanup",
+        "task_janitor_done": "done",
+        "task_janitor_preserved": "done",
+    }
+    for transition, target in routes.items():
+        fields = {
+            "workspace_path": _INPUT_PAYLOAD["workspace_path"],
+            "operation_id": _INPUT_PAYLOAD["operation_id"],
+            "branch_name": _INPUT_PAYLOAD["branch_name"],
+            "pr_base_branch": _INPUT_PAYLOAD["pr_base_branch"],
+            "cleanup_mode": _INPUT_PAYLOAD["cleanup_mode"],
+            "cleanup_report": _INPUT_PAYLOAD["cleanup_report"],
+        }
+        templates[transition] = helper.render_exact(
+            ROOT,
+            transition,
+            target,
+            fields,
+        )
+    return templates
+
+
+def _complete(
+    transition: str,
+    report: str,
+    blocker: str = "",
+    *,
+    producer_payload: dict[str, object] | None = None,
+    github_retry_constraint: str | None = None,
+) -> None:
+    global _EMITTED
+    if _EMITTED:
+        raise helper.ContractError("shared Janitor emitted more than one result")
+    output = _native_output(transition, report)
+    root_exists = ROOT.is_dir()
+    emitted = None
+    if (_PRODUCER_REFS or github_retry_constraint is not None) and root_exists:
+        emitted = helper.capture_script_output(
+            ROOT,
+            _INPUT_PAYLOAD or {},
+            output,
+            producer_kind="puber-release-janitor",
+            producer_refs=_PRODUCER_REFS,
+            github_retry_constraint=github_retry_constraint,
+        )
+    elif github_retry_constraint is not None:
+        raise helper.ContractError(
+            "provider retry constraint cannot be retained after Janitor root deletion"
+        )
+
+    if emitted is not None:
+        sys.stdout.buffer.write(emitted)
+    else:
+        commentary = (_INPUT_PAYLOAD or {}).get("commentary")
+        if commentary is not None:
+            if not isinstance(commentary, str):
+                raise helper.ContractError("Puber Janitor commentary is invalid")
+            output["commentary"] = commentary
+        print(json.dumps(output, ensure_ascii=False, sort_keys=True))
+    _EMITTED = True
+
+
+def _current_native_graph(payload: Mapping[str, Any]) -> dict[str, Any]:
+    metadata = payload.get("_kent")
+    if (
+        not isinstance(metadata, dict)
+        or set(metadata) != helper.KENT_KEYS
+        or any(not isinstance(value, str) or not value for value in metadata.values())
+    ):
+        raise helper.ContractError("Puber Janitor requires exact native Script identity")
+    delivery = helper._qualified_delivery_module(
+        ROOT,
+        required=("observe_script_identity",),
+    )
+    try:
+        identity, detail, graph = delivery.observe_script_identity(
+            ROOT,
+            None,
+            dict(metadata),
+            native_read=helper._provider_native_read,
+            return_details=True,
+        )
+    except Exception as error:
+        raise helper.ContractError(
+            "Puber Janitor native Script identity could not be authenticated"
+        ) from error
+    if (
+        not isinstance(identity, dict)
+        or identity.get("task_id") != metadata["task_id"]
+        or identity.get("node_id") != metadata["node_id"]
+        or identity.get("workspace_path") != str(ROOT)
+        or not isinstance(identity.get("task_short_id"), str)
+        or not identity["task_short_id"]
+        or not isinstance(detail, dict)
+        or not isinstance(graph, dict)
+        or graph.get("workflow_id") != WORKFLOW_ID
+        or graph.get("expected_version") != helper.WORKFLOW_REVISION
+    ):
+        raise helper.ContractError("Puber Janitor native graph identity drifted")
+    current = [
+        node for node in graph.get("graph", {}).get("nodes", [])
+        if node.get("id") == metadata["node_id"]
+    ]
+    if len(current) != 1 or current[0].get("key") != "task_janitor":
+        raise helper.ContractError("current native Script is not Puber Task Janitor")
+    return identity
+
+
+def _validate_payload(payload: object) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise helper.ContractError("Puber Janitor input must be one JSON object")
+    global _NATIVE_IDENTITY
+    _NATIVE_IDENTITY = _current_native_graph(payload)
+    commentary = payload.get("commentary")
+    if commentary is not None and (
+        not isinstance(commentary, str)
+        or len(commentary.encode("utf-8")) > 8192
+    ):
+        raise helper.ContractError("Puber Janitor commentary is invalid")
+    required = {
+        "workspace_path", "operation_id", "branch_name", "pr_base_branch",
+        "cleanup_mode", "cleanup_report", "_kent",
+    }
+    if not required <= set(payload):
+        raise helper.ContractError("Puber Janitor input omits required carrier fields")
+    if any(not isinstance(value, str) for key, value in payload.items() if key != "_kent"):
+        raise helper.ContractError("Puber Janitor business fields must be strings")
+    if payload["workspace_path"] != str(ROOT):
+        raise helper.ContractError("Puber Janitor workspace differs from its native root")
+    if not helper.HEX64.fullmatch(payload["operation_id"]):
+        raise helper.ContractError("Puber Janitor operation identity is invalid")
+    edges = [
+        edge
+        for edge in json.loads(
+            (ROOT / helper.GRAPH_PATH).read_text(encoding="utf-8")
+        ).get("edges", [])
+        if edge.get("target_node_id") == payload["_kent"]["node_id"]
+    ]
+    incoming_shapes = {
+        frozenset(
+            parameter.get("key")
+            for parameter in edge.get("parameters", [])
+        )
+        for edge in edges
+    }
+    actual_shape = frozenset(
+        key for key in payload if key not in {"_kent", "commentary"}
+    )
+    if actual_shape not in incoming_shapes:
+        raise helper.ContractError(
+            "Puber Janitor input does not match an exact native incoming carrier"
+        )
+    return dict(payload)
+
+
+def _restore_replay_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Restore omitted Janitor inputs only from the exact native prior result."""
+    shape = frozenset(key for key in payload if key not in {"_kent", "commentary"})
+    graph_value = json.loads(
+        (ROOT / helper.GRAPH_PATH).read_text(encoding="utf-8")
+    )
+    janitor = next(
+        node for node in graph_value.get("nodes", [])
+        if node.get("key") == "task_janitor"
+    )
+    incoming = [
+        edge for edge in graph_value.get("edges", [])
+        if edge.get("target_node_id") == janitor.get("id")
+    ]
+    source = [
+        node for node in graph_value.get("nodes", [])
+        if node.get("key") == "cleanup"
+    ]
+    if len(source) != 1:
+        raise helper.ContractError("Puber Janitor source Agent is ambiguous")
+    source_groups = {
+        group.get("id")
+        for group in graph_value.get("transition_groups", [])
+        if group.get("source_node_id") == source[0].get("id")
+    }
+    source_edges = [
+        edge for edge in incoming
+        if edge.get("key") == "cleanup_task_janitor"
+        and edge.get("transition_group_id") in source_groups
+    ]
+    if len(source_edges) != 1:
+        raise helper.ContractError(
+            "Puber Janitor original Agent carrier is ambiguous"
+        )
+    full_shape = frozenset(
+        parameter.get("key")
+        for parameter in source_edges[0].get("parameters", [])
+    )
+    if shape == full_shape:
+        return dict(payload)
+    replay_edges = [
+        edge for edge in incoming
+        if frozenset(
+            parameter.get("key")
+            for parameter in edge.get("parameters", [])
+        ) == shape
+    ]
+    if not replay_edges:
+        raise helper.ContractError(
+            "Puber Janitor replay route is not an exact native edge"
+        )
+    if _NATIVE_IDENTITY is None:
+        raise helper.ContractError("Puber Janitor replay identity is unavailable")
+    commentary = payload.get("commentary")
+    delivery = helper._qualified_delivery_module(
+        ROOT,
+        required=("producer_locator", "reconstruct_producer"),
+    )
+    try:
+        locator = delivery.producer_locator(commentary)
+        if not isinstance(locator, str) or not locator:
+            raise ValueError("native Janitor producer locator is absent")
+        producer = delivery.reconstruct_producer(
+            ROOT,
+            locator,
+            identity=_NATIVE_IDENTITY,
+        )
+    except Exception as error:
+        raise helper.ContractError(
+            "Puber Janitor replay producer could not be authenticated"
+        ) from error
+    if producer.get("producer_kind") != "puber-release-janitor":
+        raise helper.ContractError("Puber Janitor replay producer kind differs")
+    original_inputs = producer.get("inputs")
+    if not isinstance(original_inputs, dict):
+        raise helper.ContractError("Puber Janitor replay source inputs are invalid")
+    business_inputs = {
+        key: value for key, value in original_inputs.items()
+        if key != "commentary"
+    }
+    if (
+        frozenset(business_inputs) != full_shape
+        or any(not isinstance(value, str) for value in business_inputs.values())
+        or business_inputs.get("workspace_path") != str(ROOT)
+    ):
+        raise helper.ContractError(
+            "Puber Janitor replay source carrier differs from the original Agent edge"
+        )
+    result = producer.get("result")
+    if not isinstance(result, dict):
+        raise helper.ContractError("Puber Janitor replay result is invalid")
+    matching_edges = []
+    for edge in replay_edges:
+        groups = [
+            item for item in graph_value.get("transition_groups", [])
+            if item.get("id") == edge.get("transition_group_id")
+        ]
+        expected_result = {
+            "transition": groups[0].get("transition_id"),
+            **{key: payload[key] for key in shape},
+        } if len(groups) == 1 else None
+        if expected_result is not None and result == expected_result:
+            matching_edges.append(edge)
+    if len(matching_edges) != 1:
+        raise helper.ContractError(
+            "Puber Janitor replay does not match its exact native prior result"
+        )
+    return {
+        **business_inputs,
+        "_kent": dict(payload["_kent"]),
+        "commentary": commentary,
+    }
+
+
+def main() -> int:
+    global _INPUT_PAYLOAD, _NATIVE_CONTEXT, _PRODUCER_REFS
+    global _OUTPUT_TEMPLATES, _SHARED_JANITOR, _JANITOR_MAIN_STARTED
+    global _EMITTED
+    _INPUT_PAYLOAD = None
+    _NATIVE_CONTEXT = None
+    _PRODUCER_REFS = []
+    _OUTPUT_TEMPLATES = {}
+    _SHARED_JANITOR = None
+    _JANITOR_MAIN_STARTED = False
+    _EMITTED = False
+    try:
+        raw = helper.read_zero_argument()
+        payload = _validate_payload(raw)
+        _INPUT_PAYLOAD = payload
+        _NATIVE_CONTEXT = dict(payload["_kent"])
+        _PRODUCER_REFS = helper.producer_refs_from_commentary(
+            ROOT,
+            payload.get("commentary"),
+        )
+        janitor_payload = dict(_restore_replay_payload(payload))
+        if janitor_payload["cleanup_mode"] == "report_only":
+            # The native carrier retains the verified PR base; report_only has
+            # no PR-target semantics in the shared Janitor contract.
+            janitor_payload["pr_base_branch"] = "not-applicable"
+        shared = _load_janitor()
+        _SHARED_JANITOR = shared
+        _OUTPUT_TEMPLATES = _prepare_output_templates()
+        shared.complete = _complete
+        original_stdin = sys.stdin
+        try:
+            sys.stdin = io.StringIO(
+                json.dumps(janitor_payload, ensure_ascii=False)
+            )
+            _JANITOR_MAIN_STARTED = True
+            result = shared.main()
+        finally:
+            sys.stdin = original_stdin
+        if not _EMITTED:
+            raise helper.ContractError("shared Janitor produced no native outcome")
+        return int(result or 0)
+    except Exception as error:
+        failure = {"error": str(error)}
+        if _JANITOR_MAIN_STARTED:
+            failure["effect_status"] = "unknown"
+        else:
+            failure["destructive_action"] = False
+        print(
+            json.dumps(failure, ensure_ascii=False),
+            file=sys.stderr,
+        )
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

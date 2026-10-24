@@ -6,16 +6,54 @@ description: Prepare and publish a Puber release through the schema-4 control pl
 
 Use the non-default `Puber Release` graph for release work. Keep
 `profile_generation` as a Script; do not impersonate a Session or move device
-work into Prepare. The private proposal cohort is
-`.kent/workflows/puber-release-kit-5af.json` (native version 95, source revision
-91). It preserves 18 nodes, 51 transition groups, 51 edges, Script/Agent kinds,
-and existing approval gates, adding only the reviewed `entry_transition`
-business carrier to the 21 project-Script inputs. `_kent` contains only native
-`task_id` and `node_id`; the route carrier is not identity, scope, approval, or
-lease context. This candidate is non-attested: future Kit K and project source
-commit C are unknown, and the filename does not pin either one. Historical
-Release v90 artifacts remain frozen. No source file applies a live graph or
-changes a Task target.
+work into Prepare. The profile selects the Release-only successor candidate
+`.kent/workflows/puber-release-current.json` (native proposal version 97,
+source revision 92). It preserves 18 nodes and Script/Agent kinds, adds the
+two approved S4 CI-recovery transitions, and retains all unrelated approval
+gates. The old direct CI failure edge becomes an unapproved typed handoff to
+`ci_monitor`; only the separate `ci_monitor_preparation_needs_user_action`
+edge requires approval. The 5af-named v95/source-91 proposal and v90 artifacts
+remain immutable historical snapshots.
+
+The current candidate has 18 nodes, 53 transition groups, and 53 edges. Its
+20 ordinary Script routes carry only the exact business `entry_transition`
+hints; the three S4 CI failure/retry/user-action routes carry no synthetic
+hint. It also carries a separate `pr_base_branch` on PR/CI/merged/cleanup carriers,
+`operation_id` through publication and cleanup, and the merged target commit T
+from the existing merge watcher into Publish. `pr_base_branch` is verified
+against actual `baseRefName`, never inferred from `pr_base_oid`. `_kent`
+contains only native `task_id` and `node_id`; a route hint is not identity,
+scope, approval, or lease context. Native completion uses the transition
+group's `transition_id`; the edge key is retained only on the 20 ordinary
+Script routes.
+
+The CI wrapper forwards the exact original `_kent` to its shared child. A
+preparation failure carries only `workspace_path`, `task_short_id`, and the
+closed `ci_preparation_diagnostic`; it does not fabricate CI packets or a
+`blocker_reason`. The wrapper validates the actual `prepare-ci` producer and
+binds the diagnostic digest to that child's exact string inputs, then records
+the final native failure output with explicit child/retry producer references.
+Pre-child failures use the qualified typed diagnostic constructor and have no
+child reference.
+
+The CI Monitor may retry only with its exact validated post-PR
+`workflow-delivery-context-v2` and a current native pack from the existing
+Agent packer. The retry route contains only `workspace_path`, `task_short_id`,
+and `delivery_context`; it has no route hint. The Script authenticates the
+pack against the current native transition contract, follows only its
+referenced producer ancestry, restores the original Release carrier from a
+full wrapper source, and rechecks the completed profile checkpoint and current
+PR identity. It preserves existing context bytes; only the exact initial
+`ship_pr_ci_watch` route may apply the shared preparer's established
+`uninitialized` cursor behavior when cursor and CI packets are truly absent.
+Malformed or conflicting inputs are never normalized into a retry context.
+Invalid identity, absent resume context, or unresolved blockers return to the
+approved CI Monitor user-action route with the unchanged diagnostic.
+
+This graph/spec/manifest set is source-only and non-attested. It does not assert
+that the combined Kit family K or final project closure C has been qualified;
+the current candidate must not be activated, and no source file applies a live
+graph or changes a Task target.
 
 Preparation is a strict two-phase operation:
 
@@ -130,7 +168,19 @@ verified live 87 preimage; no source command applies that rollout.
 Carry flat release identity, validated `ci_contract`, dynamic `ci_report`,
 acknowledged feedback cursor, and explicit `verification_summary`. Re-read the
 complete checkpoint with `expected=...`; never transport the entire checkpoint
-or synthesize an initial CI report. Classify every effective check observed:
+or synthesize an initial CI report. On the current successor, pass the exact
+native `_kent` object through the project wrapper into the shared child. Accept
+`ci_prepare_failed` only with its exact typed-v1 producer carrier and a valid
+closed `ci_preparation_diagnostic` whose input-string digest matches that child
+invocation. Preserve that canonical diagnostic losslessly on the typed failure
+route to `ci_monitor`; do not carry it as `blocker_reason`, fabricate CI
+packets, or repair `ci_contract`/`ci_report`. A retry must use the exact
+validated post-PR v2 context and native `pack-delivery` ancestry; only the
+exact initial PR route may use the established `uninitialized` cursor when all
+cursor and CI packet fields are absent. Invalid identity, missing context, and
+unresolved archive/authority blockers remain on the approved user-action
+route.
+Classify every effective check observed:
 failed extras are not ignored, and incomplete or pending observations cannot
 be treated as green. Preserve actual PR head/base for the unchanged seven
 Publish inputs.
@@ -163,7 +213,13 @@ No Q, persisted target proof, new report schema or authority store is introduced
 ### Current Cleanup Agent and observable-outcome policy
 
 Cleanup is a real `delivery-operator` Agent. Its deterministic helper accepts
-exactly `task_id`, `incoming_transition` and `parameters`; `_kent` is forbidden.
+exactly `task_id`, `incoming_transition`, `parameters`, and optional native
+`commentary`; `_kent` is forbidden. When the profile opts into
+`delivery_reliability = "v1"`, preserve the exact native commentary supplied
+to this current Agent in the top-level `commentary` field. Do not manufacture
+or recover it from another Session/Task packet. Preserve it unchanged in the
+helper handoff; missing or malformed provider ancestry blocks before any
+GitHub API read or cleanup effect.
 The caller's inherited `KENT_SESSION_ID` is captured before helper imports
 scrub the environment. Native Task current_nodes.session_id, current_scripts=[]
 and explicit worktree status must identify that same Agent A on H. Historical

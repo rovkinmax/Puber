@@ -27,24 +27,27 @@ kit_managed_commands = [
   "wait_ci",
   "prepare_ci",
   "github_observation",
+  "checkpoint",
 ]
+ci_archive_reader_sources = [".kent/scripts/workflow-puber-release-ci"]
 
 [command_versions]
-runtime_contracts = "2.0.0"
+runtime_contracts = "2.2.0"
 verify = "2.0.0"
-evidence = "2.0.0"
-janitor = "2.0.0"
-wait_pr = "3.0.0"
-wait_ci = "3.0.0"
-prepare_ci = "2.0.0"
-github_observation = "1.0.0"
+evidence = "2.1.0"
+janitor = "3.1.0"
+wait_pr = "4.1.0"
+wait_ci = "4.1.0"
+prepare_ci = "3.1.0"
+github_observation = "1.1.0"
+checkpoint = "1.2.0"
 
 [release]
 topology_kind = "puber-release"
 adoption_mode = "managed-in-place"
-spec_path = ".kent/workflows/specs/puber-release-kit-5af.toml"
-builder_path = ".kent/workflows/builders/puber_release_kit_5af.py"
-snapshot_path = ".kent/workflows/puber-release-kit-5af.json"
+spec_path = ".kent/workflows/specs/puber-release-current.toml"
+builder_path = ".kent/workflows/builders/puber_release_current.py"
+snapshot_path = ".kent/workflows/puber-release-current.json"
 
 [execution]
 default_target = "ask-on-first-execution"
@@ -57,13 +60,14 @@ release = "ask-on-first-execution"
 
 [puber_runtime.kit_source]
 schema_version = 1
-root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/restart-readiness-20261011-82ece821"
+root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/045"
 
 [policies]
 smoke = "conditional"
 writer_sessions = "fresh_per_slice"
 pr_merge_strategy = "auto"
 branch_identity = "github_issue"
+delivery_reliability = "v1"
 
 [capabilities]
 managed_worktrees = true

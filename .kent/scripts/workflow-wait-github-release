@@ -29,6 +29,34 @@ def _report_carriers(payload: dict, state: dict) -> tuple[dict, dict]:
         raise helper.ContractError("release_run carrier is stale or switched")
     return publication, run
 
+def _validate_publication_pr(payload: dict, publication: dict) -> dict:
+    workspace_path = helper.require_string(
+        payload.get("workspace_path"), "workspace_path"
+    )
+    if Path(workspace_path).expanduser().resolve() != ROOT.resolve():
+        raise helper.ContractError("published workspace identity drifted")
+    operation_id = helper.require_string(payload.get("operation_id"), "operation_id")
+    if not helper.HEX64.fullmatch(operation_id):
+        raise helper.ContractError("published operation identity is invalid")
+    branch_name = helper.require_string(payload.get("branch_name"), "branch_name")
+    base_branch = helper.require_string(
+        payload.get("pr_base_branch"), "pr_base_branch"
+    )
+    pr = helper.pr_state(
+        ROOT,
+        helper.canonical_pr_url(payload["pr_url"]),
+        expected_base_branch=base_branch,
+    )
+    if (
+        pr["headRefName"] != branch_name
+        or pr["headRefOid"] != publication["release_head_oid"]
+        or pr["mergeCommit"]["oid"] != publication["target_commit"]
+    ):
+        raise helper.ContractError(
+            "published PR head/target/merge identity changed"
+        )
+    return pr
+
 def _release_report(run: dict, jobs: dict, release: dict, publication_digest: str, notes_digest: str, observation: dict) -> tuple[str, str]:
     metadata = {key: release[key] for key in helper.RELEASE_METADATA_KEYS}
     value = {
@@ -50,12 +78,18 @@ def _release_report(run: dict, jobs: dict, release: dict, publication_digest: st
 def main() -> int:
     payload = None
     try:
-        payload, state, edge = helper.validate_envelope(helper.read_zero_argument(), ROOT, "monitor")
+        source_payload = helper.read_zero_argument()
+        payload, state, edge = helper.validate_envelope(
+            source_payload,
+            ROOT,
+            "monitor",
+        )
     except helper.ContractError as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 2
     try:
         publication, run = _report_carriers(payload, state)
+        _validate_publication_pr(payload, publication)
         helper.revalidate_publication_target(ROOT, state, publication)
         if run == helper.NOT_SELECTED_RUN:
             run = helper.discover_release_run(ROOT, payload["release_tag"], payload["target_commit"])
@@ -75,6 +109,7 @@ def main() -> int:
         notes_bytes = (ROOT / notes["path"]).read_bytes()
         body = release.get("body", "")
         if body != notes_bytes.decode("utf-8"):
+            _validate_publication_pr(payload, publication)
             helper.revalidate_publication_target(ROOT, state, publication)
             edited = helper.gh(ROOT, ["release", "edit", payload["release_tag"], "--notes-file", "-"], input_text=notes_bytes.decode("utf-8"))
             if edited.returncode:
@@ -85,17 +120,61 @@ def main() -> int:
                 release = helper.read_release(ROOT, payload["release_tag"], payload["target_commit"])
             if release.get("body") != notes_bytes.decode("utf-8"):
                 raise helper.ContractError("release notes post-edit readback mismatch")
+        _validate_publication_pr(payload, publication)
         final_publication, final_publication_digest = helper.publication_report(publication["operation_digest"], publication["pr_url"], publication["release_version"], publication["release_tag"], publication["target_commit"], notes, tag_phase="tag_published", tag_status=publication["tag_status"], unresolved=False, previous_operation_digest=publication.get("previous_operation_digest", ""), release_head_oid=publication["release_head_oid"], release_preparation_report_digest=publication["release_preparation_report_digest"])
         publication_final = helper.parse_publication_report(final_publication, final_publication_digest, expected_pr=publication["pr_url"], expected_version=publication["release_version"], expected_tag=publication["release_tag"], expected_target=publication["target_commit"], task_short_id=state["task_short_id"], root=ROOT)
         report, report_digest = _release_report(run, {"run": run_for_api, "job": jobs}, release, final_publication_digest, notes["sha256"], observation)
         helper.parse_release_report(report, report_digest, expected_publication_digest=final_publication_digest, expected_notes_digest=notes["sha256"], expected_tag=payload["release_tag"], expected_target=payload["target_commit"])
-        helper.emit_exact(ROOT, "release_release_published", "cleanup", {"release_report": report, "publication_report": final_publication, "publication_report_digest": final_publication_digest, "release_notes_path": notes["path"], "release_notes_digest": notes["sha256"], "release_run": helper.canonical_json(run), "release_report_digest": report_digest})
+        helper.emit_script_transition(
+            ROOT,
+            source_payload,
+            "release_release_published",
+            "cleanup",
+            {
+                "workspace_path": payload["workspace_path"],
+                "operation_id": payload["operation_id"],
+                "branch_name": payload["branch_name"],
+                "pr_base_branch": payload["pr_base_branch"],
+                "pr_url": payload["pr_url"],
+                "release_report": report,
+                "publication_report": final_publication,
+                "publication_report_digest": final_publication_digest,
+                "release_notes_path": notes["path"],
+                "release_notes_digest": notes["sha256"],
+                "release_run": helper.canonical_json(run),
+                "release_report_digest": report_digest,
+            },
+            producer_kind="puber-release-monitor",
+        )
         return 0
     except helper.ContractError as error:
         preserved = dict(payload or {})
         preserved.pop("_kent", None)
         preserved["blocker_reason"] = str(error)
-        helper.emit_exact(ROOT, "monitor_needs_user_action", "monitor", {key: preserved.get(key, helper.canonical_json(helper.NOT_SELECTED_RUN) if key == "release_run" else "") for key in ("blocker_reason", "workspace_path", "operation_id", "pr_url", "branch_name", "release_version", "release_tag", "target_commit", "tag_push_status", "release_notes_path", "publication_report", "publication_report_digest", "release_run")})
+        helper.emit_script_transition(
+            ROOT,
+            source_payload,
+            "monitor_needs_user_action",
+            "monitor",
+            {
+                key: preserved.get(
+                    key,
+                    helper.canonical_json(helper.NOT_SELECTED_RUN)
+                    if key == "release_run"
+                    else "",
+                )
+                for key in (
+                    "blocker_reason", "workspace_path", "operation_id",
+                    "pr_url", "branch_name", "pr_base_branch",
+                    "release_version", "release_tag", "target_commit",
+                    "tag_push_status", "release_notes_path",
+                    "publication_report", "publication_report_digest",
+                    "release_run",
+                )
+            },
+            producer_kind="puber-release-monitor",
+            provider_error=error,
+        )
         return 0
 
 if __name__ == "__main__":

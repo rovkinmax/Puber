@@ -57,10 +57,10 @@ def context() -> dict[str, object]:
 
 
 def test_native_revision_matches_release_helper() -> None:
-    assert module.WORKFLOW_VERSION == module._helper.WORKFLOW_REVISION == 95
-    value = {**context(), "workflow_version": 95}
+    assert module.WORKFLOW_VERSION == module._helper.WORKFLOW_REVISION == 97
+    value = {**context(), "workflow_version": 97}
     module._canonical_context(value)
-    for revision in (94, 96):
+    for revision in (95, 96, 98):
         try:
             module._canonical_context({**value, "workflow_version": revision})
         except module.ScriptLeaseError:
@@ -208,7 +208,7 @@ def test_context_and_responses_fail_closed_on_route_or_field_drift() -> None:
         lambda item: item.update(entry_transition="prepare_profile_generation"),
         lambda item: item.update(workspace_root=str(ROOT / "..")),
         lambda item: item.update(profile_sha256="0" * 64),
-        lambda item: item.update(workflow_version=93),
+        lambda item: item.update(workflow_version=96),
     ):
         invalid = dict(value)
         mutate(invalid)
