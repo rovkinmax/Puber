@@ -4,9 +4,11 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import re
 import runpy
 import subprocess
 import sys
+import uuid
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from unittest.mock import patch
@@ -15,7 +17,6 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
 BUILDER_PATH = ROOT / ".kent/workflows/builders/puber_release_current.py"
 builder = runpy.run_path(str(BUILDER_PATH))
-assert builder["check"]() == []
 
 graph_path = ROOT / ".kent/workflows/puber-release-current.json"
 graph = json.loads(graph_path.read_text(encoding="utf-8"))
@@ -25,6 +26,68 @@ original = json.loads(
     )
 )
 builder["validate_graph"](graph, original)
+new_route_keys = (
+    "ci_monitor_retry_preparation",
+    "ci_monitor_preparation_needs_user_action",
+)
+old_group_ids = {group["id"] for group in original["transition_groups"]}
+new_groups = [
+    group for group in graph["transition_groups"]
+    if group["id"] not in old_group_ids
+]
+new_edges = [
+    next(edge for edge in graph["edges"] if edge["key"] == key)
+    for key in new_route_keys
+]
+assert len(new_groups) == len(new_edges) == 2
+new_ids = [
+    *(group["id"] for group in new_groups),
+    *(edge["id"] for edge in new_edges),
+]
+assert len(set(new_ids)) == 4
+assert {
+    edge["transition_group_id"] for edge in new_edges
+} == {group["id"] for group in new_groups}
+assert set(new_ids) == {
+    identity
+    for mapping in builder["SOURCE_92_NATIVE_IDS"].values()
+    for identity in mapping.values()
+}
+for identity in new_ids:
+    assert re.fullmatch(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-"
+        r"[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+        identity,
+    ), identity
+    parsed = uuid.UUID(identity)
+    assert parsed.version == 4 and parsed.variant == uuid.RFC_4122, identity
+    assert str(parsed) == identity, identity
+assert builder["build_graph"]() == graph
+assert builder["build_graph"]() == graph
+assert builder["check"]() == []
+for invalid_id in (
+    new_edges[0]["id"].upper(),
+    str(uuid.uuid5(uuid.NAMESPACE_DNS, "invalid-source-92-native-id")),
+):
+    invalid_graph = copy.deepcopy(graph)
+    invalid_edge = next(
+        edge for edge in invalid_graph["edges"]
+        if edge["key"] == new_route_keys[0]
+    )
+    invalid_edge["id"] = invalid_id
+    try:
+        builder["validate_graph"](invalid_graph, original)
+    except ValueError as error:
+        assert "source-92 native identity mapping differs" in str(error)
+    else:
+        raise AssertionError(f"invalid source-92 native edge ID accepted: {invalid_id}")
+write_targets = []
+with patch.dict(
+    builder["write_graph_and_manifest"].__globals__,
+    {"_write": lambda path, _value: write_targets.append(path)},
+):
+    builder["write_graph_and_manifest"]()
+assert write_targets == [builder["GRAPH"], builder["MANIFEST"]]
 assert graph["workflow"]["version"] == 97
 assert graph["workflow"]["source_revision"] == 92
 assert len(graph["nodes"]) == 18

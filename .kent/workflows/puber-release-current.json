@@ -589,7 +589,7 @@
       "description": "The PR head or CI state changed; recompute or retain the exact current CI cycle before watching again."
     },
     {
-      "id": "88cb6911-9a13-5e19-b2c3-16c529595f37",
+      "id": "f346e6e8-e7c2-459e-9b33-5056a179b64a",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
       "transition_id": "ci_monitor_retry_preparation",
@@ -597,7 +597,7 @@
       "description": "Typed CI preparation recovery preserves the validated original release and producer context."
     },
     {
-      "id": "75d17214-9a53-51bc-bbf9-5f46f202ba3c",
+      "id": "ce992c18-54dc-4da2-b6fe-efe8c1e27425",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
       "source_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
       "transition_id": "ci_monitor_preparation_needs_user_action",
@@ -5002,9 +5002,9 @@
       ]
     },
     {
-      "id": "87a55424-61c4-529a-ba4a-15fb763cf4e4",
+      "id": "971dc100-1294-44fe-814a-5a81e3c9e6c8",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "88cb6911-9a13-5e19-b2c3-16c529595f37",
+      "transition_group_id": "f346e6e8-e7c2-459e-9b33-5056a179b64a",
       "key": "ci_monitor_retry_preparation",
       "target_node_id": "710f8559-0913-4dd9-8fb5-ea68c25c9d9c",
       "assignee_selection": "configured",
@@ -5033,9 +5033,9 @@
       ]
     },
     {
-      "id": "84d78753-e786-5667-b4ec-85208b03d99c",
+      "id": "07039a95-b19d-4852-a766-b20545c8d06c",
       "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-      "transition_group_id": "75d17214-9a53-51bc-bbf9-5f46f202ba3c",
+      "transition_group_id": "ce992c18-54dc-4da2-b6fe-efe8c1e27425",
       "key": "ci_monitor_preparation_needs_user_action",
       "target_node_id": "bd9e337e-7189-412e-8735-3dbdb6dcf5b1",
       "assignee_selection": "configured",
@@ -9468,7 +9468,7 @@
         ]
       },
       {
-        "transition_group_id": "88cb6911-9a13-5e19-b2c3-16c529595f37",
+        "transition_group_id": "f346e6e8-e7c2-459e-9b33-5056a179b64a",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -9485,7 +9485,7 @@
         ]
       },
       {
-        "transition_group_id": "75d17214-9a53-51bc-bbf9-5f46f202ba3c",
+        "transition_group_id": "ce992c18-54dc-4da2-b6fe-efe8c1e27425",
         "required_provision_fields": [
           {
             "name": "workspace_path",
@@ -16923,7 +16923,7 @@
         }
       },
       {
-        "edge_id": "87a55424-61c4-529a-ba4a-15fb763cf4e4",
+        "edge_id": "971dc100-1294-44fe-814a-5a81e3c9e6c8",
         "input_bindings": [
           {
             "name": "workspace_path",
@@ -16967,7 +16967,7 @@
         }
       },
       {
-        "edge_id": "84d78753-e786-5667-b4ec-85208b03d99c",
+        "edge_id": "07039a95-b19d-4852-a766-b20545c8d06c",
         "input_bindings": [
           {
             "name": "workspace_path",

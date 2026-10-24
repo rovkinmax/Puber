@@ -57,7 +57,7 @@
   "external_roots": [
     {
       "kind": "builder-sha256",
-      "key": "1f236e42910bd1b474cdeb782b8243676d907367d3a349a934ed6c77945dd0f1",
+      "key": "845cee8f8eb357e2fd4b3f125c9c8356495b8dbee6127e7018b06d3d3063e3f8",
       "runtime_digest_required": true
     },
     {
@@ -227,7 +227,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-puber-release-current=041bcb1a7d08b06b0de5830fc0a38788f0751c8529adac7dd6596e11c667b82a",
+      "key": ".kent/scripts/tests/test-puber-release-current=78cb0d37735f35f4a1b73789de190e34e544cfa239b1389ffb27d94a95d09e59",
       "runtime_digest_required": true
     },
     {
@@ -452,12 +452,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/workflows/builders/puber_release_current.py=1f236e42910bd1b474cdeb782b8243676d907367d3a349a934ed6c77945dd0f1",
+      "key": ".kent/workflows/builders/puber_release_current.py=845cee8f8eb357e2fd4b3f125c9c8356495b8dbee6127e7018b06d3d3063e3f8",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/workflows/puber-release-current.json=ae6d33d13a67b53ac2f4378e90b2238e711363a1a41efba2ea77402340707473",
+      "key": ".kent/workflows/puber-release-current.json=d2361041651207aabf500084c7d80d856c7a9774eba9199cf452a4fffe413e03",
       "runtime_digest_required": true
     },
     {

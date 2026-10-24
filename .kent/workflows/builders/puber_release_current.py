@@ -11,7 +11,6 @@ import runpy
 import stat
 import sys
 import tomllib
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +28,20 @@ PROFILE = ROOT / ".kent/workflow-profile.toml"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_VERSION = 97
 SOURCE_REVISION = 92
+SOURCE_92_NATIVE_IDS = {
+    "ci_monitor_retry_preparation": {
+        "group_id": "f346e6e8-e7c2-459e-9b33-5056a179b64a",
+        "edge_id": "971dc100-1294-44fe-814a-5a81e3c9e6c8",
+    },
+    "ci_monitor_preparation_needs_user_action": {
+        "group_id": "ce992c18-54dc-4da2-b6fe-efe8c1e27425",
+        "edge_id": "07039a95-b19d-4852-a766-b20545c8d06c",
+    },
+}
+CANONICAL_UUID4 = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-"
+    r"[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+)
 ENTRY_TRANSITION = "entry_transition"
 JANITOR_SCRIPT = ".kent/scripts/workflow-puber-release-janitor"
 
@@ -102,6 +115,26 @@ ROUTE_PARAMETER = {
 BINARY_SOURCE_ROOTS = {"app/debug.jks"}
 DYNAMIC_RELEASE_PATHS = {"app/build.gradle.kts"}
 ENGINEERING_SOURCE = re.compile(r"(?:^|/)puber-engineering-delivery(?:-|\.)")
+
+
+def _validate_source_92_native_ids() -> None:
+    route_keys = {
+        "ci_monitor_retry_preparation",
+        "ci_monitor_preparation_needs_user_action",
+    }
+    if set(SOURCE_92_NATIVE_IDS) != route_keys:
+        raise ValueError("source-92 native ID map differs from the approved routes")
+    identifiers: list[str] = []
+    for key, mapping in SOURCE_92_NATIVE_IDS.items():
+        if set(mapping) != {"group_id", "edge_id"}:
+            raise ValueError(f"source-92 native ID map is incomplete: {key}")
+        for identity in mapping.values():
+            if not isinstance(identity, str) or not CANONICAL_UUID4.fullmatch(identity):
+                raise ValueError(f"source-92 native ID is not canonical lowercase UUIDv4: {key}")
+            identifiers.append(identity)
+    if len(set(identifiers)) != len(identifiers):
+        raise ValueError("source-92 native ID map contains duplicate identities")
+
 
 # Current source closure. Kit qualification and runtime attestation remain
 # separate gates and are intentionally not implied by this proposal.
@@ -410,6 +443,7 @@ def _add_missing_prompt_bindings(
 
 
 def _transform_graph(value: dict[str, Any], original: dict[str, Any]) -> None:
+    _validate_source_92_native_ids()
     value["workflow"]["version"] = WORKFLOW_VERSION
     value["workflow"]["source_revision"] = SOURCE_REVISION
     edges = {edge["key"]: edge for edge in value["edges"]}
@@ -446,12 +480,8 @@ def _transform_graph(value: dict[str, Any], original: dict[str, Any]) -> None:
     def new_route(key: str, target: str, fields: tuple[str, ...], *,
                   approval: bool, context_mode: str,
                   prompt: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
-        group_id = str(uuid.uuid5(
-            uuid.UUID(WORKFLOW_ID), f"puber-release-current:{key}:source-92:group"
-        ))
-        edge_id = str(uuid.uuid5(
-            uuid.UUID(WORKFLOW_ID), f"puber-release-current:{key}:source-92:edge"
-        ))
+        group_id = SOURCE_92_NATIVE_IDS[key]["group_id"]
+        edge_id = SOURCE_92_NATIVE_IDS[key]["edge_id"]
         transition_group = {
             "id": group_id,
             "workflow_id": WORKFLOW_ID,
@@ -621,6 +651,7 @@ def build_graph() -> dict[str, Any]:
 
 
 def validate_graph(value: dict[str, Any], original: dict[str, Any] | None = None) -> None:
+    _validate_source_92_native_ids()
     workflow = value.get("workflow", {})
     if (
         workflow.get("id") != WORKFLOW_ID
@@ -641,6 +672,23 @@ def validate_graph(value: dict[str, Any], original: dict[str, Any] | None = None
     }
     if len(edges) != 53 or required_edges - set(edges):
         raise ValueError("successor routes are incomplete or duplicated")
+    group_ids = [group.get("id") for group in value["transition_groups"]]
+    edge_ids = [edge.get("id") for edge in value["edges"]]
+    if len(set(group_ids)) != len(group_ids) or len(set(edge_ids)) != len(edge_ids):
+        raise ValueError("successor contains duplicate native group or edge IDs")
+    groups_by_id = {
+        group.get("id"): group for group in value["transition_groups"]
+    }
+    for key, mapping in SOURCE_92_NATIVE_IDS.items():
+        edge = edges[key]
+        group = groups_by_id.get(mapping["group_id"])
+        if (
+            edge.get("id") != mapping["edge_id"]
+            or edge.get("transition_group_id") != mapping["group_id"]
+            or group is None
+            or group.get("transition_id") != key
+        ):
+            raise ValueError(f"source-92 native identity mapping differs: {key}")
     routed = {
         key for key, edge in edges.items()
         if any(parameter.get("key") == ENTRY_TRANSITION
@@ -698,6 +746,20 @@ def validate_graph(value: dict[str, Any], original: dict[str, Any] | None = None
     if janitor.get("script_path") != JANITOR_SCRIPT:
         raise ValueError("Release Janitor does not use the project-owned adapter")
     if original is not None:
+        original_native_ids = {
+            identity
+            for item in (*original["transition_groups"], *original["edges"])
+            if isinstance(item, dict)
+            for identity in (item.get("id"),)
+            if isinstance(identity, str)
+        }
+        mapped_native_ids = {
+            identity
+            for mapping in SOURCE_92_NATIVE_IDS.values()
+            for identity in mapping.values()
+        }
+        if original_native_ids & mapped_native_ids:
+            raise ValueError("source-92 native IDs collide with historical identities")
         expected_groups = copy.deepcopy(original["transition_groups"])
         failure_group_id = next(
             edge["transition_group_id"] for edge in original["edges"]
@@ -873,6 +935,11 @@ def write_outputs() -> None:
     _write(MANIFEST, json.dumps(_expected_manifest(), ensure_ascii=False, indent=2) + "\n")
 
 
+def write_graph_and_manifest() -> None:
+    _write(GRAPH, json.dumps(build_graph(), ensure_ascii=False, indent=2) + "\n")
+    _write(MANIFEST, json.dumps(_expected_manifest(), ensure_ascii=False, indent=2) + "\n")
+
+
 def check() -> list[str]:
     errors: list[str] = []
     try:
@@ -916,10 +983,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
+    mode.add_argument("--write-graph-and-manifest", action="store_true")
     mode.add_argument("--check", action="store_true")
     args = parser.parse_args()
     if args.write:
         write_outputs()
+        return 0
+    if args.write_graph_and_manifest:
+        write_graph_and_manifest()
         return 0
     errors = check()
     if errors:
