@@ -239,9 +239,9 @@ hint. The intent helper and Script-lease adapter both enforce the exact
 version-97 cohort, rejecting the observed version-96 preimage and future
 revisions. No live graph, metadata, Task target, or default is changed here.
 
-The project source now selects the qualified immutable Kit K
-`9e7da4ee800d3e0e9c1bbd0d419cd87faa011dfc` at
-`/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/045`. The profile pins
+The project source now selects the clean primary Kit K
+`5fcfe0d1a3d3ad08a149f34da0457d6527951251` at
+`/Users/rovkinmax/dev/llm-staf/kent-engineering-kit`. The profile pins
 runtime contracts 2.2.0, prepare-CI 3.1.0, CI/PR waiters 4.1.0, checkpoint
 1.2.0, evidence 2.1.0, GitHub observation 1.1.0, and Janitor 3.1.0. The
 qualified shared helper copies and Puber Janitor adapter are source-bound in
@@ -259,7 +259,7 @@ is absent, the runtime obtains its root only from the validated
 ```toml
 [puber_runtime.kit_source]
 schema_version = 1
-root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/045"
+root = "/Users/rovkinmax/dev/llm-staf/kent-engineering-kit"
 ```
 
 The profile file must be a bounded, regular, nonsymlink file owned by the

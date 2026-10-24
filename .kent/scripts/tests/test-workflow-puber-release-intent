@@ -1058,6 +1058,132 @@ finally:
 
 print("puber-kit-source-selection: passed explicit precedence, closed profile validation, exact Kit and import guards")
 
+def _run_actual_root_loader_probe(label, code, expected_output):
+    child_env = dict(os.environ)
+    child_env.pop("KENT_ENGINEERING_KIT_ROOT", None)
+    child_env["PYTHONDONTWRITEBYTECODE"] = "1"
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", code],
+        cwd=SOURCE_ROOT,
+        env=child_env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"{label} failed:\n{result.stdout}\n{result.stderr}"
+    )
+    assert expected_output in result.stdout, result.stdout
+    print(result.stdout.strip())
+
+_actual_project = repr(str(SOURCE_ROOT))
+_actual_kit = repr(str(KIT))
+_same_root_probe = f"""
+import importlib, importlib.machinery, importlib.util, json, subprocess
+from pathlib import Path
+import tomllib
+
+project = Path({_actual_project})
+expected_root = Path({_actual_kit}).resolve(strict=True)
+source = project / ".kent/scripts/workflow-puber-release-intent"
+loader = importlib.machinery.SourceFileLoader("puber_same_root_probe", str(source))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+intent = importlib.util.module_from_spec(spec)
+loader.exec_module(intent)
+profile = tomllib.loads((project / ".kent/workflow-profile.toml").read_text())
+configured_root = profile["puber_runtime"]["kit_source"]["root"]
+assert configured_root == str(expected_root), configured_root
+head = subprocess.check_output(
+    ["git", "-C", str(expected_root), "rev-parse", "HEAD"], text=True,
+).strip()
+status = subprocess.check_output(
+    ["git", "-C", str(expected_root), "status", "--porcelain=v1", "--untracked-files=all"],
+    text=True,
+)
+assert head == intent.KIT_COMMIT, (head, intent.KIT_COMMIT)
+assert not status, status
+delivery = intent._qualified_delivery_module(
+    project,
+    required=("admit_script_source_ingress",),
+)
+intent._kit_modules()
+names = (
+    "workflowkit",
+    "workflowkit.delivery",
+    "workflowkit.release",
+    "workflowkit.runtime",
+    "workflowkit.revision",
+    "workflowkit.ci_contract",
+    "workflowkit.merge_strategy",
+)
+for name in names:
+    module = importlib.import_module(name)
+    module_path = Path(module.__file__).resolve()
+    assert module_path.is_relative_to(expected_root), (name, module_path)
+assert importlib.import_module("workflowkit.delivery") is delivery
+print(
+    "puber-intent-root-loader: same-root passed "
+    f"root={{expected_root}} commit={{head}} modules={{len(names)}}"
+)
+"""
+_run_actual_root_loader_probe(
+    "same-root first-ingress/attest loader sequence",
+    _same_root_probe,
+    "puber-intent-root-loader: same-root passed",
+)
+
+with tempfile.TemporaryDirectory(prefix="puber-kit-foreign-cache-") as directory:
+    _foreign_root = Path(directory)
+    shutil.copytree(
+        KIT / "workflowkit",
+        _foreign_root / "workflowkit",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    _foreign_cache_probe = f"""
+import importlib, importlib.machinery, importlib.util
+from pathlib import Path
+import sys
+
+project = Path({_actual_project})
+foreign_root = Path({str(_foreign_root)!r}).resolve(strict=True)
+source = project / ".kent/scripts/workflow-puber-release-intent"
+loader = importlib.machinery.SourceFileLoader("puber_foreign_cache_probe", str(source))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+intent = importlib.util.module_from_spec(spec)
+loader.exec_module(intent)
+sys.path.insert(0, str(foreign_root))
+package = importlib.import_module("workflowkit")
+delivery = importlib.import_module("workflowkit.delivery")
+assert Path(package.__file__).resolve().is_relative_to(foreign_root)
+assert Path(delivery.__file__).resolve().is_relative_to(foreign_root)
+for label, loader_call in (
+    (
+        "first-ingress",
+        lambda: intent._qualified_delivery_module(
+            project,
+            required=("admit_script_source_ingress",),
+        ),
+    ),
+    ("attest", intent._kit_modules),
+):
+    try:
+        loader_call()
+    except intent.ContractError as error:
+        print(f"puber-intent-root-loader: foreign-cache {{label}} rejected: {{error}}")
+    else:
+        raise AssertionError(f"foreign cached Kit was accepted by {{label}}")
+assert sys.modules["workflowkit"] is package
+assert sys.modules["workflowkit.delivery"] is delivery
+assert Path(package.__file__).resolve().is_relative_to(foreign_root)
+assert Path(delivery.__file__).resolve().is_relative_to(foreign_root)
+print("puber-intent-root-loader: foreign cache retained unchanged")
+"""
+    _run_actual_root_loader_probe(
+        "foreign-cache first-ingress/attest rejection",
+        _foreign_cache_probe,
+        "puber-intent-root-loader: foreign cache retained unchanged",
+    )
+
 os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
 kit = mod._kit_modules()
 profile = kit["ProjectProfile"].from_toml(ROOT, (ROOT / ".kent/workflow-profile.toml").read_text(), source="profile", check_files=False)
