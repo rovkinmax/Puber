@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Admit this native Engineering Script invocation before entering Plan."""
+from __future__ import annotations
+
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+
+sys.dont_write_bytecode = True
+MAX_INPUT_BYTES = 16 * 1024
+ADMISSION_NODE_ID = "355ea30b-e4b5-464d-95ab-247ae684293c"
+
+
+class AdmissionError(ValueError):
+    pass
+
+
+def _pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise AdmissionError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _constant(_value):
+    raise AdmissionError("non-finite JSON value")
+
+
+def _read_context():
+    raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
+    if len(raw) > MAX_INPUT_BYTES:
+        raise AdmissionError("native invocation exceeds its input bound")
+    try:
+        payload = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_pairs,
+            parse_constant=_constant,
+        )
+    except (UnicodeError, json.JSONDecodeError, RecursionError) as error:
+        raise AdmissionError("native invocation is not bounded JSON") from error
+    if not isinstance(payload, dict) or set(payload) != {"_kent"}:
+        raise AdmissionError("native invocation identity is missing")
+    context = payload["_kent"]
+    allowed = {"task_id", "node_id", "transition_branch_key"}
+    if (
+        not isinstance(context, dict)
+        or not {"task_id", "node_id"} <= set(context)
+        or set(context) - allowed
+        or not all(isinstance(value, str) and value for value in context.values())
+    ):
+        raise AdmissionError("native Task/Node identity is malformed")
+    if (
+        context["node_id"] != ADMISSION_NODE_ID
+        or context.get("transition_branch_key") is not None
+    ):
+        raise AdmissionError("native invocation is not the Engineering ingress Script")
+    return context
+
+
+def _bootstrap(root: Path):
+    path = root / ".kent/scripts/workflow_kit_runtime.py"
+    if path.resolve(strict=True) != path:
+        raise AdmissionError("managed Kit bootstrap path is not canonical")
+    info = path.stat()
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or info.st_uid != os.getuid()
+        or info.st_mode & 0o7022
+    ):
+        raise AdmissionError("managed Kit bootstrap is unsafe")
+    name = "_puber_engineering_qualified_kit_runtime"
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    if spec is None or spec.loader is None:
+        raise AdmissionError("managed Kit bootstrap cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as error:
+        raise AdmissionError("managed Kit bootstrap failed") from error
+    return module
+
+
+def main() -> int:
+    try:
+        root = Path(__file__).resolve(strict=True).parents[2]
+        context = _read_context()
+        runtime = _bootstrap(root)
+        qualified = runtime.qualified_kit_runtime(
+            root,
+            source_binding=context,
+        )
+        if qualified is None or not qualified.native_authorized:
+            raise AdmissionError("native source admission was not authorized")
+    except Exception:
+        print("Engineering source admission denied.", file=sys.stderr)
+        return 2
+    sys.stdout.write('{"transition":"engineering_source_admitted"}\n')
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

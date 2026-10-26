@@ -1,0 +1,4526 @@
+{
+  "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72",
+  "expected_version": 13,
+  "graph": {
+    "edges": [
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "dec372ad-1ef3-490a-a0c5-fd10a8622e56",
+        "key": "start_plan",
+        "prompt_template": "SANITIZED LEGACY INITIAL ADMISSION HEADER — intentionally inert fixture text.",
+        "requires_approval": false,
+        "target_node_id": "a0716188-a4c1-4506-98c8-39580fbbee07",
+        "thinking_selection": "configured",
+        "transition_group_id": "01ab6705-8314-46f0-a31d-bbe36acb70e4",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "2056c55b-9d5f-46f9-99c6-0a55b7a9bb33",
+        "key": "plan_review",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "19fd5485-d6c2-4cf6-935a-c2f3bb5e17c7",
+        "thinking_selection": "configured",
+        "transition_group_id": "a28252c1-fba1-470b-945f-5f4ec9291983",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "b550267e-088e-47a5-b993-76a2ab94502b",
+        "key": "plan_review_accept",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Independent read-only review of plan authority, scope, evidence, and ordering.",
+            "key": "plan_review_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "9f06c9dd-d1e8-4479-8aa1-d5092402c0f7",
+        "thinking_selection": "configured",
+        "transition_group_id": "deba9124-ba49-47b6-ba52-a2374e693c9d",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "continue_session",
+        "context_source": {
+          "kind": "selected_node",
+          "node_key": "plan"
+        },
+        "id": "d752614b-0961-4be5-acac-7d26d8fd96ba",
+        "key": "plan_review_revalidate",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Independent read-only review of plan authority, scope, evidence, and ordering.",
+            "key": "plan_review_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "thinking_selection": "configured",
+        "transition_group_id": "ea7f5568-086f-407a-ba8e-fc4ec4b3c109",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "9685461d-c65b-463a-8b8d-3fb307b20a46",
+        "key": "plan_review_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "19fd5485-d6c2-4cf6-935a-c2f3bb5e17c7",
+        "thinking_selection": "configured",
+        "transition_group_id": "4fe1dfcc-e231-4203-840c-b5cacfea9915",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "1f545b8d-522a-41bc-a4ac-e49957728d7c",
+        "key": "plan_review_wont_do",
+        "parameters": [
+          {
+            "description": "User-approved reason for closing or canceling delivery without merge.",
+            "key": "closure_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "8c4ce6b4-fe5f-4f93-b294-f94dd5e47c53",
+        "thinking_selection": "configured",
+        "transition_group_id": "66cad6aa-87b6-47d8-b335-ec24433cf676",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "continue_session",
+        "context_source": {
+          "kind": "previous_target"
+        },
+        "id": "30813925-04af-427e-b6ce-d2317af5a901",
+        "key": "plan_revalidation_review",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "19fd5485-d6c2-4cf6-935a-c2f3bb5e17c7",
+        "thinking_selection": "configured",
+        "transition_group_id": "9931290e-1549-4717-b64d-618a470f2c13",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "ff8bd83f-68e0-42d6-a2d3-1b546962e6ab",
+        "key": "plan_revalidation_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "thinking_selection": "configured",
+        "transition_group_id": "3dbf190a-58d8-4d86-b52d-0a9bf18f4b6a",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "bdb3e5ee-8746-4116-9cba-67de8ea372d2",
+        "key": "plan_revalidation_wont_do",
+        "parameters": [
+          {
+            "description": "User-approved reason for closing or canceling delivery without merge.",
+            "key": "closure_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "8c4ce6b4-fe5f-4f93-b294-f94dd5e47c53",
+        "thinking_selection": "configured",
+        "transition_group_id": "0af6286c-b53d-4cf1-a555-054742d0868d",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "continue_session",
+        "context_source": {
+          "kind": "selected_node",
+          "node_key": "plan"
+        },
+        "id": "b08ab819-e58c-4a77-ac54-7c2c6471f723",
+        "key": "plan_contract_continue_revalidate",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deterministic summary of material plan-contract changes.",
+            "key": "plan_change_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "thinking_selection": "configured",
+        "transition_group_id": "e5494c66-8487-4cb6-98e0-54aeab66f3df",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "continue_session",
+        "context_source": {
+          "kind": "selected_node",
+          "node_key": "plan"
+        },
+        "id": "119e3f7b-5e3c-4969-a40c-0c0840afdc77",
+        "key": "plan_contract_verify_revalidate",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deterministic summary of material plan-contract changes.",
+            "key": "plan_change_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "thinking_selection": "configured",
+        "transition_group_id": "c4daa05f-c78f-4675-b183-be051513060f",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "continue_session",
+        "context_source": {
+          "kind": "selected_node",
+          "node_key": "plan"
+        },
+        "id": "046b1ac5-931d-48b0-9650-ec8084fba293",
+        "key": "plan_contract_fix_revalidate",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deterministic summary of material plan-contract changes.",
+            "key": "plan_change_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "thinking_selection": "configured",
+        "transition_group_id": "1c45c4dc-c6ba-4cec-ada8-eacd097a91b2",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "0175a0c0-2869-4c32-a7da-5c7416ea6fac",
+        "key": "plan_contract_branch_identity",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "7e60507d-cbcb-4e42-a1b5-1cc3b452aee0",
+        "thinking_selection": "configured",
+        "transition_group_id": "73c826b4-194f-4b25-9578-694dc856a716",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "c5a11e70-f09e-4120-a54d-9a2b4f3f5dce",
+        "key": "branch_identity_implement",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "f8204a59-7d20-441b-a727-0d7892b96d45",
+        "thinking_selection": "configured",
+        "transition_group_id": "0c8110dd-9bda-4b0d-ad98-f0085c3ce248",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "5a654424-5b57-4217-b3ee-6be95324d4cd",
+        "key": "branch_identity_resolution",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "6321cea9-43dd-4bdd-b31b-fcbc143edc4a",
+        "thinking_selection": "configured",
+        "transition_group_id": "0146bea0-ecaf-4e47-a345-8d3e0247bc48",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "986ee448-fa7b-4518-a1ba-11c5b786b1fa",
+        "key": "branch_identity_retry",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "7e60507d-cbcb-4e42-a1b5-1cc3b452aee0",
+        "thinking_selection": "configured",
+        "transition_group_id": "3fba74da-b75a-4e36-91c5-4a3506ded34b",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "21c895be-827a-49ef-90da-93ae4e62936a",
+        "key": "branch_identity_resolution_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "6321cea9-43dd-4bdd-b31b-fcbc143edc4a",
+        "thinking_selection": "configured",
+        "transition_group_id": "98db39b7-f3ba-4e2f-b1ae-e73b67080fea",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "9aefe695-b9eb-4bc4-be69-6de336f8bea6",
+        "key": "branch_identity_resolution_wont_do",
+        "parameters": [
+          {
+            "description": "User-approved reason for closing or canceling delivery without merge.",
+            "key": "closure_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "8c4ce6b4-fe5f-4f93-b294-f94dd5e47c53",
+        "thinking_selection": "configured",
+        "transition_group_id": "eb5e7e3b-23d5-44a5-97d6-b2fa1c8a6792",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "acd3edc7-25cb-4605-a7b1-794a96136c55",
+        "key": "plan_contract_continue_implement",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "f8204a59-7d20-441b-a727-0d7892b96d45",
+        "thinking_selection": "configured",
+        "transition_group_id": "a7f6e57e-9028-4b78-a366-c2afa7d7c7bc",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "e037b57a-bf60-4de4-989b-0e4ad6a61b99",
+        "key": "plan_contract_verify",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "f764ff3f-b8a4-430a-a240-1c4f96d72aa8",
+        "thinking_selection": "configured",
+        "transition_group_id": "c19a35f2-8b09-4530-97f8-2075ef9fc185",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "91a8a2ba-1baa-418a-8564-68c90999f4df",
+        "key": "plan_contract_checked_continue",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "f8204a59-7d20-441b-a727-0d7892b96d45",
+        "thinking_selection": "configured",
+        "transition_group_id": "8de0c01e-30f6-4655-89a5-23588f64a2e8",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "2e86c8e0-1586-4243-86c5-4f0a86e0463f",
+        "key": "plan_contract_checked_verify",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "f764ff3f-b8a4-430a-a240-1c4f96d72aa8",
+        "thinking_selection": "configured",
+        "transition_group_id": "724451d8-1f4f-45ee-a4d3-6a0f029cc966",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "1d183eab-0e78-4fd6-9a33-ca5652e9df1b",
+        "key": "plan_contract_fix_continue",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+            "key": "fix_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "2d4bb5f4-e549-4b4e-a2a8-12e8e7bcf5a6",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "03a97cff-3a01-4023-a190-bd5e289a07d7",
+        "key": "plan_contract_checked_fix",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+            "key": "fix_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "4789274e-c0fc-418f-a53e-829fe0dd3999",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "ce8ba1ef-9c6e-48ba-8fdd-a0e497d72642",
+        "key": "plan_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "a0716188-a4c1-4506-98c8-39580fbbee07",
+        "thinking_selection": "configured",
+        "transition_group_id": "57f5ba0b-2b5e-4e01-afa0-9fe2bd1d6e66",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "345163b7-edc1-45ce-b2a0-8e7f79130dea",
+        "key": "plan_wont_do",
+        "parameters": [
+          {
+            "description": "User-approved reason for closing or canceling delivery without merge.",
+            "key": "closure_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "8c4ce6b4-fe5f-4f93-b294-f94dd5e47c53",
+        "thinking_selection": "configured",
+        "transition_group_id": "e3e09c78-c1df-4c3a-965e-b1b9a35af619",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "df7eeaa2-5274-4aac-954d-de416f7ebb43",
+        "key": "implement_continue",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "f0f2571b-4233-440a-a0ec-da83df4bf4ec",
+        "thinking_selection": "configured",
+        "transition_group_id": "e072bcbb-af90-4f21-acd5-caad3e4942c1",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "f2d22164-6013-4443-9ad7-36c0188f8d7e",
+        "key": "implement_verify",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "1f2d6986-3c20-4714-84b8-c17b93b03a62",
+        "thinking_selection": "configured",
+        "transition_group_id": "5357f579-4e97-4ec7-9a24-fbbbbc68a297",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "fb91a3f1-e078-451d-aae2-1fa216c01592",
+        "key": "implement_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "f8204a59-7d20-441b-a727-0d7892b96d45",
+        "thinking_selection": "configured",
+        "transition_group_id": "e2c42a7e-58ec-4ffb-ab66-5dcb4c5b0295",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "5ffec277-0c53-4fb4-a180-d3f8caa43ad3",
+        "key": "implement_wont_do",
+        "parameters": [
+          {
+            "description": "User-approved reason for closing or canceling delivery without merge.",
+            "key": "closure_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "8c4ce6b4-fe5f-4f93-b294-f94dd5e47c53",
+        "thinking_selection": "configured",
+        "transition_group_id": "0b96c68b-a488-4bab-a85a-8ce522c7fbc3",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "47390956-f8de-496c-a826-a7f3019b0f0f",
+        "key": "fix_verify",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "1f2d6986-3c20-4714-84b8-c17b93b03a62",
+        "thinking_selection": "configured",
+        "transition_group_id": "9ab6a2c9-a9ab-4d0b-bc7c-c1f21668d223",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "935e62bf-a773-446d-ba76-e8506096a6c8",
+        "key": "fix_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "fbe0ae92-f694-4668-bbb4-376e2e4104ed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "42561c7e-bdd2-47b3-ba16-dd81cbab21ef",
+        "key": "fix_wont_do",
+        "parameters": [
+          {
+            "description": "User-approved reason for closing or canceling delivery without merge.",
+            "key": "closure_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "8c4ce6b4-fe5f-4f93-b294-f94dd5e47c53",
+        "thinking_selection": "configured",
+        "transition_group_id": "4318a96e-5f4f-4115-8c64-acee19325c82",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "02ef99e8-e178-4440-9b94-c2c033d9c30b",
+        "key": "fix_continue",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+            "key": "fix_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "30b31a30-a1de-429e-a391-dba45a7d1dcc",
+        "thinking_selection": "configured",
+        "transition_group_id": "00c49127-f02d-4c12-a01a-923996f87ae2",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "441e17df-9689-4d1b-94c2-72c6696dc181",
+        "key": "dispatch_deterministic_verify",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "c1b1b42a-4fd3-4ddd-bcb5-0a88052f2da0",
+        "thinking_selection": "configured",
+        "transition_group_id": "e3873e5f-61fe-458b-850a-04d1d8b0cd01",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "b244ca6a-1f38-4c7d-a5e7-ac8fe688841e",
+        "key": "dispatch_invalid_workspace",
+        "parameters": [
+          {
+            "description": "Rejected workspace value emitted by an upstream writer.",
+            "key": "reported_workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+            "key": "fix_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "e57e29f4-fa5c-4994-a4e2-87855e46d720",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "5b920309-72a9-403d-96c5-06929fd456d4",
+        "key": "dispatch_standards_review",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "195baade-a5b8-4818-bf89-3d4964e37c0a",
+        "thinking_selection": "configured",
+        "transition_group_id": "e3873e5f-61fe-458b-850a-04d1d8b0cd01",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "9bf96d7b-0938-4640-b5ee-2414a6baa00f",
+        "key": "dispatch_spec_review",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "999846ff-e4f9-40fe-98bb-e0f90aa3fcf6",
+        "thinking_selection": "configured",
+        "transition_group_id": "e3873e5f-61fe-458b-850a-04d1d8b0cd01",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "e23068f7-6441-4a4e-bfc4-50cc1478db9a",
+        "key": "deterministic_report_join",
+        "parameters": [
+          {
+            "description": "Deterministic verification status: passed, needs_changes, or blocked.",
+            "key": "verification_status",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deterministic verification command, result, and report or log location.",
+            "key": "verification_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "41ac2a54-5e9f-45ec-9ea3-3bdb65aef565",
+        "thinking_selection": "configured",
+        "transition_group_id": "ba2e8489-b65d-4acf-beb2-629433c28965",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "bbe41164-a87e-45c1-b5c6-cf800070f3f7",
+        "key": "verification_join_gate",
+        "requires_approval": false,
+        "target_node_id": "b555a414-6236-4c68-bd50-7b87cd28e850",
+        "thinking_selection": "configured",
+        "transition_group_id": "17a6bc4a-10a6-41b0-b9a3-a0a09a65a461",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "ebb0110d-fd85-47c1-8582-7281e50ef9b0",
+        "key": "standards_report_join",
+        "parameters": [
+          {
+            "description": "Repository standards status: passed, needs_changes, or blocked.",
+            "key": "standards_status",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Read-only repository standards, architecture, and engineering report.",
+            "key": "standards_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "41ac2a54-5e9f-45ec-9ea3-3bdb65aef565",
+        "thinking_selection": "configured",
+        "transition_group_id": "8484d3a5-b85d-47ac-8fb4-e7a90ca639af",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "60717c17-0b32-4287-a0c0-8dc6b7b61cbd",
+        "key": "spec_report_join",
+        "parameters": [
+          {
+            "description": "Specification fidelity status: passed, needs_changes, or blocked.",
+            "key": "spec_status",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Read-only specification and acceptance-criteria review report.",
+            "key": "review_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "41ac2a54-5e9f-45ec-9ea3-3bdb65aef565",
+        "thinking_selection": "configured",
+        "transition_group_id": "076970c0-2791-455c-b6e1-37f4ea6c8cf8",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "9d7e46a6-ac7a-4365-bdff-037fc21699cf",
+        "key": "gate_fix",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+            "key": "fix_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "a05eef41-ee1b-4b55-8ed9-dbc96630dc62",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "7c551cd7-0d7d-4206-9838-0e264c65f02c",
+        "key": "gate_reverify_after_user_action",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "f764ff3f-b8a4-430a-a240-1c4f96d72aa8",
+        "thinking_selection": "configured",
+        "transition_group_id": "6e52b9fe-f9ce-402e-9025-f12046bce61e",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "b6d068ed-e772-47ca-8a7c-0ee110125384",
+        "key": "verification_gate_wont_do",
+        "parameters": [
+          {
+            "description": "User-approved reason for closing or canceling delivery without merge.",
+            "key": "closure_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "8c4ce6b4-fe5f-4f93-b294-f94dd5e47c53",
+        "thinking_selection": "configured",
+        "transition_group_id": "b0495ca1-707f-40ae-9a84-7d4e530c3ab5",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "a90c4b5e-0dc5-4ed5-a132-95836ca10da5",
+        "key": "gate_smoke_required",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Evidence-based reason that runtime smoke is required or may be skipped.",
+            "key": "smoke_rationale",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Focused runtime scenarios and surfaces that smoke testing must exercise.",
+            "key": "smoke_scope",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "6afaae09-078f-4140-822e-5f2c3c5100d5",
+        "thinking_selection": "configured",
+        "transition_group_id": "77f47492-296e-4a89-afdd-53c9cacc6bb5",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "50e4dd42-14eb-491e-93d6-fe11b6a54b3c",
+        "key": "gate_delivery_ready",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Evidence-based reason that runtime smoke is required or may be skipped.",
+            "key": "smoke_rationale",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "cda6b928-c342-4e75-b296-616812b23288",
+        "thinking_selection": "configured",
+        "transition_group_id": "d1249aa6-98e9-4e6e-a602-3be9a9a3296d",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "5f9d2d98-df9c-42c8-81b4-fa3bb9e82df3",
+        "key": "smoke_prepare_pr",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "cda6b928-c342-4e75-b296-616812b23288",
+        "thinking_selection": "configured",
+        "transition_group_id": "4e7030d1-4cab-4ffe-9635-deaa16f9b58c",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "9b7c3772-6a96-4b40-9fa8-c09ea3e5c2f0",
+        "key": "smoke_fix",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+            "key": "fix_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "cc3ccee1-a692-4238-9575-649c8be833dc",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "ebbfa8cd-dac8-4c5d-a907-59229a7e5ae3",
+        "key": "smoke_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "6afaae09-078f-4140-822e-5f2c3c5100d5",
+        "thinking_selection": "configured",
+        "transition_group_id": "66d0f064-752e-44e4-a5f2-f861215543de",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "c4e0ae53-a9dc-4bb1-bcd3-8816a5696633",
+        "key": "compliance_prepare_pr",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Final delivery compliance attestation and any blocking findings.",
+            "key": "compliance_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "1045c948-e1a5-45ad-8b3b-809be67afc0d",
+        "thinking_selection": "configured",
+        "transition_group_id": "4d7e16a0-e858-461a-9f65-4a867dbe16d1",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "f751f253-1433-4958-b0ce-3adaed39c871",
+        "key": "compliance_fix",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+            "key": "fix_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "c51035e3-df12-48cb-91dd-eb91a0941285",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "31802f22-7e08-40c0-9ccf-a9093c179899",
+        "key": "compliance_evidence_repair",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Packaging-only evidence findings and exact artifacts permitted for repair.",
+            "key": "evidence_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "187f2e6a-6a71-427e-95c3-d92bb3d0144a",
+        "thinking_selection": "configured",
+        "transition_group_id": "5d7e8beb-b52a-43c3-bccc-53822ae89298",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "7ac7e271-4745-44ec-b8b6-f8ecaa6c71da",
+        "key": "compliance_needs_user_action",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "cda6b928-c342-4e75-b296-616812b23288",
+        "thinking_selection": "configured",
+        "transition_group_id": "189d40ac-d55f-46e8-a1d7-e8f4010d2ae4",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "ea5c25cf-2e98-4080-aa1b-d53666a740f6",
+        "key": "compliance_wont_do",
+        "parameters": [
+          {
+            "description": "User-approved reason for closing or canceling delivery without merge.",
+            "key": "closure_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "8c4ce6b4-fe5f-4f93-b294-f94dd5e47c53",
+        "thinking_selection": "configured",
+        "transition_group_id": "841cb04e-1d29-46a7-ac59-408b63553999",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "previous_target"
+        },
+        "id": "ecfa3c72-43ca-44a8-906e-8b399560df24",
+        "key": "evidence_repair_compliance",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "cda6b928-c342-4e75-b296-616812b23288",
+        "thinking_selection": "configured",
+        "transition_group_id": "6df84832-18fb-4248-9043-b70606f16b59",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "2940599b-7747-416e-9ff3-354965fccaf6",
+        "key": "evidence_repair_fix",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+            "key": "fix_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "985fb806-6321-4a5c-8977-55ddaf68d997",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "fa6f10b3-472d-44e5-a304-ee821f8dae3b",
+        "key": "evidence_repair_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Packaging-only evidence findings and exact artifacts permitted for repair.",
+            "key": "evidence_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "187f2e6a-6a71-427e-95c3-d92bb3d0144a",
+        "thinking_selection": "configured",
+        "transition_group_id": "36e7f28a-39ce-47ad-a619-7429a95836b9",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "6f04ce9b-d6b5-4890-a254-cf353fe022a3",
+        "key": "evidence_repair_wont_do",
+        "parameters": [
+          {
+            "description": "User-approved reason for closing or canceling delivery without merge.",
+            "key": "closure_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "8c4ce6b4-fe5f-4f93-b294-f94dd5e47c53",
+        "thinking_selection": "configured",
+        "transition_group_id": "40e3b3e3-5b56-4a4e-9fc0-8541c3e6bf7e",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "9c6a03c7-afae-4bed-add1-9a9a49cc197e",
+        "key": "prepare_pr_no_pr",
+        "parameters": [
+          {
+            "description": "Pull request creation, review, conflict, or post-CI status report.",
+            "key": "pr_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "thinking_selection": "configured",
+        "transition_group_id": "a3d2d44c-0a47-466c-87a6-066564cd7cb0",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "9145853f-da59-4cb8-9f70-a7caa55caa84",
+        "key": "prepare_pr_fix",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "9cf17f3b-4c3a-4f5f-8fb5-28ffc6fd2df8",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "14a04a0b-04a1-4faf-b0d5-e791694c870a",
+        "key": "prepare_pr_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "1045c948-e1a5-45ad-8b3b-809be67afc0d",
+        "thinking_selection": "configured",
+        "transition_group_id": "1e3e8843-8cb4-4bf8-be8e-80583d45a3a9",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "e2760099-6a2c-4ca8-a649-225c9ee6086b",
+        "key": "ci_watch_waiting_pr",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "thinking_selection": "configured",
+        "transition_group_id": "15c5209d-e63b-48f2-96ea-dc6a1b63cd51",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "edb69b25-6f9a-4302-b549-3c64dd418f29",
+        "key": "ci_watch_diagnose",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "ce4b6cc1-c1c4-4bba-9b00-473ee312d398",
+        "thinking_selection": "configured",
+        "transition_group_id": "9b8cc498-2e82-4491-9961-618e731939ed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "8e2092da-3731-4a8a-b3f1-e945df7cf2ef",
+        "key": "ci_watch_merged",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Proof that the pull request is merged or equivalent delivery is complete.",
+            "key": "merge_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "thinking_selection": "configured",
+        "transition_group_id": "0eb2b623-e942-4de7-bae1-6269984186d6",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "a7fe9782-fe0f-4052-b8ea-1089920a3c86",
+        "key": "ci_monitor_watch",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "795f21b6-5bd8-47ce-b8a6-7a0547241f14",
+        "thinking_selection": "configured",
+        "transition_group_id": "deb4c511-8acb-4156-9476-20ffa268835b",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "34e3fb15-7f66-477d-a3a9-a04579f0c9a7",
+        "key": "ci_monitor_merged",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Proof that the pull request is merged or equivalent delivery is complete.",
+            "key": "merge_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "thinking_selection": "configured",
+        "transition_group_id": "ba842b06-b29f-4085-8c5b-7a99f8ce0504",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "b97a8534-e8c1-48c6-8ada-dc6f6ba83d19",
+        "key": "ci_monitor_fix",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deduplicated, dependency-ordered task-scoped repair bundle for the single writer.",
+            "key": "fix_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "3a21c35a-8495-4171-91ab-7fc60e6b0454",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "03c3b5b8-476e-4361-829b-d4d10fcae506",
+        "key": "ci_monitor_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "ce4b6cc1-c1c4-4bba-9b00-473ee312d398",
+        "thinking_selection": "configured",
+        "transition_group_id": "f797a56d-4bc0-4cb5-a708-8824b255f8cf",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "ab2c818b-7def-4bd0-bcff-7d827b69a136",
+        "key": "fix_pr_merged_cleanup",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Proof that the pull request is merged or equivalent delivery is complete.",
+            "key": "merge_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "thinking_selection": "configured",
+        "transition_group_id": "b0c791ac-8333-4ebd-8ac1-1c6e1dfcf75d",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "05cb0b01-887e-4eaa-8b2a-d226a6044179",
+        "key": "waiting_pr_cleanup",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Proof that the pull request is merged or equivalent delivery is complete.",
+            "key": "merge_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "thinking_selection": "configured",
+        "transition_group_id": "cca0f788-6337-4cc1-abc4-ecd0990a9b06",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "0b66cc8f-4599-499b-9832-e99c46d7c64c",
+        "key": "waiting_pr_watch_merge",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Pull-request head commit observed after green CI.",
+            "key": "pr_head_oid",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Pull-request base commit observed after green CI.",
+            "key": "pr_base_oid",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "7c3dd047-4e48-47e9-9137-1a5598cda74a",
+        "thinking_selection": "configured",
+        "transition_group_id": "61dedf7f-5189-439e-b69d-e7f69d951952",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "6429eee9-43ca-4c93-8571-cc2fdeceb66d",
+        "key": "merge_watch_still_waiting",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Pull-request head commit observed after green CI.",
+            "key": "pr_head_oid",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Pull-request base commit observed after green CI.",
+            "key": "pr_base_oid",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "7c3dd047-4e48-47e9-9137-1a5598cda74a",
+        "thinking_selection": "configured",
+        "transition_group_id": "3e718c5c-2d7a-4db0-bafc-c5d338b839db",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "previous_target"
+        },
+        "id": "2158def8-e267-4ac8-a972-f517d2c9e1e3",
+        "key": "merge_watch_state_changed",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Pull request creation, review, conflict, or post-CI status report.",
+            "key": "pr_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "thinking_selection": "configured",
+        "transition_group_id": "888fee76-2e9b-414f-ac62-04a395eac2ab",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "c6a2603e-2626-49f7-8896-7ba9b5a2c0e0",
+        "key": "merge_watch_cleanup",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Proof that the pull request is merged or equivalent delivery is complete.",
+            "key": "merge_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "thinking_selection": "configured",
+        "transition_group_id": "0133f422-a146-43e2-af1d-01f984afa456",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "1131c768-68b4-47ca-8e85-7e5a2002bb35",
+        "key": "waiting_pr_needs_user_action",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "thinking_selection": "configured",
+        "transition_group_id": "f965a4ba-c23c-4f3d-880f-faa461433c64",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "52e5b98d-2e3a-49ff-b68a-f515b95fc726",
+        "key": "waiting_pr_fix",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Pull request creation, review, conflict, or post-CI status report.",
+            "key": "pr_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "thinking_selection": "configured",
+        "transition_group_id": "fd3f10cf-f663-46cf-a2c1-acf6b33de0d2",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "d87919f3-cc7a-4316-86d1-3be3cede1551",
+        "key": "waiting_pr_close_without_merge",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Pull request creation, review, conflict, or post-CI status report.",
+            "key": "pr_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "User-approved reason for closing or canceling delivery without merge.",
+            "key": "closure_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "thinking_selection": "configured",
+        "transition_group_id": "24e811db-52fd-41cb-8eec-e850b78d8ef9",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "ddc67449-4d6d-4879-8e58-d2a67ee85c3e",
+        "key": "waiting_pr_ci_monitor",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "795f21b6-5bd8-47ce-b8a6-7a0547241f14",
+        "thinking_selection": "configured",
+        "transition_group_id": "c2c298fc-adb4-4c03-810a-62120485a8a2",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "daa5fe81-e6bc-4c0e-8b7f-2d226e4e851e",
+        "key": "cleanup_task_janitor",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Proof that the pull request is merged or equivalent delivery is complete.",
+            "key": "merge_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Cleanup proof mode: merged, no_pr, closed_without_merge, or report_only.",
+            "key": "cleanup_mode",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Kent session ID of the completed resource-owning Cleanup node.",
+            "key": "cleanup_session_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Report of cleanup performed, skipped, or blocked.",
+            "key": "cleanup_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "fb68ee5a-9011-4edb-9bee-18cb304234b0",
+        "thinking_selection": "configured",
+        "transition_group_id": "aa613c2e-1645-4ee1-a3a2-2b62dff7c3b9",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "7964e65e-2838-481c-87c5-38d6256c8994",
+        "key": "task_janitor_done",
+        "parameters": [
+          {
+            "description": "Report of cleanup performed, skipped, or blocked.",
+            "key": "cleanup_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "b50be433-f941-44a5-a428-87106e34870f",
+        "thinking_selection": "configured",
+        "transition_group_id": "54f43053-580a-4a25-8c39-0b56479c3dd5",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "previous_target"
+        },
+        "id": "8b8478b6-2d8f-470e-b083-b8ed08331ea3",
+        "key": "task_janitor_blocked",
+        "parameters": [
+          {
+            "description": "Report of cleanup performed, skipped, or blocked.",
+            "key": "cleanup_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "thinking_selection": "configured",
+        "transition_group_id": "61a681e8-503f-47e7-9ead-be2759edb3a4",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "compact_and_continue_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "7ee2aacb-1324-4da5-ad30-d76a8de762ef",
+        "key": "cleanup_needs_user_action",
+        "parameters": [
+          {
+            "description": "Exact blocker and the next user or external action required.",
+            "key": "blocker_reason",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": true,
+        "target_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "thinking_selection": "configured",
+        "transition_group_id": "45b4efe2-7966-49dd-8b15-d2d1663361dc",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "b1626a3f-ece8-4d50-9f5e-266561016fa3",
+        "key": "prepare_pr_ci_prepare",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "795f21b6-5bd8-47ce-b8a6-7a0547241f14",
+        "thinking_selection": "configured",
+        "transition_group_id": "add4365f-0f6a-406f-bcd0-5ce22222b699",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "935e1bd2-63de-428d-8170-52b8dcab34a1",
+        "key": "ci_prepare_ready_initial",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "2f55d529-da43-418e-b508-d0a8d3ec436b",
+        "thinking_selection": "configured",
+        "transition_group_id": "e2a267be-ada0-4549-bc9f-25b93b7bfec0",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "03d89ab3-46e6-45f8-a311-f29307ba8182",
+        "key": "ci_prepare_ready_retry",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "2f55d529-da43-418e-b508-d0a8d3ec436b",
+        "thinking_selection": "configured",
+        "transition_group_id": "08fdc77e-3353-455c-a522-30ec84c0adaa",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "3a910fce-8ae1-41ae-8f4a-c8621971ee3e",
+        "key": "ci_prepare_failed",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "ce4b6cc1-c1c4-4bba-9b00-473ee312d398",
+        "thinking_selection": "configured",
+        "transition_group_id": "a8e942c6-4ecd-412a-a96e-e6684626e083",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "fcee0c09-42e2-44a7-9222-2ddbf5be66b3",
+        "key": "ci_prepare_merged",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Proof that the pull request is merged or equivalent delivery is complete.",
+            "key": "merge_report",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "thinking_selection": "configured",
+        "transition_group_id": "a68f859a-46ff-4a44-84ec-1c142c0a6007",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "2b767914-1ab6-4cb0-84a7-d29c75da1518",
+        "key": "ci_watch_source_changed",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "795f21b6-5bd8-47ce-b8a6-7a0547241f14",
+        "thinking_selection": "configured",
+        "transition_group_id": "3edfc12c-17ea-4543-8daa-7c7905c822fa",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "new_session",
+        "context_source": {
+          "kind": "immediate_source"
+        },
+        "id": "c2276ab5-b89d-4f5b-ac53-c2551762f1fd",
+        "key": "ci_watch_state_changed",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Canonical pull request URL.",
+            "key": "pr_url",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Exact non-empty current Git branch from git branch --show-current; required even when no pull request exists.",
+            "key": "branch_name",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Resolved pull-request merge strategy: merge, squash, or rebase.",
+            "key": "merge_strategy",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Pull request creation, review, conflict, or post-CI status report.",
+            "key": "pr_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Pull-request head commit observed after green CI.",
+            "key": "pr_head_oid",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Pull-request base commit observed after green CI.",
+            "key": "pr_base_oid",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Validated GitHub CI identity and monitoring policy for the current PR cycle.",
+            "key": "ci_contract",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "CI checks and status summary.",
+            "key": "ci_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Opaque validated cursor for incremental GitHub pull-request feedback.",
+            "key": "pr_feedback_cursor",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "thinking_selection": "configured",
+        "transition_group_id": "52afa653-2e02-43ec-9b8f-e90b7553fbfb",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "continue_session",
+        "context_source": {
+          "kind": "selected_node",
+          "node_key": "plan"
+        },
+        "id": "60ec9948-d60c-4dab-a030-1d9c2d86e5ba",
+        "key": "implement_replan",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deterministic summary of material plan-contract changes.",
+            "key": "plan_change_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "thinking_selection": "configured",
+        "transition_group_id": "4af7d621-23d5-41ee-82e7-06af653f8451",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "assignee_selection": "configured",
+        "context_mode": "continue_session",
+        "context_source": {
+          "kind": "selected_node",
+          "node_key": "plan"
+        },
+        "id": "414f5f6c-867f-4098-abee-c5110bf2f389",
+        "key": "fix_replan",
+        "parameters": [
+          {
+            "description": "Repository or managed-worktree root; never an artifact directory.",
+            "key": "workspace_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Path to the approved implementation plan, or the literal not-applicable.",
+            "key": "plan_path",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable project-profile work kind selected during Plan.",
+            "key": "work_kind",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Post-review route: start, continue, verify, or fix_continue.",
+            "key": "plan_route",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Route-specific context; use not-applicable unless continuing a Fix bundle.",
+            "key": "plan_route_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Deterministic summary of material plan-contract changes.",
+            "key": "plan_change_report",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Implementation, fix, report, and artifact context required by verification.",
+            "key": "review_context",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Stable human-readable Kent task short ID.",
+            "key": "task_short_id",
+            "purpose": "ordinary"
+          },
+          {
+            "description": "Closed workflow-delivery-context-v1 JSON string: pre_pr, or post_pr with observed PR identity and only produced CI packets.",
+            "key": "delivery_context",
+            "purpose": "ordinary"
+          }
+        ],
+        "requires_approval": false,
+        "target_node_id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "thinking_selection": "configured",
+        "transition_group_id": "babfbe48-732c-4867-b15f-ec156b9fd540",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      }
+    ],
+    "node_groups": [],
+    "nodes": [
+      {
+        "display_name": "Backlog",
+        "group_id": null,
+        "id": "ad05d64c-154f-4f89-a656-f9d08cc9419e",
+        "key": "backlog",
+        "kind": "start",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Done",
+        "group_id": null,
+        "id": "b50be433-f941-44a5-a428-87106e34870f",
+        "key": "done",
+        "kind": "terminal",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Plan",
+        "group_id": null,
+        "id": "a0716188-a4c1-4506-98c8-39580fbbee07",
+        "key": "plan",
+        "kind": "agent",
+        "subagent_role": "default",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Independent Plan Review",
+        "group_id": null,
+        "id": "19fd5485-d6c2-4cf6-935a-c2f3bb5e17c7",
+        "key": "plan_review",
+        "kind": "agent",
+        "subagent_role": "spec-reviewer",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Plan Contract Accept",
+        "group_id": null,
+        "id": "9f06c9dd-d1e8-4479-8aa1-d5092402c0f7",
+        "key": "plan_contract",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-plan-contract-accept",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Plan Contract Continue Guard",
+        "group_id": null,
+        "id": "f0f2571b-4233-440a-a0ec-da83df4bf4ec",
+        "key": "plan_contract_continue",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-plan-contract-continue",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Plan Contract Verify Guard",
+        "group_id": null,
+        "id": "1f2d6986-3c20-4714-84b8-c17b93b03a62",
+        "key": "plan_contract_verify",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-plan-contract-verify",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Plan Revalidation",
+        "group_id": null,
+        "id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "key": "plan_revalidation",
+        "kind": "agent",
+        "subagent_role": "default",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Implement",
+        "group_id": null,
+        "id": "f8204a59-7d20-441b-a727-0d7892b96d45",
+        "key": "implement",
+        "kind": "agent",
+        "subagent_role": "implementation-worker",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Verification Dispatch",
+        "group_id": null,
+        "id": "f764ff3f-b8a4-430a-a240-1c4f96d72aa8",
+        "key": "verification_dispatch",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-verification-dispatch",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Deterministic Verify",
+        "group_id": null,
+        "id": "c1b1b42a-4fd3-4ddd-bcb5-0a88052f2da0",
+        "key": "deterministic_verify",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-verify-report",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Verification Gate",
+        "group_id": null,
+        "id": "b555a414-6236-4c68-bd50-7b87cd28e850",
+        "key": "verification_gate",
+        "kind": "agent",
+        "subagent_role": "workflow-gate",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Fix",
+        "group_id": null,
+        "id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "key": "fix",
+        "kind": "agent",
+        "subagent_role": "fix-worker",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Cleanup",
+        "group_id": null,
+        "id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "key": "cleanup",
+        "kind": "agent",
+        "subagent_role": "delivery-operator",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Won't Do",
+        "group_id": null,
+        "id": "8c4ce6b4-fe5f-4f93-b294-f94dd5e47c53",
+        "key": "wont_do",
+        "kind": "terminal",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Branch Identity",
+        "group_id": null,
+        "id": "7e60507d-cbcb-4e42-a1b5-1cc3b452aee0",
+        "key": "branch_identity",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-branch-identity",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Branch Identity Resolution",
+        "group_id": null,
+        "id": "6321cea9-43dd-4bdd-b31b-fcbc143edc4a",
+        "key": "branch_identity_resolution",
+        "kind": "agent",
+        "subagent_role": "default",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Plan Contract Fix Guard",
+        "group_id": null,
+        "id": "30b31a30-a1de-429e-a391-dba45a7d1dcc",
+        "key": "plan_contract_fix_continue",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-plan-contract-fix-continue",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Standards Review",
+        "group_id": null,
+        "id": "195baade-a5b8-4818-bf89-3d4964e37c0a",
+        "key": "standards_review",
+        "kind": "agent",
+        "subagent_role": "standards-reviewer",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Spec Review",
+        "group_id": null,
+        "id": "999846ff-e4f9-40fe-98bb-e0f90aa3fcf6",
+        "key": "spec_review",
+        "kind": "agent",
+        "subagent_role": "spec-reviewer",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Verification Join",
+        "group_id": null,
+        "id": "41ac2a54-5e9f-45ec-9ea3-3bdb65aef565",
+        "key": "verification_join",
+        "kind": "join",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Smoke Test",
+        "group_id": null,
+        "id": "6afaae09-078f-4140-822e-5f2c3c5100d5",
+        "key": "smoke",
+        "kind": "agent",
+        "subagent_role": "runtime-smoke-tester",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Compliance Review",
+        "group_id": null,
+        "id": "cda6b928-c342-4e75-b296-616812b23288",
+        "key": "compliance",
+        "kind": "agent",
+        "subagent_role": "compliance_reviewer",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Evidence Repair",
+        "group_id": null,
+        "id": "187f2e6a-6a71-427e-95c3-d92bb3d0144a",
+        "key": "evidence_repair",
+        "kind": "agent",
+        "subagent_role": "fix-worker",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Prepare PR",
+        "group_id": null,
+        "id": "1045c948-e1a5-45ad-8b3b-809be67afc0d",
+        "key": "prepare_pr",
+        "kind": "agent",
+        "subagent_role": "delivery-operator",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Waiting PR",
+        "group_id": null,
+        "id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "key": "waiting_pr",
+        "kind": "agent",
+        "subagent_role": "ci-monitor",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Wait For PR Merge",
+        "group_id": null,
+        "id": "7c3dd047-4e48-47e9-9137-1a5598cda74a",
+        "key": "merge_watch",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-wait-github-pr",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "CI Watch",
+        "group_id": null,
+        "id": "2f55d529-da43-418e-b508-d0a8d3ec436b",
+        "key": "ci_watch",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-wait-github-ci",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "completion_mode": "shell_command",
+        "display_name": "Monitor CI",
+        "group_id": null,
+        "id": "ce4b6cc1-c1c4-4bba-9b00-473ee312d398",
+        "key": "ci_monitor",
+        "kind": "agent",
+        "subagent_role": "ci-monitor",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Task Janitor",
+        "group_id": null,
+        "id": "fb68ee5a-9011-4edb-9bee-18cb304234b0",
+        "key": "task_janitor",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-task-janitor",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "display_name": "Prepare CI Contract",
+        "group_id": null,
+        "id": "795f21b6-5bd8-47ce-b8a6-7a0547241f14",
+        "key": "ci_prepare",
+        "kind": "script",
+        "script_path": ".kent/scripts/workflow-prepare-github-ci",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      }
+    ],
+    "transition_groups": [
+      {
+        "description": "Start one planning session for this task.",
+        "display_name": "Backlog Start",
+        "id": "01ab6705-8314-46f0-a31d-bbe36acb70e4",
+        "source_node_id": "ad05d64c-154f-4f89-a656-f9d08cc9419e",
+        "transition_id": "backlog_start",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Planning is complete; independently review its authority, scope, evidence, and executable ordering.",
+        "display_name": "Plan Review Plan",
+        "id": "a28252c1-fba1-470b-945f-5f4ec9291983",
+        "source_node_id": "a0716188-a4c1-4506-98c8-39580fbbee07",
+        "transition_id": "plan_review_plan",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The independent plan review passed; accept the normalized plan contract and continue through its declared route.",
+        "display_name": "Plan Review Accepted",
+        "id": "deba9124-ba49-47b6-ba52-a2374e693c9d",
+        "source_node_id": "19fd5485-d6c2-4cf6-935a-c2f3bb5e17c7",
+        "transition_id": "plan_review_accepted",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The read-only review found plan-contract defects; revise the plan before any writer or verification stage proceeds.",
+        "display_name": "Plan Review Needs Changes",
+        "id": "ea7f5568-086f-407a-ba8e-fc4ec4b3c109",
+        "source_node_id": "19fd5485-d6c2-4cf6-935a-c2f3bb5e17c7",
+        "transition_id": "plan_review_needs_changes",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Plan Review Needs User Action",
+        "id": "4fe1dfcc-e231-4203-840c-b5cacfea9915",
+        "source_node_id": "19fd5485-d6c2-4cf6-935a-c2f3bb5e17c7",
+        "transition_id": "plan_review_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Cancel this task only after explicit user approval and record why.",
+        "display_name": "Plan Review Wont Do",
+        "id": "66cad6aa-87b6-47d8-b335-ec24433cf676",
+        "source_node_id": "19fd5485-d6c2-4cf6-935a-c2f3bb5e17c7",
+        "transition_id": "plan_review_wont_do",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The plan contract was reconciled; independently re-review it before accepting the new snapshot.",
+        "display_name": "Plan Revalidation Review Plan",
+        "id": "9931290e-1549-4717-b64d-618a470f2c13",
+        "source_node_id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "transition_id": "plan_revalidation_review_plan",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Plan Revalidation Needs User Action",
+        "id": "3dbf190a-58d8-4d86-b52d-0a9bf18f4b6a",
+        "source_node_id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "transition_id": "plan_revalidation_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Cancel this task only after explicit user approval and record why.",
+        "display_name": "Plan Revalidation Wont Do",
+        "id": "0af6286c-b53d-4cf1-a555-054742d0868d",
+        "source_node_id": "907e5771-035f-46dd-a24f-1d2bba1ddc86",
+        "transition_id": "plan_revalidation_wont_do",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The normalized accepted plan changed materially; reconcile authority and acceptance before continuing.",
+        "display_name": "Plan Contract Continue Changed",
+        "id": "e5494c66-8487-4cb6-98e0-54aeab66f3df",
+        "source_node_id": "f0f2571b-4233-440a-a0ec-da83df4bf4ec",
+        "transition_id": "plan_contract_continue_changed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The normalized accepted plan changed materially; reconcile authority and acceptance before verification.",
+        "display_name": "Plan Contract Verify Changed",
+        "id": "c4daa05f-c78f-4675-b183-be051513060f",
+        "source_node_id": "1f2d6986-3c20-4714-84b8-c17b93b03a62",
+        "transition_id": "plan_contract_verify_changed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "A bounded Fix slice changed the accepted plan; reconcile authority before continuing repair.",
+        "display_name": "Plan Contract Fix Continue Changed",
+        "id": "1c45c4dc-c6ba-4cec-ada8-eacd097a91b2",
+        "source_node_id": "30b31a30-a1de-429e-a391-dba45a7d1dcc",
+        "transition_id": "plan_contract_fix_continue_changed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The accepted plan contract is stable; resolve source-control branch identity before implementation.",
+        "display_name": "Plan Contract Start",
+        "id": "73c826b4-194f-4b25-9578-694dc856a716",
+        "source_node_id": "9f06c9dd-d1e8-4479-8aa1-d5092402c0f7",
+        "transition_id": "plan_contract_start",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Branch identity is deterministic and implementation can start.",
+        "display_name": "Branch Identity Ready",
+        "id": "0c8110dd-9bda-4b0d-ad98-f0085c3ce248",
+        "source_node_id": "7e60507d-cbcb-4e42-a1b5-1cc3b452aee0",
+        "transition_id": "branch_identity_ready",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Branch identity is ambiguous or collides with existing repository state and requires a user decision.",
+        "display_name": "Branch Identity Blocked",
+        "id": "0146bea0-ecaf-4e47-a345-8d3e0247bc48",
+        "source_node_id": "7e60507d-cbcb-4e42-a1b5-1cc3b452aee0",
+        "transition_id": "branch_identity_blocked",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Retry deterministic branch identity after the reported collision or repository blocker is resolved.",
+        "display_name": "Branch Identity Resolution Retry",
+        "id": "3fba74da-b75a-4e36-91c5-4a3506ded34b",
+        "source_node_id": "6321cea9-43dd-4bdd-b31b-fcbc143edc4a",
+        "transition_id": "branch_identity_resolution_retry",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Branch Identity Resolution Needs User Action",
+        "id": "98db39b7-f3ba-4e2f-b1ae-e73b67080fea",
+        "source_node_id": "6321cea9-43dd-4bdd-b31b-fcbc143edc4a",
+        "transition_id": "branch_identity_resolution_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Cancel this task only after explicit user approval and record why.",
+        "display_name": "Branch Identity Resolution Wont Do",
+        "id": "eb5e7e3b-23d5-44a5-97d6-b2fa1c8a6792",
+        "source_node_id": "6321cea9-43dd-4bdd-b31b-fcbc143edc4a",
+        "transition_id": "branch_identity_resolution_wont_do",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The accepted plan contract is unchanged; continue with the next ready writer-owned step.",
+        "display_name": "Plan Contract Continue",
+        "id": "a7f6e57e-9028-4b78-a366-c2afa7d7c7bc",
+        "source_node_id": "9f06c9dd-d1e8-4479-8aa1-d5092402c0f7",
+        "transition_id": "plan_contract_continue",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The accepted plan contract is unchanged and writer work is complete; normalize inputs for read-only verification.",
+        "display_name": "Plan Contract Verify",
+        "id": "c19a35f2-8b09-4530-97f8-2075ef9fc185",
+        "source_node_id": "9f06c9dd-d1e8-4479-8aa1-d5092402c0f7",
+        "transition_id": "plan_contract_verify",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The accepted plan contract is unchanged; continue with the next ready writer-owned step.",
+        "display_name": "Plan Contract Continue Stable",
+        "id": "8de0c01e-30f6-4655-89a5-23588f64a2e8",
+        "source_node_id": "f0f2571b-4233-440a-a0ec-da83df4bf4ec",
+        "transition_id": "plan_contract_continue_stable",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The accepted plan contract is unchanged and writer work is complete; normalize inputs for read-only verification.",
+        "display_name": "Plan Contract Verify Stable",
+        "id": "724451d8-1f4f-45ee-a4d3-6a0f029cc966",
+        "source_node_id": "1f2d6986-3c20-4714-84b8-c17b93b03a62",
+        "transition_id": "plan_contract_verify_stable",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The independently revalidated plan is accepted; continue the remaining bounded repair bundle.",
+        "display_name": "Plan Contract Fix Continue",
+        "id": "2d4bb5f4-e549-4b4e-a2a8-12e8e7bcf5a6",
+        "source_node_id": "9f06c9dd-d1e8-4479-8aa1-d5092402c0f7",
+        "transition_id": "plan_contract_fix_continue",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The accepted plan contract is unchanged; continue only the remaining bounded repair bundle.",
+        "display_name": "Plan Contract Fix Continue Stable",
+        "id": "4789274e-c0fc-418f-a53e-829fe0dd3999",
+        "source_node_id": "30b31a30-a1de-429e-a391-dba45a7d1dcc",
+        "transition_id": "plan_contract_fix_continue_stable",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Plan Needs User Action",
+        "id": "57f5ba0b-2b5e-4e01-afa0-9fe2bd1d6e66",
+        "source_node_id": "a0716188-a4c1-4506-98c8-39580fbbee07",
+        "transition_id": "plan_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Cancel this task only after explicit user approval and record why.",
+        "display_name": "Plan Wont Do",
+        "id": "e3e09c78-c1df-4c3a-965e-b1b9a35af619",
+        "source_node_id": "a0716188-a4c1-4506-98c8-39580fbbee07",
+        "transition_id": "plan_wont_do",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "One plan step is complete; check the accepted plan contract before starting the next writer slice.",
+        "display_name": "Implement Continue Implementation",
+        "id": "e072bcbb-af90-4f21-acd5-caad3e4942c1",
+        "source_node_id": "f8204a59-7d20-441b-a727-0d7892b96d45",
+        "transition_id": "implement_continue_implementation",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Implementation is complete; check the accepted plan contract before read-only verification.",
+        "display_name": "Implement Verify",
+        "id": "5357f579-4e97-4ec7-9a24-fbbbbc68a297",
+        "source_node_id": "f8204a59-7d20-441b-a727-0d7892b96d45",
+        "transition_id": "implement_verify",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Implement Needs User Action",
+        "id": "e2c42a7e-58ec-4ffb-ab66-5dcb4c5b0295",
+        "source_node_id": "f8204a59-7d20-441b-a727-0d7892b96d45",
+        "transition_id": "implement_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Cancel this task only after explicit user approval and record why.",
+        "display_name": "Implement Wont Do",
+        "id": "0b96c68b-a488-4bab-a85a-8ce522c7fbc3",
+        "source_node_id": "f8204a59-7d20-441b-a727-0d7892b96d45",
+        "transition_id": "implement_wont_do",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Task-scoped fixes are complete; check the accepted plan contract before rerunning every verification branch.",
+        "display_name": "Fix Verify",
+        "id": "9ab6a2c9-a9ab-4d0b-bc7c-c1f21668d223",
+        "source_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "transition_id": "fix_verify",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Fix Needs User Action",
+        "id": "fbe0ae92-f694-4668-bbb4-376e2e4104ed",
+        "source_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "transition_id": "fix_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Cancel this task only after explicit user approval and record why.",
+        "display_name": "Fix Wont Do",
+        "id": "4318a96e-5f4f-4115-8c64-acee19325c82",
+        "source_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "transition_id": "fix_wont_do",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "One bounded fix slice is complete; check the accepted plan before continuing the remaining task-scoped findings.",
+        "display_name": "Fix Continue Fix",
+        "id": "00c49127-f02d-4c12-a01a-923996f87ae2",
+        "source_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "transition_id": "fix_continue_fix",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Run deterministic verification and independent read-only reviews.",
+        "display_name": "Verification Dispatch Fanout Verify",
+        "id": "e3873e5f-61fe-458b-850a-04d1d8b0cd01",
+        "source_node_id": "f764ff3f-b8a4-430a-a240-1c4f96d72aa8",
+        "transition_id": "verification_dispatch_fanout_verify",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Reject an artifact or foreign workspace path before verification.",
+        "display_name": "Verification Dispatch Invalid Workspace",
+        "id": "e57e29f4-fa5c-4994-a4e2-87855e46d720",
+        "source_node_id": "f764ff3f-b8a4-430a-a240-1c4f96d72aa8",
+        "transition_id": "verification_dispatch_invalid_workspace",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Deterministic verification completed and reported its status.",
+        "display_name": "Deterministic Verify Reported",
+        "id": "ba2e8489-b65d-4acf-beb2-629433c28965",
+        "source_node_id": "c1b1b42a-4fd3-4ddd-bcb5-0a88052f2da0",
+        "transition_id": "deterministic_verify_reported",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "All direct verification branches reported; evaluate them.",
+        "display_name": "Verification Join Evaluate",
+        "id": "17a6bc4a-10a6-41b0-b9a3-a0a09a65a461",
+        "source_node_id": "41ac2a54-5e9f-45ec-9ea3-3bdb65aef565",
+        "transition_id": "verification_join_evaluate",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Repository standards review completed and reported its status.",
+        "display_name": "Standards Review Reported",
+        "id": "8484d3a5-b85d-47ac-8fb4-e7a90ca639af",
+        "source_node_id": "195baade-a5b8-4818-bf89-3d4964e37c0a",
+        "transition_id": "standards_review_reported",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Specification review completed and reported its status.",
+        "display_name": "Spec Review Reported",
+        "id": "076970c0-2791-455c-b6e1-37f4ea6c8cf8",
+        "source_node_id": "999846ff-e4f9-40fe-98bb-e0f90aa3fcf6",
+        "transition_id": "spec_review_reported",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Verification found task-scoped issues for the single writer to fix.",
+        "display_name": "Verification Gate Needs Changes",
+        "id": "a05eef41-ee1b-4b55-8ed9-dbc96630dc62",
+        "source_node_id": "b555a414-6236-4c68-bd50-7b87cd28e850",
+        "transition_id": "verification_gate_needs_changes",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Verification is externally blocked; rerun all branches after approval.",
+        "display_name": "Verification Gate Needs User Action",
+        "id": "6e52b9fe-f9ce-402e-9025-f12046bce61e",
+        "source_node_id": "b555a414-6236-4c68-bd50-7b87cd28e850",
+        "transition_id": "verification_gate_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Cancel this task only after explicit user approval and record why.",
+        "display_name": "Verification Gate Wont Do",
+        "id": "b0495ca1-707f-40ae-9a84-7d4e530c3ab5",
+        "source_node_id": "b555a414-6236-4c68-bd50-7b87cd28e850",
+        "transition_id": "verification_gate_wont_do",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "All verification passed and runtime smoke is required.",
+        "display_name": "Verification Gate Smoke Required",
+        "id": "77f47492-296e-4a89-afdd-53c9cacc6bb5",
+        "source_node_id": "b555a414-6236-4c68-bd50-7b87cd28e850",
+        "transition_id": "verification_gate_smoke_required",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "All verification passed and delivery may continue without runtime smoke.",
+        "display_name": "Verification Gate Delivery Ready",
+        "id": "d1249aa6-98e9-4e6e-a602-3be9a9a3296d",
+        "source_node_id": "b555a414-6236-4c68-bd50-7b87cd28e850",
+        "transition_id": "verification_gate_delivery_ready",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Focused smoke testing passed and delivery may continue.",
+        "display_name": "Smoke Passed",
+        "id": "4e7030d1-4cab-4ffe-9635-deaa16f9b58c",
+        "source_node_id": "6afaae09-078f-4140-822e-5f2c3c5100d5",
+        "transition_id": "smoke_passed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Smoke testing found task-scoped implementation issues.",
+        "display_name": "Smoke Needs Changes",
+        "id": "cc3ccee1-a692-4238-9575-649c8be833dc",
+        "source_node_id": "6afaae09-078f-4140-822e-5f2c3c5100d5",
+        "transition_id": "smoke_needs_changes",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Smoke Needs User Action",
+        "id": "66d0f064-752e-44e4-a5f2-f861215543de",
+        "source_node_id": "6afaae09-078f-4140-822e-5f2c3c5100d5",
+        "transition_id": "smoke_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Final compliance passed; prepare or update the task pull request.",
+        "display_name": "Compliance Ship Pr",
+        "id": "4d7e16a0-e858-461a-9f65-4a867dbe16d1",
+        "source_node_id": "cda6b928-c342-4e75-b296-616812b23288",
+        "transition_id": "compliance_ship_pr",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Final compliance found task-scoped issues that require fixes.",
+        "display_name": "Compliance Needs Changes",
+        "id": "c51035e3-df12-48cb-91dd-eb91a0941285",
+        "source_node_id": "cda6b928-c342-4e75-b296-616812b23288",
+        "transition_id": "compliance_needs_changes",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Only packaging evidence is incomplete; repair those artifacts without repeating source or runtime work.",
+        "display_name": "Compliance Repair Evidence",
+        "id": "5d7e8beb-b52a-43c3-bccc-53822ae89298",
+        "source_node_id": "cda6b928-c342-4e75-b296-616812b23288",
+        "transition_id": "compliance_repair_evidence",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Final compliance is externally blocked; recheck after approval.",
+        "display_name": "Compliance Needs User Action",
+        "id": "189d40ac-d55f-46e8-a1d7-e8f4010d2ae4",
+        "source_node_id": "cda6b928-c342-4e75-b296-616812b23288",
+        "transition_id": "compliance_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Cancel this task only after explicit user approval and record why.",
+        "display_name": "Compliance Wont Do",
+        "id": "841cb04e-1d29-46a7-ac59-408b63553999",
+        "source_node_id": "cda6b928-c342-4e75-b296-616812b23288",
+        "transition_id": "compliance_wont_do",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Packaging evidence was repaired; rerun only final Compliance Review.",
+        "display_name": "Evidence Repair Recheck Compliance",
+        "id": "6df84832-18fb-4248-9043-b70606f16b59",
+        "source_node_id": "187f2e6a-6a71-427e-95c3-d92bb3d0144a",
+        "transition_id": "evidence_repair_recheck_compliance",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Evidence repair proved that substantive source work is still required.",
+        "display_name": "Evidence Repair Needs Source Fix",
+        "id": "985fb806-6321-4a5c-8977-55ddaf68d997",
+        "source_node_id": "187f2e6a-6a71-427e-95c3-d92bb3d0144a",
+        "transition_id": "evidence_repair_needs_source_fix",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Evidence Repair Needs User Action",
+        "id": "36e7f28a-39ce-47ad-a619-7429a95836b9",
+        "source_node_id": "187f2e6a-6a71-427e-95c3-d92bb3d0144a",
+        "transition_id": "evidence_repair_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Cancel this task only after explicit user approval and record why.",
+        "display_name": "Evidence Repair Wont Do",
+        "id": "40e3b3e3-5b56-4a4e-9fc0-8541c3e6bf7e",
+        "source_node_id": "187f2e6a-6a71-427e-95c3-d92bb3d0144a",
+        "transition_id": "evidence_repair_wont_do",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The pull request exists and its delivery state must be checked.",
+        "display_name": "Prepare Pr Monitor Ci",
+        "id": "add4365f-0f6a-406f-bcd0-5ce22222b699",
+        "source_node_id": "1045c948-e1a5-45ad-8b3b-809be67afc0d",
+        "transition_id": "prepare_pr_monitor_ci",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "A pull request is not applicable; require approval before cleanup.",
+        "display_name": "Prepare Pr No Pr",
+        "id": "a3d2d44c-0a47-466c-87a6-066564cd7cb0",
+        "source_node_id": "1045c948-e1a5-45ad-8b3b-809be67afc0d",
+        "transition_id": "prepare_pr_no_pr",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "PR preparation found task-scoped changes that must be fixed.",
+        "display_name": "Prepare Pr Needs Changes",
+        "id": "9cf17f3b-4c3a-4f5f-8fb5-28ffc6fd2df8",
+        "source_node_id": "1045c948-e1a5-45ad-8b3b-809be67afc0d",
+        "transition_id": "prepare_pr_needs_changes",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Prepare Pr Needs User Action",
+        "id": "1e3e8843-8cb4-4bf8-be8e-80583d45a3a9",
+        "source_node_id": "1045c948-e1a5-45ad-8b3b-809be67afc0d",
+        "transition_id": "prepare_pr_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The deterministic watcher confirmed terminal green CI; classify merge readiness once.",
+        "display_name": "Ci Watch Passed",
+        "id": "15c5209d-e63b-48f2-96ea-dc6a1b63cd51",
+        "source_node_id": "2f55d529-da43-418e-b508-d0a8d3ec436b",
+        "transition_id": "ci_watch_passed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "CI reached a failed, cancelled, empty, or infrastructure-error state; classify it once.",
+        "display_name": "Ci Watch Failed",
+        "id": "9b8cc498-2e82-4491-9961-618e731939ed",
+        "source_node_id": "2f55d529-da43-418e-b508-d0a8d3ec436b",
+        "transition_id": "ci_watch_failed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The pull request merged while deterministic CI watching was active.",
+        "display_name": "Ci Watch Pr Merged",
+        "id": "0eb2b623-e942-4de7-bae1-6269984186d6",
+        "source_node_id": "2f55d529-da43-418e-b508-d0a8d3ec436b",
+        "transition_id": "ci_watch_pr_merged",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "A bounded infrastructure retry or refreshed CI run is ready for deterministic preparation.",
+        "display_name": "Ci Monitor Watch Ci",
+        "id": "deb4c511-8acb-4156-9476-20ffa268835b",
+        "source_node_id": "ce4b6cc1-c1c4-4bba-9b00-473ee312d398",
+        "transition_id": "ci_monitor_watch_ci",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The pull request merged before CI observation completed; continue from the confirmed merged state.",
+        "display_name": "Ci Monitor Pr Merged",
+        "id": "ba842b06-b29f-4085-8c5b-7a99f8ce0504",
+        "source_node_id": "ce4b6cc1-c1c4-4bba-9b00-473ee312d398",
+        "transition_id": "ci_monitor_pr_merged",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "CI found task-scoped failures that require fixes.",
+        "display_name": "Ci Monitor Needs Changes",
+        "id": "3a21c35a-8495-4171-91ab-7fc60e6b0454",
+        "source_node_id": "ce4b6cc1-c1c4-4bba-9b00-473ee312d398",
+        "transition_id": "ci_monitor_needs_changes",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Ci Monitor Needs User Action",
+        "id": "f797a56d-4bc0-4cb5-a708-8824b255f8cf",
+        "source_node_id": "ce4b6cc1-c1c4-4bba-9b00-473ee312d398",
+        "transition_id": "ci_monitor_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Recovery only: the pull request is already merged; skip obsolete Fix work and continue post-merge delivery.",
+        "display_name": "Fix Pr Merged",
+        "id": "b0c791ac-8333-4ebd-8ac1-1c6e1dfcf75d",
+        "source_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "transition_id": "fix_pr_merged",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The pull request is confirmed merged; continue post-merge delivery.",
+        "display_name": "Waiting Pr Pr Merged",
+        "id": "cca0f788-6337-4cc1-abc4-ecd0990a9b06",
+        "source_node_id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "transition_id": "waiting_pr_pr_merged",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The pull request is open and feasible; wait deterministically for a meaningful state change.",
+        "display_name": "Waiting Pr Watch Merge",
+        "id": "61dedf7f-5189-439e-b69d-e7f69d951952",
+        "source_node_id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "transition_id": "waiting_pr_watch_merge",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "No meaningful PR state changed during a bounded watch window; continue without an agent turn.",
+        "display_name": "Merge Watch Still Waiting",
+        "id": "3e718c5c-2d7a-4db0-bafc-c5d338b839db",
+        "source_node_id": "7c3dd047-4e48-47e9-9137-1a5598cda74a",
+        "transition_id": "merge_watch_still_waiting",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "PR state changed materially; let the retained Waiting PR session classify it once.",
+        "display_name": "Merge Watch State Changed",
+        "id": "888fee76-2e9b-414f-ac62-04a395eac2ab",
+        "source_node_id": "7c3dd047-4e48-47e9-9137-1a5598cda74a",
+        "transition_id": "merge_watch_state_changed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The deterministic watcher confirmed the PR merged.",
+        "display_name": "Merge Watch Pr Merged",
+        "id": "0133f422-a146-43e2-af1d-01f984afa456",
+        "source_node_id": "7c3dd047-4e48-47e9-9137-1a5598cda74a",
+        "transition_id": "merge_watch_pr_merged",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Waiting PR requires an actual human decision or external access recovery.",
+        "display_name": "Waiting Pr Needs User Action",
+        "id": "f965a4ba-c23c-4f3d-880f-faa461433c64",
+        "source_node_id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "transition_id": "waiting_pr_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The PR state requires task-scoped changes before merge.",
+        "display_name": "Waiting Pr Needs Changes",
+        "id": "fd3f10cf-f663-46cf-a2c1-acf6b33de0d2",
+        "source_node_id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "transition_id": "waiting_pr_needs_changes",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The user explicitly approved closing delivery without merge.",
+        "display_name": "Waiting Pr Close Without Merge",
+        "id": "24e811db-52fd-41cb-8eec-e850b78d8ef9",
+        "source_node_id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "transition_id": "waiting_pr_close_without_merge",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The PR head changed or checks restarted; wait deterministically for terminal CI state.",
+        "display_name": "Waiting Pr Ci Required",
+        "id": "c2c298fc-adb4-4c03-810a-62120485a8a2",
+        "source_node_id": "c9044ee8-965a-46b6-8114-059e7085ed5e",
+        "transition_id": "waiting_pr_ci_required",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Cleanup reporting is complete; remove only deterministically safe task-owned resources.",
+        "display_name": "Cleanup Run Janitor",
+        "id": "aa613c2e-1645-4ee1-a3a2-2b62dff7c3b9",
+        "source_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "transition_id": "cleanup_run_janitor",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The janitor removed safe resources or preserved them with an explicit cleanup report.",
+        "display_name": "Task Janitor Done",
+        "id": "54f43053-580a-4a25-8c39-0b56479c3dd5",
+        "source_node_id": "fb68ee5a-9011-4edb-9bee-18cb304234b0",
+        "transition_id": "task_janitor_done",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Janitor infrastructure failed after safety checks; return to Cleanup without losing its context.",
+        "display_name": "Task Janitor Blocked",
+        "id": "61a681e8-503f-47e7-9ead-be2759edb3a4",
+        "source_node_id": "fb68ee5a-9011-4edb-9bee-18cb304234b0",
+        "transition_id": "task_janitor_blocked",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Work is externally blocked. Do not approve until the reported external action is complete; approval resumes this stage.",
+        "display_name": "Cleanup Needs User Action",
+        "id": "45b4efe2-7966-49dd-8b15-d2d1663361dc",
+        "source_node_id": "50267e19-40b6-4e01-9a57-f630f1d175ef",
+        "transition_id": "cleanup_needs_user_action",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The initial CI contract is complete; watch this exact PR identity cycle.",
+        "display_name": "Ci Prepare Ready Initial",
+        "id": "e2a267be-ada0-4549-bc9f-25b93b7bfec0",
+        "source_node_id": "795f21b6-5bd8-47ce-b8a6-7a0547241f14",
+        "transition_id": "ci_prepare_ready_initial",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The unchanged CI contract is ready for another deterministic observation.",
+        "display_name": "Ci Prepare Ready Retry",
+        "id": "08fdc77e-3353-455c-a522-30ec84c0adaa",
+        "source_node_id": "795f21b6-5bd8-47ce-b8a6-7a0547241f14",
+        "transition_id": "ci_prepare_ready_retry",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "CI preparation could not establish or validate the current PR identity and CI cycle contract.",
+        "display_name": "Ci Prepare Failed",
+        "id": "a8e942c6-4ecd-412a-a96e-e6684626e083",
+        "source_node_id": "795f21b6-5bd8-47ce-b8a6-7a0547241f14",
+        "transition_id": "ci_prepare_failed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The pull request merged during CI preparation.",
+        "display_name": "Ci Prepare Pr Merged",
+        "id": "a68f859a-46ff-4a44-84ec-1c142c0a6007",
+        "source_node_id": "795f21b6-5bd8-47ce-b8a6-7a0547241f14",
+        "transition_id": "ci_prepare_pr_merged",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The PR identity changed during observation; start a fresh CI cycle for its current head and base.",
+        "display_name": "Ci Watch Source Changed",
+        "id": "3edfc12c-17ea-4543-8daa-7c7905c822fa",
+        "source_node_id": "2f55d529-da43-418e-b508-d0a8d3ec436b",
+        "transition_id": "ci_watch_source_changed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "The PR feedback, mergeability, or identity changed while CI was still being observed; classify the material change before passive waiting resumes.",
+        "display_name": "Ci Watch State Changed",
+        "id": "52afa653-2e02-43ec-9b8f-e90b7553fbfb",
+        "source_node_id": "2f55d529-da43-418e-b508-d0a8d3ec436b",
+        "transition_id": "ci_watch_state_changed",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Return a substantive accepted-plan discrepancy to Plan Revalidation before any further production edits.",
+        "display_name": "Implement Replan",
+        "id": "4af7d621-23d5-41ee-82e7-06af653f8451",
+        "source_node_id": "f8204a59-7d20-441b-a727-0d7892b96d45",
+        "transition_id": "implement_replan",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      },
+      {
+        "description": "Return a substantive accepted-plan discrepancy to Plan Revalidation before any further production edits.",
+        "display_name": "Fix Replan",
+        "id": "babfbe48-732c-4867-b15f-ec156b9fd540",
+        "source_node_id": "35bfc21d-4b50-4812-84f8-aafa42f84443",
+        "transition_id": "fix_replan",
+        "workflow_id": "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+      }
+    ]
+  },
+  "schema": "puber-engineering-native-v13-fixture-v1",
+  "workflow": {
+    "description": "Plan, implement, independently verify, fix, and deliver an engineering change for Puber.",
+    "id": "7061fc98-aae5-4468-9d89-fa28bfe30c72",
+    "name": "Puber Engineering Delivery",
+    "version": 13
+  }
+}
