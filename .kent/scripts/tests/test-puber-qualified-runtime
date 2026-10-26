@@ -1,0 +1,465 @@
+from __future__ import annotations
+
+import importlib.machinery
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+from types import SimpleNamespace
+from unittest.mock import patch
+
+SOURCE_ROOT = Path(__file__).resolve().parents[3]
+TASK_ID = "task-12345678-1234-4234-8234-123456789abc"
+NODE_ID = "fixture-task-janitor"
+SESSION_ID = "12345678-1234-4234-8234-123456789abc"
+STEP_ID = "87654321-4321-4321-8321-cba987654321"
+
+
+def load(path: Path, name: str):
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class FakeFacade:
+    """Test-only native qualification/facade; never installed in product files."""
+
+    def __init__(self, project_root: Path, kit_root: Path):
+        kit_root = kit_root.resolve()
+        self.qualified_calls: list[tuple[Path, object, str | None, str | None]] = []
+        self.module_calls: list[tuple[str, Path, object]] = []
+        self.delivery_calls: list[tuple[Path, object]] = []
+        self.handle = SimpleNamespace(
+            native_authorized=True,
+            project_root=project_root,
+            source_root=kit_root,
+        )
+        self.modules = self._make_modules(kit_root)
+        self.delivery = SimpleNamespace(
+            producer_locator=lambda _commentary: None,
+            observe_script_identity=lambda *_args, **_kwargs: {},
+            require_github_provider_read=lambda *_args, **_kwargs: None,
+            GitHubProviderRetryBlocked=RuntimeError,
+        )
+
+    def qualified_kit_runtime(self, *, project_root, source_binding):
+        self.qualified_calls.append(
+            (
+                project_root,
+                source_binding,
+                os.environ.get("KENT_SESSION_ID"),
+                os.environ.get("KENT_STEP_ID"),
+            )
+        )
+        if source_binding is not None and (
+            not isinstance(source_binding, dict)
+            or set(source_binding) != {"task_id", "node_id"}
+        ):
+            raise ValueError("fixture received a malformed native Script binding")
+        return self.handle
+
+    def kit_module(self, name, *, project_root, qualified):
+        self.module_calls.append((name, project_root, qualified))
+        if qualified is not self.handle or project_root != self.handle.project_root:
+            raise ValueError("fixture received a foreign runtime handle")
+        return self.modules[name]
+
+    def delivery_module(self, *, project_root, qualified):
+        self.delivery_calls.append((project_root, qualified))
+        if qualified is not self.handle or project_root != self.handle.project_root:
+            raise ValueError("fixture received a foreign runtime handle")
+        return self.delivery
+
+    @staticmethod
+    def _make_modules(kit_root: Path):
+        package_path = kit_root / "workflowkit" / "__init__.py"
+        module_paths = {
+            "workflowkit": package_path,
+            "runtime": kit_root / "workflowkit/runtime.py",
+            "revision": kit_root / "workflowkit/revision.py",
+            "ci_contract": kit_root / "workflowkit/ci_contract.py",
+            "merge_strategy": kit_root / "workflowkit/merge_strategy.py",
+            "delivery": kit_root / "workflowkit/delivery.py",
+        }
+        names_by_module = {
+            "workflowkit": (
+                "ProjectProfile", "ReleaseSpec",
+                "NormalizedGitHubWorkflowSourceV1",
+                "preflight_project_revision",
+                "capture_runtime_execution_context",
+                "capture_runtime_authority_binding",
+                "validate_operation_jobs",
+                "canonicalize_publication_operation",
+            ),
+            "runtime": (
+                "validate_terminal_seal_request", "validate_terminal_marker",
+                "parse_terminal_marker_line", "terminal_marker_line",
+                "validate_cleanup_report", "validate_terminal_chain",
+                "canonical_sha256", "validate_ci_report", "validate_ci_archive",
+                "parse_canonical_json", "MAX_CI_REPORT_BYTES",
+                "MAX_DYNAMIC_CI_REPORT_BYTES", "merge_github_retry_constraints",
+                "validate_expected_ci_checks", "expected_ci_checks_sha256",
+                "validate_ci_policy_snapshot", "ci_policy_projection_sha256",
+            ),
+            "revision": (
+                "read_blob_bytes", "tree_mode",
+                "collect_runtime_external_captures", "run_git",
+            ),
+            "ci_contract": ("normalize_github_workflow", "read_pull_request"),
+            "merge_strategy": ("resolve_github_merge_strategy",),
+            "delivery": (
+                "capture_script_producer", "observe_script_identity",
+                "producer_locator", "reconstruct_producer",
+                "producer_reference_closure", "packet_decode", "packet_json",
+                "pack_delivery", "transition_contract_reference",
+            ),
+        }
+        result = {}
+        for name, module_path in module_paths.items():
+            values = {"__file__": str(module_path)}
+            for attribute in names_by_module[name]:
+                values[attribute] = (
+                    1 if attribute in {
+                        "MAX_CI_REPORT_BYTES",
+                        "MAX_DYNAMIC_CI_REPORT_BYTES",
+                    }
+                    else (lambda *_args, **_kwargs: None)
+                )
+            result[name] = SimpleNamespace(**values)
+        return result
+
+
+def assert_raises(error_type, callback):
+    try:
+        callback()
+    except error_type:
+        return
+    raise AssertionError(f"expected {error_type.__name__}")
+
+
+with tempfile.TemporaryDirectory(prefix="puber-qualified-runtime-") as tmp:
+    base = Path(tmp)
+    project = base / "project"
+    shutil.copytree(
+        SOURCE_ROOT,
+        project,
+        ignore=shutil.ignore_patterns(".git", "__pycache__"),
+    )
+    kit_root = base / "kit"
+    (kit_root / "workflowkit").mkdir(parents=True)
+    facade = FakeFacade(project, kit_root)
+    helper = load(
+        project / ".kent/scripts/workflow-puber-release-intent",
+        "puber_qualified_runtime_helper",
+    )
+    helper.ROOT = project
+    with patch.object(
+        helper,
+        "_qualified_checkpoint_module",
+        return_value=facade,
+    ):
+        helper._reset_runtime_invocation()
+        assert_raises(
+            helper.ContractError,
+            lambda: helper.validate_envelope(
+                {"_kent": {"task_id": TASK_ID}},
+                project,
+                "fixture",
+            ),
+        )
+        assert facade.qualified_calls == []
+
+        ordering: list[str] = []
+        original_qualified = facade.qualified_kit_runtime
+
+        def qualification_probe(**kwargs):
+            ordering.append("qualified")
+            return original_qualified(**kwargs)
+
+        facade.qualified_kit_runtime = qualification_probe
+
+        class StopAtTaskLookup(Exception):
+            pass
+
+        def stop_at_node_lookup(_root, _node):
+            ordering.append("node_lookup")
+            raise StopAtTaskLookup
+
+        with patch.object(helper, "_node_id", side_effect=stop_at_node_lookup):
+            assert_raises(
+                StopAtTaskLookup,
+                lambda: helper.validate_envelope(
+                    {
+                        "_kent": {"task_id": TASK_ID, "node_id": NODE_ID},
+                        "entry_transition": "fixture",
+                    },
+                    project,
+                    "fixture",
+                ),
+            )
+        assert ordering == ["qualified", "node_lookup"], ordering
+        assert facade.qualified_calls[-1][1] == {
+            "task_id": TASK_ID,
+            "node_id": NODE_ID,
+        }
+
+        helper._reset_runtime_invocation()
+        qualified = helper._bind_qualified_runtime(
+            project,
+            {"task_id": TASK_ID, "node_id": NODE_ID},
+        )
+        delivery = helper._qualified_delivery_module(project)
+        kit = helper._kit_modules(project)
+        assert delivery is facade.delivery
+        assert kit["ProjectProfile"] is facade.modules["workflowkit"].ProjectProfile
+        assert all(call[2] is qualified for call in facade.module_calls)
+        assert facade.delivery_calls == [(project, qualified)]
+        assert len(facade.qualified_calls) == 2
+
+        shutil.rmtree(project)
+        assert helper._qualified_delivery_module(project) is facade.delivery
+        assert helper._kit_modules(project) is kit
+        assert len(facade.qualified_calls) == 2
+        assert facade.delivery_calls == [
+            (project, qualified),
+            (project, qualified),
+        ]
+
+    print(
+        "Puber Script runtime qualification order, shared-handle facade calls, "
+        "and retained-handle-after-root-deletion: passed"
+    )
+
+with tempfile.TemporaryDirectory(prefix="puber-no-runtime-fallback-") as tmp:
+    project = Path(tmp) / "project"
+    shutil.copytree(
+        SOURCE_ROOT,
+        project,
+        ignore=shutil.ignore_patterns(".git", "__pycache__"),
+    )
+    project = project.resolve()
+    helper = load(
+        project / ".kent/scripts/workflow-puber-release-intent",
+        "puber_no_runtime_fallback_helper",
+    )
+    before_path = list(sys.path)
+    before_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "workflowkit" or name.startswith("workflowkit.")
+    }
+    with patch.dict(
+        os.environ,
+        {"KENT_ENGINEERING_KIT_ROOT": str(Path(tmp) / "untrusted-kit")},
+    ):
+        assert_raises(
+            helper.ContractError,
+            lambda: helper._bind_qualified_runtime(
+                project,
+                {"task_id": TASK_ID, "node_id": NODE_ID},
+            ),
+        )
+    after_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "workflowkit" or name.startswith("workflowkit.")
+    }
+    assert sys.path == before_path
+    assert after_modules == before_modules
+    print(
+        "Puber runtime fails closed without the native checkpoint facade; "
+        "environment Kit override is ignored: passed"
+    )
+
+with tempfile.TemporaryDirectory(prefix="puber-cleanup-agent-runtime-") as tmp:
+    project = Path(tmp) / "project"
+    shutil.copytree(
+        SOURCE_ROOT,
+        project,
+        ignore=shutil.ignore_patterns(".git", "__pycache__"),
+    )
+    project = project.resolve()
+    facade = FakeFacade(project, Path(tmp) / "kit")
+    with patch.dict(
+        os.environ,
+        {"KENT_SESSION_ID": SESSION_ID, "KENT_STEP_ID": STEP_ID},
+    ):
+        cleanup = load(
+            project / ".kent/scripts/workflow-release-cleanup",
+            "puber_cleanup_runtime_test",
+        )
+    def stop_before_task_lookup(*_args, **_kwargs):
+        raise cleanup.helper.ContractError("test stop after Agent qualification")
+
+    stderr = io.StringIO()
+    with patch.object(
+        cleanup.helper,
+        "_qualified_checkpoint_module",
+        return_value=facade,
+    ), patch.object(
+        cleanup.helper,
+        "read_zero_argument",
+        return_value={
+            "task_id": TASK_ID,
+            "incoming_transition": "fixture",
+            "parameters": {},
+        },
+    ), patch.object(
+        cleanup.helper,
+        "task_show",
+        side_effect=stop_before_task_lookup,
+    ), patch.object(sys, "stderr", stderr):
+        assert cleanup.main() == 2
+    assert facade.qualified_calls == [
+        (project, None, SESSION_ID, STEP_ID)
+    ], facade.qualified_calls
+    assert '"_kent"' not in stderr.getvalue()
+    assert "test stop after Agent qualification" in stderr.getvalue()
+    print("Puber Cleanup Agent binds inherited identity without a synthetic _kent: passed")
+
+with tempfile.TemporaryDirectory(prefix="puber-janitor-runtime-") as tmp:
+    project = Path(tmp) / "project"
+    shutil.copytree(
+        SOURCE_ROOT,
+        project,
+        ignore=shutil.ignore_patterns(".git", "__pycache__"),
+    )
+    project = project.resolve()
+    kit_root = Path(tmp) / "kit"
+    (kit_root / "workflowkit").mkdir(parents=True)
+    wrapper = load(
+        project / ".kent/scripts/workflow-puber-release-janitor",
+        "puber_janitor_runtime_test",
+    )
+    facade = FakeFacade(project, kit_root)
+    wrapper.ROOT = project
+    wrapper.helper.ROOT = project
+    qualification_order: list[str] = []
+
+    original_qualifier = facade.qualified_kit_runtime
+
+    def record_qualification(**kwargs):
+        qualification_order.append("qualified")
+        return original_qualifier(**kwargs)
+
+    facade.qualified_kit_runtime = record_qualification
+
+    def native_graph(_payload):
+        qualification_order.append("native_graph")
+        return {"task_short_id": "PUB-99"}
+
+    with patch.object(
+        wrapper.helper,
+        "_qualified_checkpoint_module",
+        return_value=facade,
+    ), patch.object(wrapper, "_current_native_graph", side_effect=native_graph):
+        graph = json.loads(
+            (project / wrapper.helper.GRAPH_PATH).read_text(encoding="utf-8")
+        )
+        janitor = next(node for node in graph["nodes"] if node["key"] == "task_janitor")
+        ingress = next(
+            edge for edge in graph["edges"]
+            if edge.get("key") == "cleanup_task_janitor"
+        )
+        fields = {
+            parameter["key"]: "fixture"
+            for parameter in ingress["parameters"]
+        }
+        fields.update(
+            workspace_path=str(project),
+            operation_id="a" * 64,
+            branch_name="release/99.0.0",
+            pr_base_branch="master",
+            cleanup_mode="report_only",
+            cleanup_report="",
+            _kent={
+                "task_id": TASK_ID,
+                "node_id": janitor["id"],
+            },
+        )
+        payload = wrapper._validate_payload(fields)
+        assert payload == fields
+        assert qualification_order == ["qualified", "native_graph"]
+        assert facade.qualified_calls[-1][1] == fields["_kent"]
+
+    janitor_metadata = fields["_kent"]
+    handle = facade.handle
+    shared_receipt: list[tuple[object, object]] = []
+
+    class SharedJanitor:
+        @staticmethod
+        def format_cleanup_report(original, report, *, runtime=None):
+            return report
+
+        def main(self, *, qualified, checkpoint):
+            shared_receipt.append((qualified, checkpoint))
+            assert qualified is handle
+            assert checkpoint is facade
+            shutil.rmtree(project)
+            self.complete(
+                "task_janitor_done",
+                "Janitor removed managed worktree fixture.",
+            )
+            return 0
+
+    qualification_order.clear()
+    facade.qualified_calls.clear()
+    raw = {
+        **{key: value for key, value in fields.items() if key != "_kent"},
+        "_kent": janitor_metadata,
+    }
+
+    output = io.StringIO()
+    with patch.object(
+        wrapper.helper,
+        "_qualified_checkpoint_module",
+        return_value=facade,
+    ), patch.object(
+        wrapper.helper,
+        "read_zero_argument",
+        return_value=raw,
+    ), patch.object(
+        wrapper,
+        "_current_native_graph",
+        side_effect=native_graph,
+    ), patch.object(
+        wrapper,
+        "_restore_replay_payload",
+        side_effect=lambda value: dict(value),
+    ), patch.object(
+        wrapper,
+        "_load_janitor",
+        return_value=SharedJanitor(),
+    ), patch.object(
+        wrapper,
+        "_prepare_output_templates",
+        return_value={
+            "task_janitor_done": {"transition": "done", "cleanup_report": ""}
+        },
+    ), patch.object(
+        wrapper.helper,
+        "render_exact",
+        return_value={"transition": "done"},
+    ), patch.object(sys, "stdout", output):
+        assert wrapper.main() == 0
+
+    assert shared_receipt == [(handle, facade)], shared_receipt
+    assert not project.exists()
+    assert facade.qualified_calls == [
+        (project, janitor_metadata, None, None)
+    ], facade.qualified_calls
+    assert qualification_order == ["qualified", "native_graph"], qualification_order
+    assert json.loads(output.getvalue())["cleanup_report"].startswith(
+        "Janitor removed managed worktree"
+    )
+    print(
+        "Puber Janitor preserves the exact qualified/checkpoint handles through "
+        "shared cleanup and workspace deletion: passed"
+    )

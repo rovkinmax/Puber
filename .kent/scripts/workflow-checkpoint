@@ -23,6 +23,10 @@ TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 STAGES = ("fix", "smoke")
 JSON_INPUT_TIMEOUT_SECONDS = 2.0
 MAX_JSON_INPUT_BYTES = 1024 * 1024
+KIT_RUNTIME_LOADER_PATH = ".kent/scripts/workflow_kit_runtime.py"
+KIT_RUNTIME_LOADER_COMMAND = "kit_runtime_loader"
+_QUALIFIED_RUNTIME_HANDLES = {}
+_KIT_RUNTIME_BOOTSTRAPS = {}
 
 
 class GitHubProviderReadBlocked(RuntimeError):
@@ -196,12 +200,310 @@ def decode_payload(raw: str) -> dict[str, object]:
     return payload
 
 
-def delivery_module():
-    """Use the existing installed first-party CLI/module source seam.
+def _project_root(project_root=None):
+    root = (
+        Path(project_root).expanduser()
+        if project_root is not None
+        else Path(__file__).resolve().parents[2]
+    )
+    resolved = root.resolve(strict=True)
+    if not root.is_absolute() or resolved != root:
+        raise ValueError("project root must be canonical")
+    return root
 
-    Source receipts/installation qualify this closure; legacy checkpoint calls
-    never resolve or depend on the installed Kit.
-    """
+
+def _project_root_for_handle(project_root, qualified):
+    bound_value = getattr(qualified, "project_root", None)
+    try:
+        bound = Path(bound_value)
+        selected = bound if project_root is None else Path(project_root).expanduser()
+        if (
+            not bound.is_absolute()
+            or ".." in bound.parts
+            or str(bound) != str(bound.resolve(strict=False))
+            or not selected.is_absolute()
+            or ".." in selected.parts
+            or str(selected) != str(selected.resolve(strict=False))
+            or selected != bound
+        ):
+            raise ValueError("qualified Kit handle belongs to another project")
+    except (OSError, RuntimeError, TypeError) as error:
+        raise ValueError("qualified Kit handle project root is invalid") from error
+    return bound
+
+
+def _runtime_profile(root):
+    descriptors = []
+    try:
+        root_fd = os.open(
+            root,
+            os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0),
+        )
+        descriptors.append(root_fd)
+        try:
+            kent_fd = open_child_directory(root_fd, ".kent", create=False)
+        except ValueError as error:
+            if isinstance(error.__cause__, FileNotFoundError):
+                raise error.__cause__
+            raise
+        descriptors.append(kent_fd)
+        profile_fd = os.open(
+            "workflow-profile.toml",
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0),
+            dir_fd=kent_fd,
+        )
+        descriptors.append(profile_fd)
+        metadata = os.fstat(profile_fd)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_nlink != 1
+            or metadata.st_mode & 0o7022
+            or metadata.st_size > 64 * 1024
+        ):
+            raise ValueError("workflow runtime profile is unsafe")
+        chunks = []
+        size = 0
+        while True:
+            chunk = os.read(profile_fd, min(65536, 64 * 1024 + 1 - size))
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > 64 * 1024:
+                raise ValueError("workflow runtime profile exceeds its bound")
+            chunks.append(chunk)
+        after = os.fstat(profile_fd)
+        if (
+            len(b"".join(chunks)) != metadata.st_size
+            or (metadata.st_dev, metadata.st_ino, metadata.st_mode,
+                metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
+            != (after.st_dev, after.st_ino, after.st_mode,
+                after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+        ):
+            raise ValueError("workflow runtime profile changed during read")
+        raw = b"".join(chunks)
+    finally:
+        close_descriptors(*descriptors)
+    profile = tomllib.loads(raw.decode("utf-8"))
+    if not isinstance(profile, dict):
+        raise ValueError("workflow runtime profile is malformed")
+    return profile
+
+
+def _runtime_bootstrap(root):
+    path = root / KIT_RUNTIME_LOADER_PATH
+    descriptors = []
+    try:
+        root_fd = os.open(
+            root,
+            os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0),
+        )
+        descriptors.append(root_fd)
+        kent_fd = open_child_directory(root_fd, ".kent", create=False)
+        descriptors.append(kent_fd)
+        scripts_fd = open_child_directory(kent_fd, "scripts", create=False)
+        descriptors.append(scripts_fd)
+        bootstrap_fd = os.open(
+            "workflow_kit_runtime.py",
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0),
+            dir_fd=scripts_fd,
+        )
+        descriptors.append(bootstrap_fd)
+        metadata = os.fstat(bootstrap_fd)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_nlink != 1
+            or metadata.st_mode & 0o7022
+            or metadata.st_size > 1024 * 1024
+        ):
+            raise ValueError("qualified Kit runtime bootstrap is unsafe")
+        chunks = []
+        size = 0
+        while True:
+            chunk = os.read(bootstrap_fd, min(65536, 1024 * 1024 + 1 - size))
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > 1024 * 1024:
+                raise ValueError("qualified Kit runtime bootstrap exceeds its bound")
+            chunks.append(chunk)
+        after = os.fstat(bootstrap_fd)
+        raw = b"".join(chunks)
+        if (
+            len(raw) != metadata.st_size
+            or (metadata.st_dev, metadata.st_ino, metadata.st_mode,
+                metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
+            != (after.st_dev, after.st_ino, after.st_mode,
+                after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+        ):
+            raise ValueError("qualified Kit runtime bootstrap changed during read")
+    finally:
+        close_descriptors(*descriptors)
+    fingerprint = hashlib.sha256(raw).hexdigest()
+    name = "_kent_kit_runtime_" + hashlib.sha256(str(root).encode()).hexdigest()
+    loaded = _KIT_RUNTIME_BOOTSTRAPS.get(name)
+    if loaded is not None:
+        module, prior_digest = loaded
+        if prior_digest != fingerprint:
+            raise ValueError("qualified Kit runtime bootstrap changed in this process")
+        return module
+    previous_bytecode_policy = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    module = type(sys)(name)
+    module.__file__ = str(path)
+    module.__package__ = ""
+    sys.modules[name] = module
+    try:
+        exec(compile(raw, str(path), "exec"), module.__dict__)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
+    finally:
+        sys.dont_write_bytecode = previous_bytecode_policy
+    _KIT_RUNTIME_BOOTSTRAPS[name] = (module, fingerprint)
+    return module
+
+
+def _runtime_context_key(source_binding):
+    if source_binding is None:
+        return None
+    if not isinstance(source_binding, dict):
+        raise ValueError("native Script context must be an object")
+    return json.dumps(
+        source_binding,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def qualified_kit_runtime(project_root=None, source_binding=None):
+    """Qualify the opted-in Kit source against fresh native authority."""
+    root = _project_root(project_root)
+    try:
+        profile = _runtime_profile(root)
+    except FileNotFoundError:
+        if any(
+            selected_root == str(root)
+            for selected_root, _ in _QUALIFIED_RUNTIME_HANDLES
+        ):
+            raise ValueError(
+                "workflow Kit runtime profile disappeared during this invocation"
+            )
+        return None
+    if "kit_runtime" not in profile:
+        if any(
+            selected_root == str(root)
+            for selected_root, _ in _QUALIFIED_RUNTIME_HANDLES
+        ):
+            raise ValueError(
+                "workflow Kit runtime profile changed during this invocation"
+            )
+        return None
+    context_key = _runtime_context_key(source_binding)
+    key = (str(root), context_key)
+    bootstrap = _runtime_bootstrap(root)
+    if key in _QUALIFIED_RUNTIME_HANDLES:
+        qualified = _QUALIFIED_RUNTIME_HANDLES[key]
+        binding = bootstrap._profile_table_binding(profile.get("kit_runtime"))
+        if (
+            binding != qualified.binding
+            or not getattr(qualified, "native_authorized", False)
+        ):
+            raise ValueError(
+                "workflow Kit runtime binding changed during this invocation"
+            )
+        return qualified
+    qualified = bootstrap.qualified_kit_runtime(
+        root,
+        source_binding=source_binding,
+    )
+    if not getattr(qualified, "native_authorized", False):
+        raise ValueError("Kit runtime bootstrap did not return native authority")
+    _QUALIFIED_RUNTIME_HANDLES[key] = qualified
+    return qualified
+
+
+def _cached_qualified_runtime(root):
+    matches = [
+        qualified
+        for (selected_root, _), qualified in _QUALIFIED_RUNTIME_HANDLES.items()
+        if selected_root == str(root)
+    ]
+    if len(matches) > 1:
+        raise ValueError("multiple native Kit handles exist for this project process")
+    return matches[0] if matches else None
+
+
+def kit_module(name, project_root=None, qualified=None):
+    """Public module facade; opted-in projects never fall back after failure."""
+    root = (
+        _project_root_for_handle(project_root, qualified)
+        if qualified is not None
+        else _project_root(project_root)
+    )
+    if qualified is None:
+        qualified = _cached_qualified_runtime(root)
+    if qualified is None:
+        qualified = qualified_kit_runtime(root)
+    if qualified is not None:
+        if (
+            not getattr(qualified, "native_authorized", False)
+            or getattr(qualified, "project_root", None) != root
+        ):
+            raise ValueError("qualified Kit handle belongs to another project")
+        return qualified.module(name)
+    if (
+        not isinstance(name, str)
+        or not name
+        or any(
+            not part.isidentifier()
+            for part in name.removeprefix("workflowkit.").split(".")
+        )
+    ):
+        raise ValueError("Kit module name is malformed")
+    tool = Path.home() / ".kent" / "bin" / "kent-prepare-github-ci"
+    if not tool.is_symlink():
+        raise ValueError("qualified first-party Kit CLI symlink is unavailable")
+    script = tool.resolve(strict=True)
+    package_root = script.parent.parent
+    if script.name != "prepare-github-ci" or script.parent.name != "scripts":
+        raise ValueError("first-party Kit CLI source layout mismatch")
+    sys.path.insert(0, str(package_root))
+    module = importlib.import_module(
+        name if name == "workflowkit" or name.startswith("workflowkit.")
+        else f"workflowkit.{name}"
+    )
+    origin = getattr(module, "__file__", None)
+    if name in {"workflowkit", "workflowkit.__init__"}:
+        expected = package_root / "workflowkit" / "__init__.py"
+    else:
+        expected = package_root / "workflowkit" / (
+            name.removeprefix("workflowkit.").split(".")[-1] + ".py"
+        )
+    if not isinstance(origin, str) or Path(origin).resolve() != expected.resolve():
+        raise ValueError("first-party Kit module source layout mismatch")
+    return module
+
+
+def delivery_module(project_root=None, qualified=None):
+    """Resolve one delivery module while preserving unbound legacy behavior."""
+    root = (
+        _project_root_for_handle(project_root, qualified)
+        if qualified is not None
+        else _project_root(project_root)
+    )
+    if qualified is None:
+        qualified = _cached_qualified_runtime(root)
+    if qualified is None:
+        qualified = qualified_kit_runtime(root)
+    if qualified is not None:
+        return kit_module("delivery", root, qualified)
+    # The pre-binding path intentionally keeps the historical global seam.
     tool = Path.home() / ".kent" / "bin" / "kent-prepare-github-ci"
     if not tool.is_symlink():
         raise ValueError("qualified first-party Kit CLI symlink is unavailable")
@@ -219,6 +521,112 @@ def delivery_module():
     if Path(delivery.__file__).resolve() != source:
         raise ValueError("unexpected first-party delivery module")
     return delivery
+
+
+def _prepare_ci_legacy_cli():
+    selected = os.environ.get("KENT_PREPARE_GITHUB_CI_BIN")
+    if not selected:
+        selected = str(Path.home() / ".kent/bin/kent-prepare-github-ci")
+    if not os.access(selected, os.X_OK):
+        raise ValueError("first-party CLI is not executable")
+    return selected
+
+
+def _prepare_ci_qualified_cli(root, payload):
+    native_context = payload.get("_kent")
+    if not isinstance(native_context, dict):
+        raise ValueError("qualified CI preparation requires native Script identity")
+    workspace = payload.get("workspace_path")
+    if not isinstance(workspace, str) or not Path(workspace).is_absolute():
+        raise ValueError("qualified CI preparation workspace is invalid")
+    workspace_path = Path(workspace)
+    if (
+        ".." in workspace_path.parts
+        or str(workspace_path) != str(workspace_path.resolve(strict=True))
+        or workspace_path != root
+    ):
+        raise ValueError("qualified CI preparation workspace differs")
+
+    qualified = qualified_kit_runtime(root, source_binding=native_context)
+    if (
+        qualified is None
+        or not getattr(qualified, "native_authorized", False)
+        or getattr(qualified, "project_root", None) != root
+    ):
+        raise ValueError("native Kit source qualification failed")
+    bootstrap = _runtime_bootstrap(root)
+    relative_path = "scripts/prepare-github-ci"
+    selected = qualified.source_root / relative_path
+    committed_bytes, committed_mode = bootstrap._git_blob(
+        qualified.source_root,
+        qualified.binding.commit,
+        relative_path,
+    )
+    selected_bytes, selected_mode = bootstrap._read_regular_file(
+        selected,
+        maximum=MAX_JSON_INPUT_BYTES,
+    )
+    if (
+        committed_bytes != selected_bytes
+        or bool(committed_mode & 0o111) != bool(selected_mode & 0o111)
+        or not selected_mode & 0o111
+    ):
+        raise ValueError("qualified Kit CI command differs from its source cohort")
+    return selected
+
+
+def prepare_github_ci_command(
+    project_root=None,
+    *,
+    require_runtime_binding=False,
+):
+    """Dispatch CI preparation only through an opted-in native Kit binding."""
+    payload = None
+    try:
+        root = _project_root(project_root)
+        try:
+            profile = _runtime_profile(root)
+        except FileNotFoundError:
+            if require_runtime_binding:
+                raise ValueError("workflow Kit runtime profile disappeared")
+            selected = _prepare_ci_legacy_cli()
+            os.execv(selected, [selected])
+            return 0
+        if "kit_runtime" not in profile:
+            if require_runtime_binding:
+                raise ValueError("workflow Kit runtime binding disappeared")
+            selected = _prepare_ci_legacy_cli()
+            os.execv(selected, [selected])
+            return 0
+
+        raw_bytes = sys.stdin.buffer.read(MAX_JSON_INPUT_BYTES + 1)
+        if len(raw_bytes) > MAX_JSON_INPUT_BYTES:
+            raise ValueError("CI preparation input exceeds its bound")
+        try:
+            payload = decode_payload(raw_bytes.decode("utf-8"))
+        except (UnicodeError, RecursionError) as error:
+            raise ValueError("CI preparation input is invalid") from error
+
+        selected = _prepare_ci_qualified_cli(root, payload)
+        result = subprocess.run(
+            [sys.executable, "-B", str(selected)],
+            cwd=root,
+            input=raw_bytes,
+            check=False,
+        )
+        return result.returncode
+    except Exception:
+        operation = (
+            payload.get("operation")
+            if isinstance(payload, dict)
+            else None
+        )
+        sys.stdout.buffer.write(
+            b'{"error":"ci_report_archive_failed"}\n'
+            if operation is not None
+            else b'{"error":"ci_prepare_input_invalid"}\n'
+        )
+        return 2
 
 
 def current_delivery_identity(root: Path, task: str) -> dict:
@@ -333,7 +741,8 @@ def current_script_delivery_protocol(
         return None
     if not isinstance(native_context, dict):
         raise ValueError("current delivery requires native Script context")
-    module = delivery_module()
+    qualified = qualified_kit_runtime(root, source_binding=native_context)
+    module = delivery_module(root, qualified)
     observed = module.observe_script_delivery_graph(
         root,
         task,
@@ -421,7 +830,11 @@ def emit_producer_result(
         str,
     ):
         raise ValueError("GitHub provider retry constraint must be canonical JSON")
-    module = delivery_module()
+    qualified = qualified_kit_runtime(
+        root,
+        source_binding=payload.get("_kent"),
+    )
+    module = delivery_module(root, qualified)
     output = module.packet_decode(raw)
     inputs = {key: value for key, value in payload.items()
               if isinstance(value, str)}
@@ -471,7 +884,11 @@ def provider_refs_from_payload(root: Path, payload: object) -> list[str]:
         return []
     if not isinstance(commentary, str):
         raise ValueError("GitHub provider commentary is invalid")
-    module = delivery_module()
+    qualified = qualified_kit_runtime(
+        root,
+        source_binding=payload.get("_kent"),
+    )
+    module = delivery_module(root, qualified)
     locator = module.producer_locator(commentary)
     return [] if locator is None else [locator]
 
@@ -537,7 +954,11 @@ def pack_delivery_command(root: Path, task: str) -> int:
     if not TASK_KEY.fullmatch(task):
         raise ValueError("invalid task key")
     request = read_json_input("pack-delivery")
-    module = delivery_module()
+    qualified = qualified_kit_runtime(
+        root,
+        source_binding=request.get("_kent"),
+    )
+    module = delivery_module(root, qualified)
     identity = current_delivery_identity(root, task)
     detail = delivery_native_read(root, [
         "task", "show", identity["task_id"], "--project", identity["project_id"], "--json",

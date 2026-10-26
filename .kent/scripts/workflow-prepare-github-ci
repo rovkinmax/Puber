@@ -1,9 +1,158 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-tool="${KENT_PREPARE_GITHUB_CI_BIN:-${HOME}/.kent/bin/kent-prepare-github-ci}"
-if [[ ! -x "$tool" ]]; then
-  echo "workflow-prepare-github-ci: first-party CLI is not executable: $tool" >&2
-  exit 1
-fi
-exec "$tool"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -L)"
+project_root="$(cd -- "$script_dir/../.." && pwd -L)"
+exec python3 -B -c '
+import importlib.machinery
+import importlib.util
+import os
+from pathlib import Path
+import stat
+import sys
+import tomllib
+
+
+def exec_legacy():
+    selected = os.environ.get("KENT_PREPARE_GITHUB_CI_BIN")
+    if not selected:
+        selected = str(Path.home() / ".kent/bin/kent-prepare-github-ci")
+    if not os.access(selected, os.X_OK):
+        print(
+            "workflow-prepare-github-ci: first-party CLI is not executable: "
+            + selected,
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    os.execv(selected, [selected])
+
+
+root = Path(sys.argv[1]).resolve(strict=True)
+directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+root_fd = os.open(root, directory_flags)
+try:
+    kent_fd = os.open(".kent", directory_flags, dir_fd=root_fd)
+except FileNotFoundError:
+    os.close(root_fd)
+    exec_legacy()
+except OSError as error:
+    os.close(root_fd)
+    raise SystemExit("workflow-prepare-github-ci: project .kent directory is unsafe") from error
+kent_metadata = os.fstat(kent_fd)
+if (
+    not stat.S_ISDIR(kent_metadata.st_mode)
+    or kent_metadata.st_uid != os.getuid()
+    or kent_metadata.st_mode & 0o7022
+):
+    os.close(kent_fd)
+    os.close(root_fd)
+    raise SystemExit("workflow-prepare-github-ci: project .kent directory is unsafe")
+try:
+    profile_fd = os.open(
+        "workflow-profile.toml",
+        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+        dir_fd=kent_fd,
+    )
+except FileNotFoundError:
+    os.close(kent_fd)
+    os.close(root_fd)
+    exec_legacy()
+except OSError as error:
+    os.close(kent_fd)
+    os.close(root_fd)
+    raise SystemExit("workflow-prepare-github-ci: workflow profile is unsafe") from error
+profile_metadata = os.fstat(profile_fd)
+if (
+    not stat.S_ISREG(profile_metadata.st_mode)
+    or profile_metadata.st_uid != os.getuid()
+    or profile_metadata.st_nlink != 1
+    or profile_metadata.st_mode & 0o7022
+    or profile_metadata.st_size > 64 * 1024
+):
+    os.close(profile_fd)
+    os.close(kent_fd)
+    os.close(root_fd)
+    raise SystemExit("workflow-prepare-github-ci: workflow profile is unsafe")
+try:
+    profile_chunks = []
+    profile_size = 0
+    while True:
+        chunk = os.read(
+            profile_fd,
+            min(65536, 64 * 1024 + 1 - profile_size),
+        )
+        if not chunk:
+            break
+        profile_size += len(chunk)
+        if profile_size > 64 * 1024:
+            raise SystemExit(
+                "workflow-prepare-github-ci: workflow profile is oversized"
+            )
+        profile_chunks.append(chunk)
+    profile_after = os.fstat(profile_fd)
+finally:
+    os.close(profile_fd)
+    os.close(kent_fd)
+    os.close(root_fd)
+profile_bytes = b"".join(profile_chunks)
+if (
+    len(profile_bytes) != profile_metadata.st_size
+    or len(profile_bytes) > 64 * 1024
+    or (
+        profile_metadata.st_dev,
+        profile_metadata.st_ino,
+        profile_metadata.st_mode,
+        profile_metadata.st_size,
+        profile_metadata.st_mtime_ns,
+        profile_metadata.st_ctime_ns,
+    )
+    != (
+        profile_after.st_dev,
+        profile_after.st_ino,
+        profile_after.st_mode,
+        profile_after.st_size,
+        profile_after.st_mtime_ns,
+        profile_after.st_ctime_ns,
+    )
+):
+    raise SystemExit("workflow-prepare-github-ci: workflow profile changed during read")
+try:
+    profile = tomllib.loads(profile_bytes.decode("utf-8"))
+except (UnicodeError, tomllib.TOMLDecodeError) as error:
+    raise SystemExit("workflow-prepare-github-ci: workflow profile is invalid") from error
+if not isinstance(profile, dict):
+    raise SystemExit("workflow-prepare-github-ci: workflow profile is invalid")
+if "kit_runtime" not in profile:
+    exec_legacy()
+
+checkpoint_path = root / ".kent/scripts/workflow-checkpoint"
+try:
+    metadata = checkpoint_path.lstat()
+except OSError as error:
+    raise SystemExit("workflow-prepare-github-ci: checkpoint adapter unavailable") from error
+if (
+    not stat.S_ISREG(metadata.st_mode)
+    or metadata.st_uid != os.getuid()
+    or metadata.st_nlink != 1
+    or metadata.st_mode & 0o7022
+):
+    raise SystemExit("workflow-prepare-github-ci: checkpoint adapter is unsafe")
+loader = importlib.machinery.SourceFileLoader(
+    "prepare_ci_qualified_checkpoint",
+    str(checkpoint_path),
+)
+spec = importlib.util.spec_from_loader(loader.name, loader)
+if spec is None:
+    raise SystemExit("workflow-prepare-github-ci: checkpoint adapter unavailable")
+module = importlib.util.module_from_spec(spec)
+previous_bytecode_policy = sys.dont_write_bytecode
+sys.dont_write_bytecode = True
+try:
+    loader.exec_module(module)
+finally:
+    sys.dont_write_bytecode = previous_bytecode_policy
+raise SystemExit(
+    module.prepare_github_ci_command(root, require_runtime_binding=True)
+)
+' "$project_root"

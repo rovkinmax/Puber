@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import io
 import json
 import sys
@@ -65,6 +66,26 @@ def _load_janitor():
         raise helper.ContractError(
             "shared Task Janitor lacks the canonical cleanup report formatter"
         )
+    shared_main = getattr(module, "main", None)
+    if not callable(shared_main):
+        raise helper.ContractError("shared Janitor entry point is unavailable")
+    try:
+        parameters = inspect.signature(shared_main).parameters
+    except (TypeError, ValueError) as error:
+        raise helper.ContractError(
+            "shared Janitor qualified-runtime seam is unavailable"
+        ) from error
+    accepts_keywords = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    if not accepts_keywords and not {
+        "qualified",
+        "checkpoint",
+    } <= parameters.keys():
+        raise helper.ContractError(
+            "shared Janitor qualified-runtime seam is unavailable"
+        )
     return module
 
 
@@ -97,9 +118,15 @@ def _target_and_transition(transition: str, report: str) -> tuple[str, str]:
     )
 
 
-def _native_output(transition: str, report: str) -> dict[str, Any]:
+def _native_output(
+    transition: str,
+    report: str,
+    blocker: str = "",
+) -> dict[str, Any]:
     if _INPUT_PAYLOAD is None:
         raise helper.ContractError("Puber Janitor input is unavailable")
+    if not isinstance(blocker, str):
+        raise helper.ContractError("shared Janitor blocker is not text")
     native_transition, target = _target_and_transition(transition, report)
     template = _OUTPUT_TEMPLATES.get(native_transition)
     if template is None:
@@ -120,11 +147,77 @@ def _native_output(transition: str, report: str) -> dict[str, Any]:
         raise helper.ContractError(
             "shared Janitor cleanup report formatter is unavailable"
         )
-    output["cleanup_report"] = formatter(
-        getattr(shared, "_ORIGINAL_CLEANUP_REPORT", None),
+    original = getattr(shared, "_ORIGINAL_CLEANUP_REPORT", None)
+    formatted = formatter(
+        original,
         report,
         runtime=getattr(shared, "_CLEANUP_REPORT_RUNTIME", None),
     )
+    if blocker and isinstance(original, str) and formatted == original:
+        if (
+            not blocker.strip()
+            or len(blocker.encode("utf-8")) > 256 * 1024
+            or len(blocker.splitlines()) != 1
+            or any(ord(character) < 32 or ord(character) == 127 for character in blocker)
+        ):
+            raise helper.ContractError(
+                "shared Janitor blocker is not one bounded text line"
+            )
+        try:
+            validate_cleanup_report = helper._kit_modules(ROOT)[
+                "validate_cleanup_report"
+            ]
+            validate_cleanup_report(formatted)
+        except Exception as error:
+            raise helper.ContractError(
+                "shared Janitor blocker has no validated terminal report"
+            ) from error
+        lines = formatted.splitlines(keepends=True)
+
+        def line_ending(line: str) -> str:
+            if line.endswith("\r\n"):
+                return "\r\n"
+            if line.endswith(("\n", "\r")):
+                return line[-1]
+            return ""
+
+        def content(line: str) -> str:
+            ending = line_ending(line)
+            return line[:-len(ending)] if ending else line
+
+        markers = [
+            index for index, line in enumerate(lines)
+            if content(line).startswith("TERMINAL_EVIDENCE_V1 ")
+        ]
+        if markers != [len(lines) - 1]:
+            raise helper.ContractError(
+                "shared Janitor blocker report has no final terminal marker"
+            )
+        annotations = [
+            content(line) for index, line in enumerate(lines[1:], start=1)
+            if index != markers[0]
+        ]
+        annotation = "Janitor " + blocker
+        if annotation in annotations:
+            output["cleanup_report"] = formatted
+        else:
+            marker_line = lines[-1]
+            marker_ending = line_ending(marker_line)
+            prefix = "".join(lines[:-1])
+            separator = line_ending(prefix) or marker_ending or "\n"
+            if prefix and not prefix.endswith(("\n", "\r")):
+                prefix += separator
+            output["cleanup_report"] = (
+                prefix + annotation + separator + marker_line
+            )
+        try:
+            validate_cleanup_report(output["cleanup_report"])
+        except Exception as error:
+            raise helper.ContractError(
+                "shared Janitor blocker report failed terminal validation"
+            ) from error
+    else:
+        output["cleanup_report"] = formatted
     return output
 
 
@@ -166,7 +259,7 @@ def _complete(
     global _EMITTED
     if _EMITTED:
         raise helper.ContractError("shared Janitor emitted more than one result")
-    output = _native_output(transition, report)
+    output = _native_output(transition, report, blocker)
     root_exists = ROOT.is_dir()
     emitted = None
     if (_PRODUCER_REFS or github_retry_constraint is not None) and root_exists:
@@ -244,6 +337,20 @@ def _current_native_graph(payload: Mapping[str, Any]) -> dict[str, Any]:
 def _validate_payload(payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise helper.ContractError("Puber Janitor input must be one JSON object")
+    metadata = payload.get("_kent")
+    if (
+        not isinstance(metadata, dict)
+        or set(metadata) != helper.KENT_KEYS
+        or any(
+            not isinstance(value, str) or not value.strip()
+            for value in metadata.values()
+        )
+    ):
+        raise helper.ContractError(
+            "Puber Janitor requires exact native Script identity"
+        )
+    helper._reset_runtime_invocation()
+    helper._bind_qualified_runtime(ROOT, metadata)
     global _NATIVE_IDENTITY
     _NATIVE_IDENTITY = _current_native_graph(payload)
     commentary = payload.get("commentary")
@@ -436,8 +543,20 @@ def main() -> int:
             sys.stdin = io.StringIO(
                 json.dumps(janitor_payload, ensure_ascii=False)
             )
+            checkpoint = helper._qualified_checkpoint_module(
+                ROOT,
+                required=(
+                    "qualified_kit_runtime",
+                    "kit_module",
+                    "delivery_module",
+                ),
+            )
+            qualified = helper._require_qualified_runtime(ROOT)
             _JANITOR_MAIN_STARTED = True
-            result = shared.main()
+            result = shared.main(
+                qualified=qualified,
+                checkpoint=checkpoint,
+            )
         finally:
             sys.stdin = original_stdin
         if not _EMITTED:

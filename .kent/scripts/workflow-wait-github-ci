@@ -62,7 +62,7 @@ def _text(payload: dict[str, object], key: str) -> str:
     return value.strip()
 
 
-def _delivery_protocol_profile_enabled(workspace: Path) -> bool:
+def _delivery_protocol_profile(workspace: Path) -> dict[str, Any]:
     directory_flags = (
         os.O_RDONLY
         | getattr(os, "O_DIRECTORY", 0)
@@ -101,7 +101,7 @@ def _delivery_protocol_profile_enabled(workspace: Path) -> bool:
             ):
                 raise ValueError("current delivery profile changed during read")
     except FileNotFoundError:
-        return False
+        return {}
     except OSError as error:
         raise ValueError("current delivery profile is unavailable") from error
     finally:
@@ -111,6 +111,11 @@ def _delivery_protocol_profile_enabled(workspace: Path) -> bool:
         profile = tomllib.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
         raise ValueError("current delivery profile is invalid") from error
+    return profile
+
+
+def _delivery_protocol_profile_enabled(workspace: Path) -> bool:
+    profile = _delivery_protocol_profile(workspace)
     policies = profile.get("policies", {})
     versions = profile.get("command_versions", {})
     return bool(
@@ -123,6 +128,34 @@ def _delivery_protocol_profile_enabled(workspace: Path) -> bool:
             or versions.get("prepare_ci") in {"3.0.0", "3.1.0"}
         )
     )
+
+
+def _recovery_context_schema(workspace: Path, protocol: dict[str, object] | None) -> str | None:
+    if protocol is not None:
+        if (
+            protocol.get("protocol") in {"legacy", "typed-v1"}
+            and protocol.get("context_schema") in {
+                "workflow-delivery-context-v1", "workflow-delivery-context-v2",
+            }
+        ):
+            return str(protocol["context_schema"])
+        return None
+    # Pre-native-protocol source-CI profiles keep their declared v1 context.
+    # Missing/current-native qualification is never inferred from payload data.
+    profile = _delivery_protocol_profile(workspace)
+    managed = profile.get("kit_managed_commands", [])
+    versions = profile.get("command_versions", {})
+    if (
+        profile.get("schema_version") == 4
+        and isinstance(managed, list)
+        and "runtime_contracts" in managed and "prepare_ci" in managed
+        and isinstance(versions, dict)
+        and versions.get("runtime_contracts") == "2.0.0"
+        and versions.get("prepare_ci") == "2.0.0"
+        and profile.get("capabilities", {}).get("ci_monitoring") is True
+    ):
+        return "workflow-delivery-context-v1"
+    return None
 
 
 def _current_delivery_protocol(
@@ -430,6 +463,36 @@ def main() -> int:
 
     def emit(*args: Any, **kwargs: Any) -> None:
         try:
+            if recovery_context_schema is not None and args[0] in {
+                "ci_watch_source_changed", "ci_watch_state_changed", "ci_watch_failed",
+            }:
+                # A recovery may precede the first observation. Carry only
+                # actually produced packets, using the latest loop history.
+                kwargs.setdefault("report", previous)
+                outgoing = dict(args[1])
+                latest = kwargs.get("report")
+                if latest is not None:
+                    outgoing["ci_report"] = _canonical(runtime, latest)
+                context = {
+                    "schema": recovery_context_schema,
+                    "phase": "post_pr",
+                    **{
+                        key: outgoing[key]
+                        for key in (
+                            "pr_url", "branch_name", "merge_strategy",
+                            "ci_contract", "ci_report",
+                        ) + (("pr_base_branch",) if recovery_context_schema
+                             == "workflow-delivery-context-v2" else ())
+                        if key in outgoing
+                    },
+                    "pr_feedback_cursor": kwargs.get("cursor") or acknowledged_text or "uninitialized",
+                }
+                runtime.validate_delivery_context(context)
+                outgoing["delivery_context"] = _canonical(runtime, context)
+                outgoing["pr_feedback_cursor"] = context["pr_feedback_cursor"]
+                outgoing.pop("ci_report", None)
+                kwargs.pop("report", None)
+                args = (args[0], outgoing, *args[2:])
             if pending_constraint is not None:
                 kwargs.setdefault(
                     "github_retry_constraint",
@@ -481,6 +544,7 @@ def main() -> int:
     if "task_short_id" in payload:
         values["task_short_id"] = _text(payload, "task_short_id")
     delivery_protocol = _current_delivery_protocol(workspace, payload)
+    recovery_context_schema = _recovery_context_schema(workspace, delivery_protocol)
     typed_script_archive = bool(
         delivery_protocol is not None
         and delivery_protocol.get("protocol") == "typed-v1"

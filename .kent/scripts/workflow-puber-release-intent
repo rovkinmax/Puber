@@ -12,7 +12,6 @@ sys.dont_write_bytecode = True
 for _name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
     os.environ.pop(_name, None)
 ROOT = Path(__file__).resolve().parents[2]
-KIT_COMMIT = "5fcfe0d1a3d3ad08a149f34da0457d6527951251"
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
@@ -170,6 +169,22 @@ class GitHubProviderRequestError(ContractError):
 
 
 _ACTIVE_GITHUB_PROVIDER_CONTEXT: dict[str, Any] | None = None
+_QUALIFIED_KIT_RUNTIME: Any | None = None
+_QUALIFIED_PROJECT_ROOT: Path | None = None
+_QUALIFIED_CHECKPOINT_MODULE: Any | None = None
+_KIT_MODULES_CACHE: dict[str, Any] | None = None
+
+
+def _reset_runtime_invocation() -> None:
+    """Forget runtime authority only when a new native invocation begins."""
+    global _ACTIVE_GITHUB_PROVIDER_CONTEXT
+    global _QUALIFIED_KIT_RUNTIME, _QUALIFIED_PROJECT_ROOT
+    global _QUALIFIED_CHECKPOINT_MODULE, _KIT_MODULES_CACHE
+    _ACTIVE_GITHUB_PROVIDER_CONTEXT = None
+    _QUALIFIED_KIT_RUNTIME = None
+    _QUALIFIED_PROJECT_ROOT = None
+    _QUALIFIED_CHECKPOINT_MODULE = None
+    _KIT_MODULES_CACHE = None
 
 
 def _json_one(raw: bytes) -> dict[str, Any]:
@@ -333,33 +348,17 @@ def _qualified_delivery_module(
         "GitHubProviderRetryBlocked",
     ),
 ) -> Any:
-    """Load the installed first-party delivery module through the Kit CLI seam."""
-    path = root / ".kent/scripts/workflow-checkpoint"
+    """Resolve delivery through the invocation's one qualified Kit facade."""
+    checkpoint = _qualified_checkpoint_module(
+        root,
+        required=("qualified_kit_runtime", "kit_module", "delivery_module"),
+    )
+    qualified = _require_qualified_runtime(root)
     try:
-        metadata = path.lstat()
-    except OSError as error:
-        raise ContractError("qualified workflow checkpoint adapter is unavailable") from error
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or path.is_symlink()
-        or metadata.st_uid != os.getuid()
-        or metadata.st_mode & 0o022
-    ):
-        raise ContractError("qualified workflow checkpoint adapter is unsafe")
-    try:
-        loader = importlib.machinery.SourceFileLoader(
-            "puber_workflow_checkpoint",
-            str(path),
+        delivery = checkpoint.delivery_module(
+            project_root=root,
+            qualified=qualified,
         )
-        spec = importlib.util.spec_from_loader(loader.name, loader)
-        if spec is None:
-            raise ContractError("qualified workflow checkpoint adapter cannot load")
-        module = importlib.util.module_from_spec(spec)
-        loader.exec_module(module)
-        delivery_loader = getattr(module, "delivery_module", None)
-        if not callable(delivery_loader):
-            raise ContractError("qualified workflow delivery loader is unavailable")
-        delivery = delivery_loader()
         if any(not hasattr(delivery, name) for name in required):
             raise ContractError("qualified workflow delivery API is unavailable")
         if "GitHubProviderRetryBlocked" in required and (
@@ -373,15 +372,7 @@ def _qualified_delivery_module(
         return delivery
     except ContractError:
         raise
-    except (
-        AttributeError,
-        ImportError,
-        OSError,
-        RuntimeError,
-        SyntaxError,
-        TypeError,
-        ValueError,
-    ) as error:
+    except Exception as error:
         raise ContractError("qualified GitHub provider API cannot load") from error
 
 
@@ -391,6 +382,16 @@ def _qualified_checkpoint_module(
     required: tuple[str, ...] = (),
 ) -> Any:
     """Load the installed checkpoint adapter through its fixed project path."""
+    global _QUALIFIED_CHECKPOINT_MODULE, _QUALIFIED_PROJECT_ROOT
+    if _QUALIFIED_CHECKPOINT_MODULE is not None:
+        if _QUALIFIED_PROJECT_ROOT != root:
+            raise ContractError("qualified checkpoint belongs to another project")
+        if any(
+            not hasattr(_QUALIFIED_CHECKPOINT_MODULE, name)
+            for name in required
+        ):
+            raise ContractError("qualified native Agent identity API is unavailable")
+        return _QUALIFIED_CHECKPOINT_MODULE
     path = root / ".kent/scripts/workflow-checkpoint"
     try:
         metadata = path.lstat()
@@ -415,6 +416,8 @@ def _qualified_checkpoint_module(
         loader.exec_module(module)
         if any(not hasattr(module, name) for name in required):
             raise ContractError("qualified native Agent identity API is unavailable")
+        _QUALIFIED_CHECKPOINT_MODULE = module
+        _QUALIFIED_PROJECT_ROOT = root
         return module
     except ContractError:
         raise
@@ -428,6 +431,61 @@ def _qualified_checkpoint_module(
         ValueError,
     ) as error:
         raise ContractError("qualified native Agent identity API cannot load") from error
+
+
+def _require_qualified_runtime(root: Path) -> Any:
+    qualified = _QUALIFIED_KIT_RUNTIME
+    if (
+        qualified is None
+        or _QUALIFIED_PROJECT_ROOT != root
+        or getattr(qualified, "native_authorized", False) is not True
+        or getattr(qualified, "project_root", None) != root
+    ):
+        raise ContractError("native qualified Kit runtime is unavailable")
+    return qualified
+
+
+def _bind_qualified_runtime(
+    root: Path,
+    source_binding: Mapping[str, Any] | None,
+) -> Any:
+    """Qualify this native Script/Agent before any selected Kit import."""
+    global _QUALIFIED_KIT_RUNTIME, _QUALIFIED_PROJECT_ROOT, _KIT_MODULES_CACHE
+    if source_binding is not None and (
+        not isinstance(source_binding, Mapping)
+        or set(source_binding) != KENT_KEYS
+        or any(
+            not isinstance(value, str) or not value.strip()
+            for value in source_binding.values()
+        )
+    ):
+        raise ContractError("native Kit binding context is invalid")
+    checkpoint = _qualified_checkpoint_module(
+        root,
+        required=("qualified_kit_runtime", "kit_module", "delivery_module"),
+    )
+    loader = getattr(checkpoint, "qualified_kit_runtime", None)
+    if not callable(loader):
+        raise ContractError("native Kit runtime qualification facade is unavailable")
+    try:
+        qualified = loader(
+            project_root=root,
+            source_binding=(
+                dict(source_binding) if source_binding is not None else None
+            ),
+        )
+    except Exception as error:
+        raise ContractError("native Kit runtime qualification failed") from error
+    if (
+        qualified is None
+        or getattr(qualified, "native_authorized", False) is not True
+        or getattr(qualified, "project_root", None) != root
+    ):
+        raise ContractError("native Kit runtime qualification returned no authority")
+    _QUALIFIED_KIT_RUNTIME = qualified
+    _QUALIFIED_PROJECT_ROOT = root
+    _KIT_MODULES_CACHE = None
+    return qualified
 
 
 def producer_refs_from_commentary(
@@ -998,13 +1056,18 @@ def validate_envelope(
     profile_recovery_admission: Callable[[dict[str, Any]], None] | None = None,
     cleanup_recovery_admission: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    global _ACTIVE_GITHUB_PROVIDER_CONTEXT
-    _ACTIVE_GITHUB_PROVIDER_CONTEXT = None
+    _reset_runtime_invocation()
     if not isinstance(payload, Mapping):
         raise ContractError("Script input must be one object")
     metadata = payload.get("_kent")
     if not isinstance(metadata, dict) or set(metadata) != KENT_KEYS:
         raise ContractError("_kent must contain exactly task_id and node_id")
+    try:
+        _bind_qualified_runtime(root, metadata)
+    except ContractError:
+        raise
+    except Exception as error:
+        raise ContractError("native Kit runtime qualification failed") from error
     if node_key == "release_intent_gate" and ENTRY_TRANSITION not in payload:
         _admit_first_script_ingress(root, metadata)
     task_id = require_string(metadata.get("task_id"), "_kent.task_id")
@@ -1236,111 +1299,47 @@ def emit_exact(
     )
     print(json.dumps(output, ensure_ascii=False, sort_keys=True))
 
-def _kit_modules() -> dict[str, Any]:
-    root_key = "KENT_ENGINEERING_KIT_ROOT"
-    if root_key in os.environ:
-        configured = os.environ[root_key]
-        if not configured:
-            raise ContractError("KENT_ENGINEERING_KIT_ROOT is present but empty")
+def _kit_modules(root: Path | None = None) -> dict[str, Any]:
+    """Load every Kit module through the one native-qualified invocation handle."""
+    global _KIT_MODULES_CACHE
+    selected_root = ROOT if root is None else root
+    qualified = _require_qualified_runtime(selected_root)
+    if _KIT_MODULES_CACHE is not None:
+        return _KIT_MODULES_CACHE
+    checkpoint = _qualified_checkpoint_module(
+        selected_root,
+        required=("kit_module",),
+    )
+
+    def kit_module(name: str) -> Any:
         try:
-            kit_root = Path(configured).expanduser().resolve()
-        except (OSError, RuntimeError, ValueError) as error:
-            raise ContractError("KENT_ENGINEERING_KIT_ROOT is invalid") from error
-    else:
-        profile_path = ROOT / ".kent/workflow-profile.toml"
-        profile_fd = None
-        try:
-            nofollow = getattr(os, "O_NOFOLLOW", None)
-            nonblocking = getattr(os, "O_NONBLOCK", None)
-            if nofollow is None or nonblocking is None:
-                raise ContractError("safe profile opening is unavailable")
-            profile_fd = os.open(
-                profile_path,
-                os.O_RDONLY | nofollow | nonblocking,
+            module = checkpoint.kit_module(
+                name,
+                project_root=selected_root,
+                qualified=qualified,
             )
-            profile_stat = os.fstat(profile_fd)
-            profile_limit = 1024 * 1024
-            if (
-                not stat.S_ISREG(profile_stat.st_mode)
-                or profile_stat.st_uid != os.getuid()
-                or profile_stat.st_mode & 0o022
-            ):
-                raise ContractError("Puber runtime Kit source profile is unsafe")
-            if profile_stat.st_size < 0 or profile_stat.st_size > profile_limit:
-                raise ContractError("Puber runtime Kit source profile exceeds its bound")
-            profile_bytes = bytearray()
-            while len(profile_bytes) <= profile_limit:
-                chunk = os.read(
-                    profile_fd,
-                    min(65536, profile_limit + 1 - len(profile_bytes)),
-                )
-                if not chunk:
-                    break
-                profile_bytes.extend(chunk)
-            if (
-                len(profile_bytes) > profile_limit
-                or len(profile_bytes) != profile_stat.st_size
-            ):
-                raise ContractError(
-                    "Puber runtime Kit source profile changed while reading"
-                )
-            profile_value = tomllib.loads(bytes(profile_bytes).decode("utf-8"))
-            puber_runtime = profile_value.get("puber_runtime")
-            if not isinstance(puber_runtime, dict) or set(puber_runtime) != {
-                "kit_source"
-            }:
-                raise ContractError("Puber runtime Kit source profile table is invalid")
-            kit_source = puber_runtime.get("kit_source")
-            if not isinstance(kit_source, dict) or set(kit_source) != {
-                "schema_version",
-                "root",
-            }:
-                raise ContractError("Puber runtime Kit source fields are invalid")
-            schema_version = kit_source.get("schema_version")
-            if type(schema_version) is not int or schema_version != 1:
-                raise ContractError("Puber runtime Kit source schema is unsupported")
-            configured = kit_source.get("root")
-            if (
-                not isinstance(configured, str)
-                or not configured
-                or configured.strip() != configured
-                or "~" in configured
-            ):
-                raise ContractError("Puber runtime Kit source root is invalid")
-            configured_path = Path(configured)
-            if not configured_path.is_absolute():
-                raise ContractError("Puber runtime Kit source root must be absolute")
-            kit_root = configured_path.resolve(strict=True)
-            if str(kit_root) != configured or not kit_root.is_dir():
-                raise ContractError("Puber runtime Kit source root is not canonical")
-        except ContractError:
-            raise
-        except (OSError, RuntimeError, UnicodeDecodeError, TOMLDecodeError, ValueError) as error:
-            raise ContractError("Puber runtime Kit source profile is invalid") from error
-        finally:
-            if profile_fd is not None:
-                os.close(profile_fd)
-    try:
+        except Exception as error:
+            raise ContractError(
+                f"qualified Kit module cannot load: {name}"
+            ) from error
+        module_path = getattr(module, "__file__", None)
+        source_root = getattr(qualified, "source_root", None)
         if (
-            git(kit_root, "rev-parse", "HEAD") != KIT_COMMIT
-            or git(kit_root, "status", "--porcelain=v1", "--untracked-files=all")
-            or not (kit_root / "workflowkit").is_dir()
+            not isinstance(module_path, str)
+            or not isinstance(source_root, (Path, str))
+            or Path(source_root) not in Path(module_path).resolve().parents
         ):
             raise ContractError(
-                "Kent Engineering Kit is not the exact clean published revision"
+                f"qualified Kit module escaped its selected cohort: {name}"
             )
-    except ContractError:
-        raise
-    except (OSError, RuntimeError, ValueError) as error:
-        raise ContractError("Kent Engineering Kit root is invalid") from error
-    sys.path.insert(0, str(kit_root))
-    importlib.invalidate_caches()
-    workflowkit = importlib.import_module("workflowkit")
-    for name in ("workflowkit", "workflowkit.release", "workflowkit.runtime", "workflowkit.revision", "workflowkit.ci_contract", "workflowkit.merge_strategy"):
-        path = Path(importlib.import_module(name).__file__).resolve()
-        if kit_root not in path.parents:
-            raise ContractError("Kit import escaped the selected root")
-    runtime = importlib.import_module("workflowkit.runtime")
+        return module
+
+    workflowkit = kit_module("workflowkit")
+    runtime = kit_module("runtime")
+    revision = kit_module("revision")
+    ci = kit_module("ci_contract")
+    merge_strategy = kit_module("merge_strategy")
+    delivery = kit_module("delivery")
     result = {name: getattr(workflowkit, name) for name in ("ProjectProfile","ReleaseSpec","NormalizedGitHubWorkflowSourceV1","preflight_project_revision","capture_runtime_execution_context","capture_runtime_authority_binding","validate_operation_jobs","canonicalize_publication_operation")}
     result.update({name: getattr(runtime, name) for name in ("validate_terminal_seal_request","validate_terminal_marker","parse_terminal_marker_line","terminal_marker_line","validate_cleanup_report","validate_terminal_chain","canonical_sha256")})
     result.update({name: getattr(runtime, name) for name in (
@@ -1351,9 +1350,7 @@ def _kit_modules() -> dict[str, Any]:
         "MAX_DYNAMIC_CI_REPORT_BYTES",
         "merge_github_retry_constraints",
     )})
-    revision = importlib.import_module("workflowkit.revision")
     result.update({name: getattr(revision, name) for name in ("read_blob_bytes", "tree_mode", "collect_runtime_external_captures", "run_git")})
-    ci = importlib.import_module("workflowkit.ci_contract")
     result.update({name: getattr(ci, name) for name in ("normalize_github_workflow", "read_pull_request")})
     preparation_diagnostic_validator = getattr(
         ci,
@@ -1384,39 +1381,30 @@ def _kit_modules() -> dict[str, Any]:
         function = getattr(ci, name, None)
         if callable(function):
             result[name] = function
-    try:
-        delivery = importlib.import_module("workflowkit.delivery")
-    except (ImportError, AttributeError):
-        delivery = None
-    if delivery is not None:
-        delivery_path = Path(delivery.__file__).resolve()
-        if kit_root not in delivery_path.parents:
-            raise ContractError("Kit delivery import escaped the selected root")
-        for name in (
-            "capture_script_producer",
-            "observe_script_identity",
-            "producer_locator",
-            "reconstruct_producer",
-            "producer_reference_closure",
-            "packet_decode",
-            "packet_json",
-            "pack_delivery",
-            "transition_contract_reference",
-        ):
-            function = getattr(delivery, name, None)
-            if callable(function):
-                result[name] = function
-        producer_retry_constraints = getattr(
-            delivery,
-            "_producer_github_retry_constraints",
-            None,
-        )
-        if callable(producer_retry_constraints):
-            result["producer_github_retry_constraints"] = (
-                producer_retry_constraints
-            )
-    result["resolve_github_merge_strategy"] = importlib.import_module("workflowkit.merge_strategy").resolve_github_merge_strategy
+    for name in (
+        "capture_script_producer",
+        "observe_script_identity",
+        "producer_locator",
+        "reconstruct_producer",
+        "producer_reference_closure",
+        "packet_decode",
+        "packet_json",
+        "pack_delivery",
+        "transition_contract_reference",
+    ):
+        function = getattr(delivery, name, None)
+        if callable(function):
+            result[name] = function
+    producer_retry_constraints = getattr(
+        delivery,
+        "_producer_github_retry_constraints",
+        None,
+    )
+    if callable(producer_retry_constraints):
+        result["producer_github_retry_constraints"] = producer_retry_constraints
+    result["resolve_github_merge_strategy"] = merge_strategy.resolve_github_merge_strategy
     result.update({name: getattr(runtime, name) for name in ("validate_expected_ci_checks", "expected_ci_checks_sha256", "validate_ci_policy_snapshot", "ci_policy_projection_sha256")})
+    _KIT_MODULES_CACHE = result
     return result
 
 def _runtime_contracts_module(root: Path) -> Any:

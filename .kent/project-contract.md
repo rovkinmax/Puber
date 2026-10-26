@@ -138,18 +138,26 @@ existing context bytes. Only the exact initial PR route may use the shared
 preparer's established absent-cursor value when cursor and CI packets are
 actually absent. Malformed values are not normalized into retry context.
 
-This remains a non-attested source candidate. It now selects the clean primary
-Kit K `5fcfe0d1a3d3ad08a149f34da0457d6527951251` at
-`/Users/rovkinmax/dev/llm-staf/kent-engineering-kit` and pins the complete
-approved helper family in `.kent/workflow-profile.toml`; the materialized
-shared helpers and Release Janitor adapter are source-bound in the current
-manifest. Final project closure C and configured source gates remain pending,
-so `runtime_attested` stays false. No live Workflow, Task, default, or runtime
-pin is changed. The original clean 045/K9 Kit remains preserved for other
-consumers. The v90 and 5af-named v95/source-91 graph/spec/manifest snapshots
-remain historical and byte-stable. This source candidate does not activate a
-Workflow; any future live effect requires its separate explicit authority and
-compatibility checks.
+This remains a non-attested source candidate. The profile binds the
+`kit_runtime_loader` version `1.0.0` and retained published Kit cohort K by
+its exact root, commit, and `refs/remotes/origin/main`; the shared checkpoint,
+evidence, Janitor, CI-preparation wrapper, and bootstrap copies are
+source-bound in the Release manifest. The Release helper and Puber Janitor
+adapter require the invocation's native qualified handle and fail closed when
+it is unavailable; environment Kit selection and the former root-only profile
+field are not production fallbacks.
+
+`runtime_attested = false` describes the tracked source proposal; a profile
+binding alone does not claim native runtime admission. For final published
+Puber source C, the canonical native operator projects the compact
+Script-ingress reference from the reviewed source receipt and exact target,
+creates the corresponding private immutable frame, and validates the
+complete native target. That frame is not fabricated by the source builder or
+committed into the project graph. Until the separately reviewed native
+projection and readback, no live Workflow, Task, default, or runtime
+activation is claimed. The v90 and 5af-named v95/source-91 graph/spec/manifest
+snapshots remain historical and byte-stable. Any live effect requires its
+separate explicit authority and compatibility checks.
 
 The profile-owned `mobile_script_resource_lock` adapter is a Puber context
 wrapper, not a second lock implementation. It invokes the same

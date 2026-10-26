@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib
 import hashlib
 import io
 import json
 import os
 import stat
 import sys
+import tomllib
 sys.dont_write_bytecode = True
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -29,19 +31,178 @@ shutil.copytree(
     ROOT,
     ignore=shutil.ignore_patterns(".git", "__pycache__"),
 )
+ROOT = ROOT.resolve()
 subprocess.run(["git", "init", "--quiet", "-b", "main"], cwd=ROOT, check=True)
 subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=ROOT, check=True)
 subprocess.run(["git", "config", "user.name", "Puber Test"], cwd=ROOT, check=True)
 subprocess.run(["git", "add", "-f", "."], cwd=ROOT, check=True)
 subprocess.run(["git", "commit", "--quiet", "-m", "candidate source fixture"], cwd=ROOT, check=True)
-KIT = Path(os.environ["KENT_ENGINEERING_KIT_ROOT"]).resolve()
-GENERATOR_KIT = Path(os.environ["PUBER_STAGE_A_GENERATOR_KIT_ROOT"]).resolve()
+_profile = tomllib.loads(
+    (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8")
+)
+_kit_binding = _profile.get("kit_runtime")
+if (
+    not isinstance(_kit_binding, dict)
+    or set(_kit_binding) != {"schema_version", "root", "commit", "publication_ref"}
+    or _kit_binding.get("schema_version") != 1
+    or _kit_binding.get("commit") != "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
+    or _kit_binding.get("publication_ref") != "refs/remotes/origin/main"
+):
+    raise SystemExit("Puber tests require its exact qualified Kit source binding")
+KIT = Path(_kit_binding["root"]).resolve(strict=True)
+if str(KIT) != _kit_binding["root"]:
+    raise SystemExit("Puber Kit binding root must be canonical")
+_kit_override = os.environ.get("PUBER_STAGE_A_KIT_ROOT")
+if _kit_override and Path(_kit_override).resolve(strict=True) != KIT:
+    raise SystemExit("Puber test Kit override differs from the profile binding")
+if subprocess.check_output(
+    ["git", "-C", str(KIT), "rev-parse", "HEAD"],
+    text=True,
+).strip() != _kit_binding["commit"]:
+    raise SystemExit("Puber test Kit HEAD differs from the profile binding")
+if subprocess.check_output(
+    ["git", "-C", str(KIT), "rev-parse", "--verify", _kit_binding["publication_ref"]],
+    text=True,
+).strip() != _kit_binding["commit"]:
+    raise SystemExit("Puber test Kit publication ref differs from the profile binding")
+if subprocess.check_output(
+    ["git", "-C", str(KIT), "status", "--porcelain=v1", "--untracked-files=all"],
+    text=True,
+):
+    raise SystemExit("Puber test Kit binding must remain clean")
 result = subprocess.run([str(ROOT / ".kent/scripts/workflow-puber-release-intent")], cwd=ROOT, input="{}", text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 assert result.returncode != 0 and "error" in result.stderr
 
 spec = importlib.util.spec_from_loader("intent_runtime_test", SourceFileLoader("intent_runtime_test", str(ROOT / ".kent/scripts/workflow-puber-release-intent")))
 mod = importlib.util.module_from_spec(spec); assert spec and spec.loader; spec.loader.exec_module(mod)
 assert mod.parse_run_carrier(mod.canonical_json(mod.NOT_SELECTED_RUN)) == mod.NOT_SELECTED_RUN
+
+
+class TestQualifiedHandle:
+    def __init__(self, project_root):
+        self.project_root = Path(project_root).resolve(strict=False)
+        self.source_root = KIT
+        self.native_authorized = True
+
+
+class TestCheckpointFacade:
+    """Explicit test-only native qualification and module-loading fixture."""
+
+    def __init__(self):
+        self.handles = {}
+
+    def qualified_kit_runtime(self, *, project_root, source_binding):
+        root = Path(project_root).resolve(strict=False)
+        if source_binding is not None and (
+            not isinstance(source_binding, dict)
+            or set(source_binding) != {"task_id", "node_id"}
+            or any(not isinstance(value, str) or not value for value in source_binding.values())
+        ):
+            raise ValueError("test fixture requires an exact native Script context")
+        return self.handles.setdefault(root, TestQualifiedHandle(root))
+
+    def kit_module(self, name, *, project_root, qualified):
+        root = Path(project_root).resolve(strict=False)
+        if qualified is not self.handles.get(root):
+            raise ValueError("test fixture received a foreign native handle")
+        if str(KIT) not in sys.path:
+            sys.path.insert(0, str(KIT))
+        selected = (
+            name
+            if name == "workflowkit" or name.startswith("workflowkit.")
+            else f"workflowkit.{name}"
+        )
+        module = importlib.import_module(selected)
+        if not Path(module.__file__).resolve().is_relative_to(KIT):
+            raise ValueError("test fixture module escaped the selected test Kit")
+        return module
+
+    def delivery_module(self, *, project_root, qualified):
+        return self.kit_module(
+            "delivery",
+            project_root=project_root,
+            qualified=qualified,
+        )
+
+
+_test_checkpoint = TestCheckpointFacade()
+mod._qualified_checkpoint_module = lambda _root, *, required=(): _test_checkpoint
+_TEST_CHECKPOINT_SOURCE = f"""
+from importlib import import_module as _import_module
+from pathlib import Path as _Path
+from types import SimpleNamespace as _SimpleNamespace
+import sys as _sys
+
+_TEST_KIT_ROOT = _Path({str(KIT)!r}).resolve(strict=True)
+_TEST_HANDLES = {{}}
+
+def qualified_kit_runtime(project_root=None, source_binding=None):
+    root = (
+        _Path(project_root).resolve(strict=False)
+        if project_root is not None
+        else _Path(__file__).resolve().parents[2]
+    )
+    if source_binding is not None and (
+        not isinstance(source_binding, dict)
+        or set(source_binding) != {{'task_id', 'node_id'}}
+        or any(not isinstance(value, str) or not value for value in source_binding.values())
+    ):
+        raise ValueError('invalid test-only native Script fixture')
+    handle = _TEST_HANDLES.get(root)
+    if handle is None:
+        handle = _SimpleNamespace(
+            project_root=root,
+            source_root=_TEST_KIT_ROOT,
+            native_authorized=True,
+        )
+        _TEST_HANDLES[root] = handle
+    return handle
+
+def kit_module(name, *, project_root, qualified):
+    root = _Path(project_root).resolve(strict=False)
+    if _TEST_HANDLES.get(root) is not qualified:
+        raise ValueError('foreign test-only native runtime handle')
+    if str(_TEST_KIT_ROOT) not in _sys.path:
+        _sys.path.insert(0, str(_TEST_KIT_ROOT))
+    selected = (
+        name if name == 'workflowkit' or name.startswith('workflowkit.')
+        else 'workflowkit.' + name
+    )
+    module = _import_module(selected)
+    if not _Path(module.__file__).resolve().is_relative_to(_TEST_KIT_ROOT):
+        raise ValueError('test Kit import escaped its selected root')
+    return module
+
+class _DeliveryProxy:
+    def __init__(self, module):
+        self._module = module
+    def __getattr__(self, name):
+        return getattr(self._module, name)
+    def admit_script_source_ingress(self, root, native_context, *, kent_path):
+        if set(native_context) != {{'task_id', 'node_id'}}:
+            raise ValueError('invalid fixture native context')
+        return _SimpleNamespace(
+            project_id='project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176',
+            workflow_id='10d8adb2-c74c-4ef0-8b5c-311cb5cd0459',
+            source_admission_sha256='f' * 64,
+            receipt_sha256='e' * 64,
+            gate='test-only',
+        )
+
+def delivery_module(project_root=None, qualified=None):
+    root = (
+        _Path(project_root).resolve(strict=False)
+        if project_root is not None
+        else _Path(__file__).resolve().parents[2]
+    )
+    selected = qualified or qualified_kit_runtime(
+        project_root=root,
+        source_binding=None,
+    )
+    return _DeliveryProxy(
+        kit_module('delivery', project_root=root, qualified=selected)
+    )
+"""
 
 
 class ProviderRetryBlocked(Exception):
@@ -844,348 +1005,17 @@ with tempfile.TemporaryDirectory() as checkpoint_directory:
         else:
             raise AssertionError(f"foreign checkpoint {key} was accepted")
 
-def _kit_profile_text(root_value=None, *, schema="1", parent_extra="", source_extra=""):
-    root_value = str(KIT) if root_value is None else root_value
-    parent = f"[puber_runtime]\n{parent_extra}\n" if parent_extra else ""
-    return (
-        f'{parent}[puber_runtime.kit_source]\n'
-        f"schema_version = {schema}\n"
-        f"root = {json.dumps(root_value)}\n"
-        f"{source_extra}"
-    )
-
-def _expect_kit_rejection(label):
-    try:
-        mod._kit_modules()
-    except mod.ContractError:
-        return
-    raise AssertionError(f"invalid Kit source was accepted: {label}")
-
-def _expect_bad_profile(
-    label,
-    content,
-    *,
-    profile_symlink=False,
-    mode=None,
-    wrong_owner=False,
-    not_regular=False,
-    fifo=False,
-):
-    with tempfile.TemporaryDirectory(prefix="puber-kit-profile-") as directory:
-        fixture_root = Path(directory)
-        profile_path = fixture_root / ".kent/workflow-profile.toml"
-        content = content(fixture_root) if callable(content) else content
-        if fifo:
-            profile_path.parent.mkdir(parents=True)
-            os.mkfifo(profile_path, 0o600)
-        elif content is not None:
-            profile_path.parent.mkdir(parents=True)
-            if profile_symlink:
-                target = fixture_root / "profile-target.toml"
-                target.write_bytes(content)
-                profile_path.symlink_to(target)
-            else:
-                profile_path.write_bytes(content)
-                if mode is not None:
-                    profile_path.chmod(mode)
-        with patch.object(mod, "ROOT", fixture_root), patch.dict(os.environ):
-            os.environ.pop("KENT_ENGINEERING_KIT_ROOT", None)
-            if wrong_owner or not_regular:
-                profile_stat = os.lstat(profile_path)
-                fake_stat = SimpleNamespace(
-                    st_mode=(
-                        stat.S_IFDIR | 0o700
-                        if not_regular
-                        else profile_stat.st_mode
-                    ),
-                    st_uid=(
-                        os.getuid() + 1
-                        if wrong_owner
-                        else os.getuid()
-                    ),
-                    st_size=profile_stat.st_size,
-                )
-                with patch.object(os, "fstat", return_value=fake_stat):
-                    _expect_kit_rejection(label)
-            else:
-                _expect_kit_rejection(label)
-
-with patch.object(mod, "ROOT", ROOT), patch.dict(os.environ):
-    os.environ.pop("KENT_ENGINEERING_KIT_ROOT", None)
-    mod._kit_modules()
-    actual_import = Path(importlib.import_module("workflowkit").__file__).resolve()
-    assert actual_import.is_relative_to(KIT), actual_import
-
-with tempfile.TemporaryDirectory(prefix="puber-kit-explicit-") as directory:
-    explicit_root = Path(directory)
-    explicit_profile = explicit_root / ".kent/workflow-profile.toml"
-    explicit_profile.parent.mkdir()
-    explicit_profile.write_text("not valid TOML = [", encoding="utf-8")
-    with patch.object(mod, "ROOT", explicit_root), patch.dict(os.environ):
-        os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
-        mod._kit_modules()
-
-with tempfile.TemporaryDirectory(prefix="puber-kit-no-fallback-") as directory:
-    fallback_root = Path(directory)
-    profile_path = fallback_root / ".kent/workflow-profile.toml"
-    profile_path.parent.mkdir()
-    profile_path.write_text(_kit_profile_text(), encoding="utf-8")
-    with patch.object(mod, "ROOT", fallback_root), patch.dict(os.environ):
-        for invalid_override in ("", str(GENERATOR_KIT)):
-            os.environ["KENT_ENGINEERING_KIT_ROOT"] = invalid_override
-            _expect_kit_rejection(f"explicit override {invalid_override!r}")
-
-_expect_bad_profile("missing profile", None)
-_expect_bad_profile("malformed TOML", b"[puber_runtime\n")
-_expect_bad_profile("invalid UTF-8", b"\xff")
-_expect_bad_profile(
-    "profile symlink",
-    _kit_profile_text().encode(),
-    profile_symlink=True,
-)
-_expect_bad_profile(
-    "non-regular profile",
-    _kit_profile_text().encode(),
-    not_regular=True,
-)
-_expect_bad_profile("FIFO profile", None, fifo=True)
-_expect_bad_profile(
-    "group writable profile",
-    _kit_profile_text().encode(),
-    mode=0o620,
-)
-_expect_bad_profile(
-    "world writable profile",
-    _kit_profile_text().encode(),
-    mode=0o602,
-)
-_expect_bad_profile(
-    "profile exceeds 1 MiB",
-    b"x" * (1024 * 1024 + 1),
-)
-_expect_bad_profile(
-    "profile owned by another user",
-    _kit_profile_text().encode(),
-    wrong_owner=True,
-)
-_expect_bad_profile("missing profile table", b"[policies]\nsmoke='conditional'\n")
-_expect_bad_profile(
-    "parent table has extra field",
-    _kit_profile_text(parent_extra="unexpected = true").encode(),
-)
-_expect_bad_profile(
-    "parent table has wrong type",
-    b'[puber_runtime]\nkit_source = "not a table"\n',
-)
-_expect_bad_profile(
-    "Kit source table is missing schema_version",
-    f'[puber_runtime.kit_source]\nroot = {json.dumps(str(KIT))}\n'.encode(),
-)
-_expect_bad_profile(
-    "Kit source table is missing root",
-    b"[puber_runtime.kit_source]\nschema_version = 1\n",
-)
-_expect_bad_profile(
-    "Kit source table has extra field",
-    _kit_profile_text(source_extra='commit = "5af04089844c10c66dcaa692c36f42f738b9b302"\n').encode(),
-)
-_expect_bad_profile(
-    "boolean schema is not integer 1",
-    _kit_profile_text(schema="true").encode(),
-)
-_expect_bad_profile(
-    "unsupported schema",
-    _kit_profile_text(schema="2").encode(),
-)
-_expect_bad_profile(
-    "root has wrong type",
-    b"[puber_runtime.kit_source]\nschema_version = 1\nroot = 12\n",
-)
-_expect_bad_profile(
-    "empty root",
-    _kit_profile_text(root_value="").encode(),
-)
-_expect_bad_profile(
-    "relative root",
-    _kit_profile_text(root_value="relative/kit").encode(),
-)
-_expect_bad_profile(
-    "tilde root",
-    _kit_profile_text(root_value="~/worktrees/kent-engineering-kit").encode(),
-)
-_expect_bad_profile(
-    "noncanonical root",
-    _kit_profile_text(root_value=str(KIT) + "/.").encode(),
-)
-_expect_bad_profile(
-    "missing root directory",
-    lambda fixture_root: _kit_profile_text(
-        root_value=str(fixture_root / "missing-kit")
-    ).encode(),
-)
-def _symlink_root_profile(fixture_root):
-    link = fixture_root / "kit-alias"
-    link.symlink_to(KIT, target_is_directory=True)
-    return _kit_profile_text(root_value=str(link)).encode()
-
-_expect_bad_profile("symlink root alias", _symlink_root_profile)
-
-with tempfile.TemporaryDirectory(prefix="puber-kit-dirty-") as directory:
-    dirty_kit = Path(directory) / "kit"
-    subprocess.run(
-        ["git", "clone", "--quiet", "--shared", str(KIT), str(dirty_kit)],
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    (dirty_kit / "dirty-fixture").write_text("fixture\n", encoding="utf-8")
-    with patch.dict(os.environ):
-        os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(dirty_kit)
-        _expect_kit_rejection("dirty exact-HEAD Kit")
-
-before_import_path = list(sys.path)
-try:
-    with patch.dict(os.environ):
-        os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
-        with patch.object(
-            mod.importlib,
-            "import_module",
-            return_value=SimpleNamespace(__file__="/tmp/escaped/workflowkit.py"),
-        ):
-            _expect_kit_rejection("escaped Kit import")
-finally:
-    sys.path[:] = before_import_path
-
-print("puber-kit-source-selection: passed explicit precedence, closed profile validation, exact Kit and import guards")
-
-def _run_actual_root_loader_probe(label, code, expected_output):
-    child_env = dict(os.environ)
-    child_env.pop("KENT_ENGINEERING_KIT_ROOT", None)
-    child_env["PYTHONDONTWRITEBYTECODE"] = "1"
-    result = subprocess.run(
-        [sys.executable, "-I", "-B", "-c", code],
-        cwd=SOURCE_ROOT,
-        env=child_env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, (
-        f"{label} failed:\n{result.stdout}\n{result.stderr}"
-    )
-    assert expected_output in result.stdout, result.stdout
-    print(result.stdout.strip())
-
-_actual_project = repr(str(SOURCE_ROOT))
-_actual_kit = repr(str(KIT))
-_same_root_probe = f"""
-import importlib, importlib.machinery, importlib.util, json, subprocess
-from pathlib import Path
-import tomllib
-
-project = Path({_actual_project})
-expected_root = Path({_actual_kit}).resolve(strict=True)
-source = project / ".kent/scripts/workflow-puber-release-intent"
-loader = importlib.machinery.SourceFileLoader("puber_same_root_probe", str(source))
-spec = importlib.util.spec_from_loader(loader.name, loader)
-intent = importlib.util.module_from_spec(spec)
-loader.exec_module(intent)
-profile = tomllib.loads((project / ".kent/workflow-profile.toml").read_text())
-configured_root = profile["puber_runtime"]["kit_source"]["root"]
-assert configured_root == str(expected_root), configured_root
-head = subprocess.check_output(
-    ["git", "-C", str(expected_root), "rev-parse", "HEAD"], text=True,
-).strip()
-status = subprocess.check_output(
-    ["git", "-C", str(expected_root), "status", "--porcelain=v1", "--untracked-files=all"],
-    text=True,
-)
-assert head == intent.KIT_COMMIT, (head, intent.KIT_COMMIT)
-assert not status, status
-delivery = intent._qualified_delivery_module(
-    project,
-    required=("admit_script_source_ingress",),
-)
-intent._kit_modules()
-names = (
-    "workflowkit",
-    "workflowkit.delivery",
-    "workflowkit.release",
-    "workflowkit.runtime",
-    "workflowkit.revision",
-    "workflowkit.ci_contract",
-    "workflowkit.merge_strategy",
-)
-for name in names:
-    module = importlib.import_module(name)
-    module_path = Path(module.__file__).resolve()
-    assert module_path.is_relative_to(expected_root), (name, module_path)
-assert importlib.import_module("workflowkit.delivery") is delivery
-print(
-    "puber-intent-root-loader: same-root passed "
-    f"root={{expected_root}} commit={{head}} modules={{len(names)}}"
-)
-"""
-_run_actual_root_loader_probe(
-    "same-root first-ingress/attest loader sequence",
-    _same_root_probe,
-    "puber-intent-root-loader: same-root passed",
-)
-
-with tempfile.TemporaryDirectory(prefix="puber-kit-foreign-cache-") as directory:
-    _foreign_root = Path(directory)
-    shutil.copytree(
-        KIT / "workflowkit",
-        _foreign_root / "workflowkit",
-        ignore=shutil.ignore_patterns("__pycache__"),
-    )
-    _foreign_cache_probe = f"""
-import importlib, importlib.machinery, importlib.util
-from pathlib import Path
-import sys
-
-project = Path({_actual_project})
-foreign_root = Path({str(_foreign_root)!r}).resolve(strict=True)
-source = project / ".kent/scripts/workflow-puber-release-intent"
-loader = importlib.machinery.SourceFileLoader("puber_foreign_cache_probe", str(source))
-spec = importlib.util.spec_from_loader(loader.name, loader)
-intent = importlib.util.module_from_spec(spec)
-loader.exec_module(intent)
-sys.path.insert(0, str(foreign_root))
-package = importlib.import_module("workflowkit")
-delivery = importlib.import_module("workflowkit.delivery")
-assert Path(package.__file__).resolve().is_relative_to(foreign_root)
-assert Path(delivery.__file__).resolve().is_relative_to(foreign_root)
-for label, loader_call in (
-    (
-        "first-ingress",
-        lambda: intent._qualified_delivery_module(
-            project,
-            required=("admit_script_source_ingress",),
-        ),
-    ),
-    ("attest", intent._kit_modules),
-):
-    try:
-        loader_call()
-    except intent.ContractError as error:
-        print(f"puber-intent-root-loader: foreign-cache {{label}} rejected: {{error}}")
-    else:
-        raise AssertionError(f"foreign cached Kit was accepted by {{label}}")
-assert sys.modules["workflowkit"] is package
-assert sys.modules["workflowkit.delivery"] is delivery
-assert Path(package.__file__).resolve().is_relative_to(foreign_root)
-assert Path(delivery.__file__).resolve().is_relative_to(foreign_root)
-print("puber-intent-root-loader: foreign cache retained unchanged")
-"""
-    _run_actual_root_loader_probe(
-        "foreign-cache first-ingress/attest rejection",
-        _foreign_cache_probe,
-        "puber-intent-root-loader: foreign cache retained unchanged",
-    )
-
-os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(KIT)
+# The old profile/environment Kit selector tests are replaced by a test-only
+# checkpoint facade. The production helper must receive an explicit native
+# context before it can ask that facade for Kit modules.
+test_native_context = {
+    "task_id": "task-12345678-1234-4234-8234-123456789abc",
+    "node_id": "test-native-node",
+}
+mod._reset_runtime_invocation()
+mod._bind_qualified_runtime(ROOT, test_native_context)
 kit = mod._kit_modules()
+
 profile = kit["ProjectProfile"].from_toml(ROOT, (ROOT / ".kent/workflow-profile.toml").read_text(), source="profile", check_files=False)
 release_spec = mod._load_release_spec(ROOT, kit, profile)
 sources = mod._normalized_sources(ROOT, kit, release_spec)
@@ -1228,29 +1058,12 @@ with tempfile.TemporaryDirectory() as directory:
         target = work / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    # The checked-in project helper predates the final qualified Kit API.
-    # Give this disposable source fixture a minimal delivery-module seam so
-    # the command test can exercise its admitted first-ingress path without
-    # invoking native Kent or claiming source qualification.
+    # Install a test-only native qualification/facade fixture in this disposable
+    # project. Production helpers never read KENT_ENGINEERING_KIT_ROOT.
     checkpoint_helper = work / ".kent/scripts/workflow-checkpoint"
     checkpoint_source = checkpoint_helper.read_text(encoding="utf-8")
     checkpoint_helper.write_text(
-        checkpoint_source
-        + "\n\nfrom types import SimpleNamespace\n"
-        + "def delivery_module():\n"
-        + "    def admit_script_source_ingress(root, native_context, *, kent_path):\n"
-        + "        if set(native_context) != {'task_id', 'node_id'}:\n"
-        + "            raise ValueError('invalid fixture native context')\n"
-        + "        return SimpleNamespace(\n"
-        + "            project_id='project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176',\n"
-        + "            workflow_id='10d8adb2-c74c-4ef0-8b5c-311cb5cd0459',\n"
-        + "            source_admission_sha256='f' * 64,\n"
-        + "            receipt_sha256='e' * 64,\n"
-        + "            gate='legacy',\n"
-        + "        )\n"
-        + "    return SimpleNamespace(\n"
-        + "        admit_script_source_ingress=admit_script_source_ingress,\n"
-        + "    )\n",
+        checkpoint_source + "\n\n" + _TEST_CHECKPOINT_SOURCE,
         encoding="utf-8",
     )
     fixture_manifest_path = (
@@ -1259,18 +1072,20 @@ with tempfile.TemporaryDirectory() as directory:
     fixture_manifest_value = json.loads(
         fixture_manifest_path.read_text(encoding="utf-8")
     )
-    checkpoint_digest = hashlib.sha256(
-        checkpoint_helper.read_bytes()
-    ).hexdigest()
-    checkpoint_bindings = [
-        item for item in fixture_manifest_value["external_roots"]
-        if item["kind"] == "source-sha256"
-        and item["key"].startswith(".kent/scripts/workflow-checkpoint=")
-    ]
-    assert len(checkpoint_bindings) == 1
-    checkpoint_bindings[0]["key"] = (
-        ".kent/scripts/workflow-checkpoint=" + checkpoint_digest
-    )
+    for item in fixture_manifest_value["external_roots"]:
+        if item["kind"] == "source-sha256":
+            relative, _old_digest = item["key"].split("=", 1)
+            fixture_source = work / relative
+            if fixture_source.is_file():
+                item["key"] = (
+                    relative
+                    + "="
+                    + hashlib.sha256(fixture_source.read_bytes()).hexdigest()
+                )
+        elif item["kind"] == "builder-sha256":
+            item["key"] = hashlib.sha256(
+                (work / ".kent/workflows/builders/puber_release_current.py").read_bytes()
+            ).hexdigest()
     fixture_manifest_path.write_text(
         json.dumps(fixture_manifest_value, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -1308,7 +1123,7 @@ with tempfile.TemporaryDirectory() as directory:
     fake = root / "fake"; fake.mkdir()
     task_file = fake / "task.json"; task_file.write_text(json.dumps(task), encoding="utf-8")
     kent = fake / "kent"; kent.write_text("#!/bin/sh\ncat \"$PUBER_FAKE_TASK\"\n", encoding="utf-8"); kent.chmod(0o755)
-    env = {**os.environ, "KENT_ENGINEERING_KIT_ROOT": str(KIT), "PUBER_KENT_BIN": str(kent), "PUBER_FAKE_TASK": str(task_file)}
+    env = {**os.environ, "PUBER_KENT_BIN": str(kent), "PUBER_FAKE_TASK": str(task_file)}
     success = {"_kent": {"task_id": task_id, "node_id": node["id"]}}
     result = subprocess.run([str(work / ".kent/scripts/workflow-puber-release-intent")], cwd=work, input=json.dumps(success), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     assert result.returncode == 0, result.stderr
@@ -1393,10 +1208,8 @@ with tempfile.TemporaryDirectory() as directory:
     rejected_case("execution_commit", task_changes={"execution_target": {"commit_oid": "f" * 40}})
     rejected_case("worktree", task_changes={"worktree_path": str(root / "foreign")})
     rejected_case("source_drift", source_drift=True)
-    bad_kit = root / "bad-kit"; bad_kit.mkdir()
-    rejected_case("kit_drift", env_override={**env, "KENT_ENGINEERING_KIT_ROOT": str(bad_kit)})
 
-print("workflow-puber-release-intent: passed scenarios=happy,malformed,task_id,project,workflow_revision,current_node,current_script,execution_commit,worktree,source_drift,kit_drift,no_effect")
+print("workflow-puber-release-intent: passed scenarios=happy,malformed,task_id,project,workflow_revision,current_node,current_script,execution_commit,worktree,source_drift,no_effect")
 
 # Dynamic CI carrier seam.  Keep this source-only and dependency-injected so
 # the strict published Kit release-authority gate above remains independent.

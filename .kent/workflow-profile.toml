@@ -28,6 +28,7 @@ kit_managed_commands = [
   "prepare_ci",
   "github_observation",
   "checkpoint",
+  "kit_runtime_loader",
 ]
 ci_archive_reader_sources = [".kent/scripts/workflow-puber-release-ci"]
 
@@ -41,6 +42,7 @@ wait_ci = "4.1.0"
 prepare_ci = "3.1.0"
 github_observation = "1.1.0"
 checkpoint = "1.2.0"
+kit_runtime_loader = "1.0.0"
 
 [release]
 topology_kind = "puber-release"
@@ -58,9 +60,11 @@ smoke-lab = "head"
 maintenance = "default-branch"
 release = "ask-on-first-execution"
 
-[puber_runtime.kit_source]
+[kit_runtime]
 schema_version = 1
-root = "/Users/rovkinmax/dev/llm-staf/kent-engineering-kit"
+root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/runtime-sdk-puber-30b908c9"
+commit = "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
+publication_ref = "refs/remotes/origin/main"
 
 [policies]
 smoke = "conditional"
@@ -84,6 +88,7 @@ runtime_contracts = ".kent/scripts/workflow_runtime_contracts.py"
 verify = ".kent/scripts/workflow-verify-report"
 compile_verify = ".kent/scripts/workflow-compile-verify"
 checkpoint = ".kent/scripts/workflow-checkpoint"
+kit_runtime_loader = ".kent/scripts/workflow_kit_runtime.py"
 evidence = ".kent/scripts/workflow-evidence-ledger"
 plan_contract = ".kent/scripts/workflow-plan-contract"
 plan_contract_accept = ".kent/scripts/workflow-plan-contract-accept"

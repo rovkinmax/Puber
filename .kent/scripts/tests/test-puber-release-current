@@ -8,6 +8,7 @@ import re
 import runpy
 import subprocess
 import sys
+import tomllib
 import uuid
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -64,7 +65,6 @@ for identity in new_ids:
     assert str(parsed) == identity, identity
 assert builder["build_graph"]() == graph
 assert builder["build_graph"]() == graph
-assert builder["check"]() == []
 for invalid_id in (
     new_edges[0]["id"].upper(),
     str(uuid.uuid5(uuid.NAMESPACE_DNS, "invalid-source-92-native-id")),
@@ -93,6 +93,43 @@ assert graph["workflow"]["source_revision"] == 92
 assert len(graph["nodes"]) == 18
 assert len(graph["transition_groups"]) == 53
 assert len(graph["edges"]) == 53
+profile = tomllib.loads(
+    (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8")
+)
+assert profile["kit_runtime"] == {
+    "schema_version": 1,
+    "root": "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/runtime-sdk-puber-30b908c9",
+    "commit": "30b908c9fc7097c0464ae67d58f891a1dd7103fb",
+    "publication_ref": "refs/remotes/origin/main",
+}
+expected_manifest = builder["_expected_manifest"]()
+builder_path = profile["release"]["builder_path"]
+physical_capture_paths = []
+for external_root in expected_manifest["external_roots"]:
+    if external_root["kind"] == "builder-sha256":
+        physical_capture_paths.append(builder_path)
+    else:
+        source_path, separator, _digest = external_root["key"].partition("=")
+        assert separator and source_path
+        physical_capture_paths.append(source_path)
+assert len(physical_capture_paths) == len(set(physical_capture_paths)), (
+    "one selected source blob must not be captured under multiple external-root descriptors"
+)
+assert physical_capture_paths.count(builder_path) == 1, (
+    "the selected builder must be captured exactly once through builder-sha256"
+)
+captured_bytes = sum(
+    (ROOT / path).stat().st_size for path in physical_capture_paths
+)
+assert captured_bytes <= 4 * 1024 * 1024, (
+    f"selected external captures exceed the pinned Kit 4 MiB runtime budget: "
+    f"{captured_bytes} bytes"
+)
+assert not any(
+    "delivery-script-ingress-ref-v1" in str(group.get("description", ""))
+    for group in graph["transition_groups"]
+)
+assert expected_manifest["runtime_attested"] is False
 expected_old_groups = copy.deepcopy(original["transition_groups"])
 failure_group_id = next(
     edge["transition_group_id"]
@@ -105,6 +142,37 @@ next(group for group in expected_old_groups if group["id"] == failure_group_id)[
 assert graph["transition_groups"][:51] == expected_old_groups
 
 edges = {edge["key"]: edge for edge in graph["edges"]}
+expected_descriptions = {
+    ("publish_needs_user_action", "operation_id"):
+        "Stable release operation identity.",
+    ("monitor_needs_user_action", "operation_id"):
+        "Stable release operation identity.",
+    ("publish_needs_user_action", "target_commit"):
+        "Exact merge commit T observed for the merged pull request.",
+    ("ci_monitor_retry_preparation", "workspace_path"):
+        "Path to the task workspace or worktree relevant to this workflow transition.",
+    ("ci_monitor_preparation_needs_user_action", "workspace_path"):
+        "Path to the task workspace or worktree relevant to this workflow transition.",
+}
+description_conflicts = []
+for (edge_key, parameter_key), expected in expected_descriptions.items():
+    actual = next(
+        parameter["description"]
+        for parameter in edges[edge_key]["parameters"]
+        if parameter["key"] == parameter_key
+    )
+    if actual != expected:
+        description_conflicts.append(
+            f"{edge_key}.{parameter_key}: expected {expected!r}, found {actual!r}"
+        )
+assert not description_conflicts, "\n".join(description_conflicts)
+assert next(
+    parameter["description"]
+    for parameter in edges["monitor_needs_user_action"]["parameters"]
+    if parameter["key"] == "target_commit"
+) == "Immutable S05 carrier field: target_commit."
+assert builder["check"]() == []
+
 for key in (
     "ship_pr_ci_watch",
     "ci_waiting_pr",
@@ -182,9 +250,9 @@ assert all(
 )
 assert not any(
     "puber-engineering-delivery" in str(item)
-    for item in builder["_expected_manifest"]()["external_roots"]
+    for item in expected_manifest["external_roots"]
 )
-assert builder["_expected_manifest"]()["runtime_attested"] is False
+assert expected_manifest["runtime_attested"] is False
 
 intent_spec = importlib.util.spec_from_loader(
     "puber_release_intent_current_test",

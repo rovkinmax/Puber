@@ -2,12 +2,44 @@
 from __future__ import annotations
 import copy, json, os, re, subprocess, tempfile, sys, uuid
 sys.dont_write_bytecode = True
+import tomllib
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 GRAPH = ROOT / ".kent/workflows/puber-release.json"
 MANIFEST = ROOT / ".kent/workflows/puber-release.manifest.json"
-KIT = Path(os.environ.get('PUBER_STAGE_A_KIT_ROOT', '/Users/rovkinmax/.kent/worktrees/--json')).resolve()
-os.environ['KENT_ENGINEERING_KIT_ROOT'] = str(KIT)
+_profile = tomllib.loads(
+    (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8")
+)
+_kit_binding = _profile.get("kit_runtime")
+if (
+    not isinstance(_kit_binding, dict)
+    or set(_kit_binding) != {"schema_version", "root", "commit", "publication_ref"}
+    or _kit_binding.get("schema_version") != 1
+    or _kit_binding.get("commit") != "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
+    or _kit_binding.get("publication_ref") != "refs/remotes/origin/main"
+):
+    raise SystemExit("graph tests require Puber's exact qualified Kit source binding")
+KIT = Path(_kit_binding["root"]).resolve(strict=True)
+if str(KIT) != _kit_binding["root"]:
+    raise SystemExit("Puber Kit binding root must be canonical")
+_kit_override = os.environ.get("PUBER_STAGE_A_KIT_ROOT")
+if _kit_override and Path(_kit_override).resolve(strict=True) != KIT:
+    raise SystemExit("Puber test Kit override differs from the profile binding")
+if subprocess.check_output(
+    ["git", "-C", str(KIT), "rev-parse", "HEAD"],
+    text=True,
+).strip() != _kit_binding["commit"]:
+    raise SystemExit("Puber test Kit HEAD differs from its binding")
+if subprocess.check_output(
+    ["git", "-C", str(KIT), "rev-parse", "--verify", _kit_binding["publication_ref"]],
+    text=True,
+).strip() != _kit_binding["commit"]:
+    raise SystemExit("Puber test Kit publication ref differs from its binding")
+if subprocess.check_output(
+    ["git", "-C", str(KIT), "status", "--porcelain=v1", "--untracked-files=all"],
+    text=True,
+):
+    raise SystemExit("Puber test Kit binding must remain clean")
 def run(value):
     with tempfile.TemporaryDirectory() as d:
         path=Path(d)/"graph.json"
@@ -312,7 +344,6 @@ print("puber-release-graph: passed")
 if os.environ.get("PUBER_RELEASE_GRAPH_ONLY") == "1":
     sys.exit(0)
 
-assert builder["check_signing_contract"]() == []
 bad = copy.deepcopy(source)
 next(e for e in bad["edges"] if e["key"] == "profile_generation_passed")["prompt_template"] = "Finalize without signing proof"
 assert run(bad)
@@ -335,6 +366,34 @@ def load(path, name):
 
 fixture = load(ROOT / '.kent/scripts/tests/test-workflow-puber-release-publish', 'ci_release_fixture')
 fixture.helper._kit_modules()
+unqualified_helper = load(
+    ROOT / ".kent/scripts/workflow-puber-release-intent",
+    "release_intent_unqualified_graph_test",
+)
+try:
+    unqualified_helper._normalized_workflow(
+        ROOT,
+        ".github/workflows/release.yml",
+    )
+except unqualified_helper.ContractError as error:
+    assert "native qualified Kit runtime is unavailable" in str(error)
+else:
+    raise AssertionError("source-only workflow normalization accepted no runtime authority")
+
+original_run_path = runpy.run_path
+def qualified_test_run_path(path, *args, **kwargs):
+    if Path(path).resolve() == (
+        ROOT / ".kent/scripts/workflow-puber-release-intent"
+    ).resolve():
+        return fixture.helper.__dict__
+    return original_run_path(path, *args, **kwargs)
+
+with patch.object(
+    builder["runpy"],
+    "run_path",
+    side_effect=qualified_test_run_path,
+):
+    assert builder["check_signing_contract"]() == []
 from workflowkit import ci_contract, runtime
 
 for key in ('ci_prepare', 'ci_watch', 'merge_watch'):
@@ -346,8 +405,15 @@ for key in ('waiting_pr_merge_watch', 'merge_watch_still_waiting', 'merge_watch_
 
 with tempfile.TemporaryDirectory() as directory:
     base = Path(directory)
-    work, policy, head, bare = fixture.materialize(base, base / 'origin.git')
+    work, policy, head, bare = fixture.materialize(
+        base,
+        base / 'origin.git',
+        append_test_checkpoint=False,
+    )
     adapter = load(work / '.kent/scripts/workflow-puber-release-ci', 'actual_ci_adapter')
+    adapter.helper._qualified_checkpoint_module = (
+        lambda _root, *, required=(): fixture._test_checkpoint
+    )
     helper = adapter.helper
     runtime_graph = json.loads((work / helper.GRAPH_PATH).read_text())
     def runtime_edge(key):
@@ -411,6 +477,30 @@ with tempfile.TemporaryDirectory() as directory:
                 result = ci_contract.preparation_failure(payload)
             return subprocess.CompletedProcess(command, 0, json.dumps(result), '')
         shared = load(path, 'actual_shared_' + path.name.replace('-', '_'))
+        original_sibling = shared._sibling
+        def fixture_sibling(name):
+            module = original_sibling(name)
+            if name == "workflow-checkpoint":
+                def qualified_kit_runtime(project_root=None, source_binding=None):
+                    return fixture._test_checkpoint.qualified_kit_runtime(
+                        project_root=project_root or work,
+                        source_binding=source_binding,
+                    )
+                def kit_module(name, project_root=None, qualified=None):
+                    return fixture._test_checkpoint.kit_module(
+                        name,
+                        project_root=project_root or work,
+                        qualified=qualified,
+                    )
+                def delivery_module(project_root=None, qualified=None):
+                    return fixture._test_checkpoint.delivery_module(
+                        project_root=project_root or work,
+                        qualified=qualified,
+                    )
+                module.qualified_kit_runtime = qualified_kit_runtime
+                module.kit_module = kit_module
+                module.delivery_module = delivery_module
+            return module
         def gh(_bin, _workspace, args, **kw):
             if 'input_bytes' in kw:
                 request = json.loads(kw['input_bytes'])
@@ -447,10 +537,22 @@ with tempfile.TemporaryDirectory() as directory:
         def archive_read_json(_tool, _workspace, _args, **kwargs):
             request = json.loads(kwargs['input_bytes'])
             assert request['operation'] == 'archive_script_ci_report'
-            artifact = ci_contract.archive_script_ci_report(
-                request,
-                evidence_command='.kent/scripts/workflow-evidence-ledger',
-            )
+            try:
+                artifact = ci_contract.archive_script_ci_report(
+                    request,
+                    evidence_command='.kent/scripts/workflow-evidence-ledger',
+                )
+            except Exception as error:
+                cause = error
+                while cause is not None:
+                    print(
+                        "archive fixture diagnostic:",
+                        type(cause).__name__,
+                        str(cause),
+                        file=sys.stderr,
+                    )
+                    cause = cause.__cause__
+                raise
             return {'ci_report_artifact': artifact}
 
         observation = SimpleNamespace(
@@ -459,6 +561,9 @@ with tempfile.TemporaryDirectory() as directory:
             read_json=archive_read_json,
         )
         with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                patch.object(shared, "_sibling", side_effect=fixture_sibling)
+            )
             stack.enter_context(patch.object(shared, 'github_observation', return_value=observation))
             stack.enter_context(patch.object(sys, 'stdin', io.StringIO(input_text)))
             stack.enter_context(contextlib.redirect_stdout(text_output))
@@ -639,6 +744,33 @@ with tempfile.TemporaryDirectory() as directory:
         assert 'KENT_PACKET_SOURCE_V1 ' in passed['commentary']
         report = runtime.validate_dynamic_ci_report(json.loads(passed['ci_report']))
         assert report['attempts'][-1]['head_oid'] == head
+        missing_report_context = {
+            'schema': 'workflow-delivery-context-v2',
+            'phase': 'post_pr',
+            'pr_url': initial['pr_url'],
+            'branch_name': initial['branch_name'],
+            'pr_base_branch': initial['pr_base_branch'],
+            'merge_strategy': initial['merge_strategy'],
+            'ci_contract': initial['ci_contract'],
+            'pr_feedback_cursor': initial['pr_feedback_cursor'],
+        }
+        missing_report_text = helper.canonical_json(missing_report_context)
+        unwrapped_missing_report = adapter._unwrap_shared_delivery_context({
+            'delivery_context': missing_report_text,
+            'ci_contract': initial['ci_contract'],
+        })
+        assert 'ci_report' not in unwrapped_missing_report
+        try:
+            adapter._unwrap_shared_delivery_context({
+                'delivery_context': missing_report_text,
+                'ci_contract': 'conflicting CI contract',
+            })
+        except helper.ContractError:
+            pass
+        else:
+            raise AssertionError(
+                'shared CI delivery context accepted conflicting flat bytes'
+            )
         retry = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
         assert retry['transition'] == 'ci_prepare_ready_retry' and retry['ci_report'] == passed['ci_report'], retry
         assert 'KENT_PACKET_SOURCE_V1 ' in retry['commentary']

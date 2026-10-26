@@ -658,7 +658,9 @@ def _validate_delivery_context(value: Mapping[str, Any]) -> dict[str, Any]:
         raise RuntimeContractError("delivery context.phase is unsupported")
     data = _closed(data, keys, "delivery context")
     schema = data.get("schema")
-    if schema not in {DELIVERY_CONTEXT_V1_SCHEMA, DELIVERY_CONTEXT_SCHEMA}:
+    if not isinstance(schema, str) or schema not in {
+        DELIVERY_CONTEXT_V1_SCHEMA, DELIVERY_CONTEXT_SCHEMA,
+    }:
         raise RuntimeContractError("unsupported delivery context schema")
     version_two = schema == DELIVERY_CONTEXT_SCHEMA
     required = (
