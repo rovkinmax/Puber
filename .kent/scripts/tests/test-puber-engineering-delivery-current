@@ -1,0 +1,684 @@
+#!/usr/bin/env python3
+"""Verify the source-only Engineering projection and real offline admission."""
+from __future__ import annotations
+
+import copy
+import hashlib
+import importlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import runpy
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import tomllib
+import unittest
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[3]
+KIT_ROOT = Path(
+    "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/"
+    "runtime-sdk-puber-30b908c9"
+)
+KIT_COMMIT = "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
+BASE_COMMIT = "a7b4486412c69c7708a3c5a78515dfde870eb88f"
+WORKFLOW_ID = "7061fc98-aae5-4468-9d89-fa28bfe30c72"
+PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
+TASK_ID = "task-engineering-source-test"
+TASK_SHORT_ID = "PUB-ENGINEERING-TEST"
+SESSION_ID = "4ebdfc9d-f184-47e8-8b2a-4bd2bc4ad769"
+INGRESS_NODE_ID = "355ea30b-e4b5-464d-95ab-247ae684293c"
+INGRESS_EDGE_ID = "dec372ad-1ef3-490a-a0c5-fd10a8622e56"
+INGRESS_GROUP_ID = "01ab6705-8314-46f0-a31d-bbe36acb70e4"
+FIXTURE_PATH = ROOT / ".kent/scripts/tests/fixtures/puber-engineering-delivery-native-v13.json"
+CANDIDATE_PATH = ROOT / ".kent/workflows/puber-engineering-delivery-current.json"
+BUILDER_PATH = ROOT / ".kent/workflows/builders/puber_engineering_delivery_current.py"
+ADMISSION_PATH = ROOT / ".kent/scripts/workflow-puber-engineering-admission"
+TEST_PATH = ROOT / ".kent/scripts/tests/test-puber-engineering-delivery-current"
+DOC_PATH = ROOT / ".kent/workflows/puber-engineering-delivery-current.md"
+ALLOWLIST = {
+    ".kent/scripts/workflow-puber-engineering-admission",
+    ".kent/workflows/builders/puber_engineering_delivery_current.py",
+    ".kent/workflows/puber-engineering-delivery-current.json",
+    ".kent/scripts/tests/fixtures/puber-engineering-delivery-native-v13.json",
+    ".kent/scripts/tests/test-puber-engineering-delivery-current",
+    ".kent/workflows/puber-engineering-delivery-current.md",
+}
+NEW_TRANSITIONS = {
+    "ci_monitor_preparation_needs_user_action",
+    "ci_monitor_retry_preparation",
+    "compliance_replan",
+    "gate_retry_verification",
+    "plan_contract_revalidate",
+    "plan_revalidation_resume_continue",
+    "plan_revalidation_resume_fix_continue",
+    "plan_revalidation_resume_verify",
+    "plan_review_resume_continue",
+    "plan_review_resume_fix_continue",
+    "plan_review_resume_verify",
+    "smoke_wont_do",
+}
+PRESERVED_RELEASE_PATHS = (
+    ".kent/workflow-profile.toml",
+    ".kent/scripts/workflow-puber-release-ci",
+    ".kent/scripts/workflow-puber-release-intent",
+    ".kent/scripts/workflow-puber-release-janitor",
+    ".kent/scripts/workflow-puber-release-publish",
+    ".kent/scripts/workflow-release-cleanup",
+    ".kent/scripts/workflow-wait-github-release",
+    ".kent/scripts/workflow_kit_runtime.py",
+    ".kent/workflows/builders/puber_release_current.py",
+    ".kent/workflows/puber-release-current.json",
+    ".kent/workflows/puber-release-current.manifest.json",
+    ".kent/workflows/specs/puber-release-current.toml",
+)
+
+
+def canonical(value: object) -> bytes:
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), allow_nan=False,
+    ).encode("utf-8")
+
+
+def command(*args: str, cwd: Path = ROOT, env=None) -> str:
+    result = subprocess.run(
+        list(args), cwd=cwd, env=env, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, check=False, timeout=120,
+    )
+    if result.returncode:
+        raise AssertionError(
+            f"command failed ({result.returncode}): {args}\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+    return result.stdout.strip()
+
+
+def git(root: Path, *args: str) -> str:
+    return command("git", "-C", str(root), *args, cwd=root)
+
+
+def source_paths(root: Path) -> list[str]:
+    return git(root, "ls-files", "-z").split("\0")[:-1]
+
+
+def infrastructure_path(path: str, *, kit: bool) -> bool:
+    if "__pycache__" in Path(path).parts:
+        return False
+    if kit:
+        return path.startswith((
+            "scripts/", "workflowkit/", "templates/", "agents/", "global/",
+            "prompts/", "skills/", "adapters/", "contracts/",
+        ))
+    return (
+        path in {
+            "AGENTS.md", ".gitignore", ".kent/workflow-profile.toml",
+            ".kent/project-contract.md",
+        }
+        or path.startswith((
+            ".kent/scripts/", ".kent/commands/", ".kent/context/",
+            ".kent/skills/", ".kent/workflows/",
+        ))
+    )
+
+
+def tracked_mode(root: Path, revision: str, path: str) -> int:
+    record = command(
+        "git", "-C", str(root), "ls-tree", revision, "--", path, cwd=root,
+    )
+    mode = record.split(" ", 1)[0]
+    return 0o755 if mode == "100755" else 0o644
+
+
+def release_snapshot() -> dict[str, tuple[str, int]]:
+    snapshot = {}
+    for relative in PRESERVED_RELEASE_PATHS:
+        expected = subprocess.run(
+            ["git", "-C", str(ROOT), "show", f"{BASE_COMMIT}:{relative}"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        if expected.returncode:
+            raise AssertionError(f"published Release source is absent: {relative}")
+        current = ROOT / relative
+        snapshot[relative] = (
+            hashlib.sha256(current.read_bytes()).hexdigest(),
+            stat.S_IMODE(current.stat().st_mode),
+        )
+        assert current.read_bytes() == expected.stdout, relative
+        current_mode = stat.S_IMODE(current.stat().st_mode)
+        assert bool(current_mode & 0o111) == bool(
+            tracked_mode(ROOT, BASE_COMMIT, relative) & 0o111
+        ), relative
+    return snapshot
+
+
+def fixture_helper():
+    kit_text = str(KIT_ROOT)
+    if kit_text in sys.path:
+        sys.path.remove(kit_text)
+    sys.path.insert(0, kit_text)
+    module = importlib.import_module("tests.test_canonical_workflow_lifecycle")
+    return module.create_verified_source_fixture
+
+
+def copy_source_tree(source: Path, target: Path, paths: list[str]) -> None:
+    for relative in paths:
+        origin = source / relative
+        destination = target / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(origin, destination)
+
+
+def module_from_bootstrap(path: Path, name: str):
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class EngineeringCurrentSourceTests(unittest.TestCase):
+    def test_candidate_is_deterministic_and_preserves_native_graph(self):
+        before_release = release_snapshot()
+        builder = runpy.run_path(str(BUILDER_PATH))
+        expected = builder["candidate_bytes"]()
+        self.assertEqual(expected, CANDIDATE_PATH.read_bytes())
+        self.assertEqual(builder["candidate_bytes"](), expected)
+
+        frozen = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+        candidate = json.loads(CANDIDATE_PATH.read_text(encoding="utf-8"))
+        original = frozen["graph"]
+        graph = candidate["graph"]
+        self.assertEqual(frozen["workflow_id"], WORKFLOW_ID)
+        self.assertEqual(frozen["expected_version"], 13)
+        self.assertEqual(candidate["activation_status"], "UNACTIVATED")
+        self.assertEqual(candidate["workflow_id"], WORKFLOW_ID)
+        self.assertEqual(candidate["expected_version"], 13)
+        self.assertEqual(
+            candidate["baseline_fixture_sha256"],
+            hashlib.sha256(FIXTURE_PATH.read_bytes()).hexdigest(),
+        )
+        self.assertEqual(
+            candidate["baseline_prefix_sha256"],
+            builder["prefix_digest"](original),
+        )
+        self.assertEqual(
+            (len(graph["nodes"]), len(graph["edges"]), len(graph["transition_groups"])),
+            (32, 105, 103),
+        )
+        self.assertEqual(
+            {edge["key"] for edge in graph["edges"]} - {edge["key"] for edge in original["edges"]},
+            NEW_TRANSITIONS | {"engineering_source_admitted"},
+        )
+
+        nodes = {node["key"]: node for node in graph["nodes"]}
+        old_nodes = {node["key"]: node for node in original["nodes"]}
+        for key, node in old_nodes.items():
+            self.assertEqual((nodes[key]["id"], nodes[key]["kind"]), (node["id"], node["kind"]), key)
+        self.assertEqual(nodes["engineering_source_admission"]["kind"], "script")
+        self.assertEqual(
+            nodes["engineering_source_admission"]["script_path"],
+            ".kent/scripts/workflow-puber-engineering-admission",
+        )
+
+        edges = {edge["key"]: edge for edge in graph["edges"]}
+        old_edges = {edge["key"]: edge for edge in original["edges"]}
+        for key, edge in old_edges.items():
+            self.assertEqual(edges[key]["id"], edge["id"], key)
+            self.assertEqual(
+                edges[key].get("requires_approval", False),
+                edge.get("requires_approval", False),
+                key,
+            )
+        groups = {group["id"]: group for group in graph["transition_groups"]}
+        self.assertTrue(
+            {group["id"] for group in original["transition_groups"]} <= set(groups)
+        )
+        self.assertEqual(edges["start_plan"]["id"], INGRESS_EDGE_ID)
+        self.assertEqual(edges["start_plan"]["transition_group_id"], INGRESS_GROUP_ID)
+        self.assertEqual(edges["start_plan"]["target_node_id"], nodes["engineering_source_admission"]["id"])
+        self.assertNotIn("prompt_template", edges["start_plan"])
+        self.assertNotIn("parameters", edges["start_plan"])
+        self.assertEqual(edges["start_plan"]["requires_approval"], False)
+        self.assertEqual(edges["engineering_source_admitted"]["target_node_id"], nodes["plan"]["id"])
+        self.assertEqual(edges["engineering_source_admitted"]["requires_approval"], False)
+        self.assertEqual(edges["engineering_source_admitted"]["context_mode"], "new_session")
+        self.assertEqual(edges["engineering_source_admitted"]["context_source"], {"kind": "immediate_source"})
+        self.assertNotIn(
+            "SANITIZED LEGACY INITIAL ADMISSION HEADER",
+            edges["engineering_source_admitted"].get("prompt_template", ""),
+        )
+        self.assertTrue(edges["engineering_source_admitted"].get("prompt_template"))
+        self.assertTrue(edges["prepare_pr_fix"]["requires_approval"])
+        self.assertFalse(any(
+            group["source_node_id"] == nodes["backlog"]["id"]
+            and edge["target_node_id"] == nodes["plan"]["id"]
+            for edge in graph["edges"]
+            for group in [groups[edge["transition_group_id"]]]
+        ))
+
+        # Parameter-key changes and same-key description changes are distinct
+        # compatibility inputs and remain visible in the reviewed projection.
+        changed_keys = []
+        changed_definitions = []
+        same_keys_changed_definitions = []
+        for key, old in old_edges.items():
+            new = edges[key]
+            old_parameters = old.get("parameters", [])
+            new_parameters = new.get("parameters", [])
+            old_keys = [row["key"] for row in old_parameters]
+            new_keys = [row["key"] for row in new_parameters]
+            if old_keys != new_keys:
+                changed_keys.append(key)
+            if old_parameters != new_parameters:
+                changed_definitions.append(key)
+                if old_keys == new_keys:
+                    same_keys_changed_definitions.append(key)
+        self.assertEqual((len(changed_keys), len(changed_definitions), len(same_keys_changed_definitions)), (24, 74, 50))
+
+        candidate_text = CANDIDATE_PATH.read_text(encoding="utf-8")
+        for forbidden in (
+            "f993", "527830", "delivery-script-ingress-ref-v1",
+            "delivery-source-publication-v1", "execution_target_policy",
+            '"custom_ref"', '"source_admission"',
+        ):
+            self.assertNotIn(forbidden, candidate_text)
+        self.assertEqual(release_snapshot(), before_release)
+
+    def test_allowlist_modes_and_release_source_preservation(self):
+        self.assertEqual(release_snapshot(), release_snapshot())
+        expected_modes = {
+            ".kent/scripts/workflow-puber-engineering-admission": 0o755,
+            ".kent/workflows/builders/puber_engineering_delivery_current.py": 0o755,
+            ".kent/workflows/puber-engineering-delivery-current.json": 0o644,
+            ".kent/scripts/tests/fixtures/puber-engineering-delivery-native-v13.json": 0o644,
+            ".kent/scripts/tests/test-puber-engineering-delivery-current": 0o755,
+            ".kent/workflows/puber-engineering-delivery-current.md": 0o644,
+        }
+        for relative, mode in expected_modes.items():
+            self.assertEqual(stat.S_IMODE((ROOT / relative).stat().st_mode), mode, relative)
+
+        status = command(
+            "git", "-C", str(ROOT), "status", "--short", "--untracked-files=all",
+        ).splitlines()
+        added = {line[3:] for line in status if line.startswith("?? ")}
+        self.assertEqual(added, ALLOWLIST)
+        self.assertFalse(command(
+            "git", "-C", str(ROOT), "diff", "--name-only",
+        ))
+
+    def test_initial_script_later_agent_and_script_use_real_qualified_admission(self):
+        create_verified_source_fixture = fixture_helper()
+        fixture_case = unittest.TestCase()
+        fixture, _ = create_verified_source_fixture(
+            fixture_case,
+            PROJECT_ID,
+            WORKFLOW_ID,
+            receipt_workflow_id=WORKFLOW_ID,
+        )
+        try:
+            project_source = [
+                path for path in source_paths(ROOT)
+                if infrastructure_path(path, kit=False)
+            ]
+            project_source.extend(sorted(ALLOWLIST - set(project_source)))
+            kit_source = [
+                path for path in source_paths(KIT_ROOT)
+                if path.startswith("workflowkit/")
+                or path in {"scripts/inspect-delivery-source", "scripts/prepare-github-ci"}
+            ]
+            copy_source_tree(ROOT, fixture.project, project_source)
+            copy_source_tree(KIT_ROOT, fixture.kit, kit_source)
+
+            fixture.repin_native_sources()
+            profile_path = fixture.project / ".kent/workflow-profile.toml"
+            profile_text = profile_path.read_text(encoding="utf-8")
+            profile_text = profile_text.replace(
+                f'root = "{KIT_ROOT}"',
+                f'root = "{fixture.kit}"',
+            ).replace(
+                f'commit = "{KIT_COMMIT}"',
+                f'commit = "{fixture.commits[fixture.kit]}"',
+            )
+            profile_path.write_text(profile_text, encoding="utf-8")
+            profile_path.chmod(0o644)
+            fixture.repin_native_sources()
+
+            fixture.receipt = {
+                "schema": "delivery-source-publication-v1",
+                "project_id": PROJECT_ID,
+                "workflow_id": WORKFLOW_ID,
+                "source_commit": fixture.commits[fixture.project],
+                "kit_commit": fixture.commits[fixture.kit],
+                "runtime_roots": [str(fixture.project), str(fixture.kit)],
+                "files": [],
+                "policy": "published_source_v1",
+                "local_inputs": [],
+            }
+            fixture.refresh_receipt_files()
+            self.assertLessEqual(len(fixture.receipt["files"]), 512)
+            fixture.pin(canonical(fixture.receipt))
+
+            admission = {
+                "schema": "delivery-source-admission-v2",
+                "receipt_ref": {
+                    "path": str(fixture.receipt_path),
+                    "sha256": fixture.digest,
+                },
+                "primary_workspace_id": "workspace-test",
+                "primary_root": str(fixture.project),
+                "kit_root": str(fixture.kit),
+                "source_ref": "refs/remotes/origin/main",
+                "kit_ref": "refs/remotes/origin/main",
+                "ci_helper": str(fixture.ci_helper),
+                "helper_bindings": [],
+                "binding": {"kind": "plan-publication"},
+                "ingress": {"kind": "script-edge", "edge_id": INGRESS_EDGE_ID},
+            }
+            frame_path = fixture.evidence / "engineering-source-admission.json"
+            frame_raw = canonical({
+                "project_id": PROJECT_ID,
+                "workflow_id": WORKFLOW_ID,
+                "source_admission": admission,
+            })
+            frame_path.write_bytes(frame_raw)
+            frame_path.chmod(0o600)
+            graph = json.loads(CANDIDATE_PATH.read_text(encoding="utf-8"))["graph"]
+            group = next(row for row in graph["transition_groups"] if row["id"] == INGRESS_GROUP_ID)
+            group["description"] = canonical({
+                "schema": "delivery-script-ingress-ref-v1",
+                "path": str(frame_path),
+                "sha256": hashlib.sha256(frame_raw).hexdigest(),
+            }).decode("utf-8")
+            graph_response = {"workflow_id": WORKFLOW_ID, "graph": graph}
+            graph_path = fixture.base / "engineering-native-graph.json"
+            graph_path.write_bytes(canonical(graph_response))
+            task_path = fixture.base / "engineering-native-task.json"
+            settings_path = fixture.base / "engineering-native-settings.json"
+            settings_path.write_bytes(canonical({
+                "project_id": PROJECT_ID,
+                "project": str(fixture.project),
+                "task_id": TASK_ID,
+                "workflow_id": WORKFLOW_ID,
+                "task_path": str(task_path),
+                "graph_path": str(graph_path),
+                "workspace_id": "workspace-test",
+            }))
+            fake_kent = f"""#!{sys.executable}
+import json
+from pathlib import Path
+import sys
+
+settings = json.loads(Path({str(settings_path)!r}).read_text())
+task_path = Path(settings["task_path"])
+graph_path = Path(settings["graph_path"])
+project = settings["project"]
+project_id = settings["project_id"]
+args = sys.argv[1:]
+if args == ["project", project]:
+    print(project_id)
+elif args == ["project", "list"]:
+    print(project_id + "\\tDisposable fixture\\t" + project)
+elif args == ["project", "workspaces", "--project", project_id, "--offset", "0", "--limit", "100", "--json"]:
+    print(json.dumps({{"project_id": project_id, "offset": 0, "workspaces": [
+        {{"workspace_id": settings["workspace_id"], "root_path": project, "is_default": True}}
+    ]}}))
+elif len(args) == 6 and args[:2] == ["task", "show"] and args[2] == settings["task_id"] and args[3] == "--project" and args[4] == project_id and args[5] == "--json":
+    print(task_path.read_text())
+elif args == ["workflow", "graph", "inspect", settings["workflow_id"], "--json"]:
+    print(graph_path.read_text())
+elif len(args) == 9 and args[:2] == ["task", "list"] and args[2:4] == ["--project", project_id] and args[4] == "--sort" and args[5] == "short-id:asc" and args[6] == "--limit" and args[7] == "100" and args[8] == "--offset":
+    raise SystemExit(2)
+elif args[:2] == ["task", "list"] and args[-2:] == ["--offset", "0"] + args[-1:]:
+    raise SystemExit(2)
+elif args[:2] == ["task", "list"]:
+    if args[2:4] != ["--project", project_id] or args[4] != "--sort" or args[5] != "short-id:asc" or args[6] != "--limit" or args[7] != "100" or args[8] != "--offset" or args[9:] != ["0", "--json"]:
+        raise SystemExit(2)
+    print(json.dumps({{"scope": {{"project_id": project_id}}, "tasks": [
+        {{"task_id": settings["task_id"], "short_id": {TASK_SHORT_ID!r}, "status": {{"kind": "active"}}}}
+    ]}}))
+elif len(args) == 5 and args[:2] == ["worktree", "status"] and args[2] == "--session" and args[4] == "--json":
+    print(json.dumps({{
+        "target": {{"workspace_id": settings["workspace_id"], "workspace_root": project,
+            "workspace_availability": "available", "worktree": None,
+            "cwd_relpath": ".", "effective_workdir": project}},
+        "worktree": {{"recorded_root": project, "observed_root": project}},
+        "problems": []
+    }}))
+else:
+    raise SystemExit(2)
+"""
+            fixture.native_bin.write_text(fake_kent, encoding="utf-8")
+            fixture.native_bin.chmod(0o700)
+            initial_task = {
+                "summary": {
+                    "id": TASK_ID, "short_id": TASK_SHORT_ID,
+                    "project_id": PROJECT_ID, "workflow_id": WORKFLOW_ID,
+                },
+                "source_workspace": {
+                    "root_path": str(fixture.project),
+                    "is_primary": True, "workspace_id": "workspace-test",
+                },
+                "project": {"default_workspace_id": "workspace-test"},
+                "worktree_path": str(fixture.project),
+                "current_nodes": [], "live_sessions": [],
+                "current_scripts": [{
+                    "current_node": {
+                        "node_id": INGRESS_NODE_ID,
+                        "transition_branch_key": None,
+                    },
+                    "path": ".kent/scripts/workflow-puber-engineering-admission",
+                }],
+            }
+            task_path.write_bytes(canonical(initial_task))
+            env = {
+                **os.environ,
+                "HOME": str(fixture.home),
+                "PATH": str(fixture.bin) + os.pathsep + os.environ.get("PATH", ""),
+                "PYTHONDONTWRITEBYTECODE": "1",
+            }
+            entrypoint = fixture.project / ".kent/scripts/workflow-puber-engineering-admission"
+
+            def run_admission(payload, *, poison=False):
+                input_raw = canonical(payload)
+                if not poison:
+                    return subprocess.run(
+                        [str(entrypoint)], cwd=fixture.project, env=env,
+                        input=input_raw, stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE, timeout=120, check=False,
+                    )
+                code = (
+                    "import runpy,sys,types; "
+                    "m=types.ModuleType('workflowkit'); "
+                    "m.__file__='/tmp/foreign-workflowkit/__init__.py'; "
+                    "sys.modules['workflowkit']=m; "
+                    f"runpy.run_path({str(entrypoint)!r},run_name='__main__')"
+                )
+                return subprocess.run(
+                    [sys.executable, "-B", "-c", code],
+                    cwd=fixture.project, env=env, input=input_raw,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    timeout=120, check=False,
+                )
+
+            native_context = {"task_id": TASK_ID, "node_id": INGRESS_NODE_ID}
+            success = run_admission({"_kent": native_context})
+            self.assertEqual(success.returncode, 0, success.stderr.decode())
+            self.assertEqual(
+                success.stdout,
+                b'{"transition":"engineering_source_admitted"}\n',
+            )
+            self.assertEqual(success.stderr, b"")
+
+            def rejected(result):
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, b"")
+                self.assertIn(b"Engineering source admission denied.", result.stderr)
+
+            rejected(run_admission({}))
+            rejected(run_admission({"_kent": {"task_id": TASK_ID}}))
+            rejected(run_admission({
+                "_kent": {"task_id": TASK_ID, "node_id": "wrong-native-node"},
+            }))
+            rejected(run_admission({"_kent": native_context}, poison=True))
+
+            original_task = task_path.read_bytes()
+            task = json.loads(original_task)
+            task["summary"]["project_id"] = "project-foreign"
+            task_path.write_bytes(canonical(task))
+            rejected(run_admission({"_kent": native_context}))
+            task_path.write_bytes(original_task)
+
+            task = json.loads(original_task)
+            task["summary"]["workflow_id"] = "11111111-1111-4111-8111-111111111111"
+            task_path.write_bytes(canonical(task))
+            rejected(run_admission({"_kent": native_context}))
+            task_path.write_bytes(original_task)
+
+            task = json.loads(original_task)
+            task["current_scripts"][0]["current_node"]["node_id"] = "foreign-node"
+            task_path.write_bytes(canonical(task))
+            rejected(run_admission({"_kent": native_context}))
+            task_path.write_bytes(original_task)
+
+            task = json.loads(original_task)
+            task["current_scripts"][0]["path"] = ".kent/scripts/foreign-entry"
+            task_path.write_bytes(canonical(task))
+            rejected(run_admission({"_kent": native_context}))
+            task_path.write_bytes(original_task)
+
+            original_frame = frame_path.read_bytes()
+            frame_path.write_bytes(original_frame + b" ")
+            frame_path.chmod(0o600)
+            rejected(run_admission({"_kent": native_context}))
+            frame_path.write_bytes(original_frame)
+            frame_path.chmod(0o600)
+
+            profile_before = profile_path.read_bytes()
+            original_profile = profile_before.decode("utf-8")
+            profile_path.write_text(
+                original_profile.replace(fixture.commits[fixture.kit], "0" * 40),
+                encoding="utf-8",
+            )
+            profile_path.chmod(0o644)
+            rejected(run_admission({"_kent": native_context}))
+            profile_path.write_bytes(profile_before)
+            profile_path.chmod(0o644)
+
+            profile_path.write_text(
+                original_profile.replace(
+                    str(fixture.kit),
+                    str(fixture.base / "missing-kit-cohort"),
+                ),
+                encoding="utf-8",
+            )
+            profile_path.chmod(0o644)
+            rejected(run_admission({"_kent": native_context}))
+            profile_path.write_bytes(profile_before)
+            profile_path.chmod(0o644)
+
+            bootstrap = fixture.project / ".kent/scripts/workflow_kit_runtime.py"
+            bootstrap_before = bootstrap.read_bytes()
+            bootstrap_mode = stat.S_IMODE(bootstrap.stat().st_mode)
+            bootstrap.write_bytes(bootstrap_before + b"\n")
+            rejected(run_admission({"_kent": native_context}))
+            bootstrap.write_bytes(bootstrap_before)
+            bootstrap.chmod(bootstrap_mode)
+
+            kit_operation = fixture.kit / "workflowkit/operations.py"
+            operation_before = kit_operation.read_bytes()
+            operation_mode = stat.S_IMODE(kit_operation.stat().st_mode)
+            kit_operation.write_bytes(operation_before + b"\n")
+            rejected(run_admission({"_kent": native_context}))
+            kit_operation.write_bytes(operation_before)
+            kit_operation.chmod(operation_mode)
+
+            # Later Script uses the real later-node path through the same native
+            # frame; the Kit facade delegates to admit_source_admission.
+            plan_contract = next(
+                node for node in graph["nodes"] if node["key"] == "plan_contract"
+            )
+            later_script_path = plan_contract["script_path"]
+            later_node_context = {
+                "task_id": TASK_ID,
+                "node_id": plan_contract["id"],
+            }
+            task = json.loads(original_task)
+            task["current_scripts"] = [{
+                "current_node": {
+                    "node_id": plan_contract["id"],
+                    "transition_branch_key": None,
+                },
+                "path": later_script_path,
+            }]
+            task_path.write_bytes(canonical(task))
+            child = (
+                "import importlib.machinery,importlib.util,json,sys; "
+                "from pathlib import Path; "
+                f"p=Path({str(fixture.project)!r}); "
+                f"b=p/'.kent/scripts/workflow_kit_runtime.py'; "
+                "l=importlib.machinery.SourceFileLoader('later_runtime',str(b)); "
+                "s=importlib.util.spec_from_loader(l.name,l); "
+                "m=importlib.util.module_from_spec(s);sys.modules[l.name]=m;s.loader.exec_module(m); "
+                f"q=m.qualified_kit_runtime(p,source_binding={later_node_context!r}); "
+                "assert q is not None and q.native_authorized; "
+                "print(json.dumps({'qualified':True,'root':str(q.source_root)}))"
+            )
+            later = subprocess.run(
+                [sys.executable, "-I", "-S", "-B", "-c", child],
+                cwd=fixture.project, env=env, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True, timeout=120, check=False,
+            )
+            self.assertEqual(later.returncode, 0, later.stderr)
+            self.assertEqual(json.loads(later.stdout), {
+                "qualified": True, "root": str(fixture.kit),
+            })
+
+            # A later Agent has no Script carrier of its own; it must resolve
+            # the same published ingress through its native Session/Task graph.
+            agent = next(node for node in graph["nodes"] if node["key"] == "plan")
+            task = json.loads(original_task)
+            task["current_scripts"] = []
+            task["current_nodes"] = [{
+                "session_id": SESSION_ID, "node_id": agent["id"],
+            }]
+            task_path.write_bytes(canonical(task))
+            agent_child = (
+                "import importlib.machinery,importlib.util,sys,json; "
+                "from pathlib import Path; "
+                f"p=Path({str(fixture.project)!r}); "
+                "l=importlib.machinery.SourceFileLoader('agent_runtime',str(p/'.kent/scripts/workflow_kit_runtime.py')); "
+                "s=importlib.util.spec_from_loader(l.name,l);m=importlib.util.module_from_spec(s);"
+                "sys.modules[l.name]=m;s.loader.exec_module(m);"
+                "q=m.qualified_kit_runtime(p);assert q is not None and q.native_authorized;"
+                "print(json.dumps({'qualified':True,'root':str(q.source_root)}))"
+            )
+            agent_env = {**env, "KENT_SESSION_ID": SESSION_ID}
+            agent_result = subprocess.run(
+                [sys.executable, "-I", "-S", "-B", "-c", agent_child],
+                cwd=fixture.project, env=agent_env, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True, timeout=120, check=False,
+            )
+            self.assertEqual(agent_result.returncode, 0, agent_result.stderr)
+            self.assertEqual(json.loads(agent_result.stdout), {
+                "qualified": True, "root": str(fixture.kit),
+            })
+        finally:
+            fixture_case.doCleanups()
+
+
+def main() -> int:
+    suite = unittest.defaultTestLoader.loadTestsFromTestCase(EngineeringCurrentSourceTests)
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    return 0 if result.wasSuccessful() else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
