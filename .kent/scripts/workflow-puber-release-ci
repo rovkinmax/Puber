@@ -143,6 +143,37 @@ def _delivery_context_modules(modules: Mapping[str, Any]) -> tuple[Any, Any, Any
     return validate, resume, unwrap, canonical_bytes
 
 
+def _unwrap_shared_delivery_context(shared: Mapping[str, Any]) -> dict[str, Any]:
+    """Restore only the exact post-PR v2 values emitted by the shared watcher."""
+    raw = shared.get("delivery_context")
+    if not isinstance(raw, str) or not raw:
+        raise helper.ContractError("shared CI delivery context is invalid")
+    try:
+        validated = _valid_post_pr_context(shared)
+    except (RuntimeError, TypeError, ValueError, UnicodeError) as error:
+        raise helper.ContractError(
+            "shared CI delivery context is invalid"
+        ) from error
+    if validated != raw:
+        raise helper.ContractError(
+            "shared CI delivery context is not the exact validated post-PR context"
+        )
+    _validate, _resume, unwrap, _canonical_bytes = _delivery_context_modules(
+        helper._kit_modules()
+    )
+    try:
+        restored = unwrap(shared)
+    except (RuntimeError, TypeError, ValueError, UnicodeError) as error:
+        raise helper.ContractError(
+            "shared CI delivery context cannot be unwrapped"
+        ) from error
+    if not isinstance(restored, dict) or restored.get("delivery_context") is not None:
+        raise helper.ContractError(
+            "shared CI delivery context did not unwrap to a flat carrier"
+        )
+    return restored
+
+
 def _valid_post_pr_context(
     payload: Mapping[str, Any],
 ) -> str | None:
@@ -1126,6 +1157,8 @@ def transport(
         )
         child_invoked = True
         shared = _run_shared(operation, child_input)
+        if "delivery_context" in shared:
+            shared = _unwrap_shared_delivery_context(shared)
         child_refs = _incoming_producer_refs(shared.get("commentary"))
         if child_refs:
             retained_refs = child_refs

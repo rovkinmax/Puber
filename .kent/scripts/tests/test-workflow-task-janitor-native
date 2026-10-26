@@ -14,20 +14,45 @@ import sys
 import tempfile
 import unittest
 import uuid
+import tomllib
 from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
-KIT = Path(os.environ["KENT_ENGINEERING_KIT_ROOT"]).resolve(strict=True)
-PIN = "5fcfe0d1a3d3ad08a149f34da0457d6527951251"
-head = subprocess.check_output(["git", "-C", str(KIT), "rev-parse", "HEAD"], text=True).strip()
-if head != PIN:
-    raise SystemExit("Janitor qualification requires the selected exact Kit")
+_profile = tomllib.loads(
+    (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8")
+)
+_kit_binding = _profile.get("kit_runtime")
+if (
+    not isinstance(_kit_binding, dict)
+    or set(_kit_binding) != {"schema_version", "root", "commit", "publication_ref"}
+    or _kit_binding.get("schema_version") != 1
+    or _kit_binding.get("commit") != "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
+    or _kit_binding.get("publication_ref") != "refs/remotes/origin/main"
+):
+    raise SystemExit("Janitor tests require Puber's exact qualified Kit source binding")
+KIT = Path(_kit_binding["root"]).resolve(strict=True)
+if str(KIT) != _kit_binding["root"]:
+    raise SystemExit("Puber Kit binding root must be canonical")
+_kit_override = os.environ.get("PUBER_STAGE_A_KIT_ROOT")
+if _kit_override and Path(_kit_override).resolve(strict=True) != KIT:
+    raise SystemExit("Puber test Kit override differs from the profile binding")
+head = subprocess.check_output(
+    ["git", "-C", str(KIT), "rev-parse", "HEAD"],
+    text=True,
+).strip()
+if head != _kit_binding["commit"]:
+    raise SystemExit("Janitor Kit HEAD differs from the profile binding")
+if subprocess.check_output(
+    ["git", "-C", str(KIT), "rev-parse", "--verify", _kit_binding["publication_ref"]],
+    text=True,
+).strip() != _kit_binding["commit"]:
+    raise SystemExit("Janitor Kit publication ref differs from the profile binding")
 if subprocess.check_output(
     ["git", "-C", str(KIT), "status", "--porcelain=v1", "--untracked-files=all"],
     text=True,
 ):
-    raise SystemExit("Janitor qualification requires a clean Kit")
+    raise SystemExit("Janitor Kit binding must remain clean")
 
 spec = importlib.util.spec_from_file_location(
     "pinned_janitor_fixtures", KIT / "tests/test_workflow_runtime.py"
@@ -156,9 +181,7 @@ class PuberJanitorTest(fixtures.WorkflowJanitorTest):
         return scripts
 
     def test_kent_29_cli_compatibility_on_puber_janitor(self) -> None:
-        donor = Path(
-            os.environ["PUBER_STAGE_A_JANITOR_KIT_ROOT"]
-        ).resolve(strict=True)
+        donor = KIT
         suite = donor / "tests/test_worktree_cli_compatibility.py"
         self.assertFalse(suite.is_symlink(), suite)
         self.assertTrue(suite.is_file(), suite)
@@ -180,90 +203,25 @@ class PuberJanitorTest(fixtures.WorkflowJanitorTest):
             result.returncode, 0, result.stdout + result.stderr,
         )
 
-    def test_puber_wrapper_and_shared_provider_loaders_use_profile_kit(self) -> None:
-        expected_root = repr(str(KIT))
-        project_root = repr(str(ROOT))
-        code = f"""
-import importlib, importlib.machinery, importlib.util, subprocess, tomllib
-from pathlib import Path
-
-project = Path({project_root})
-expected_root = Path({expected_root}).resolve(strict=True)
-def load(name, path):
-    loader = importlib.machinery.SourceFileLoader(name, str(path))
-    spec = importlib.util.spec_from_loader(loader.name, loader)
-    module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
-    return module
-
-intent = load(
-    "puber_janitor_root_intent",
-    project / ".kent/scripts/workflow-puber-release-intent",
-)
-wrapper = load(
-    "puber_janitor_root_wrapper",
-    project / ".kent/scripts/workflow-puber-release-janitor",
-)
-profile = tomllib.loads((project / ".kent/workflow-profile.toml").read_text())
-configured_root = profile["puber_runtime"]["kit_source"]["root"]
-assert configured_root == str(expected_root), configured_root
-head = subprocess.check_output(
-    ["git", "-C", str(expected_root), "rev-parse", "HEAD"], text=True,
-).strip()
-status = subprocess.check_output(
-    ["git", "-C", str(expected_root), "status", "--porcelain=v1", "--untracked-files=all"],
-    text=True,
-)
-assert head == wrapper.helper.KIT_COMMIT == intent.KIT_COMMIT
-assert not status, status
-delivery = wrapper.helper._qualified_delivery_module(
-    project,
-    required=("observe_script_identity",),
-)
-shared = wrapper._load_janitor()
-checkpoint = shared.checkpoint_module()
-checkpoint_path = (project / ".kent/scripts/workflow-checkpoint").resolve(strict=True)
-assert Path(checkpoint.__file__).resolve() == checkpoint_path
-assert checkpoint.delivery_module() is delivery
-shared_delivery, observation, runtime = shared.provider_modules(checkpoint)
-wrapper.helper._kit_modules()
-assert delivery is shared_delivery
-modules = (
-    importlib.import_module("workflowkit"),
-    delivery,
-    observation,
-    runtime,
-    importlib.import_module("workflowkit.release"),
-    importlib.import_module("workflowkit.revision"),
-    importlib.import_module("workflowkit.ci_contract"),
-    importlib.import_module("workflowkit.merge_strategy"),
-)
-for module in modules:
-    module_path = Path(module.__file__).resolve()
-    assert module_path.is_relative_to(expected_root), (module.__name__, module_path)
-print(
-    "puber-janitor-provider-root-loader: passed "
-    f"root={{expected_root}} commit={{head}} modules={{len(modules)}}"
-)
-"""
-        child_env = dict(os.environ)
-        child_env.pop("KENT_ENGINEERING_KIT_ROOT", None)
-        child_env["PYTHONDONTWRITEBYTECODE"] = "1"
+    def test_puber_runtime_handle_is_retained_through_janitor_cleanup(self) -> None:
+        suite = ROOT / ".kent/scripts/tests/test-puber-qualified-runtime"
         result = subprocess.run(
-            [sys.executable, "-I", "-B", "-c", code],
+            [sys.executable, str(suite)],
             cwd=ROOT,
-            env=child_env,
             text=True,
             capture_output=True,
+            env={
+                key: value
+                for key, value in os.environ.items()
+                if key != "KENT_ENGINEERING_KIT_ROOT"
+            },
             check=False,
         )
         self.assertEqual(
-            result.returncode,
-            0,
-            result.stdout + result.stderr,
+            result.returncode, 0, result.stdout + result.stderr,
         )
         self.assertIn(
-            "puber-janitor-provider-root-loader: passed",
+            "Puber Janitor preserves the exact qualified/checkpoint handles",
             result.stdout,
         )
 

@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 """R2 real-Agent/outcome guards; only disposable external observations are fake."""
 from __future__ import annotations
-import copy, hashlib, importlib.util, io, json, os, shutil, subprocess, sys, tempfile, uuid
+import copy, hashlib, importlib.util, io, json, os, shutil, subprocess, sys, tempfile, tomllib, uuid
 from pathlib import Path
 from importlib.machinery import SourceFileLoader
 from unittest.mock import patch
 sys.dont_write_bytecode = True
 ROOT=Path(__file__).resolve().parents[3]
-# Use the separately qualified runtime Kit, not the immutable source generator.
-KIT=Path(os.environ['PUBER_STAGE_A_KIT_ROOT']).resolve()
-os.environ['KENT_ENGINEERING_KIT_ROOT']=str(KIT)
+_profile=tomllib.loads((ROOT/'.kent/workflow-profile.toml').read_text(encoding='utf-8'))
+_kit_binding=_profile.get('kit_runtime')
+if not isinstance(_kit_binding,dict) or set(_kit_binding)!={'schema_version','root','commit','publication_ref'}:
+    raise SystemExit("cleanup tests require Puber's exact qualified Kit source binding")
+KIT=Path(_kit_binding['root']).resolve(strict=True)
+if str(KIT)!=_kit_binding['root']:
+    raise SystemExit('Puber Kit binding root must be canonical')
+_kit_override=os.environ.get('PUBER_STAGE_A_KIT_ROOT')
+if _kit_override and Path(_kit_override).resolve(strict=True)!=KIT:
+    raise SystemExit('Puber test Kit override differs from the profile binding')
 A='5db1f81c-55ed-45e8-aa18-602e2b82591b'
 B='07b2d24a-81c8-4b2c-9153-c049226b8938'
 PUBLISH_SESSION='c435a38c-ade6-4fcf-85e6-08ce1f07d55e'
@@ -167,6 +174,11 @@ class Fixture:
         self.helper=load(self.work/'.kent/scripts/workflow-puber-release-intent','agent_cleanup_helper')
         self.graph=json.loads((self.work/'.kent/workflows/puber-release-current.json').read_text())
         self.node=next(n['id'] for n in self.graph['nodes'] if n['key']=='cleanup')
+        self.helper._reset_runtime_invocation()
+        self.helper._bind_qualified_runtime(
+            self.work,
+            {'task_id':TASK,'node_id':self.node},
+        )
         self.cp=pub.fixture_checkpoint(self.work,k,h,TASK)
         if checkpoint:self.helper.write_profile_checkpoint(self.work,'PUB-99',self.cp)
         self.task={'actions':[],'attention_count':0,'body':'release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n',
@@ -280,7 +292,7 @@ emit({key:current,'total_count':len(rows)} if key else current,next_page=len(row
             'KENT_SESSION_ID':A,'KENT_STEP_ID':'61ca2493-4ea9-4a89-8c24-7c2054a751b2',
             'PUBER_KENT_BIN':str(self.kent),'PUBER_GH_BIN':str(self.gh),
             'PUBER_KENT_WORKTREE_BIN':str(self.status),'KENT_WORKTREE_WRAPPER':str(self.status),
-            'KENT_ENGINEERING_KIT_ROOT':str(KIT),'PYTHONDONTWRITEBYTECODE':'1'}
+            'PYTHONDONTWRITEBYTECODE':'1'}
         sh([str(self.work/'.kent/scripts/workflow-evidence-ledger'),'append','--task','PUB-99','--workspace',str(self.work)],self.work,input=json.dumps({'node_key':'cleanup','evidence_type':'cleanup_observation','summary':'Current Agent ordinary evidence, not cancellation authority.','artifacts':[],'checks':[],'decisions':[],'context':{'manifest_path':'.kent/context/delivery.md','files_read':[],'model_calls':0,'compaction_count':0}}),env=self.env)
         self.request={'task_id':TASK,'incoming_transition':'merge_watch_close_without_merge' if closed else 'release_cancel_cleanup','parameters':self.params(closed)}
         self.request['commentary']=self.native_commentary()
@@ -431,7 +443,9 @@ emit({key:current,'total_count':len(rows)} if key else current,next_page=len(row
             @staticmethod
             def format_cleanup_report(original,report,*,runtime=None):
                 return report
-            def main(self):
+            def main(self, *, qualified=None, checkpoint=None):
+                assert qualified is not None
+                assert checkpoint is not None
                 observed.append(json.load(sys.stdin))
                 self.complete(
                     'task_janitor_done',
@@ -655,7 +669,9 @@ def verify_janitor_post_effect_failure(f):
         @staticmethod
         def format_cleanup_report(original,report,*,runtime=None):
             return report
-        def main(self):
+        def main(self, *, qualified=None, checkpoint=None):
+            assert qualified is not None
+            assert checkpoint is not None
             f.work.rename(moved)
             raise RuntimeError('simulated post-effect Janitor failure')
     output=io.StringIO()
@@ -786,6 +802,13 @@ with tempfile.TemporaryDirectory() as d:
     assert j.returncode==0,j.stderr
     blocked=json.loads(j.stdout)
     assert blocked['transition']==native_transition_id(f.graph,'task_janitor_blocked'),blocked
+    blocked_lines=blocked['cleanup_report'].splitlines()
+    assert blocked_lines[-2].startswith('Janitor ')
+    assert blocked_lines[-1].startswith('TERMINAL_EVIDENCE_V1 ')
+    assert sum(line.startswith('TERMINAL_EVIDENCE_V1 ')
+        for line in blocked_lines)==1
+    assert f.helper._kit_modules()['validate_cleanup_report'](
+        blocked['cleanup_report'])
     f.task_path.write_text(json.dumps(f.task))
     sh([str(f.status),'leave','--session',A],f.work,env=f.env)
     assert json.loads(f.world_path.read_text())['binding']=='primary'

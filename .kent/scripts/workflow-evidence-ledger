@@ -22,6 +22,8 @@ TASK_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 NODE_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
 JSON_INPUT_TIMEOUT_SECONDS = 2.0
 MAX_JSON_INPUT_BYTES = 1024 * 1024
+_QUALIFIED_RUNTIME_MODULE = None
+_QUALIFIED_KIT_RUNTIME = None
 
 
 def runtime_state_names(task: str) -> tuple[str, str]:
@@ -797,7 +799,7 @@ def recover_evidence(
             os.close(descriptor)
 
 
-def _producer_resolver(identity, *, read_relative=None):
+def _producer_resolver(identity, *, read_relative=None, qualified=None):
     def resolve(root, task, footer):
         import importlib.machinery
         import importlib.util
@@ -812,7 +814,7 @@ def _producer_resolver(identity, *, read_relative=None):
             raise ValueError("exact producer adapter unavailable")
         adapter = importlib.util.module_from_spec(spec)
         loader.exec_module(adapter)
-        delivery = adapter.delivery_module()
+        delivery = adapter.delivery_module(root, qualified)
         locator = delivery.producer_locator(footer)
         if locator is None:
             raise ValueError("missing exact producer locator")
@@ -958,7 +960,11 @@ def _retention_receipt(root, task, task_fd, root_fd, identity, runtime, *, versi
     records = view["records"]
     runtime.validate_terminal_chain(records, task_short_id=task)
     paths = _retention_references(
-        root, task, records, runtime, producer_resolver=_producer_resolver(identity))
+        root, task, records, runtime,
+        producer_resolver=_producer_resolver(
+            identity, qualified=_QUALIFIED_KIT_RUNTIME,
+        ),
+    )
     names = os.listdir(task_fd)
     if len(names) > 256:
         raise ValueError("runtime inventory exceeds retention bound")
@@ -1192,7 +1198,12 @@ def find_retained_evidence(
 
         required = set(_retention_references(
             root, task, view["records"], runtime,
-            producer_resolver=_producer_resolver(identity, read_relative=read_packet)))
+            producer_resolver=_producer_resolver(
+                identity,
+                read_relative=read_packet,
+                qualified=_QUALIFIED_KIT_RUNTIME,
+            ),
+        ))
         paths = {item["logical_path"] for item in receipt["files"]}
         optional = {f".kent/runtime/{task}/{stage}-checkpoint.json" for stage in ("fix", "smoke")}
         if not required <= paths or paths - required - optional:
@@ -1787,6 +1798,8 @@ def summarize(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _runtime_module():
+    if _QUALIFIED_RUNTIME_MODULE is not None:
+        return _QUALIFIED_RUNTIME_MODULE
     import importlib.util
 
     sibling = Path(__file__).with_name("workflow_runtime_contracts.py")
@@ -1873,7 +1886,9 @@ def _preflight_retention_closure(root, task, records, runtime, identity):
     runtime.validate_terminal_chain(records, task_short_id=task)
     paths = _retention_references(
         root, task, records, runtime,
-        producer_resolver=_producer_resolver(identity),
+        producer_resolver=_producer_resolver(
+            identity, qualified=_QUALIFIED_KIT_RUNTIME,
+        ),
     )
     retiring_plan_cache = f".kent/runtime/{task}/plan-contract.json"
     if retiring_plan_cache in paths:

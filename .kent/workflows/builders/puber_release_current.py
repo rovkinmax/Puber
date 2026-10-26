@@ -144,6 +144,8 @@ CLOSED_PATHS = (
     ".kent/context/delivery.md",
     ".kent/project-contract.md",
     ".kent/scripts/tests/test-puber-release-current",
+    ".kent/scripts/tests/test-puber-qualified-runtime",
+    ".kent/scripts/tests/test-puber-qualified-runtime-integration",
     ".kent/scripts/tests/test-workflow-puber-release-ci",
     ".kent/scripts/tests/test-workflow-puber-release-intent",
     ".kent/scripts/tests/test-workflow-puber-release-profile-generation",
@@ -328,14 +330,13 @@ def _source_node(graph: dict[str, Any], edge: dict[str, Any]) -> str:
     return group["source_node_id"]
 
 
-def _parameter_for_source(
-    graph: dict[str, Any], edge: dict[str, Any], key: str,
+def _parameter_for_source_node(
+    graph: dict[str, Any], source_node_id: str, key: str,
 ) -> dict[str, Any]:
-    source_id = _source_node(graph, edge)
     candidates = [
         copy.deepcopy(parameter)
         for candidate in graph["edges"]
-        if _source_node(graph, candidate) == source_id
+        if _source_node(graph, candidate) == source_node_id
         for parameter in candidate.get("parameters", [])
         if parameter.get("key") == key
     ]
@@ -374,6 +375,12 @@ def _parameter_for_source(
     if not candidates:
         raise ValueError(f"no canonical {key} parameter in graph")
     return candidates[0]
+
+
+def _parameter_for_source(
+    graph: dict[str, Any], edge: dict[str, Any], key: str,
+) -> dict[str, Any]:
+    return _parameter_for_source_node(graph, _source_node(graph, edge), key)
 
 
 def _insert_after(
@@ -449,6 +456,20 @@ def _transform_graph(value: dict[str, Any], original: dict[str, Any]) -> None:
     edges = {edge["key"]: edge for edge in value["edges"]}
     modified: set[str] = set()
 
+    # Replace only the approved inherited operation/target descriptions;
+    # keep parameter keys and route payloads unchanged.
+    canonical_route_parameters = {
+        "publish_needs_user_action": {"operation_id", "target_commit"},
+        "monitor_needs_user_action": {"operation_id"},
+    }
+    for edge_key, parameter_keys in canonical_route_parameters.items():
+        for parameter in edges[edge_key]["parameters"]:
+            if parameter.get("key") not in parameter_keys:
+                continue
+            canonical = CANONICAL_PARAMETERS.get(parameter["key"])
+            if canonical is not None:
+                parameter["description"] = canonical["description"]
+
     # S4 turns the old direct preparation retry route into a typed failure
     # handoff to the existing CI Agent. The Agent's retry route has only the
     # three approved native fields and no synthetic entry_transition.
@@ -505,7 +526,8 @@ def _transform_graph(value: dict[str, Any], original: dict[str, Any]) -> None:
             "context_mode": context_mode,
             "context_source": {"kind": "immediate_source"},
             "parameters": [
-                _parameter_for_source(value, failure, field) for field in fields
+                _parameter_for_source_node(value, monitor_id, field)
+                for field in fields
             ],
         }
         if prompt is not None:
@@ -894,15 +916,18 @@ def _expected_manifest() -> dict[str, Any]:
         and path != str(MANIFEST.relative_to(ROOT))
         and path not in DYNAMIC_RELEASE_PATHS
     }
+    builder_path = str(Path(__file__).resolve().relative_to(ROOT))
     source_roots = [
         {
             "kind": "source-sha256",
             "key": f"{path}={_sha(_safe_file(path))}",
             "runtime_digest_required": True,
         }
-        for path in sorted(sources)
+        # The required builder-sha256 descriptor already captures this exact
+        # Git blob; do not charge the same physical file twice to the runtime
+        # external-capture budget.
+        for path in sorted(sources - {builder_path})
     ]
-    builder_path = str(Path(__file__).resolve().relative_to(ROOT))
     roots = [{
         "kind": "builder-sha256",
         "key": _sha(_safe_file(builder_path)),
@@ -974,6 +999,14 @@ def check() -> list[str]:
             for item in actual_manifest.get("external_roots", [])
         ):
             errors.append("successor manifest does not bind its own builder")
+        builder_path = str(Path(__file__).resolve().relative_to(ROOT))
+        if any(
+            item.get("kind") == "source-sha256"
+            and isinstance(item.get("key"), str)
+            and item["key"].split("=", 1)[0] == builder_path
+            for item in actual_manifest.get("external_roots", [])
+        ):
+            errors.append("successor manifest redundantly captures its builder")
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         errors.append(str(error))
     return errors

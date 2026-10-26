@@ -53,9 +53,11 @@ backlog/task state, defaults and primary adapters have not been changed by
 this source candidate. Live application requires its own approved exact
 graph and task-compatibility plan.
 
-Set `KENT_ENGINEERING_KIT_ROOT` to a clean checkout of the published commit
-when running the runtime cohort and verifier wire tests. Historical release
-source/signing pins remain independent of this delivery runtime pin.
+Puber Release production helpers do not select a Kit through
+`KENT_ENGINEERING_KIT_ROOT`. The focused selected-cohort integration fixture
+accepts `PUBER_STAGE_A_RUNTIME_KIT_SOURCE_ROOT` only as a test source donor; it
+copies those bytes into a disposable clean Git cohort and never binds that
+fixture to the project profile.
 
 - `Puber Release`: non-default schema-4 revision 90 release control plane
   from release intent through PR CI, approved tag publication, release
@@ -239,41 +241,32 @@ hint. The intent helper and Script-lease adapter both enforce the exact
 version-97 cohort, rejecting the observed version-96 preimage and future
 revisions. No live graph, metadata, Task target, or default is changed here.
 
-The project source now selects the clean primary Kit K
-`5fcfe0d1a3d3ad08a149f34da0457d6527951251` at
-`/Users/rovkinmax/dev/llm-staf/kent-engineering-kit`. The profile pins
-runtime contracts 2.2.0, prepare-CI 3.1.0, CI/PR waiters 4.1.0, checkpoint
-1.2.0, evidence 2.1.0, GitHub observation 1.1.0, and Janitor 3.1.0. The
-qualified shared helper copies and Puber Janitor adapter are source-bound in
-the current Release manifest. The project closure C and final configured
-source gates remain pending; consequently `runtime_attested` stays false.
-The older 5af graph, spec, manifest, and builder remain historical inputs.
-This source candidate does not activate or mutate a live Workflow, Task,
-metadata, or default; any future activation requires its separate compatible,
-explicitly authorized effect. An explicit `KENT_ENGINEERING_KIT_ROOT` still
-takes precedence and an empty, invalid, dirty, wrong-revision, or
-import-escaping Kit fails closed without profile fallback. When the variable
-is absent, the runtime obtains its root only from the validated
-`[puber_runtime.kit_source]` table:
+The current source candidate materializes the shared checkpoint, evidence,
+Janitor and CI-preparation helpers plus the standard-library
+`workflow_kit_runtime.py` bootstrap. The profile manages
+`kit_runtime_loader` version `1.0.0` and binds retained published Kit cohort K
+by exact root, commit, and `refs/remotes/origin/main`. The Release helper and
+Janitor adapter fail closed when the invocation's native qualified handle is
+unavailable; the dormant legacy root field has been removed, and environment
+variables are not production fallback selectors.
 
-```toml
-[puber_runtime.kit_source]
-schema_version = 1
-root = "/Users/rovkinmax/dev/llm-staf/kent-engineering-kit"
-```
+The source graph/spec/manifest remain non-attested (`runtime_attested = false`);
+the binding selects a source cohort but does not claim installed/native
+admission. For final published Puber source C, the canonical operator projects
+the compact Script-ingress reference from the reviewed admission receipt and
+qualified target, creates the corresponding private immutable frame, and
+validates the complete native target before any separately authorized
+adoption. The source builder and disposable fixtures do not fabricate that
+production frame. The Release manifest binds managed copies but is not runtime
+attestation. Native projection/readback and activation remain separate,
+unperformed gates.
 
-The profile file must be a bounded, regular, nonsymlink file owned by the
-current user and not group/world writable. The `puber_runtime` and
-`kit_source` tables accept no extra fields; the root must be an existing
-canonical absolute directory. Kit-root selection does not probe `HOME` or
-`PATH`, discover another checkout, or alter process environment.
-`KIT_COMMIT` remains the sole Kit revision pin; the profile supplies only the
-root. Source-generation qualification remains bound to the separate immutable
-generator commit `5af04089844c10c66dcaa692c36f42f738b9b302`, supplied only
-through the test-only `PUBER_STAGE_A_GENERATOR_KIT_ROOT`; it is not a
-production runtime input or dynamic resolver. The project profile does not
-self-pin a Puber source commit, and the candidate filename is not a runtime
-pin.
+The real selected-cohort fixture builds an isolated clean Git repository and
+fake native Task/Workflow readbacks from disposable local inputs. Its test-only
+source donor does not become a project pin or production cohort. Historical
+release source/signing pins remain independent. The older 5af graph, spec,
+manifest and builder remain historical inputs. No native runtime binding,
+live Workflow, Task, metadata, or default is changed by this source candidate.
 
 The profile-generation Script binds native Task/project/workflow/node/root,
 execution base/controller, and release-operation/source identities through the

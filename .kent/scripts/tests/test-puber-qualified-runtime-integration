@@ -1,0 +1,703 @@
+#!/usr/bin/env python3
+"""Exercise Puber's real qualified facade against disposable Kit/native fixtures."""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+
+ROOT = Path(__file__).resolve().parents[3]
+KIT_SOURCE_ENV = "PUBER_STAGE_A_RUNTIME_KIT_SOURCE_ROOT"
+KIT_PUBLICATION_REF = "refs/remotes/origin/main"
+PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
+WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
+TASK_ID = "task-12345678-1234-4234-8234-123456789abc"
+TASK_SHORT_ID = "PUB-TEST"
+
+
+def run(command: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> str:
+    result = subprocess.run(
+        command,
+        cwd=cwd,
+        env=env,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode:
+        raise AssertionError(
+            f"command failed ({result.returncode}): {command}\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+    return result.stdout.strip()
+
+
+def canonical(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def git(root: Path, *args: str) -> str:
+    return run(["git", "-C", str(root), *args], cwd=root)
+
+
+def copy_project_fixture(project: Path) -> dict:
+    source_scripts = ROOT / ".kent/scripts"
+    scripts = (
+        "workflow-puber-release-intent",
+        "workflow-puber-release-janitor",
+        "workflow-task-janitor",
+        "workflow-checkpoint",
+        "workflow-evidence-ledger",
+        "workflow-prepare-github-ci",
+        "workflow_kit_runtime.py",
+    )
+    for relative in scripts:
+        target = project / ".kent/scripts" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_scripts / relative, target)
+    graph = json.loads(
+        (ROOT / ".kent/workflows/puber-release-current.json").read_text(
+            encoding="utf-8",
+        )
+    )
+    workflows = project / ".kent/workflows"
+    workflows.mkdir(parents=True, exist_ok=True)
+    (workflows / "puber-release-current.json").write_text(
+        json.dumps(graph, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    profile_path = project / ".kent/workflow-profile.toml"
+    profile_path.write_text(
+        (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    profile_path.chmod(0o644)
+    return graph
+
+
+def main() -> int:
+    donor_value = os.environ.get(KIT_SOURCE_ENV)
+    if not donor_value:
+        raise SystemExit(
+            f"{KIT_SOURCE_ENV} must identify the Kit source used only to build "
+            "the disposable clean Git fixture"
+        )
+    donor = Path(donor_value).expanduser().resolve(strict=True)
+    if not (donor / "workflowkit/kit_runtime.py").is_file():
+        raise SystemExit(f"qualified Kit runtime source is missing from {donor}")
+
+    with tempfile.TemporaryDirectory(prefix="puber-qualified-integration-") as raw:
+        base = Path(raw).resolve()
+        primary = base / "primary"
+        worktree_parent = primary / ".kent/worktrees"
+        project = worktree_parent / TASK_SHORT_ID
+        worktree_parent.mkdir(parents=True)
+        project.mkdir()
+
+        graph = copy_project_fixture(project)
+        janitor_node = next(
+            node for node in graph["nodes"] if node.get("key") == "task_janitor"
+        )
+        janitor_node_id = janitor_node["id"]
+        project_script = ".kent/scripts/workflow-puber-release-janitor"
+
+        kit_root = base / "disposable-kit-cohort"
+        shutil.copytree(
+            donor / "workflowkit",
+            kit_root / "workflowkit",
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
+        )
+        (kit_root / "scripts").mkdir()
+        shutil.copy2(
+            donor / "scripts/prepare-github-ci",
+            kit_root / "scripts/prepare-github-ci",
+        )
+        run(["git", "init", "-q", "-b", "main", str(kit_root)], cwd=base)
+        git(kit_root, "config", "user.name", "Disposable Puber runtime fixture")
+        git(kit_root, "config", "user.email", "puber-runtime-fixture@example.invalid")
+        git(kit_root, "add", "-A")
+        git(kit_root, "commit", "-qm", "Disposable qualified Kit cohort")
+        kit_commit = git(kit_root, "rev-parse", "HEAD")
+        git(kit_root, "update-ref", KIT_PUBLICATION_REF, kit_commit)
+        kit_status = git(
+            kit_root,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        )
+        assert kit_status == "", kit_status
+        assert git(kit_root, "rev-parse", KIT_PUBLICATION_REF) == kit_commit
+        assert (
+            (project / ".kent/scripts/workflow_kit_runtime.py").read_bytes()
+            == (kit_root / "workflowkit/kit_runtime.py").read_bytes()
+        )
+
+        profile_path = project / ".kent/workflow-profile.toml"
+        profile_text = profile_path.read_text(encoding="utf-8")
+        production_binding = (
+            "[kit_runtime]\n"
+            "schema_version = 1\n"
+            'root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/runtime-sdk-puber-30b908c9"\n'
+            'commit = "30b908c9fc7097c0464ae67d58f891a1dd7103fb"\n'
+            'publication_ref = "refs/remotes/origin/main"\n'
+        )
+        assert profile_text.count(production_binding) == 1
+        profile_text = profile_text.replace(
+            production_binding,
+            "[kit_runtime]\n"
+            "schema_version = 1\n"
+            f"root = {json.dumps(str(kit_root))}\n"
+            f"commit = {json.dumps(kit_commit)}\n"
+            f"publication_ref = {json.dumps(KIT_PUBLICATION_REF)}\n",
+            1,
+        )
+        profile_path.write_text(profile_text, encoding="utf-8")
+        project_id = PROJECT_ID
+        ingress_node_id = "22222222-2222-4222-8222-222222222222"
+        start_node_id = "11111111-1111-4111-8111-111111111111"
+        ingress_group_id = "33333333-3333-4333-8333-333333333333"
+        ingress_edge_id = "44444444-4444-4444-8444-444444444444"
+        receipt_dir = base / "native-receipts"
+        receipt_dir.mkdir(mode=0o700)
+        kit_runtime_path = kit_root / "workflowkit/kit_runtime.py"
+        kit_runtime_bytes = kit_runtime_path.read_bytes()
+        receipt = {
+            "schema": "delivery-runtime-publication-v2",
+            "project_id": project_id,
+            "workflow_id": WORKFLOW_ID,
+            "source_commit": "a" * 40,
+            "kit_commit": kit_commit,
+            "runtime_roots": [str(project), str(kit_root)],
+            "files": [
+                {
+                    "root": str(kit_root),
+                    "relative_path": "workflowkit/kit_runtime.py",
+                    "sha256": hashlib.sha256(kit_runtime_bytes).hexdigest(),
+                    "byte_size": len(kit_runtime_bytes),
+                    "mode": stat.S_IMODE(kit_runtime_path.stat().st_mode),
+                },
+            ],
+            "policy": "delivery_reliability_v1",
+            "project_memory": None,
+            "local_inputs": [],
+        }
+        receipt_bytes = canonical(receipt)
+        receipt_path = receipt_dir / "source-receipt.json"
+        receipt_path.write_bytes(receipt_bytes)
+        receipt_path.chmod(0o600)
+        admission = {
+            "schema": "delivery-source-admission-v2",
+            "receipt_ref": {
+                "path": str(receipt_path),
+                "sha256": hashlib.sha256(receipt_bytes).hexdigest(),
+            },
+            "primary_workspace_id": "workspace-test",
+            "primary_root": str(project),
+            "kit_root": str(kit_root),
+            "source_ref": "refs/remotes/origin/main",
+            "kit_ref": KIT_PUBLICATION_REF,
+            "ci_helper": str(project / ".kent/scripts/workflow-prepare-github-ci"),
+            "helper_bindings": [],
+            "binding": {"kind": "plan-publication"},
+            "ingress": {"kind": "script-edge", "edge_id": ingress_edge_id},
+        }
+        frame = {
+            "project_id": project_id,
+            "workflow_id": WORKFLOW_ID,
+            "source_admission": admission,
+        }
+        frame_bytes = canonical(frame)
+        frame_path = receipt_dir / "script-ingress.json"
+        frame_path.write_bytes(frame_bytes)
+        frame_path.chmod(0o600)
+        description = canonical({
+            "schema": "delivery-script-ingress-ref-v1",
+            "path": str(frame_path),
+            "sha256": hashlib.sha256(frame_bytes).hexdigest(),
+        }).decode("utf-8")
+
+        task_detail = {
+            "summary": {
+                "id": TASK_ID,
+                "short_id": TASK_SHORT_ID,
+                "project_id": project_id,
+                "workflow_id": WORKFLOW_ID,
+            },
+            "source_workspace": {
+                "workspace_id": "workspace-test",
+                "root_path": str(project),
+            },
+            "worktree_path": str(project),
+            "current_scripts": [
+                {
+                    "current_node": {
+                        "node_id": janitor_node_id,
+                        "transition_branch_key": None,
+                    },
+                    "path": project_script,
+                },
+            ],
+        }
+        native_graph = {
+            "workflow_id": WORKFLOW_ID,
+            "graph": {
+                "nodes": [
+                    {"id": start_node_id, "key": "start", "kind": "agent"},
+                    {
+                        "id": ingress_node_id,
+                        "key": "release_intent_gate",
+                        "kind": "script",
+                        "script_path": ".kent/scripts/workflow-puber-release-intent",
+                    },
+                    {
+                        "id": janitor_node_id,
+                        "key": "task_janitor",
+                        "kind": "script",
+                        "script_path": project_script,
+                    },
+                ],
+                "edges": [
+                    {
+                        "id": ingress_edge_id,
+                        "transition_group_id": ingress_group_id,
+                        "target_node_id": ingress_node_id,
+                        "prompt": "",
+                    },
+                ],
+                "transition_groups": [
+                    {
+                        "id": ingress_group_id,
+                        "source_node_id": start_node_id,
+                        "description": description,
+                    },
+                ],
+            },
+        }
+        fixture_data = {
+            "admission": admission,
+            "graph": native_graph,
+            "task": task_detail,
+            "project_id": project_id,
+            "task_id": TASK_ID,
+            "workflow_id": WORKFLOW_ID,
+        }
+        fixture_path = base / "native-fixture.json"
+        fixture_path.write_bytes(canonical(fixture_data))
+
+        calls_path = base / "native-calls.jsonl"
+        fake_bin = base / "fake-bin"
+        fake_bin.mkdir()
+        fake_kent = fake_bin / "kent"
+        fake_kent.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, pathlib, sys\n"
+            f"fixture = json.loads(pathlib.Path({str(fixture_path)!r}).read_text())\n"
+            f"calls = pathlib.Path({str(calls_path)!r})\n"
+            "args = sys.argv[1:]\n"
+            "with calls.open('a', encoding='utf-8') as stream:\n"
+            "    stream.write(json.dumps(args) + '\\\\n')\n"
+            "if args == ['project', " + repr(str(project)) + "]:\n"
+            "    print(fixture['project_id'])\n"
+            "elif args == ['task', 'show', fixture['task_id'], '--project', "
+            "fixture['project_id'], '--json']:\n"
+            "    print(json.dumps(fixture['task']))\n"
+            "elif args == ['workflow', 'graph', 'inspect', "
+            "fixture['workflow_id'], '--json']:\n"
+            "    print(json.dumps(fixture['graph']))\n"
+            "else:\n"
+            "    raise SystemExit(2)\n",
+            encoding="utf-8",
+        )
+        fake_kent.chmod(0o755)
+
+        git_env = {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+        run(
+            [
+                "git", "init", "-q", "-b", "release-fixture",
+                str(project),
+            ],
+            cwd=base,
+            env={**os.environ, **git_env},
+        )
+        git(project, "config", "user.name", "Disposable Puber task fixture")
+        git(project, "config", "user.email", "puber-task-fixture@example.invalid")
+        git(project, "add", ".")
+        git(project, "commit", "-qm", "Disposable native Puber task")
+        project_commit = git(project, "rev-parse", "HEAD")
+        assert git(project, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+        # A valid profile pin is insufficient without the native
+        # operator-projected Script ingress carrier. Exercise that negative
+        # boundary in an isolated process so it cannot affect the positive
+        # Janitor/runtime fixture below.
+        bad_fixture_path = base / "native-fixture-missing-carrier.json"
+        invalid_fixture = json.loads(fixture_path.read_bytes())
+        invalid_fixture["graph"]["graph"]["transition_groups"][0][
+            "description"
+        ] = "missing native ingress carrier"
+        bad_fixture_path.write_bytes(canonical(invalid_fixture))
+        bad_bin = base / "fake-bin-missing-carrier"
+        bad_bin.mkdir()
+        bad_kent = bad_bin / "kent"
+        bad_kent.write_text(
+            fake_kent.read_text(encoding="utf-8").replace(
+                str(fixture_path),
+                str(bad_fixture_path),
+            ),
+            encoding="utf-8",
+        )
+        bad_kent.chmod(0o755)
+        probe = "\n".join((
+            "import importlib.machinery, importlib.util",
+            "import sys",
+            "from pathlib import Path",
+            f"project = Path({str(project)!r})",
+            "loader = importlib.machinery.SourceFileLoader("
+            "'missing_carrier_probe', "
+            "str(project / '.kent/scripts/workflow_kit_runtime.py'))",
+            "spec = importlib.util.spec_from_loader(loader.name, loader)",
+            "module = importlib.util.module_from_spec(spec)",
+            "sys.modules[loader.name] = module",
+            "loader.exec_module(module)",
+            "try:",
+            "    module.qualified_kit_runtime(",
+            "        project,",
+            f"        source_binding={{'task_id': {TASK_ID!r}, "
+            f"'node_id': {janitor_node_id!r}}},",
+            "    )",
+            "except RuntimeError as error:",
+            "    assert 'carrier is ambiguous' in str(error).lower(), str(error)",
+            "else:",
+            "    raise AssertionError("
+            "'profile pin bypassed missing native ingress carrier')",
+        ))
+        probe_env = {
+            **os.environ,
+            "PATH": str(bad_bin) + os.pathsep + os.environ.get("PATH", ""),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+        probe_result = subprocess.run(
+            [sys.executable, "-I", "-B", "-c", probe],
+            cwd=base,
+            env=probe_env,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        if probe_result.returncode:
+            raise AssertionError(probe_result.stdout + probe_result.stderr)
+
+        child = f"""
+import hashlib
+import importlib
+import importlib.machinery
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import stat
+import sys
+from types import SimpleNamespace
+from unittest.mock import patch
+
+sys.dont_write_bytecode = True
+project = Path({str(project)!r})
+kit_root = Path({str(kit_root)!r})
+fixture = json.loads(Path({str(fixture_path)!r}).read_text())
+task_id = {TASK_ID!r}
+task_short_id = {TASK_SHORT_ID!r}
+workflow_id = {WORKFLOW_ID!r}
+native_context = {{"task_id": task_id, "node_id": {janitor_node_id!r}}}
+sys.path.insert(0, str(kit_root))
+
+# The runtime validates the real disposable cohort, native Task/Script shape,
+# graph-bound admission frame and immutable source receipt. The downstream
+# publication inspector is a test-only seam; its closure is covered by Kit
+# tests, while this fixture verifies the exact late-Script admission handoff.
+operations = importlib.import_module("workflowkit.operations")
+def admit_fixture(
+    admission,
+    *,
+    project_id,
+    workflow_id,
+    project_root,
+    kent_path,
+    workspace_path=None,
+):
+    assert admission == fixture["admission"]
+    assert project_id == fixture["project_id"]
+    assert workflow_id == fixture["workflow_id"]
+    assert Path(project_root) == project
+    assert Path(workspace_path) == project
+    assert Path(kent_path).name == "kent"
+    return SimpleNamespace(
+        project_id=project_id,
+        workflow_id=workflow_id,
+        primary_root=str(project),
+        kit_root=str(kit_root),
+        value=admission,
+        receipt_sha256=admission["receipt_ref"]["sha256"],
+    )
+operations.admit_source_admission = admit_fixture
+
+loader = importlib.machinery.SourceFileLoader(
+    "puber_real_qualified_janitor",
+    str(project / ".kent/scripts/workflow-puber-release-janitor"),
+)
+spec = importlib.util.spec_from_loader(loader.name, loader)
+assert spec and spec.loader
+wrapper = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(wrapper)
+wrapper.ROOT = project
+wrapper.helper.ROOT = project
+
+identity = {{
+    "task_id": task_id,
+    "node_id": native_context["node_id"],
+    "workspace_path": str(project),
+    "task_short_id": task_short_id,
+    "workflow_id": workflow_id,
+    "expected_version": wrapper.helper.WORKFLOW_REVISION,
+    "graph": {{
+        "nodes": [{{"id": native_context["node_id"], "key": "task_janitor"}}],
+    }},
+}}
+wrapper._current_native_graph = lambda _payload: identity
+
+profile_graph = json.loads(
+    (project / wrapper.helper.GRAPH_PATH).read_text(encoding="utf-8")
+)
+incoming = next(
+    edge for edge in profile_graph["edges"]
+    if edge.get("key") == "cleanup_task_janitor"
+)
+fields = {{parameter["key"]: "" for parameter in incoming["parameters"]}}
+fields.update({{
+    "workspace_path": str(project),
+    "operation_id": "a" * 64,
+    "branch_name": "release-fixture",
+    "pr_base_branch": "not-applicable",
+    "cleanup_mode": "no_pr",
+    "cleanup_report": "previous cleanup report",
+    "cleanup_session_id": "12345678-1234-4234-8234-123456789abc",
+    "task_short_id": task_short_id,
+}})
+payload = {{**fields, "_kent": native_context, "commentary": "fixture producer"}}
+
+captured = {{}}
+original_validate = wrapper._validate_payload
+def validate_and_capture(raw):
+    result = original_validate(raw)
+    helper = wrapper.helper
+    qualified = helper._require_qualified_runtime(project)
+    checkpoint = helper._qualified_checkpoint_module(
+        project,
+        required=("qualified_kit_runtime", "kit_module", "delivery_module"),
+    )
+    modules = helper._kit_modules(project)
+    delivery = checkpoint.kit_module(
+        "delivery", project_root=project, qualified=qualified,
+    )
+    assert Path(delivery.__file__).resolve().is_relative_to(kit_root)
+    for module_name in ("runtime", "ci_contract", "revision", "merge_strategy"):
+        selected_module = checkpoint.kit_module(
+            module_name, project_root=project, qualified=qualified,
+        )
+        assert Path(selected_module.__file__).resolve().is_relative_to(kit_root)
+    assert checkpoint.delivery_module(project, qualified) is delivery
+    selected_cli = checkpoint._prepare_ci_qualified_cli(
+        project,
+        {{"workspace_path": str(project), "_kent": native_context}},
+    )
+    assert selected_cli == kit_root / "scripts/prepare-github-ci"
+    ci_input = json.dumps({{
+        "workspace_path": str(project),
+        "_kent": native_context,
+        "operation": "test-only-invalid-operation",
+    }}).encode()
+    child_calls = []
+    def fake_child(command, **kwargs):
+        child_calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0)
+    fake_stdin = SimpleNamespace(buffer=io.BytesIO(ci_input))
+    with (
+        patch.object(
+            checkpoint,
+            "_prepare_ci_qualified_cli",
+            return_value=selected_cli,
+        ),
+        patch.object(checkpoint.subprocess, "run", side_effect=fake_child),
+        patch.object(checkpoint.sys, "stdin", fake_stdin),
+    ):
+        assert checkpoint.prepare_github_ci_command(
+            project,
+            require_runtime_binding=True,
+        ) == 0
+    assert len(child_calls) == 1
+    assert child_calls[0][0] == [
+        sys.executable, "-B", str(selected_cli),
+    ]
+    assert child_calls[0][1]["cwd"] == project
+    assert child_calls[0][1]["input"] == ci_input
+    assert checkpoint.qualified_kit_runtime(
+        project,
+        source_binding=native_context,
+    ) is qualified
+    captured.update(
+        qualified=qualified,
+        checkpoint=checkpoint,
+        modules=modules,
+        delivery=delivery,
+    )
+    # Keep the test's provider operations local; module resolution remains real.
+    delivery.producer_locator = lambda _commentary: "fixture-producer-locator"
+    delivery.observe_script_identity = lambda *_args, **_kwargs: {{
+        "task_id": task_id,
+        "node_id": native_context["node_id"],
+    }}
+    delivery.prepare_github_provider_read_guard = (
+        lambda *_args, **_kwargs: object()
+    )
+    return result
+
+wrapper._validate_payload = validate_and_capture
+wrapper.helper.read_zero_argument = lambda: payload
+wrapper.helper.producer_refs_from_commentary = lambda *_args, **_kwargs: []
+wrapper._prepare_output_templates = lambda: {{
+    "task_janitor_blocked": {{"transition": "task_janitor_blocked"}},
+    "task_janitor_done": {{"transition": "task_janitor_done"}},
+    "task_janitor_preserved": {{"transition": "task_janitor_preserved"}},
+}}
+
+primary = project.parents[2]
+assert project.is_relative_to(primary / ".kent/worktrees")
+def remove_test_worktree(
+    _wrapper, _primary, workspace, _session, _report, _expected,
+    *, _effect_status=None, _before_delete=None,
+):
+    if _before_delete is not None:
+        _before_delete()
+    if _effect_status is not None:
+        _effect_status["state"] = "completed"
+    shutil.rmtree(workspace)
+    return True, "Disposable fixture worktree removed.", ""
+
+def settle_test_branch(
+    _primary, _branch, _head, _mode, *, origin_route=None,
+    expected_repository=None, _effect_status=None,
+):
+    if _effect_status is not None:
+        _effect_status["disposition"] = "removed"
+    return True, "Disposable fixture branch settlement.", ""
+
+stdout = io.StringIO()
+with (
+    patch.dict(os.environ, {{"HOME": str(project.parents[2].parent)}}),
+    patch.object(wrapper, "_current_native_graph", return_value=identity),
+    patch.object(sys, "stdout", stdout),
+):
+    # Load the real shared Janitor; replace only project-local/native effect
+    # adapters so its actual qualified main path can delete this temp fixture.
+    shared = wrapper._load_janitor()
+    wrapper._SHARED_JANITOR = shared
+    with (
+        patch.object(wrapper, "_load_janitor", return_value=shared),
+        patch.object(shared, "primary_root", return_value=primary),
+        patch.object(shared, "require_task_branch_identity", return_value=None),
+        patch.object(shared, "admit_origin_route", return_value={{"fixture": "origin"}}),
+        patch.object(shared, "head_matches_current_remote", return_value=True),
+        patch.object(shared, "require_origin_route", return_value=None),
+        patch.object(shared, "admit_local_branch_for_native_delete", return_value=None),
+        patch.object(shared, "_admit_managed_runtime_parent", return_value=(True, "fixture")),
+        patch.object(shared, "_prepare_v2_managed_runtime_state", return_value=None),
+        patch.object(shared, "cleanup_session_uses_workspace", return_value=False),
+        patch.object(
+            shared,
+            "capture_kent_worktree_record",
+            return_value={{"worktree_id": "fixture", "root": str(project)}},
+        ),
+        patch.object(shared, "github_provider_read_guard", return_value=None),
+        patch.object(shared, "delete_managed_worktree", side_effect=remove_test_worktree),
+        patch.object(shared, "settle_local_branch", side_effect=settle_test_branch),
+        patch.object(shared, "check_terminal_postconditions", return_value=None),
+    ):
+        assert wrapper.main() == 0
+
+qualified = captured["qualified"]
+checkpoint = captured["checkpoint"]
+delivery = captured["delivery"]
+modules = captured["modules"]
+shared = wrapper._SHARED_JANITOR
+assert not project.exists(), (
+    "the Janitor deletion fixture did not remove its temp worktree: "
+    + stdout.getvalue()
+)
+assert shared._QUALIFIED_KIT_RUNTIME is qualified
+assert shared._CHECKPOINT_MODULE is checkpoint
+assert shared._PROVIDER_CONTEXT["qualified"] is qualified
+assert shared._PROVIDER_CONTEXT["post_delete"] is True
+assert shared._PROVIDER_CONTEXT["delivery"] is delivery
+assert Path(shared._PROVIDER_CONTEXT["observation"].__file__).resolve().is_relative_to(kit_root)
+assert Path(shared._PROVIDER_CONTEXT["runtime"].__file__).resolve().is_relative_to(kit_root)
+assert checkpoint.delivery_module(project, qualified) is delivery
+assert wrapper.helper._qualified_delivery_module(project) is delivery
+assert wrapper.helper._kit_modules(project) is modules
+result = json.loads(stdout.getvalue())
+assert result["transition"] == "task_janitor_done", result
+assert "Janitor removed managed worktree" in result["cleanup_report"]
+print(
+    "Puber real qualified checkpoint/bootstrap, native Script admission, "
+    "selected Kit/provider modules, same-handle Janitor deletion, and "
+    "post-deletion reuse: passed"
+)
+"""
+        child_env = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith("GIT_")
+            and key != "KENT_ENGINEERING_KIT_ROOT"
+        }
+        child_env["PATH"] = (
+            str(fake_bin) + os.pathsep + child_env.get("PATH", "")
+        )
+        child_env["PYTHONDONTWRITEBYTECODE"] = "1"
+        result = subprocess.run(
+            [sys.executable, "-I", "-B", "-c", child],
+            cwd=base,
+            env=child_env,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode:
+            raise AssertionError(result.stdout + result.stderr)
+        assert (
+            "Puber real qualified checkpoint/bootstrap" in result.stdout
+        ), result.stdout
+        print(result.stdout.strip())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

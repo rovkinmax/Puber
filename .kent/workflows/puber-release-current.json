@@ -1473,7 +1473,7 @@
         },
         {
           "key": "operation_id",
-          "description": "Immutable S05 carrier field: operation_id.",
+          "description": "Stable release operation identity.",
           "purpose": "ordinary"
         },
         {
@@ -1518,7 +1518,7 @@
         },
         {
           "key": "target_commit",
-          "description": "Master commit targeted by the release tag.",
+          "description": "Exact merge commit T observed for the merged pull request.",
           "purpose": "ordinary"
         },
         {
@@ -1647,7 +1647,7 @@
         },
         {
           "key": "operation_id",
-          "description": "Immutable S05 carrier field: operation_id.",
+          "description": "Stable release operation identity.",
           "purpose": "ordinary"
         },
         {
@@ -5017,7 +5017,7 @@
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Puber Release CI carrier field: workspace_path.",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
           "purpose": "ordinary"
         },
         {
@@ -5048,7 +5048,7 @@
       "parameters": [
         {
           "key": "workspace_path",
-          "description": "Puber Release CI carrier field: workspace_path.",
+          "description": "Path to the task workspace or worktree relevant to this workflow transition.",
           "purpose": "ordinary"
         },
         {
@@ -7113,7 +7113,7 @@
           },
           {
             "name": "operation_id",
-            "description": "Immutable S05 carrier field: operation_id."
+            "description": "Stable release operation identity."
           },
           {
             "name": "pr_url",
@@ -7149,7 +7149,7 @@
           },
           {
             "name": "target_commit",
-            "description": "Master commit targeted by the release tag."
+            "description": "Exact merge commit T observed for the merged pull request."
           },
           {
             "name": "release_notes_path",
@@ -7239,7 +7239,7 @@
           },
           {
             "name": "operation_id",
-            "description": "Immutable S05 carrier field: operation_id."
+            "description": "Stable release operation identity."
           },
           {
             "name": "pr_url",
@@ -9472,7 +9472,7 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Puber Release CI carrier field: workspace_path."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "task_short_id",
@@ -9489,7 +9489,7 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Puber Release CI carrier field: workspace_path."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "task_short_id",
@@ -10986,7 +10986,7 @@
           },
           {
             "name": "operation_id",
-            "description": "Immutable S05 carrier field: operation_id."
+            "description": "Stable release operation identity."
           },
           {
             "name": "pr_url",
@@ -11022,7 +11022,7 @@
           },
           {
             "name": "target_commit",
-            "description": "Master commit targeted by the release tag."
+            "description": "Exact merge commit T observed for the merged pull request."
           },
           {
             "name": "release_notes_path",
@@ -11271,7 +11271,7 @@
           },
           {
             "name": "operation_id",
-            "description": "Immutable S05 carrier field: operation_id."
+            "description": "Stable release operation identity."
           },
           {
             "name": "pr_url",
@@ -16944,7 +16944,7 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Puber Release CI carrier field: workspace_path."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "task_short_id",
@@ -16993,7 +16993,7 @@
         "required_provision_fields": [
           {
             "name": "workspace_path",
-            "description": "Puber Release CI carrier field: workspace_path."
+            "description": "Path to the task workspace or worktree relevant to this workflow transition."
           },
           {
             "name": "task_short_id",

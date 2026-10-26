@@ -1482,10 +1482,14 @@ def _prepare_agent_provider_read_guard(
             "delivery_module",
         ),
     )
-    delivery_loader = getattr(checkpoint, "delivery_module", None)
-    if not callable(delivery_loader):
-        raise helper.ContractError("qualified GitHub delivery API is unavailable")
-    delivery = delivery_loader()
+    delivery = helper._qualified_delivery_module(
+        ROOT,
+        required=(
+            "producer_locator",
+            "producer_reference_closure",
+            "prepare_github_provider_read_guard",
+        ),
+    )
     if not all(
         callable(getattr(delivery, name, None))
         for name in (
@@ -1851,9 +1855,29 @@ def main() -> int:
     _PROVIDER_POLICY_ENABLED = False
     _PROVIDER_PACKET_FILES = set()
     _PROVIDER_PACKET_LIMIT = 0
+    helper._reset_runtime_invocation()
     provided = None
     native_commentary = None
     try:
+        if not CALLER_SESSION_ID or not CALLER_STEP_ID:
+            raise helper.ContractError(
+                "native Cleanup Agent Session and Step identity are required"
+            )
+        previous_session = os.environ.get("KENT_SESSION_ID")
+        previous_step = os.environ.get("KENT_STEP_ID")
+        os.environ["KENT_SESSION_ID"] = CALLER_SESSION_ID
+        os.environ["KENT_STEP_ID"] = CALLER_STEP_ID
+        try:
+            helper._bind_qualified_runtime(ROOT, None)
+        finally:
+            if previous_session is None:
+                os.environ.pop("KENT_SESSION_ID", None)
+            else:
+                os.environ["KENT_SESSION_ID"] = previous_session
+            if previous_step is None:
+                os.environ.pop("KENT_STEP_ID", None)
+            else:
+                os.environ["KENT_STEP_ID"] = previous_step
         provided = helper.read_zero_argument()
         required_input = {"task_id", "incoming_transition", "parameters"}
         if (

@@ -74,6 +74,9 @@ _NATIVE_KENT = None
 _ORIGINAL_CLEANUP_REPORT: str | None = None
 _CLEANUP_REPORT_RUNTIME = None
 _PROVIDER_CONTEXT: dict[str, object] | None = None
+_QUALIFIED_KIT_RUNTIME = None
+_QUALIFIED_KIT_ROOT: Path | None = None
+_CHECKPOINT_MODULE = None
 RUNTIME_EVIDENCE_ENTRIES = frozenset({
     "evidence-ledger.jsonl",
     "fix-checkpoint.json",
@@ -113,8 +116,8 @@ class JanitorProviderProvenanceBlocked(RuntimeError):
         super().__init__("github_provider_provenance_missing")
 
 
-def delivery_reliability_enabled(workspace: Path) -> bool:
-    """Safely resolve the explicit profile opt-in before requiring Kit helpers."""
+def workflow_profile(workspace: Path) -> dict[str, object] | None:
+    """Read the local workflow profile through a bounded no-follow walk."""
     root_fd = os.open(
         workspace,
         os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0),
@@ -128,7 +131,7 @@ def delivery_reliability_enabled(workspace: Path) -> bool:
                 dir_fd=root_fd,
             )
         except FileNotFoundError:
-            return False
+            return None
         descriptors.append(kent_fd)
         try:
             profile_fd = os.open(
@@ -137,7 +140,7 @@ def delivery_reliability_enabled(workspace: Path) -> bool:
                 dir_fd=kent_fd,
             )
         except FileNotFoundError:
-            return False
+            return None
         with os.fdopen(profile_fd, "rb") as stream:
             metadata = os.fstat(stream.fileno())
             if (
@@ -160,6 +163,16 @@ def delivery_reliability_enabled(workspace: Path) -> bool:
         for descriptor in reversed(descriptors):
             os.close(descriptor)
     profile = tomllib.loads(raw.decode("utf-8"))
+    if not isinstance(profile, dict):
+        raise RuntimeError("workflow profile is malformed")
+    return profile
+
+
+def delivery_reliability_enabled(workspace: Path) -> bool:
+    """Safely resolve the explicit profile opt-in before requiring Kit helpers."""
+    profile = workflow_profile(workspace)
+    if profile is None:
+        return False
     policies = profile.get("policies", {})
     if not isinstance(policies, dict):
         raise RuntimeError("workflow profile policy table is invalid")
@@ -167,6 +180,11 @@ def delivery_reliability_enabled(workspace: Path) -> bool:
     if policy not in (None, "v1"):
         raise RuntimeError("workflow delivery reliability policy is unsupported")
     return policy == "v1"
+
+
+def kit_runtime_enabled(workspace: Path) -> bool:
+    profile = workflow_profile(workspace)
+    return profile is not None and "kit_runtime" in profile
 
 
 def checkpoint_module():
@@ -185,9 +203,9 @@ def checkpoint_module():
     return module
 
 
-def provider_modules(checkpoint):
+def provider_modules(checkpoint, qualified=None, workspace=None):
     """Load observer/runtime only from the Kit source qualified by checkpoint."""
-    delivery = checkpoint.delivery_module()
+    delivery = checkpoint.delivery_module(workspace, qualified)
     package_root = Path(delivery.__file__).resolve().parent
     expected = {
         "github_observation": package_root / "github_observation.py",
@@ -203,7 +221,11 @@ def provider_modules(checkpoint):
             or metadata.st_mode & 0o022
         ):
             raise RuntimeError("qualified provider support module is unsafe")
-        module = importlib.import_module(f"workflowkit.{name}")
+        module = (
+            checkpoint.kit_module(name, workspace, qualified)
+            if qualified is not None
+            else importlib.import_module(f"workflowkit.{name}")
+        )
         if Path(module.__file__).resolve() != path:
             raise RuntimeError("unexpected qualified provider support module")
         loaded[name] = module
@@ -214,19 +236,29 @@ def prepare_provider_guard(
     workspace: Path,
     task_short_id: str,
     payload: dict[str, object],
+    *,
+    qualified=None,
+    checkpoint=None,
 ) -> dict[str, object] | None:
     """Bind opted-in provider reads to this Script's exact incoming carrier."""
     if not delivery_reliability_enabled(workspace):
         # Legacy projects without an explicit v1 opt-in retain their prior path.
         return None
-    checkpoint = checkpoint_module()
+    checkpoint = checkpoint or _CHECKPOINT_MODULE or checkpoint_module()
     if not checkpoint.delivery_reliability_enabled(workspace):
         raise RuntimeError("qualified producer adapter rejected opted-in policy")
+    if qualified is None:
+        qualified = checkpoint.qualified_kit_runtime(
+            workspace,
+            source_binding=payload.get("_kent"),
+        )
 
     commentary = payload.get("commentary")
     if not isinstance(commentary, str):
         raise JanitorProviderProvenanceBlocked()
-    delivery, observation, runtime = provider_modules(checkpoint)
+    delivery, observation, runtime = provider_modules(
+        checkpoint, qualified, workspace,
+    )
     try:
         locator = delivery.producer_locator(commentary)
     except (TypeError, ValueError):
@@ -252,6 +284,7 @@ def prepare_provider_guard(
         "delivery": delivery,
         "observation": observation,
         "runtime": runtime,
+        "qualified": qualified,
         "workspace": workspace,
         "payload": payload,
         "refs": [locator],
@@ -338,6 +371,8 @@ def runtime_state_names(task: str) -> tuple[str, str]:
 
 
 def runtime_contracts():
+    if _QUALIFIED_KIT_RUNTIME is not None:
+        return _QUALIFIED_KIT_RUNTIME.module("runtime")
     import importlib.util
 
     sibling = Path(__file__).with_name("workflow_runtime_contracts.py")
@@ -1511,7 +1546,7 @@ def _read_ledger_records(task_fd: int, *, task: str, runtime=None) -> list[dict[
     )["records"]
 
 
-def evidence_ledger():
+def evidence_ledger(qualified=None):
     sibling = Path(__file__).with_name("workflow-evidence-ledger")
     metadata = sibling.lstat()
     if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o022:
@@ -1525,6 +1560,9 @@ def evidence_ledger():
         loader.exec_module(module)
     finally:
         sys.dont_write_bytecode = previous
+    if qualified is not None:
+        module._QUALIFIED_RUNTIME_MODULE = qualified.module("runtime")
+        module._QUALIFIED_KIT_RUNTIME = qualified
     return module
 
 
@@ -1758,7 +1796,11 @@ class _EvidenceAdmission:
                 any(record.get("record_kind") in runtime.EVIDENCE_BOUNDARY_KINDS for record in records)
             )
             if requires_retention:
-                self.retention_ledger = evidence_ledger()
+                self.retention_ledger = (
+                    evidence_ledger(_QUALIFIED_KIT_RUNTIME)
+                    if _QUALIFIED_KIT_RUNTIME is not None
+                    else evidence_ledger()
+                )
                 self.retained = self.retention_ledger.find_retained_evidence(
                     workspace, task=task_short_id, marker=reported_marker,
                     native_kent=_NATIVE_KENT,
@@ -2074,7 +2116,11 @@ def _admit_restored_tracked_only(
 
         runtime = runtime_contracts()
         marker = _cleanup_marker(runtime, cleanup_report, task_short_id)
-        ledger = evidence_ledger()
+        ledger = (
+            evidence_ledger(_QUALIFIED_KIT_RUNTIME)
+            if _QUALIFIED_KIT_RUNTIME is not None
+            else evidence_ledger()
+        )
         retained = ledger.find_retained_evidence(
             workspace,
             task=task_short_id,
@@ -3879,12 +3925,18 @@ def check_terminal_postconditions(
     revalidate_retained_archive(retained_closure)
 
 
-def main() -> int:
+def main(*, qualified=None, checkpoint=None) -> int:
     global _NATIVE_KENT, _ORIGINAL_CLEANUP_REPORT, _CLEANUP_REPORT_RUNTIME
-    global _PROVIDER_CONTEXT
+    global _PROVIDER_CONTEXT, _QUALIFIED_KIT_RUNTIME, _QUALIFIED_KIT_ROOT
+    global _CHECKPOINT_MODULE
     _ORIGINAL_CLEANUP_REPORT = None
     _CLEANUP_REPORT_RUNTIME = None
     _PROVIDER_CONTEXT = None
+    _QUALIFIED_KIT_RUNTIME = None
+    _QUALIFIED_KIT_ROOT = None
+    _CHECKPOINT_MODULE = None
+    if (qualified is None) != (checkpoint is None):
+        raise ValueError("qualified runtime and checkpoint must be supplied together")
     try:
         payload = json.load(sys.stdin, object_pairs_hook=_unique_json_pairs)
     except json.JSONDecodeError as error:
@@ -3904,10 +3956,49 @@ def main() -> int:
     previous_report = require_exact_string(payload, "cleanup_report")
     task_short_id = require_exact_string(payload, "task_short_id")
     _ORIGINAL_CLEANUP_REPORT = previous_report
+    if qualified is not None or workspace.is_dir():
+        try:
+            if qualified is not None or kit_runtime_enabled(workspace):
+                _CHECKPOINT_MODULE = checkpoint if qualified is not None else checkpoint_module()
+                _QUALIFIED_KIT_RUNTIME = (
+                    qualified if qualified is not None else _CHECKPOINT_MODULE.qualified_kit_runtime(
+                        workspace,
+                        source_binding=payload.get("_kent"),
+                    )
+                )
+                if (
+                    _QUALIFIED_KIT_RUNTIME is None
+                    or not getattr(
+                        _QUALIFIED_KIT_RUNTIME, "native_authorized", False,
+                    )
+                    or getattr(
+                        _QUALIFIED_KIT_RUNTIME, "project_root", None,
+                    ) != workspace
+                ):
+                    raise RuntimeError(
+                        "native Kit runtime qualification returned no authority"
+                    )
+                _QUALIFIED_KIT_ROOT = _QUALIFIED_KIT_RUNTIME.source_root
+                # Load the selected source only after native qualification,
+                # before any cleanup admission or effect can run.
+                _CHECKPOINT_MODULE.kit_module(
+                    "runtime", project_root=workspace,
+                    qualified=_QUALIFIED_KIT_RUNTIME,
+                )
+        except Exception:
+            complete(
+                "task_janitor_blocked",
+                previous_report,
+                "Qualified Kit runtime admission failed; no cleanup effect "
+                "was attempted.",
+            )
+            return 0
     if _declares_terminal_evidence(previous_report):
         support_module = Path(__file__).with_name("workflow_runtime_contracts.py")
         try:
-            if support_module.is_symlink() or not support_module.is_file():
+            if _QUALIFIED_KIT_RUNTIME is None and (
+                support_module.is_symlink() or not support_module.is_file()
+            ):
                 raise RuntimeError("runtime contract support is unsafe")
             _CLEANUP_REPORT_RUNTIME = runtime_contracts()
         except Exception:
@@ -4052,11 +4143,20 @@ def main() -> int:
         return 0
 
     try:
-        _PROVIDER_CONTEXT = prepare_provider_guard(
-            workspace,
-            task_short_id,
-            payload,
-        )
+        if _QUALIFIED_KIT_RUNTIME is None:
+            _PROVIDER_CONTEXT = prepare_provider_guard(
+                workspace,
+                task_short_id,
+                payload,
+            )
+        else:
+            _PROVIDER_CONTEXT = prepare_provider_guard(
+                workspace,
+                task_short_id,
+                payload,
+                qualified=_QUALIFIED_KIT_RUNTIME,
+                checkpoint=_CHECKPOINT_MODULE,
+            )
     except JanitorProviderProvenanceBlocked:
         complete(
             "task_janitor_blocked",
