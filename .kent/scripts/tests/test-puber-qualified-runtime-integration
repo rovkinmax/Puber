@@ -13,6 +13,8 @@ import sys
 import tempfile
 
 sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from puber_native_fixture import FixtureSandbox, candidate_freeze_argument, prepare_candidate_kit
 
 ROOT = Path(__file__).resolve().parents[3]
 KIT_SOURCE_ENV = "PUBER_STAGE_A_RUNTIME_KIT_SOURCE_ROOT"
@@ -91,6 +93,7 @@ def copy_project_fixture(project: Path) -> dict:
 
 
 def main() -> int:
+    candidate_freeze = candidate_freeze_argument(sys.argv[1:])
     donor_value = os.environ.get(KIT_SOURCE_ENV)
     if not donor_value:
         raise SystemExit(
@@ -101,7 +104,11 @@ def main() -> int:
     if not (donor / "workflowkit/kit_runtime.py").is_file():
         raise SystemExit(f"qualified Kit runtime source is missing from {donor}")
 
-    with tempfile.TemporaryDirectory(prefix="puber-qualified-integration-") as raw:
+    from unittest.mock import patch
+    with FixtureSandbox.create() as sandbox, \
+         patch.dict(os.environ, sandbox.environment, clear=True), \
+         sandbox.temporary_directory() as raw:
+        sandbox.allow_read(donor)
         base = Path(raw).resolve()
         primary = base / "primary"
         worktree_parent = primary / ".kent/worktrees"
@@ -116,24 +123,27 @@ def main() -> int:
         janitor_node_id = janitor_node["id"]
         project_script = ".kent/scripts/workflow-puber-release-janitor"
 
-        kit_root = base / "disposable-kit-cohort"
-        shutil.copytree(
-            donor / "workflowkit",
-            kit_root / "workflowkit",
-            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
-        )
-        (kit_root / "scripts").mkdir()
-        shutil.copy2(
-            donor / "scripts/prepare-github-ci",
-            kit_root / "scripts/prepare-github-ci",
-        )
-        run(["git", "init", "-q", "-b", "main", str(kit_root)], cwd=base)
-        git(kit_root, "config", "user.name", "Disposable Puber runtime fixture")
-        git(kit_root, "config", "user.email", "puber-runtime-fixture@example.invalid")
-        git(kit_root, "add", "-A")
-        git(kit_root, "commit", "-qm", "Disposable qualified Kit cohort")
-        kit_commit = git(kit_root, "rev-parse", "HEAD")
-        git(kit_root, "update-ref", KIT_PUBLICATION_REF, kit_commit)
+        if candidate_freeze:
+            kit_root, kit_commit = prepare_candidate_kit(sandbox, base, donor, candidate_freeze)
+        else:
+            kit_root = base / "disposable-kit-cohort"
+            shutil.copytree(
+                donor / "workflowkit",
+                kit_root / "workflowkit",
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
+            )
+            (kit_root / "scripts").mkdir()
+            shutil.copy2(
+                donor / "scripts/prepare-github-ci",
+                kit_root / "scripts/prepare-github-ci",
+            )
+            run(["git", "init", "-q", "-b", "main", str(kit_root)], cwd=base)
+            git(kit_root, "config", "user.name", "Disposable Puber runtime fixture")
+            git(kit_root, "config", "user.email", "puber-runtime-fixture@example.invalid")
+            git(kit_root, "add", "-A")
+            git(kit_root, "commit", "-qm", "Disposable qualified Kit cohort")
+            kit_commit = git(kit_root, "rev-parse", "HEAD")
+            git(kit_root, "update-ref", KIT_PUBLICATION_REF, kit_commit)
         kit_status = git(
             kit_root,
             "status",
@@ -142,6 +152,10 @@ def main() -> int:
         )
         assert kit_status == "", kit_status
         assert git(kit_root, "rev-parse", KIT_PUBLICATION_REF) == kit_commit
+        # The explicit disposable cohort owns bootstrap bytes, never the
+        # unrelated production pin or a caller-injected facade.
+        bootstrap_path = project / ".kent/scripts/workflow_kit_runtime.py"
+        bootstrap_path.write_bytes((kit_root / "workflowkit/kit_runtime.py").read_bytes())
         assert (
             (project / ".kent/scripts/workflow_kit_runtime.py").read_bytes()
             == (kit_root / "workflowkit/kit_runtime.py").read_bytes()
@@ -152,8 +166,8 @@ def main() -> int:
         production_binding = (
             "[kit_runtime]\n"
             "schema_version = 1\n"
-            'root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/runtime-sdk-puber-30b908c9"\n'
-            'commit = "30b908c9fc7097c0464ae67d58f891a1dd7103fb"\n'
+            'root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/archive-published-2708-456"\n'
+            'commit = "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"\n'
             'publication_ref = "refs/remotes/origin/main"\n'
         )
         assert profile_text.count(production_binding) == 1
@@ -541,6 +555,7 @@ def validate_and_capture(raw):
         child_calls.append((command, kwargs))
         return SimpleNamespace(returncode=0)
     fake_stdin = SimpleNamespace(buffer=io.BytesIO(ci_input))
+    rejected_stdout = SimpleNamespace(buffer=io.BytesIO())
     with (
         patch.object(
             checkpoint,
@@ -549,17 +564,15 @@ def validate_and_capture(raw):
         ),
         patch.object(checkpoint.subprocess, "run", side_effect=fake_child),
         patch.object(checkpoint.sys, "stdin", fake_stdin),
+        patch.object(checkpoint.sys, "stdout", rejected_stdout),
     ):
         assert checkpoint.prepare_github_ci_command(
             project,
             require_runtime_binding=True,
-        ) == 0
-    assert len(child_calls) == 1
-    assert child_calls[0][0] == [
-        sys.executable, "-B", str(selected_cli),
-    ]
-    assert child_calls[0][1]["cwd"] == project
-    assert child_calls[0][1]["input"] == ci_input
+        ) == 2
+    assert child_calls == [], "unknown operation reached a helper/provider"
+    rejected = json.loads(rejected_stdout.buffer.getvalue())
+    assert rejected["error"] == "ci_report_archive_failed"
     assert checkpoint.qualified_kit_runtime(
         project,
         source_binding=native_context,

@@ -19,40 +19,9 @@ from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
-_profile = tomllib.loads(
-    (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8")
-)
-_kit_binding = _profile.get("kit_runtime")
-if (
-    not isinstance(_kit_binding, dict)
-    or set(_kit_binding) != {"schema_version", "root", "commit", "publication_ref"}
-    or _kit_binding.get("schema_version") != 1
-    or _kit_binding.get("commit") != "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
-    or _kit_binding.get("publication_ref") != "refs/remotes/origin/main"
-):
-    raise SystemExit("Janitor tests require Puber's exact qualified Kit source binding")
-KIT = Path(_kit_binding["root"]).resolve(strict=True)
-if str(KIT) != _kit_binding["root"]:
-    raise SystemExit("Puber Kit binding root must be canonical")
-_kit_override = os.environ.get("PUBER_STAGE_A_KIT_ROOT")
-if _kit_override and Path(_kit_override).resolve(strict=True) != KIT:
-    raise SystemExit("Puber test Kit override differs from the profile binding")
-head = subprocess.check_output(
-    ["git", "-C", str(KIT), "rev-parse", "HEAD"],
-    text=True,
-).strip()
-if head != _kit_binding["commit"]:
-    raise SystemExit("Janitor Kit HEAD differs from the profile binding")
-if subprocess.check_output(
-    ["git", "-C", str(KIT), "rev-parse", "--verify", _kit_binding["publication_ref"]],
-    text=True,
-).strip() != _kit_binding["commit"]:
-    raise SystemExit("Janitor Kit publication ref differs from the profile binding")
-if subprocess.check_output(
-    ["git", "-C", str(KIT), "status", "--porcelain=v1", "--untracked-files=all"],
-    text=True,
-):
-    raise SystemExit("Janitor Kit binding must remain clean")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from puber_native_fixture import verify_kit_binding
+KIT, _kit_binding = verify_kit_binding(ROOT)
 
 spec = importlib.util.spec_from_file_location(
     "pinned_janitor_fixtures", KIT / "tests/test_workflow_runtime.py"

@@ -1340,7 +1340,11 @@ def _kit_modules(root: Path | None = None) -> dict[str, Any]:
     ci = kit_module("ci_contract")
     merge_strategy = kit_module("merge_strategy")
     delivery = kit_module("delivery")
-    result = {name: getattr(workflowkit, name) for name in ("ProjectProfile","ReleaseSpec","NormalizedGitHubWorkflowSourceV1","preflight_project_revision","capture_runtime_execution_context","capture_runtime_authority_binding","validate_operation_jobs","canonicalize_publication_operation")}
+    for module, names in ((workflowkit, ("capture_runtime_authority_binding_verified",)),
+                          (revision, ("verify_runtime_source_captures", "source_read_budget"))):
+        if any(not callable(getattr(module, name, None)) for name in names):
+            raise ContractError("qualified Kit lacks complete verified source capture capability")
+    result = {name: getattr(workflowkit, name) for name in ("ProjectProfile","ReleaseSpec","NormalizedGitHubWorkflowSourceV1","preflight_project_revision","capture_runtime_execution_context","capture_runtime_authority_binding_verified","validate_operation_jobs","canonicalize_publication_operation")}
     result.update({name: getattr(runtime, name) for name in ("validate_terminal_seal_request","validate_terminal_marker","parse_terminal_marker_line","terminal_marker_line","validate_cleanup_report","validate_terminal_chain","canonical_sha256")})
     result.update({name: getattr(runtime, name) for name in (
         "validate_ci_report",
@@ -1350,7 +1354,7 @@ def _kit_modules(root: Path | None = None) -> dict[str, Any]:
         "MAX_DYNAMIC_CI_REPORT_BYTES",
         "merge_github_retry_constraints",
     )})
-    result.update({name: getattr(revision, name) for name in ("read_blob_bytes", "tree_mode", "collect_runtime_external_captures", "run_git")})
+    result.update({name: getattr(revision, name) for name in ("read_blob_bytes", "tree_mode", "verify_runtime_source_captures", "source_read_budget", "run_git")})
     result.update({name: getattr(ci, name) for name in ("normalize_github_workflow", "read_pull_request")})
     preparation_diagnostic_validator = getattr(
         ci,
@@ -1526,8 +1530,9 @@ def provider_retry_constraint_from_error(
         ) from load_error
 
 
-def _external_captures(root: Path, profile: Any, selected: Any) -> list[tuple[str, str, bytes]]:
-    return list(_kit_modules()["collect_runtime_external_captures"](root, selected))
+def _external_captures(root: Path, profile: Any, selected: Any, *, budget: Any) -> Any:
+    # The complete opaque proof cannot be reconstructed from a list of hashes.
+    return _kit_modules()["verify_runtime_source_captures"](root, selected, budget=budget)
 
 def _revision_blob(root: Path, kit: dict[str, Any], revision: str, path: str) -> bytes:
     if kit["tree_mode"](root, revision, path) not in {"100644", "100755"}:
@@ -1560,15 +1565,16 @@ def _load_release_spec(root: Path, kit: dict[str, Any], profile: Any, *, revisio
 
 def attest(root: Path, state: dict[str, Any], node_key: str, branch: str, **kwargs: Any) -> dict[str, Any]:
     try:
-        return _attest(root, state, node_key, branch, **kwargs)
+        with _kit_modules()["source_read_budget"]() as budget:
+            return _attest(root, state, node_key, branch, budget=budget, **kwargs)
     except (ValueError, OSError, RuntimeError) as error:
         raise ContractError(f"release runtime admission failed: {error}") from error
 
-def _attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, kind: str | None = None, run_tuple: Mapping[str, Any] | None = None, project_fields: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def _attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, budget: Any, kind: str | None = None, run_tuple: Mapping[str, Any] | None = None, project_fields: Mapping[str, Any] | None = None) -> dict[str, Any]:
     kit = _kit_modules()
     controller = state.get("controller_commit", state["commit"])
     selected_commit = run_tuple["head_sha"] if run_tuple is not None else controller
-    revision = kit["preflight_project_revision"](root, selected_commit)
+    revision = kit["preflight_project_revision"](root, selected_commit, budget=budget)
     selected = revision.selected_runtime_source_inputs
     if selected is None or selected.project_commit != selected_commit:
         raise ContractError("selected sealed RuntimeSourceInputs are missing or stale")
@@ -1576,7 +1582,7 @@ def _attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, ki
     # T supplies observations, never a weaker policy for observing itself.
     policy_profile = kit["ProjectProfile"].from_toml(root, _revision_blob(root, kit, controller, ".kent/workflow-profile.toml").decode("utf-8"), check_files=False)
     spec = _load_release_spec(root, kit, policy_profile, revision=controller)
-    captures = _external_captures(root, profile, selected)
+    captures = _external_captures(root, profile, selected, budget=budget)
     if run_tuple is None:
         execution = {"kind":"kent_transition","task_id":state["task_id"],"task_short_id":state["task_short_id"],"workflow_id":WORKFLOW_ID,"workflow_revision":WORKFLOW_REVISION,"project_id":PROJECT_ID,"project_commit":controller,"authority_transition":branch}
         authority = {"kind":"kent_transition","task_short_id":state["task_short_id"],"workflow_id":WORKFLOW_ID,"workflow_revision":WORKFLOW_REVISION,"project_id":PROJECT_ID,"approval_authority":"publish-release","authority_transition":branch}
@@ -1584,7 +1590,7 @@ def _attest(root: Path, state: dict[str, Any], node_key: str, branch: str, *, ki
         execution = {"kind":"github_run", **dict(run_tuple)}
         authority = {"kind":"github_run", **{key: value for key, value in run_tuple.items() if key != "repository"}}
     context = kit["capture_runtime_execution_context"](selected, execution)
-    binding = kit["capture_runtime_authority_binding"](selected, captures, context, authority)
+    binding = kit["capture_runtime_authority_binding_verified"](selected, captures, context, authority, envelope_version=2)
     canonicalized = None
     if kind:
         variant_key = {"publish": "publish_after_merge", "observe": "observe_release", "observe_release": "observe_release"}.get(kind)
@@ -1643,45 +1649,46 @@ def qualify_merged_target(root: Path, state: dict[str, Any], target: str, prepar
     """Recompute immutable T qualification under H policy; never acquire objects."""
     try:
         kit = _kit_modules()
-        head = state.get("controller_commit", state["commit"])
-        if not SHA1.fullmatch(target) or git(root, "rev-parse", "HEAD") != head:
-            raise ContractError("publication controller differs from the admitted current source H")
-        if preparation["release_head_oid"] != head:
-            raise ContractError("preparation proof is not bound to controller H")
-        for commit in dict.fromkeys((head, target)):
-            selected = kit["preflight_project_revision"](root, commit).selected_runtime_source_inputs
-            if selected is None or selected.project_commit != commit:
-                raise ContractError("release target source closure is missing or stale")
-            # These are actual Git captures, never target declarations as observations.
-            kit["collect_runtime_external_captures"](root, selected)
-        profile_raw = _revision_blob(root, kit, head, ".kent/workflow-profile.toml")
-        profile = kit["ProjectProfile"].from_toml(root, profile_raw.decode("utf-8"), check_files=False)
-        spec = _load_release_spec(root, kit, profile, revision=head)
-        for path, expected in {
-            "app/build.gradle.kts": preparation["version_file_sha256"],
-            "app/src/main/generated/baselineProfiles/baseline-prof.txt": preparation["baseline_profile_sha256"],
-            "app/src/main/generated/baselineProfiles/startup-prof.txt": preparation["startup_profile_sha256"],
-        }.items():
-            if sha256_bytes(_revision_blob(root, kit, target, path)) != expected:
-                raise ContractError(f"merged target blob does not match preparation proof: {path}")
-        # The owning signing contract pins the prepared app source and tracked
-        # validation key, and forbids committed production signing inputs. It
-        # does not freeze arbitrary Gradle configuration or buildSrc trees.
-        if sha256_bytes(_revision_blob(root, kit, target, "app/debug.jks")) != VALIDATION_SIGNING["validation_signing_sha256"]:
-            raise ContractError("target tracked validation signing key drifted")
-        for path in ("app/keystore.properties", "app/release.jks"):
-            if kit["run_git"](root, "ls-tree", target, "--", path).stdout.strip():
-                raise ContractError("target contains a forbidden production signing input")
-        variant = next(item for item in spec.operation_variants if item.key == "publish_after_merge")
-        target_sources = _normalized_sources(root, kit, spec, revision=target)
-        kit["validate_operation_jobs"](variant, target_sources, required=spec.required_jobs_v1,
-                                       qualification=spec.qualification_jobs_v1, effect=spec.effect_jobs_v1)
-        for path in sorted({row["workflow_path"] for row in spec.effect_jobs_v1.jobs}):
-            allowed = _normalized_workflow(root, path, revision=head)
-            actual = _normalized_workflow(root, path, revision=target)
-            allowed_keys = {row["job_key"] for row in spec.effect_jobs_v1.jobs if row["workflow_path"] == path}
-            if {job["job_key"] for job in allowed["jobs"]} != allowed_keys or actual != allowed:
-                raise ContractError("target production workflow differs from full authorized H policy")
+        with kit["source_read_budget"]() as budget:
+            head = state.get("controller_commit", state["commit"])
+            if not SHA1.fullmatch(target) or git(root, "rev-parse", "HEAD") != head:
+                raise ContractError("publication controller differs from the admitted current source H")
+            if preparation["release_head_oid"] != head:
+                raise ContractError("preparation proof is not bound to controller H")
+            for commit in dict.fromkeys((head, target)):
+                selected = kit["preflight_project_revision"](root, commit, budget=budget).selected_runtime_source_inputs
+                if selected is None or selected.project_commit != commit:
+                    raise ContractError("release target source closure is missing or stale")
+                # Verify the complete closure even though this validation does not emit an envelope.
+                kit["verify_runtime_source_captures"](root, selected, budget=budget)
+            profile_raw = _revision_blob(root, kit, head, ".kent/workflow-profile.toml")
+            profile = kit["ProjectProfile"].from_toml(root, profile_raw.decode("utf-8"), check_files=False)
+            spec = _load_release_spec(root, kit, profile, revision=head)
+            for path, expected in {
+                "app/build.gradle.kts": preparation["version_file_sha256"],
+                "app/src/main/generated/baselineProfiles/baseline-prof.txt": preparation["baseline_profile_sha256"],
+                "app/src/main/generated/baselineProfiles/startup-prof.txt": preparation["startup_profile_sha256"],
+            }.items():
+                if sha256_bytes(_revision_blob(root, kit, target, path)) != expected:
+                    raise ContractError(f"merged target blob does not match preparation proof: {path}")
+            # The owning signing contract pins the prepared app source and tracked
+            # validation key, and forbids committed production signing inputs. It
+            # does not freeze arbitrary Gradle configuration or buildSrc trees.
+            if sha256_bytes(_revision_blob(root, kit, target, "app/debug.jks")) != VALIDATION_SIGNING["validation_signing_sha256"]:
+                raise ContractError("target tracked validation signing key drifted")
+            for path in ("app/keystore.properties", "app/release.jks"):
+                if kit["run_git"](root, "ls-tree", target, "--", path).stdout.strip():
+                    raise ContractError("target contains a forbidden production signing input")
+            variant = next(item for item in spec.operation_variants if item.key == "publish_after_merge")
+            target_sources = _normalized_sources(root, kit, spec, revision=target)
+            kit["validate_operation_jobs"](variant, target_sources, required=spec.required_jobs_v1,
+                                           qualification=spec.qualification_jobs_v1, effect=spec.effect_jobs_v1)
+            for path in sorted({row["workflow_path"] for row in spec.effect_jobs_v1.jobs}):
+                allowed = _normalized_workflow(root, path, revision=head)
+                actual = _normalized_workflow(root, path, revision=target)
+                allowed_keys = {row["job_key"] for row in spec.effect_jobs_v1.jobs if row["workflow_path"] == path}
+                if {job["job_key"] for job in allowed["jobs"]} != allowed_keys or actual != allowed:
+                    raise ContractError("target production workflow differs from full authorized H policy")
     except (ValueError, OSError, RuntimeError) as error:
         raise ContractError(f"merged target qualification failed: {error}") from error
 

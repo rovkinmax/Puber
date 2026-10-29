@@ -94,7 +94,7 @@ class FakeFacade:
                 "NormalizedGitHubWorkflowSourceV1",
                 "preflight_project_revision",
                 "capture_runtime_execution_context",
-                "capture_runtime_authority_binding",
+                "capture_runtime_authority_binding_verified",
                 "validate_operation_jobs",
                 "canonicalize_publication_operation",
             ),
@@ -110,7 +110,7 @@ class FakeFacade:
             ),
             "revision": (
                 "read_blob_bytes", "tree_mode",
-                "collect_runtime_external_captures", "run_git",
+                "verify_runtime_source_captures", "source_read_budget", "run_git",
             ),
             "ci_contract": ("normalize_github_workflow", "read_pull_request"),
             "merge_strategy": ("resolve_github_merge_strategy",),
@@ -222,6 +222,67 @@ with tempfile.TemporaryDirectory(prefix="puber-qualified-runtime-") as tmp:
         assert all(call[2] is qualified for call in facade.module_calls)
         assert facade.delivery_calls == [(project, qualified)]
         assert len(facade.qualified_calls) == 2
+
+        assert "verify_runtime_source_captures" in kit and "source_read_budget" in kit
+        assert "capture_runtime_authority_binding_verified" in kit
+        assert "collect_runtime_external_captures" not in kit
+        assert "capture_runtime_authority_binding" not in kit
+        verified_binding = facade.modules["workflowkit"].capture_runtime_authority_binding_verified
+        del facade.modules["workflowkit"].capture_runtime_authority_binding_verified
+        try:
+            with patch.object(helper, "_KIT_MODULES_CACHE", None):
+                assert_raises(helper.ContractError, lambda: helper._kit_modules(project))
+        finally:
+            facade.modules["workflowkit"].capture_runtime_authority_binding_verified = verified_binding
+
+        # Both immutable revisions share one accounting object, and the new
+        # verifier must execute even when qualification uses no emitted proof.
+        from contextlib import contextmanager
+        entered, verified, preflight = [], [], []
+        budget = object()
+        proof = object()
+        @contextmanager
+        def accounting():
+            entered.append(budget)
+            yield budget
+        def select(_root, commit, *, budget):
+            assert budget is entered[0]
+            preflight.append(commit)
+            return SimpleNamespace(selected_runtime_source_inputs=SimpleNamespace(project_commit=commit))
+        def verify(_root, selected, *, budget):
+            assert budget is entered[0]
+            verified.append(selected.project_commit)
+            return proof
+        class FinishedCaptureCheck(Exception):
+            pass
+        class StopBeforePolicy:
+            @staticmethod
+            def from_toml(*args, **kwargs):
+                raise FinishedCaptureCheck()
+        observed = {**kit, "source_read_budget": accounting,
+            "preflight_project_revision": select, "verify_runtime_source_captures": verify,
+            "ProjectProfile": StopBeforePolicy}
+        h, t = "a" * 40, "b" * 40
+        with patch.object(helper, "_kit_modules", return_value=observed), \
+             patch.object(helper, "git", return_value=h), \
+             patch.object(helper, "_revision_blob", return_value=b"unused after capture"):
+            assert_raises(FinishedCaptureCheck, lambda: helper.qualify_merged_target(
+                project, {"commit": "c" * 40, "controller_commit": h}, t, {"release_head_oid": h}))
+            assert entered == [budget] and preflight == [h, t] and verified == [h, t]
+            assert helper._external_captures(project, None, SimpleNamespace(project_commit=h), budget=budget) is proof
+            verified.clear()
+            def incomplete(*args, **kwargs):
+                raise RuntimeError("incomplete source proof")
+            observed["verify_runtime_source_captures"] = incomplete
+            assert_raises(helper.ContractError, lambda: helper.qualify_merged_target(
+                project, {"commit": "c" * 40, "controller_commit": h}, t, {"release_head_oid": h}))
+            assert verified == []
+        captured_versions = []
+        with patch.object(helper, "_kit_modules", return_value={"source_read_budget": accounting}), \
+             patch.object(helper, "_attest", side_effect=lambda *a, budget, **kw: captured_versions.append(budget) or {"proof": proof}):
+            assert helper.attest(project, {}, "ci_prepare", "ship_pr_ci_watch") == {"proof": proof}
+        assert captured_versions == [budget]
+        print("Puber H/T share accounting, eagerly verify both closures and reject partial proof: passed")
 
         shutil.rmtree(project)
         assert helper._qualified_delivery_module(project) is facade.delivery

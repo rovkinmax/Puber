@@ -21,7 +21,7 @@ publish_spec = importlib.util.spec_from_loader("publish_fixture", SourceFileLoad
 publish_fixture = importlib.util.module_from_spec(publish_spec); assert publish_spec and publish_spec.loader; publish_spec.loader.exec_module(publish_fixture)
 # Release-authority fixture reads use the exact published Kit clone; this is
 # test-only dependency injection and does not weaken production admission.
-os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(publish_fixture.KIT)
+# Fixture selection is explicit at entry; import installs no authorization.
 
 def reset_kit_imports() -> None:
     for name in tuple(sys.modules):
@@ -29,7 +29,9 @@ def reset_kit_imports() -> None:
             del sys.modules[name]
 
 def sh(args, cwd, **kwargs):
-    return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+    return publish_fixture.require_context()["sandbox"].run_child(
+        args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+
 
 def native_transition_id(graph: dict, edge_key: str) -> str:
     edges = [edge for edge in graph["edges"] if edge["key"] == edge_key]
@@ -51,7 +53,7 @@ def materialize_shared_observer(work: Path) -> None:
 def pinned_kit(root: Path) -> Path:
     target = root / "kit-pinned"
     sh(["git", "clone", "--quiet", str(publish_fixture.KIT), str(target)], root)
-    sh(["git", "checkout", "--quiet", publish_fixture.helper.KIT_COMMIT], target)
+    sh(["git", "checkout", "--quiet", publish_fixture._kit_binding["commit"]], target)
     assert sh(
         ["git", "status", "--porcelain=v1", "--untracked-files=all"],
         target,
@@ -161,15 +163,18 @@ def test_monitor(
     *,
     publish_blocker_only: bool = False,
 ) -> None:
-    with (contextlib.nullcontext(prepared["root"]) if prepared else tempfile.TemporaryDirectory()) as directory:
+    with (contextlib.nullcontext(prepared["root"]) if prepared else
+          publish_fixture.require_context()["sandbox"].temporary_directory()) as directory:
         root = Path(directory); bare = root / "origin.git"
         if prepared:
             work, base_oid, target, bare_path = (prepared[key] for key in ("work", "base_oid", "head", "bare_path"))
         else:
             work, base_oid, target, bare_path = publish_fixture.materialize(root, bare, linked=True)
         materialize_shared_observer(work)
-        kit_root = pinned_kit(root)
-        reset_kit_imports()
+        native_fixture = prepared.get("native_fixture") if prepared else None
+        kit_root = native_fixture.kit if native_fixture else pinned_kit(root)
+        if not native_fixture:
+            reset_kit_imports()
         os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(kit_root)
         head = target
         assert head != base_oid
@@ -191,56 +196,63 @@ def test_monitor(
         if prepared:
             task = prepared["task"]
             assert task["execution_target"]["commit_oid"] == base_oid != head
-            workspace_id = "workspace-12345678-1234-4234-8234-123456789abc"
-            source_root = (root / "primary").resolve()
-            task["project"] = {"default_workspace_id": workspace_id}
-            task["source_workspace"] = {
-                "is_primary": True,
-                "workspace_id": workspace_id,
-                "root_path": str(source_root),
-            }
-            task["worktree_path"] = str(work.resolve())
+            if not native_fixture:
+                workspace_id = "workspace-12345678-1234-4234-8234-123456789abc"
+                source_root = (root / "primary").resolve()
+                task["project"] = {"default_workspace_id": workspace_id}
+                task["source_workspace"] = {
+                    "is_primary": True,
+                    "workspace_id": workspace_id,
+                    "root_path": str(source_root),
+                }
+                task["worktree_path"] = str(work.resolve())
         fake = root / "monitor-fake"; fake.mkdir()
-        fake_home = root / "home"
-        kit_bin = fake_home / ".kent/bin"
-        kit_bin.mkdir(parents=True)
-        (kit_bin / "kent-prepare-github-ci").symlink_to(
-            kit_root / "scripts/prepare-github-ci"
-        )
-        task_path = prepared["task_path"] if prepared else fake / "task.json"
-        task_path.write_text(json.dumps(task), encoding="utf-8")
-        kent = fake / "kent"
-        sessions_path = fake / "retained-task-sessions.json"
-        comments_path = fake / "task-comments.json"
-        comments_path.write_text("[]", encoding="utf-8")
         owner_id = "a848edb1-27d7-45a2-a601-37005690e914"
-        sessions_path.write_text(json.dumps({"task_id":task_id,"items":[{
-            "session_id":owner_id,"session_name":"Retained Ship owner","node_name":"Ship PR",
-            "agent_role":"delivery-operator","status":"idle"}]}))
-        kent.write_text("#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\n" +
-            f"task=Path({str(task_path)!r}); sessions=Path({str(sessions_path)!r}); comments=Path({str(comments_path)!r}); owner={owner_id!r}\n" +
-            "args=sys.argv[1:]\n" +
-            "if args[:1] == ['project']: print(json.loads(task.read_text())['summary']['project_id']); sys.exit(0)\n" +
-            "if args[:3] == ['workflow','graph','inspect']:\n" +
-            " graph=json.loads((Path.cwd()/'.kent/workflows/puber-release-current.json').read_text()); workflow=json.loads(task.read_text())['summary']['workflow_id']; print(json.dumps({'workflow_id':workflow,'expected_version':graph['workflow']['version'],'graph':{key:graph[key] for key in ('nodes','transition_groups','edges')}})); sys.exit(0)\n" +
-            "if args[:2] == ['task','show']: print(task.read_text()); sys.exit(0)\n" +
-            "if args[:2] == ['task','sessions']:\n" +
-            " assert args[2] == json.loads(task.read_text())['summary']['id']\n" +
-            " assert args[-5:] == ['--offset','0','--limit','100','--json']\n" +
-            " print(sessions.read_text()); sys.exit(0)\n" +
-            "if args[:2] == ['task','search']:\n" +
-            " value=json.loads(task.read_text()); body=args[2]\n" +
-            " assert args[3:] == ['--include-comments','--case-sensitive','--project',value['summary']['project_id'],'--page-size','2','--offset','0','--json']\n" +
-            " found=[item for item in json.loads(comments.read_text()) if item==body]\n" +
-            " groups=[]\n" +
-            " if found: groups=[{'hits':[{'literal':{'after':'','before':'','left_truncated':False,'match':body,'right_truncated':False},'ordinal':0,'source':{'kind':'comment','comment_id':'fixture-retention'}} for _ in found],'project_id':value['summary']['project_id'],'project_key':'PUB','short_id':value['summary']['short_id'],'status':'active','task_id':value['summary']['id'],'title':'fixture','total_hit_count':len(found),'workflow_id':value['summary']['workflow_id']}]\n" +
-            " print(json.dumps({'groups':groups,'mode':'literal'})); sys.exit(0)\n" +
-            "if args[:3] == ['task','comment','add']:\n" +
-            " value=json.loads(task.read_text()); body=args[args.index('--body')+1]\n" +
-            " assert args == ['task','comment','add',value['summary']['id'],'--project',value['summary']['project_id'],'--body',body,'--author','agent','--author-id',owner]\n" +
-            " values=json.loads(comments.read_text()); values.append(body); comments.write_text(json.dumps(values)); print('{}'); sys.exit(0)\n" +
-            "sys.exit(2)\n")
-        kent.chmod(0o755)
+        if native_fixture:
+            fake_home = native_fixture.sandbox.home
+            task_path, kent = native_fixture.task_path, native_fixture.native
+            comments_path = native_fixture.comments
+        else:
+            fake_home = root / "home"
+            kit_bin = fake_home / ".kent/bin"
+            kit_bin.mkdir(parents=True)
+            (kit_bin / "kent-prepare-github-ci").symlink_to(
+                kit_root / "scripts/prepare-github-ci"
+            )
+            task_path = prepared["task_path"] if prepared else fake / "task.json"
+            task_path.write_text(json.dumps(task), encoding="utf-8")
+            kent = fake / "kent"
+            sessions_path = fake / "retained-task-sessions.json"
+            comments_path = fake / "task-comments.json"
+            comments_path.write_text("[]", encoding="utf-8")
+            owner_id = "a848edb1-27d7-45a2-a601-37005690e914"
+            sessions_path.write_text(json.dumps({"task_id":task_id,"items":[{
+                "session_id":owner_id,"session_name":"Retained Ship owner","node_name":"Ship PR",
+                "agent_role":"delivery-operator","status":"idle"}]}))
+            kent.write_text("#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\n" +
+                f"task=Path({str(task_path)!r}); sessions=Path({str(sessions_path)!r}); comments=Path({str(comments_path)!r}); owner={owner_id!r}\n" +
+                "args=sys.argv[1:]\n" +
+                "if args[:1] == ['project']: print(json.loads(task.read_text())['summary']['project_id']); sys.exit(0)\n" +
+                "if args[:3] == ['workflow','graph','inspect']:\n" +
+                " graph=json.loads((Path.cwd()/'.kent/workflows/puber-release-current.json').read_text()); workflow=json.loads(task.read_text())['summary']['workflow_id']; print(json.dumps({'workflow_id':workflow,'expected_version':graph['workflow']['version'],'graph':{key:graph[key] for key in ('nodes','transition_groups','edges')}})); sys.exit(0)\n" +
+                "if args[:2] == ['task','show']: print(task.read_text()); sys.exit(0)\n" +
+                "if args[:2] == ['task','sessions']:\n" +
+                " assert args[2] == json.loads(task.read_text())['summary']['id']\n" +
+                " assert args[-5:] == ['--offset','0','--limit','100','--json']\n" +
+                " print(sessions.read_text()); sys.exit(0)\n" +
+                "if args[:2] == ['task','search']:\n" +
+                " value=json.loads(task.read_text()); body=args[2]\n" +
+                " assert args[3:] == ['--include-comments','--case-sensitive','--project',value['summary']['project_id'],'--page-size','2','--offset','0','--json']\n" +
+                " found=[item for item in json.loads(comments.read_text()) if item==body]\n" +
+                " groups=[]\n" +
+                " if found: groups=[{'hits':[{'literal':{'after':'','before':'','left_truncated':False,'match':body,'right_truncated':False},'ordinal':0,'source':{'kind':'comment','comment_id':'fixture-retention'}} for _ in found],'project_id':value['summary']['project_id'],'project_key':'PUB','short_id':value['summary']['short_id'],'status':'active','task_id':value['summary']['id'],'title':'fixture','total_hit_count':len(found),'workflow_id':value['summary']['workflow_id']}]\n" +
+                " print(json.dumps({'groups':groups,'mode':'literal'})); sys.exit(0)\n" +
+                "if args[:3] == ['task','comment','add']:\n" +
+                " value=json.loads(task.read_text()); body=args[args.index('--body')+1]\n" +
+                " assert args == ['task','comment','add',value['summary']['id'],'--project',value['summary']['project_id'],'--body',body,'--author','agent','--author-id',owner]\n" +
+                " values=json.loads(comments.read_text()); values.append(body); comments.write_text(json.dumps(values)); print('{}'); sys.exit(0)\n" +
+                "sys.exit(2)\n")
+            kent.chmod(0o755)
         body_file = fake / "body"; body_file.write_text("", encoding="utf-8")
         calls_file = fake / "calls"
         apk_file = fake / "apk"; apk_file.write_bytes(b"test-apk-bytes")
@@ -359,68 +371,10 @@ sys.exit(3)
             encoding="utf-8",
         ); gh.chmod(0o755)
         if prepared is None:
-            profile_path = "app/src/main/generated/baselineProfiles/baseline-prof.txt"
-            startup_path = "app/src/main/generated/baselineProfiles/startup-prof.txt"
-            profile_before_hash = publish_fixture.helper.git_blob_sha256(work, base_oid, profile_path)
-            profile_after_hash = publish_fixture.helper.git_blob_sha256(work, target, profile_path)
-            startup_before_hash = publish_fixture.helper.git_blob_sha256(work, base_oid, startup_path)
-            startup_after_hash = publish_fixture.helper.git_blob_sha256(work, target, startup_path)
-            profile_report_value = {
-                "schema": "puber_profile_report_v1", "operation_id": "a" * 64,
-                "task_short_id": "PUB-99", "release_type": "minor",
-                "release_version": "99.0.0", "release_tag": "v99.0.0",
-                "release_branch": "release/99.0.0", "release_base_oid": base_oid,
-                "candidate_oid": target, "tv_serial": "emulator-5554",
-                "command": ".kent/scripts/workflow-puber-release-profile-generation:tools/generate-baseline-profile.sh",
-                "lease_state": "released", "generation_state": "passed",
-                "network_isolation_state": "passed", "elapsed_ms": 1,
-                "baseline_before_sha256": profile_before_hash, "baseline_after_sha256": profile_after_hash,
-                "startup_before_sha256": startup_before_hash, "startup_after_sha256": startup_after_hash,
-                "changed_profiles": [profile_path],
-            }
-            profile_report = publish_fixture.helper.canonical_json(profile_report_value)
-            profile_digest = publish_fixture.helper.sha256_bytes(profile_report.encode())
-            preparation_value = {
-                **publish_fixture.helper.VALIDATION_SIGNING,
-                "schema": "puber_release_preparation_report_v2", "operation_id": "a" * 64,
-                "task_short_id": "PUB-99", "release_type": "minor",
-                "release_version": "99.0.0", "release_tag": "v99.0.0",
-                "release_branch": "release/99.0.0", "release_base_oid": base_oid,
-                "candidate_oid": target, "release_head_oid": target,
-                "profile_report_digest": profile_digest,
-                "compile_command": "./tools/agentw :app:compileProdReleaseArtProfile",
-                "compile_state": "passed", "assemble_command": "./tools/agentw :app:assembleProdRelease",
-                "assemble_state": "passed", "final_changed_paths": ["app/build.gradle.kts", profile_path],
-                "version_file_sha256": publish_fixture.helper.git_blob_sha256(work, target, "app/build.gradle.kts"),
-                "baseline_profile_sha256": profile_after_hash, "startup_profile_sha256": startup_after_hash,
-                "no_profile_diff": False, "elapsed_ms": 1,
-            }
-            for field, replacement in (
-                ("schema", "puber_release_preparation_report_v1"),
-                ("packaging_artifact_publishable", True),
-                ("production_signing_used", True),
-                ("packaging_artifact_signer_certificate_sha256", "0" * 64),
-            ):
-                forged = {**preparation_value, field: replacement}
-                try:
-                    publish_fixture.helper.parse_release_preparation_report(forged, publish_fixture.helper.digest_json(forged))
-                except publish_fixture.helper.ContractError:
-                    pass
-                else:
-                    raise AssertionError("forged preparation signing claim was accepted")
-            preparation_report = publish_fixture.helper.canonical_json(preparation_value)
-            preparation_digest = publish_fixture.helper.sha256_bytes(preparation_report.encode())
-            checkpoint = {
-                "schema": "puber_release_profile_checkpoint_v2", "task_id": task_id,
-                "task_short_id": "PUB-99", "operation_id": "a" * 64,
-                "release_branch": "release/99.0.0", "release_base_oid": base_oid,
-                "candidate_oid": target, "release_head_oid": target,
-                "candidate_serials": ["emulator-5554"], "state": "completed",
-                "resource_serial": "emulator-5554", "profile_report": profile_report,
-                "profile_report_digest": profile_digest, "release_preparation_report": preparation_report,
-                "release_preparation_report_digest": preparation_digest,
-                "output_hashes": {profile_path: profile_after_hash, startup_path: startup_after_hash},
-            }
+            checkpoint = publish_fixture.fixture_checkpoint(work, base_oid, target, task_id)
+            profile_report, profile_digest = checkpoint["profile_report"], checkpoint["profile_report_digest"]
+            preparation_report = checkpoint["release_preparation_report"]
+            preparation_digest = checkpoint["release_preparation_report_digest"]
             checkpoint_path = work / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
             checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
             checkpoint_path.write_text(publish_fixture.helper.canonical_json(checkpoint) + "\n", encoding="utf-8")
@@ -464,6 +418,10 @@ sys.exit(3)
             ),
         }
         env.update(fixture_owner)
+        if native_fixture:
+            # Reconcile the real completed preparation as its current Ship
+            # Agent, not a synthetic profile Script or future Cleanup owner.
+            env.update(native_fixture.env)
         seed_ledger = subprocess.run(
             [
                 str(work / ".kent/scripts/workflow-evidence-ledger"),
@@ -476,7 +434,7 @@ sys.exit(3)
             cwd=work,
             input=json.dumps(
                 {
-                    "node_key": "profile_generation",
+                    "node_key": "ship_pr" if native_fixture else "profile_generation",
                     "evidence_type": "baseline_profile_generation",
                     "summary": "Completed profile generation for release fixture.",
                     "artifacts": [],
@@ -496,6 +454,15 @@ sys.exit(3)
         )
         assert seed_ledger.returncode == 0, seed_ledger.stderr
         os.environ.update({key: env[key] for key in ("KENT_ENGINEERING_KIT_ROOT", "PUBER_KENT_BIN", "PUBER_GH_BIN", "PUBER_FAKE_TASK", "PUBER_TARGET", "PUBER_BARE", "PUBER_BODY", "PUBER_APK", "PUBER_CHECKSUM", "PUBER_CALLS")})
+        if native_fixture:
+            task_path = native_fixture.task_path
+            kent = native_fixture.native
+            env.update(native_fixture.env)
+            env.update(PUBER_FAKE_TASK=str(task_path), PUBER_GH_BIN=str(gh), KENT_GH_BIN=str(gh))
+            task = native_fixture.task
+            native_fixture.sync()
+            graph = {"workflow": graph["workflow"], **native_fixture.graph["graph"]}
+            os.environ.update(env)
         probe = subprocess.run([str(gh), "api", "repos/rovkinmax/Puber/pulls/7"], cwd=work, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         assert probe.returncode == 0, probe.stderr
         # The continuous case enters from the actual preparation carrier; no
@@ -503,16 +470,19 @@ sys.exit(3)
         if prepared:
             env["PUBER_PR_STATE"] = "OPEN"
             assert sh(["git", "--git-dir", bare_path, "rev-parse", "refs/heads/master"], work).stdout.strip() == base_oid
-            producer = root / "actual-kit-ci-producer"
-            producer.write_text(
-                "#!/bin/sh\nexec "
-                + sys.executable
-                + " -B "
-                + str(kit_root / "scripts/prepare-github-ci")
-                + "\n"
-            )
-            producer.chmod(0o755)
-            env["KENT_PREPARE_GITHUB_CI_BIN"] = str(producer)
+            if native_fixture:
+                assert env["KENT_PREPARE_GITHUB_CI_BIN"] == str(native_fixture.ci_helper)
+            else:
+                producer = root / "actual-kit-ci-producer"
+                producer.write_text(
+                    "#!/bin/sh\nexec "
+                    + sys.executable
+                    + " -B "
+                    + str(kit_root / "scripts/prepare-github-ci")
+                    + "\n"
+                )
+                producer.chmod(0o755)
+                env["KENT_PREPARE_GITHUB_CI_BIN"] = str(producer)
             env.update(KENT_CI_WATCH_TEST_MODE="1", KENT_CI_WATCH_MAX_POLLS="1", KENT_CI_WATCH_INTERVAL_SECONDS="0")
         # Real project CI adapter, then its exact merged-PR handoff to Publisher.
         task.update({"current_nodes":[{"node_id":ci_prepare_node["id"]}],"current_scripts":[{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-ci"),"current_node":{"node_id":ci_prepare_node["id"]}}],"status":{"node_ids":[ci_prepare_node["id"]]}})
@@ -569,6 +539,33 @@ sys.exit(3)
             real_ci_report = json.loads(ci_output["ci_report"])
             assert real_ci_report["attempts"][-1]["head_oid"] == head
             assert task["execution_target"]["commit_oid"] == base_oid
+            if native_fixture:
+                report_bytes = publish_fixture.helper.canonical_bytes(real_ci_report)
+                artifact = work / ".kent/runtime/PUB-99" / (
+                    "ci-report-" + hashlib.sha256(report_bytes).hexdigest() + ".json")
+                assert artifact.read_bytes() == report_bytes
+                ledger_rows = [json.loads(row) for row in
+                               (work / ".kent/runtime/PUB-99/evidence-ledger.jsonl").read_text().splitlines()]
+                from workflowkit import ci_contract as archive_ci, runtime as archive_runtime
+                script_archives = [row for row in ledger_rows
+                    if row.get("record_kind") == archive_runtime.SCRIPT_CI_ARCHIVE_RECORD_KIND]
+                assert script_archives, "real original Script CI archive is required"
+                for row in script_archives:
+                    assert row["schema_version"] == 3
+                    archive_runtime.validate_script_ci_archive_record(row,
+                        task_short_id="PUB-99", workspace_path=str(work.resolve()))
+                original = [row for row in script_archives
+                    if row["report_sha256"] == hashlib.sha256(report_bytes).hexdigest()
+                    and row["script_identity"]["node_id"] == watch_node["id"]]
+                assert len(original) == 1 and original[0]["script_identity"]["invocation_kind"] == "script"
+                assert original[0]["artifacts"] == [str(artifact.relative_to(work))]
+                with patch.dict(os.environ, env):
+                    reader_proof = archive_ci.resolve_script_ci_archive_readers(work.resolve(), "PUB-99",
+                        watch_input["_kent"], native_read=archive_ci._native_read_adapter(work.resolve()))
+                assert reader_proof["schema"] == "script-ci-archive-reader-proof-v1"
+                assert len(reader_proof["reader_proof_sha256"]) == 64
+                assert reader_proof["native_script_identity"] == original[0]["script_identity"]
+                native_fixture.script_archive = (artifact, report_bytes, original[0], reader_proof)
             sh(["git", "--git-dir", bare_path, "update-ref", "refs/heads/master", target], work)
             env["PUBER_PR_STATE"] = "MERGED"
         else:
@@ -941,7 +938,13 @@ sys.exit(3)
             "live_sessions": [{"session_id":owner_id,"session_name":"Cleanup","node_display_name":"Cleanup"}], "retained_session_count": 6,
         })
         task_path.write_text(json.dumps(task))
-        history = [{"session_id":f"history-{i}","status":"idle","root":str(work)} for i in range(5)]
+        if native_fixture:
+            native_fixture.enter_agent("cleanup", session_id=owner_id)
+            env.update(native_fixture.env)
+            history = native_fixture.state["sessions"][1:]
+            task = native_fixture.task
+        else:
+            history = [{"session_id":f"history-{i}","status":"idle","root":str(work)} for i in range(5)]
         assert len(history) == 5 and all(row["root"] == str(work) for row in history)
         env["KENT_SESSION_ID"] = owner_id
         cleanup_agent_owner = {
@@ -996,17 +999,27 @@ sys.exit(3)
             "worktree": {"recordedRoot": str(work), "observedRoot": str(work), "displayName": "H", "recordedBranchRef": "refs/heads/release/99.0.0"},
             "problems": None,
         }
-        status_path = root / "status.json"; status_path.write_text(json.dumps(status))
-        native = root / "kent-worktree-fixture"
-        native.write_text("#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\n" +
-            f"path=Path({str(status_path)!r}); primary={str(primary)!r}; owner={owner_id!r}\n" +
-            "args=sys.argv[1:]\nassert '--session' in args and args[args.index('--session')+1] == owner\n" +
-            "if args[0]=='status': print(path.read_text()); sys.exit(0)\n" +
-            "if args[0]=='leave':\n value=json.loads(path.read_text()); value['target'].update(worktree=None,effectiveWorkdir=primary); value['worktree']={'recordedRoot':primary,'observedRoot':primary}; path.write_text(json.dumps(value)); print('{}'); sys.exit(0)\n" +
-            "if args[0]=='delete': print('native fixture admission blocks active foreign work',file=sys.stderr); sys.exit(1)\n" +
-            "sys.exit(99)\n")
-        native.chmod(0o755)
-        env["PUBER_KENT_WORKTREE_BIN"] = str(native)
+        if native_fixture:
+            status_path = native_fixture.status_path
+            native = native_fixture.native
+            status = json.loads(status_path.read_text())
+            env["PUBER_KENT_WORKTREE_BIN"] = str(native)
+        else:
+            status_path = root / "status.json"; status_path.write_text(json.dumps(status))
+            native = root / "kent-worktree-fixture"
+            native.write_text("#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\n" +
+                f"path=Path({str(status_path)!r}); primary={str(primary)!r}; owner={owner_id!r}\n" +
+                "args=sys.argv[1:]\nassert '--session' in args and args[args.index('--session')+1] == owner\n" +
+                "if args[0]=='status': print(path.read_text()); sys.exit(0)\n" +
+                "if args[0]=='leave':\n value=json.loads(path.read_text()); value['target'].update(worktree=None,effectiveWorkdir=primary); value['worktree']={'recordedRoot':primary,'observedRoot':primary}; path.write_text(json.dumps(value)); print('{}'); sys.exit(0)\n" +
+                "if args[0]=='delete': print('native fixture admission blocks active foreign work',file=sys.stderr); sys.exit(1)\n" +
+                "sys.exit(99)\n")
+            native.chmod(0o755)
+            env["PUBER_KENT_WORKTREE_BIN"] = str(native)
+        if native_fixture:
+            os.environ.update(env)
+            publish_fixture.helper._reset_runtime_invocation()
+            publish_fixture.helper._bind_qualified_runtime(work.resolve(), None)
         publish_fixture.helper._kit_modules()
         from workflowkit import ci_contract, runtime
         if prepared:
@@ -1172,7 +1185,10 @@ sys.exit(3)
             assert blocked["pr_base_branch"] == "master"
             # Native previous_target reuses A and Starter rebinds it to H.
             status = original_status
-            status_path.write_text(json.dumps(status))
+            if native_fixture:
+                native_fixture.restore_owner_attachment(owner_id)
+            else:
+                status_path.write_text(json.dumps(status))
             task.update(current_nodes=[{"node_id":cleanup_node["id"],"session_id":owner_id,"effective_assignee":"delivery-operator"}],current_scripts=[],status={"node_ids":[cleanup_node["id"]]},live_sessions=[{"session_id":owner_id,"session_name":"Cleanup","node_display_name":"Cleanup"}])
             task_path.write_text(json.dumps(task))
             blocked_edge = next(edge for edge in graph["edges"]
@@ -1214,25 +1230,36 @@ sys.exit(3)
             print("SECOND OWN LEAVE AFTER SUCCESSFUL RETRY", owner_id, "primary verified; other idle Sessions untouched")
             print("FULL SAME-TASK LIFECYCLE", " -> ".join(prepared["stages"] + ["ci_prepare", "ci_watch", "merge_watch", "Publish", "Monitor", "Cleanup", "Janitor-blocked", "Cleanup-retry"]), "K="+base_oid, "H="+head, "T="+target)
         assert not checkpoint_path.exists()
+        if native_fixture:
+            original_artifact, original_bytes, original_row, original_readers = native_fixture.script_archive
+            assert original_artifact.read_bytes() == original_bytes
+            retained_rows = [json.loads(line) for line in ledger.read_text().splitlines()]
+            assert original_row in retained_rows
+            assert original_readers["native_script_identity"] == original_row["script_identity"]
         assert task["execution_target"]["commit_oid"] == base_oid
         assert sh(["git", "rev-parse", "HEAD"], work).stdout.strip() == head
         print("Publisher -> Monitor -> Cleanup on H, actual target T:", head, target, "rebased=", rebased)
         direct_api_guard_patch.stop()
 
 if __name__ == "__main__":
-    test_monitor(False)
-    test_monitor(True)
-    os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(publish_fixture.KIT)
-    reset_kit_imports()
-    publish_fixture.test_clean_master_to_exactly_one_release_pr(lambda prepared: test_monitor(True, prepared))
-    os.environ["KENT_ENGINEERING_KIT_ROOT"] = str(publish_fixture.KIT)
-    reset_kit_imports()
-    publish_fixture.test_clean_master_to_exactly_one_release_pr(
-        lambda prepared: test_monitor(
-            True,
-            prepared,
-            publish_blocker_only=True,
-        )
-    )
-
-print("workflow-wait-github-release: passed scenarios=happy,all_jobs_extra_renamed_and_skipped,aggregate_failure,incomplete_and_query_error,pinned_switch_id_attempt_head_sha_head_branch,no_discovery_on_blocker,run_job_api_rows,release_asset_api_matrix,remote_tag,body_correct,edit_lost_ack,edit_failure,post_edit_readback")
+    canonical = sys.argv[1:2] in (["--canonical-happy"], ["--canonical-blocker"])
+    candidate_freeze = publish_fixture.candidate_freeze_argument(sys.argv[2:] if canonical else sys.argv[1:])
+    if canonical:
+        with publish_fixture.FixtureSandbox.create() as sandbox:
+            with publish_fixture.fixture_context(mode="canonical", sandbox=sandbox, candidate_freeze=candidate_freeze):
+                blocker = sys.argv[1] == "--canonical-blocker"
+                publish_fixture.test_clean_master_to_exactly_one_release_pr(
+                    lambda prepared: test_monitor(True, prepared, publish_blocker_only=blocker))
+    else:
+        with publish_fixture.FixtureSandbox.create() as sandbox:
+            with publish_fixture.fixture_context(mode="mock", sandbox=sandbox, candidate_freeze=candidate_freeze):
+                test_monitor(False)
+                test_monitor(True)
+        # Each canonical process creates one private Kit and never runs mock lanes.
+        for lane in ("--canonical-happy", "--canonical-blocker"):
+            with publish_fixture.FixtureSandbox.create() as sandbox:
+                options = ["--kit-candidate-freeze", str(candidate_freeze)] if candidate_freeze else []
+                result = sandbox.run_child([sys.executable, "-B", str(Path(__file__).resolve()), lane, *options])
+                if result.returncode:
+                    raise SystemExit(result.returncode)
+    print("workflow-wait-github-release: passed all ordinary/canonical happy/blocker lanes")

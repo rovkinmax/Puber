@@ -62,8 +62,8 @@ release = "ask-on-first-execution"
 
 [kit_runtime]
 schema_version = 1
-root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/runtime-sdk-puber-30b908c9"
-commit = "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
+root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/archive-published-2708-456"
+commit = "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"
 publication_ref = "refs/remotes/origin/main"
 
 [policies]

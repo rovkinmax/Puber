@@ -4,857 +4,847 @@ import copy, json, os, re, subprocess, tempfile, sys, uuid
 sys.dont_write_bytecode = True
 import tomllib
 from pathlib import Path
-ROOT = Path(__file__).resolve().parents[3]
-GRAPH = ROOT / ".kent/workflows/puber-release.json"
-MANIFEST = ROOT / ".kent/workflows/puber-release.manifest.json"
-_profile = tomllib.loads(
-    (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8")
-)
-_kit_binding = _profile.get("kit_runtime")
-if (
-    not isinstance(_kit_binding, dict)
-    or set(_kit_binding) != {"schema_version", "root", "commit", "publication_ref"}
-    or _kit_binding.get("schema_version") != 1
-    or _kit_binding.get("commit") != "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
-    or _kit_binding.get("publication_ref") != "refs/remotes/origin/main"
-):
-    raise SystemExit("graph tests require Puber's exact qualified Kit source binding")
-KIT = Path(_kit_binding["root"]).resolve(strict=True)
-if str(KIT) != _kit_binding["root"]:
-    raise SystemExit("Puber Kit binding root must be canonical")
-_kit_override = os.environ.get("PUBER_STAGE_A_KIT_ROOT")
-if _kit_override and Path(_kit_override).resolve(strict=True) != KIT:
-    raise SystemExit("Puber test Kit override differs from the profile binding")
-if subprocess.check_output(
-    ["git", "-C", str(KIT), "rev-parse", "HEAD"],
-    text=True,
-).strip() != _kit_binding["commit"]:
-    raise SystemExit("Puber test Kit HEAD differs from its binding")
-if subprocess.check_output(
-    ["git", "-C", str(KIT), "rev-parse", "--verify", _kit_binding["publication_ref"]],
-    text=True,
-).strip() != _kit_binding["commit"]:
-    raise SystemExit("Puber test Kit publication ref differs from its binding")
-if subprocess.check_output(
-    ["git", "-C", str(KIT), "status", "--porcelain=v1", "--untracked-files=all"],
-    text=True,
-):
-    raise SystemExit("Puber test Kit binding must remain clean")
-def run(value):
-    with tempfile.TemporaryDirectory() as d:
-        path=Path(d)/"graph.json"
-        path.write_text(json.dumps(value))
-        return builder["check_graph"](path)
-source=json.loads(GRAPH.read_text())
-assert source["workflow"]["version"] == 88, "checked-in graph is still revision 89"
-assert source["workflow"]["source_revision"] == 90, "source revision 90 is absent"
-assert (len(source["nodes"]), len(source["transition_groups"]), len(source["edges"])) == (18, 51, 51), "profile/finalization topology is absent"
-assert not any(node.get("kind") == "join" for node in source["nodes"]), "release graph unexpectedly contains a native Join"
-by_key = {node["key"]: node for node in source["nodes"]}
-assert by_key["profile_generation"]["kind"] == "script"
-assert by_key["profile_generation"]["script_path"] == ".kent/scripts/workflow-puber-release-profile-generation"
-assert by_key["finalize_release"]["kind"] == "agent"
-assert by_key["finalize_release"]["subagent_role"] == "release-manager"
-def edge(key):
-    matches = [item for item in source["edges"] if item["key"] == key]
-    assert len(matches) == 1, key
-    return matches[0]
-assert edge("prepare_profile_generation")["target_node_id"] == by_key["profile_generation"]["id"]
-assert edge("profile_generation_passed")["target_node_id"] == by_key["finalize_release"]["id"]
-assert edge("profile_generation_passed")["context_mode"] == "new_session"
-assert edge("profile_generation_passed")["context_source"] == {"kind": "immediate_source"}
-assert edge("finalize_release_done")["target_node_id"] == by_key["compliance"]["id"]
-for forbidden in ("prepare_compliance", "profile_generation_compliance", "profile_generation_ship_pr"):
-    assert not any(item["key"] == forbidden for item in source["edges"])
-assert [item["key"] for item in edge("prepare_profile_generation")["parameters"]] == [
-    key for key in (
-        "workspace_path", "operation_id", "task_short_id", "release_type",
-        "release_version", "release_tag", "release_branch",
-        "release_base_oid", "candidate_oid",
-    )
-]
-assert [item["key"] for item in edge("profile_generation_passed")["parameters"]] == [
-    key for key in (
-        "workspace_path", "operation_id", "task_short_id", "release_type",
-        "release_version", "release_tag", "release_branch",
-        "release_base_oid", "candidate_oid", "profile_report",
-        "profile_report_digest",
-    )
-]
-assert edge("profile_generation_needs_user_action")["requires_approval"] is True
-assert [item["key"] for item in edge("finalize_release_done")["parameters"]] == [
-    key for key in (
-        "workspace_path", "operation_id", "task_short_id", "release_type",
-        "release_version", "release_tag", "release_branch",
-        "release_base_oid", "candidate_oid", "release_head_oid",
-        "profile_report", "profile_report_digest", "release_preparation_report",
-        "release_preparation_report_digest", "verification_summary",
-    )
-]
-assert [item["key"] for item in edge("compliance_ship_pr")["parameters"]] == [
-    key for key in (
-        "workspace_path", "operation_id", "task_short_id", "release_type",
-        "release_version", "release_tag", "release_branch", "release_base_oid",
-        "candidate_oid", "release_head_oid", "profile_report",
-        "profile_report_digest", "release_preparation_report",
-        "release_preparation_report_digest", "verification_summary",
-        "compliance_report",
-    )
-]
-revisioned_carrier = (
-    "workspace_path", "operation_id", "task_short_id", "release_type",
-    "release_version", "release_tag", "release_branch", "release_base_oid",
-    "candidate_oid", "release_head_oid", "profile_report",
-    "profile_report_digest", "release_preparation_report",
-    "release_preparation_report_digest", "verification_summary",
-)
-assert [item["key"] for item in edge("release_intent_passed")["parameters"]] == [
-    "workspace_path", "operation_id", "task_short_id", "release_type",
-    "release_version", "release_branch",
-]
-for repair_key, report_key in (
-    ("compliance_fix", "compliance_report"),
-    ("ci_fix", "ci_report"),
-    ("pr_fix", "blocker_reason"),
-):
-    repair = edge(repair_key)
-    assert repair["target_node_id"] == by_key["prepare"]["id"]
-    expected_repair = revisioned_carrier + (report_key,)
-    if repair_key in {"ci_fix", "pr_fix"}:
-        expected_repair = (
-            revisioned_carrier
-            + ("pr_url", "branch_name", "merge_strategy", "pr_head_oid", "pr_base_oid")
-            + ("ci_contract", "ci_report", "pr_feedback_cursor")
-            + (() if repair_key == "ci_fix" else ("blocker_reason",))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from puber_native_fixture import FixtureSandbox
+from unittest.mock import patch as _environment_patch
+with FixtureSandbox.create() as _fixture_sandbox:
+    _fixture_sandbox.allow_read(Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/archive-published-2708-456"))
+    with _environment_patch.dict(os.environ, _fixture_sandbox.environment, clear=True):
+        ROOT = Path(__file__).resolve().parents[3]
+        GRAPH = ROOT / ".kent/workflows/puber-release.json"
+        MANIFEST = ROOT / ".kent/workflows/puber-release.manifest.json"
+        from puber_native_fixture import verify_kit_binding
+        KIT, _kit_binding = verify_kit_binding(ROOT, sandbox=_fixture_sandbox)
+        def run(value):
+            with _fixture_sandbox.temporary_directory() as d:
+                path=Path(d)/"graph.json"
+                path.write_text(json.dumps(value))
+                return builder["check_graph"](path)
+        source=json.loads(GRAPH.read_text())
+        assert source["workflow"]["version"] == 88, "checked-in graph is still revision 89"
+        assert source["workflow"]["source_revision"] == 90, "source revision 90 is absent"
+        assert (len(source["nodes"]), len(source["transition_groups"]), len(source["edges"])) == (18, 51, 51), "profile/finalization topology is absent"
+        assert not any(node.get("kind") == "join" for node in source["nodes"]), "release graph unexpectedly contains a native Join"
+        by_key = {node["key"]: node for node in source["nodes"]}
+        assert by_key["profile_generation"]["kind"] == "script"
+        assert by_key["profile_generation"]["script_path"] == ".kent/scripts/workflow-puber-release-profile-generation"
+        assert by_key["finalize_release"]["kind"] == "agent"
+        assert by_key["finalize_release"]["subagent_role"] == "release-manager"
+        def edge(key):
+            matches = [item for item in source["edges"] if item["key"] == key]
+            assert len(matches) == 1, key
+            return matches[0]
+        assert edge("prepare_profile_generation")["target_node_id"] == by_key["profile_generation"]["id"]
+        assert edge("profile_generation_passed")["target_node_id"] == by_key["finalize_release"]["id"]
+        assert edge("profile_generation_passed")["context_mode"] == "new_session"
+        assert edge("profile_generation_passed")["context_source"] == {"kind": "immediate_source"}
+        assert edge("finalize_release_done")["target_node_id"] == by_key["compliance"]["id"]
+        for forbidden in ("prepare_compliance", "profile_generation_compliance", "profile_generation_ship_pr"):
+            assert not any(item["key"] == forbidden for item in source["edges"])
+        assert [item["key"] for item in edge("prepare_profile_generation")["parameters"]] == [
+            key for key in (
+                "workspace_path", "operation_id", "task_short_id", "release_type",
+                "release_version", "release_tag", "release_branch",
+                "release_base_oid", "candidate_oid",
+            )
+        ]
+        assert [item["key"] for item in edge("profile_generation_passed")["parameters"]] == [
+            key for key in (
+                "workspace_path", "operation_id", "task_short_id", "release_type",
+                "release_version", "release_tag", "release_branch",
+                "release_base_oid", "candidate_oid", "profile_report",
+                "profile_report_digest",
+            )
+        ]
+        assert edge("profile_generation_needs_user_action")["requires_approval"] is True
+        assert [item["key"] for item in edge("finalize_release_done")["parameters"]] == [
+            key for key in (
+                "workspace_path", "operation_id", "task_short_id", "release_type",
+                "release_version", "release_tag", "release_branch",
+                "release_base_oid", "candidate_oid", "release_head_oid",
+                "profile_report", "profile_report_digest", "release_preparation_report",
+                "release_preparation_report_digest", "verification_summary",
+            )
+        ]
+        assert [item["key"] for item in edge("compliance_ship_pr")["parameters"]] == [
+            key for key in (
+                "workspace_path", "operation_id", "task_short_id", "release_type",
+                "release_version", "release_tag", "release_branch", "release_base_oid",
+                "candidate_oid", "release_head_oid", "profile_report",
+                "profile_report_digest", "release_preparation_report",
+                "release_preparation_report_digest", "verification_summary",
+                "compliance_report",
+            )
+        ]
+        revisioned_carrier = (
+            "workspace_path", "operation_id", "task_short_id", "release_type",
+            "release_version", "release_tag", "release_branch", "release_base_oid",
+            "candidate_oid", "release_head_oid", "profile_report",
+            "profile_report_digest", "release_preparation_report",
+            "release_preparation_report_digest", "verification_summary",
         )
-    assert [item["key"] for item in repair["parameters"]] == list(expected_repair)
-    assert "version_bump_commit" not in repair["prompt_template"]
-    assert "prepare_profile_generation" in repair["prompt_template"]
-assert not any(
-    item["key"] in {"prepare_compliance", "prepare_ship_pr", "prepare_publish"}
-    for item in source["edges"]
-)
-builder = __import__("runpy").run_path(str(ROOT/".kent/workflows/builders/puber_release.py"))
-initial_producer_fields = (
-    "workspace_path",
-    "operation_id",
-    "task_short_id",
-    "release_type",
-    "release_version",
-    "release_tag",
-    "release_branch",
-    "release_base_oid",
-    "candidate_oid",
-    "release_head_oid",
-    "profile_report",
-    "profile_report_digest",
-    "release_preparation_report",
-    "release_preparation_report_digest",
-    "verification_summary",
-    "pr_url",
-    "branch_name",
-    "merge_strategy",
-    "pr_head_oid",
-    "pr_base_oid",
-)
-initial_producer_input = {
-    key: f"fixture-{key}" for key in initial_producer_fields
-}
-assert initial_producer_fields == tuple(builder["RELEASE_CI_INITIAL"])
-initial_edge_fields = tuple(
-    item["key"] for item in edge("ship_pr_ci_watch")["parameters"]
-)
-missing_initial_inputs = sorted(
-    set(initial_edge_fields) - set(initial_producer_input)
-)
-assert not missing_initial_inputs, (
-    "ship_pr_ci_watch requires values before ci_prepare produces them: "
-    + ", ".join(missing_initial_inputs)
-)
-assert initial_edge_fields == initial_producer_fields, (
-    "the first CI edge must carry the flat release proof and observed PR "
-    "identity only"
-)
-assert not {"ci_contract", "ci_report", "pr_feedback_cursor"} & set(
-    initial_producer_input
-), "the first CI producer input must not invent CI packets"
-for entity_kind in ("workflow", "nodes", "transition_groups", "edges"):
-    invalid_id_graph = copy.deepcopy(source)
-    entity = invalid_id_graph[entity_kind] if entity_kind == "workflow" else invalid_id_graph[entity_kind][0]
-    entity["id"] = "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e"
-    with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / "invalid-id.json"
-        path.write_text(json.dumps(invalid_id_graph))
-        assert "graph entity IDs must be canonical UUIDv4" in builder["check_graph"](path)
-assert edge("release_intent_passed")["context_mode"] == "new_session"
-assert edge("release_intent_passed")["context_source"] == {"kind": "immediate_source"}
-for defect in ("description", "continuation"):
-    invalid_graph = copy.deepcopy(source)
-    selected = next(item for item in invalid_graph["edges"] if item["key"] == ("ci_fix" if defect == "description" else "release_intent_passed"))
-    if defect == "description":
-        next(item for item in selected["parameters"] if item["key"] == "operation_id")["description"] = "Conflicting definition."
-        expected_error = "source node provision descriptions must agree"
-    else:
-        selected["context_mode"] = "compact_and_continue_session"
-        expected_error = "release intent Script must start a new prepare Agent"
-    with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / "invalid-provision.json"
-        path.write_text(json.dumps(invalid_graph))
-        assert expected_error in builder["check_graph"](path)
-changed_entry = edge("ci_watch_state_changed")
-changed_prompt = changed_entry.get("prompt_template", "")
-assert changed_prompt.strip(), "ci_watch_state_changed requires an Agent handoff prompt"
-assert changed_entry["target_node_id"] == by_key["waiting_pr"]["id"]
-changed_fields = {item["key"] for item in changed_entry["parameters"]}
-assert len(changed_fields) == 24
-assert set(re.findall(r"\{\{\.Params\.([A-Za-z_][A-Za-z0-9_]*)\}\}", changed_prompt)) == changed_fields
-for field in changed_fields:
-    assert f"{field}: {{{{.Params.{field}}}}}" in changed_prompt
-for instruction in (
-    "read-only PR/CI reconciliation",
-    "not successful CI or release acceptance",
-    "source_changed",
-    "waiting_pr_ci_recheck",
-    "ci_prepare",
-    "historical opaque inputs",
-    "never successful CI evidence for the newly observed head/base",
-    "Preserve merge/tag/publication approval gates",
-):
-    assert instruction in changed_prompt, instruction
-print("ci-state-changed-agent-handoff: passed (24 exact Params bindings)")
-
-# Check every Agent entry, not merely the builder's selected CI prompt mapping.
-agent_ids = {node["id"] for node in source["nodes"] if node["kind"] == "agent"}
-for agent_entry in source["edges"]:
-    if agent_entry["target_node_id"] not in agent_ids:
-        continue
-    assert isinstance(agent_entry.get("prompt_template"), str) and agent_entry["prompt_template"].strip()
-    for empty_prompt in (None, "", " \n\t"):
-        invalid_graph = copy.deepcopy(source)
-        selected = next(item for item in invalid_graph["edges"] if item["key"] == agent_entry["key"])
-        if empty_prompt is None:
-            selected.pop("prompt_template")
-        else:
-            selected["prompt_template"] = empty_prompt
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "empty-agent-entry-prompt.json"
-            path.write_text(json.dumps(invalid_graph))
-            assert f"Agent entry requires a nonempty prompt: {agent_entry['key']}" in builder["check_graph"](path)
-print("all-agent-entry-nonempty-prompts: passed")
-
-for entry_key, prompt in builder["CI_AGENT_ENTRY_PROMPTS"].items():
-    assert edge(entry_key)["prompt_template"] == prompt
-    invalid_graph = copy.deepcopy(source)
-    next(item for item in invalid_graph["edges"] if item["key"] == entry_key).pop("prompt_template")
-    with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / "missing-ci-agent-prompt.json"
-        path.write_text(json.dumps(invalid_graph))
-        assert "CI Agent entry prompt must match the approved read-only handoff" in builder["check_graph"](path)
-def manifest_errors(value):
-    with tempfile.TemporaryDirectory() as d:
-        path = Path(d) / "manifest.json"
-        path.write_text(json.dumps(value))
-        check_manifest = builder["check_manifest"]
-        original = check_manifest.__globals__["MANIFEST"]
-        check_manifest.__globals__["MANIFEST"] = path
-        try:
-            return check_manifest()
-        finally:
-            check_manifest.__globals__["MANIFEST"] = original
-
-manifest = json.loads(MANIFEST.read_text())
-bad_manifest = copy.deepcopy(manifest)
-bad_manifest["external_roots"][0], bad_manifest["external_roots"][1] = (
-    bad_manifest["external_roots"][1],
-    bad_manifest["external_roots"][0],
-)
-assert "manifest external_roots must be sorted and unique by kind and key" in manifest_errors(bad_manifest)
-bad_manifest = copy.deepcopy(manifest)
-bad_manifest["external_roots"].insert(1, copy.deepcopy(bad_manifest["external_roots"][0]))
-assert "manifest external_roots must be sorted and unique by kind and key" in manifest_errors(bad_manifest)
-bad_manifest = copy.deepcopy(manifest)
-bad_manifest["additional_paths"] = sorted(
-    bad_manifest["additional_paths"] + [".kent/project-contract.md"]
-)
-assert "manifest additional_paths may not repeat a derived path" in manifest_errors(
-    bad_manifest
-)
-bad_manifest = copy.deepcopy(manifest)
-bad_manifest["additional_paths"] = sorted(
-    bad_manifest["additional_paths"] + ["app/debug.jks"]
-)
-assert "manifest additional_path must be valid UTF-8: app/debug.jks" in manifest_errors(
-    bad_manifest
-)
-assert source["derived_wiring"] == builder["expected_derived_wiring"](source)
-assert [item["edge_id"] for item in source["derived_wiring"]["edges"]] == [
-    item["id"] for item in source["edges"]
-]
-assert [item["transition_group_id"] for item in source["derived_wiring"]["transition_groups"]] == [
-    item["id"] for item in source["transition_groups"]
-]
-assert [item["node_id"] for item in source["derived_wiring"]["nodes"]] == [
-    item["id"] for item in source["nodes"]
-]
-prepare_wiring = next(
-    item for item in source["derived_wiring"]["edges"]
-    if item["edge_id"] == edge("prepare_profile_generation")["id"]
-)
-assert [item["name"] for item in prepare_wiring["required_provision_fields"]] == [
-    item["key"] for item in edge("prepare_profile_generation")["parameters"]
-]
-assert "candidate_oid" in [item["name"] for item in prepare_wiring["required_provision_fields"]]
-assert "version_bump_commit" not in [item["name"] for item in prepare_wiring["required_provision_fields"]]
-graph_errors = builder["check_graph"](GRAPH)
-assert graph_errors == [], "\n".join(graph_errors)
-for key, (target, params) in builder["REQUIRED_EDGE_PARAMETERS"].items():
-    matches=[edge for edge in source["edges"] if edge["key"]==key]
-    assert len(matches)==1 and [item["key"] for item in matches[0].get("parameters",[])] == list(params)
-bad=copy.deepcopy(source); bad["workflow"]["default"]=True
-assert run(bad)
-bad=copy.deepcopy(source); next(n for n in bad["nodes"] if n["key"]=="publish")["kind"]="agent"
-assert run(bad)
-bad=copy.deepcopy(source); publish=next(n["id"] for n in bad["nodes"] if n["key"]=="publish"); next(e for e in bad["edges"] if e.get("target_node_id")==publish)["requires_approval"]=False
-assert run(bad)
-bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="monitor_release")["parameters"].pop()
-assert run(bad)
-bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="publish_needs_user_action")["parameters"].append({"key":"stale"})
-assert run(bad)
-bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="release_release_published")["target_node_id"]=next(n["id"] for n in bad["nodes"] if n["key"]=="publish")
-assert run(bad)
-bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="release_intent_passed")["parameters"].pop()
-assert run(bad)
-bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="compliance_fix")["parameters"].pop(1)
-assert run(bad)
-bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="prepare_profile_generation")["target_node_id"]=by_key["finalize_release"]["id"]
-assert run(bad)
-bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="profile_generation_passed")["target_node_id"]=by_key["compliance"]["id"]
-assert run(bad)
-bad=copy.deepcopy(source); bad["derived_wiring"]["edges"].pop()
-assert run(bad)
-bad=copy.deepcopy(source); next(
-    item for item in bad["derived_wiring"]["edges"]
-    if item["edge_id"] == edge("prepare_profile_generation")["id"]
-)["required_provision_fields"][0]["name"] = "version_bump_commit"
-assert run(bad)
-bad = copy.deepcopy(source)
-next(e for e in bad["edges"] if e["key"] == "profile_generation_passed")["context_mode"] = "compact_and_continue_session"
-assert run(bad)
-print("puber-release-graph: passed")
-if os.environ.get("PUBER_RELEASE_GRAPH_ONLY") == "1":
-    sys.exit(0)
-
-bad = copy.deepcopy(source)
-next(e for e in bad["edges"] if e["key"] == "profile_generation_passed")["prompt_template"] = "Finalize without signing proof"
-assert run(bad)
-
-# Real project adapter -> shared producer/watchers. Only GitHub/Kent and the
-# subprocess execution boundary are fake; source reads, DTOs and ledger are real.
-import contextlib
-import importlib.util
-import io
-import runpy
-from importlib.machinery import SourceFileLoader
-from types import SimpleNamespace
-from unittest.mock import patch
-
-def load(path, name):
-    spec = importlib.util.spec_from_loader(name, SourceFileLoader(name, str(path)))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-fixture = load(ROOT / '.kent/scripts/tests/test-workflow-puber-release-publish', 'ci_release_fixture')
-fixture.helper._kit_modules()
-unqualified_helper = load(
-    ROOT / ".kent/scripts/workflow-puber-release-intent",
-    "release_intent_unqualified_graph_test",
-)
-try:
-    unqualified_helper._normalized_workflow(
-        ROOT,
-        ".github/workflows/release.yml",
-    )
-except unqualified_helper.ContractError as error:
-    assert "native qualified Kit runtime is unavailable" in str(error)
-else:
-    raise AssertionError("source-only workflow normalization accepted no runtime authority")
-
-original_run_path = runpy.run_path
-def qualified_test_run_path(path, *args, **kwargs):
-    if Path(path).resolve() == (
-        ROOT / ".kent/scripts/workflow-puber-release-intent"
-    ).resolve():
-        return fixture.helper.__dict__
-    return original_run_path(path, *args, **kwargs)
-
-with patch.object(
-    builder["runpy"],
-    "run_path",
-    side_effect=qualified_test_run_path,
-):
-    assert builder["check_signing_contract"]() == []
-from workflowkit import ci_contract, runtime
-
-for key in ('ci_prepare', 'ci_watch', 'merge_watch'):
-    assert by_key[key]['script_path'] == '.kent/scripts/workflow-puber-release-ci'
-assert len(edge('merge_watch_pr_merged')['parameters']) == 7
-assert 'ci_report' not in [p['key'] for p in edge('ci_prepare_ready_initial')['parameters']]
-for key in ('waiting_pr_merge_watch', 'merge_watch_still_waiting', 'merge_watch_state_changed'):
-    assert {'verification_summary', 'ci_report', 'pr_feedback_cursor', 'release_head_oid'} <= {p['key'] for p in edge(key)['parameters']}
-
-with tempfile.TemporaryDirectory() as directory:
-    base = Path(directory)
-    work, policy, head, bare = fixture.materialize(
-        base,
-        base / 'origin.git',
-        append_test_checkpoint=False,
-    )
-    adapter = load(work / '.kent/scripts/workflow-puber-release-ci', 'actual_ci_adapter')
-    adapter.helper._qualified_checkpoint_module = (
-        lambda _root, *, required=(): fixture._test_checkpoint
-    )
-    helper = adapter.helper
-    runtime_graph = json.loads((work / helper.GRAPH_PATH).read_text())
-    def runtime_edge(key):
-        matches = [item for item in runtime_graph["edges"] if item["key"] == key]
-        assert len(matches) == 1, key
-        return matches[0]
-    task_id = 'task-12345678-1234-4234-8234-123456789abc'
-    checkpoint = fixture.fixture_checkpoint(work, policy, head, task_id)
-    helper.write_profile_checkpoint(work, 'PUB-99', checkpoint)
-    preparation = json.loads(checkpoint['release_preparation_report'])
-    carrier = {key: preparation[key] for key in revisioned_carrier if key in preparation}
-    carrier.update({key: checkpoint[key] for key in ('profile_report','profile_report_digest','release_preparation_report','release_preparation_report_digest')})
-    carrier.update(workspace_path=str(work), task_short_id='PUB-99', verification_summary='Actual fixture packaging evidence',
-        pr_url='https://github.com/rovkinmax/Puber/pull/7', branch_name='release/99.0.0', merge_strategy='rebase', pr_head_oid=head, pr_base_oid=policy, pr_base_branch='master')
-    assert not {"ci_contract", "ci_report", "pr_feedback_cursor"} & set(carrier)
-    actual_pr = dict(url=carrier['pr_url'], headRefOid=head, baseRefOid=policy, headRefName=carrier['branch_name'],
-        baseRefName='master', state='OPEN', mergedAt=None, mergeCommit=None)
-    methods = dict(full_name='rovkinmax/Puber', default_branch='master', allow_merge_commit=True, allow_squash_merge=False, allow_rebase_merge=True)
-    rules = [{'type':'required_linear_history'}]
-    checks = [dict(workflow='PR Checks',name=name,bucket='pass',state='SUCCESS',link='https://github.com/rovkinmax/Puber/actions/runs/1') for name in ('Build','Detekt','Unit Tests')]
-    workspace_id = 'workspace-12345678-1234-4234-8234-123456789abc'
-    task = {key: [] for key in ('actions','current_nodes','current_scripts','label_ids','live_sessions')}
-    task.update(attention_count=0, retained_session_count=0,
-        project={'default_workspace_id':workspace_id},
-        source_workspace={'is_primary':True,'workspace_id':workspace_id,'root_path':str(work.resolve())},
-        worktree_path=str(work.resolve()),
-        body='release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n',
-        execution_target={'commit_oid':policy}, status={},
-        summary={'id':task_id,'short_id':'PUB-99','project_id':helper.PROJECT_ID,'workflow_id':helper.WORKFLOW_ID},
-        workflow={'workflow_id':helper.WORKFLOW_ID,'version':helper.WORKFLOW_REVISION,'name':'Puber Release'})
-    native_task_path = base / 'native-task.json'
-    native_graph_path = base / 'native-graph.json'
-    native_graph_path.write_text(json.dumps({
-        'workflow_id': helper.WORKFLOW_ID,
-        'graph': runtime_graph,
-    }), encoding='utf-8')
-    original_run = helper.run
-    executions = []
-    def github_command(_root, args, **kwargs):
-        assert args[0] == 'api'
-        endpoint = args[1]
-        if endpoint == 'repos/rovkinmax/Puber': value = dict(methods)
-        elif endpoint.endswith('/rules/branches/master'): value = list(rules)
-        elif endpoint.endswith('/protection'): return subprocess.CompletedProcess(args, 1, '', '404')
-        elif endpoint.endswith('/pulls/7'):
-            value = {'html_url':actual_pr['url'],'state':'closed','merged':True,'merged_at':actual_pr['mergedAt'],
-                'head':{'ref':actual_pr['headRefName'],'sha':actual_pr['headRefOid'],'repo':{'full_name':'rovkinmax/Puber'}},
-                'base':{'ref':'master','sha':actual_pr['baseRefOid'],'repo':{'full_name':'rovkinmax/Puber'}},
-                'merge_commit_sha':actual_pr['mergeCommit']['oid']}
-        else: raise AssertionError(endpoint)
-        return subprocess.CompletedProcess(args, 0, json.dumps(value), '')
-
-    def shared_process(command, *, input_text, **kwargs):
-        path = Path(command[0]); payload = json.loads(input_text)
-        assert set(payload) <= set(adapter.SHARED_INPUTS) | {'_kent', 'commentary'}
-        executions.append(path.name)
-        if path.name == 'workflow-prepare-github-ci':
-            try:
-                result = ci_contract.prepare_ci_payload(payload, gh_bin='/fixture/gh')
-            except ci_contract.CiContractError:
-                result = ci_contract.preparation_failure(payload)
-            return subprocess.CompletedProcess(command, 0, json.dumps(result), '')
-        shared = load(path, 'actual_shared_' + path.name.replace('-', '_'))
-        original_sibling = shared._sibling
-        def fixture_sibling(name):
-            module = original_sibling(name)
-            if name == "workflow-checkpoint":
-                def qualified_kit_runtime(project_root=None, source_binding=None):
-                    return fixture._test_checkpoint.qualified_kit_runtime(
-                        project_root=project_root or work,
-                        source_binding=source_binding,
-                    )
-                def kit_module(name, project_root=None, qualified=None):
-                    return fixture._test_checkpoint.kit_module(
-                        name,
-                        project_root=project_root or work,
-                        qualified=qualified,
-                    )
-                def delivery_module(project_root=None, qualified=None):
-                    return fixture._test_checkpoint.delivery_module(
-                        project_root=project_root or work,
-                        qualified=qualified,
-                    )
-                module.qualified_kit_runtime = qualified_kit_runtime
-                module.kit_module = kit_module
-                module.delivery_module = delivery_module
-            return module
-        def gh(_bin, _workspace, args, **kw):
-            if 'input_bytes' in kw:
-                request = json.loads(kw['input_bytes'])
-                assert request['operation'] == 'archive_ci_report'
-                artifact = ci_contract.archive_ci_report(work, 'PUB-99', json.loads(request['ci_report']))
-                return subprocess.CompletedProcess(args, 0, json.dumps({'ci_report_artifact':artifact}).encode(), b'')
-            raise AssertionError(args)
-        output = io.BytesIO()
-        text_output = io.TextIOWrapper(output, encoding='utf-8', write_through=True)
-        class FixtureObserver:
-            def __init__(self, *_args, **_kwargs):
-                pass
-
-            def observe_pr(self, _url):
-                return {
-                    'pr': {
-                        **actual_pr,
-                        'mergeable': 'MERGEABLE',
-                        'mergeStateStatus': 'CLEAN',
-                        'reviewDecision': 'APPROVED',
-                        'statusCheckRollup': [],
-                    },
-                    'checks': [{
-                        'workflow_name': row['workflow'],
-                        'check_name': row['name'],
-                        'event': 'pull_request',
-                        'bucket': row['bucket'],
-                        'state': row['state'],
-                        'link': row['link'],
-                    } for row in checks],
-                    'feedback_items': [],
-                }
-
-        def archive_read_json(_tool, _workspace, _args, **kwargs):
-            request = json.loads(kwargs['input_bytes'])
-            assert request['operation'] == 'archive_script_ci_report'
-            try:
-                artifact = ci_contract.archive_script_ci_report(
-                    request,
-                    evidence_command='.kent/scripts/workflow-evidence-ledger',
+        assert [item["key"] for item in edge("release_intent_passed")["parameters"]] == [
+            "workspace_path", "operation_id", "task_short_id", "release_type",
+            "release_version", "release_branch",
+        ]
+        for repair_key, report_key in (
+            ("compliance_fix", "compliance_report"),
+            ("ci_fix", "ci_report"),
+            ("pr_fix", "blocker_reason"),
+        ):
+            repair = edge(repair_key)
+            assert repair["target_node_id"] == by_key["prepare"]["id"]
+            expected_repair = revisioned_carrier + (report_key,)
+            if repair_key in {"ci_fix", "pr_fix"}:
+                expected_repair = (
+                    revisioned_carrier
+                    + ("pr_url", "branch_name", "merge_strategy", "pr_head_oid", "pr_base_oid")
+                    + ("ci_contract", "ci_report", "pr_feedback_cursor")
+                    + (() if repair_key == "ci_fix" else ("blocker_reason",))
                 )
-            except Exception as error:
-                cause = error
-                while cause is not None:
-                    print(
-                        "archive fixture diagnostic:",
-                        type(cause).__name__,
-                        str(cause),
-                        file=sys.stderr,
-                    )
-                    cause = cause.__cause__
-                raise
-            return {'ci_report_artifact': artifact}
-
-        observation = SimpleNamespace(
-            parse_pr_url=lambda _url: ('rovkinmax/Puber', 7),
-            GitHubObserver=FixtureObserver,
-            read_json=archive_read_json,
+            assert [item["key"] for item in repair["parameters"]] == list(expected_repair)
+            assert "version_bump_commit" not in repair["prompt_template"]
+            assert "prepare_profile_generation" in repair["prompt_template"]
+        assert not any(
+            item["key"] in {"prepare_compliance", "prepare_ship_pr", "prepare_publish"}
+            for item in source["edges"]
         )
-        with contextlib.ExitStack() as stack:
-            stack.enter_context(
-                patch.object(shared, "_sibling", side_effect=fixture_sibling)
-            )
-            stack.enter_context(patch.object(shared, 'github_observation', return_value=observation))
-            stack.enter_context(patch.object(sys, 'stdin', io.StringIO(input_text)))
-            stack.enter_context(contextlib.redirect_stdout(text_output))
-            stack.enter_context(patch.object(ci_contract.Path, 'cwd', return_value=work))
-            code = shared.main()
-        text_output.flush()
-        return subprocess.CompletedProcess(command, code, output.getvalue().decode('utf-8'), '')
-
-    def invoke(operation, incoming, values, *, native_commentary=None):
-        invoke_index[0] += 1
-        os.environ['KENT_SESSION_ID'] = fixture_session
-        os.environ['KENT_STEP_ID'] = str(uuid.uuid5(
-            uuid.NAMESPACE_URL,
-            f"puber-graph-step:{work.resolve()}:{invoke_index[0]}",
-        ))
-        node = by_key[operation]['id']
-        task.update(current_nodes=[{'node_id':node}],current_scripts=[{'path':str(work.resolve() / '.kent/scripts/workflow-puber-release-ci'),'current_node':{'node_id':node}}],status={'node_ids':[node]})
-        native_task_path.write_text(json.dumps(task), encoding='utf-8')
-        fields = {
-            field['key']: values[field['key']]
-            for field in runtime_edge(incoming)['parameters']
-            if field['key'] != 'entry_transition'
-        }
-        if native_commentary is None:
-            native_commentary = (
-                ''
-                if incoming == 'ship_pr_ci_watch'
-                else values.get('commentary', 'Rendered native commentary')
-            )
-        payload = {
-            **fields,
-            'entry_transition':incoming,
-            'commentary':native_commentary,
-            '_kent':{'task_id':task_id,'node_id':node},
-        }
-        output = io.BytesIO()
-        text_output = io.TextIOWrapper(output, encoding='utf-8', write_through=True)
-        with patch.object(sys,'stdin',io.BytesIO(helper.canonical_bytes(payload))) as stream, \
-             contextlib.redirect_stdout(text_output), \
-             patch.object(Path, 'cwd', return_value=work):
-            # The real helper expects stdin.buffer; use a text wrapper just as a Script process.
-            with patch.object(sys,'stdin',io.TextIOWrapper(stream,encoding='utf-8')):
-                code = adapter.main()
-        text_output.flush()
-        output_text = output.getvalue().decode('utf-8')
-        assert code == 0, output_text
-        result = json.loads(output_text)
-        assert set(result) - {'transition','commentary'} == {field['key'] for field in runtime_edge(result['transition'])['parameters']}
-        assert task['execution_target']['commit_oid'] == policy
-        return result
-
-    invoke_index = [0]
-    fixture_session = str(uuid.uuid5(
-        uuid.NAMESPACE_URL,
-        f"puber-graph-session:{work.resolve()}",
-    ))
-    seed_ledger = subprocess.run(
-        [
-            str(work / '.kent/scripts/workflow-evidence-ledger'),
-            'append',
-            '--task',
-            'PUB-99',
-            '--workspace',
-            str(work),
-        ],
-        input=json.dumps({
-            'node_key': 'ci_prepare',
-            'evidence_type': 'workflow_setup',
-            'summary': 'Initial release-workflow evidence before CI observation.',
-            'artifacts': [],
-            'checks': [],
-            'decisions': [],
-            'context': {
-                'manifest_path': '.kent/context/delivery.md',
-                'files_read': [],
-                'model_calls': 0,
-                'compaction_count': 0,
-            },
-        }),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        cwd=work,
-        env={
-            **os.environ,
-            'KENT_SESSION_ID': fixture_session,
-            'KENT_STEP_ID': str(uuid.uuid5(
-                uuid.NAMESPACE_URL,
-                f"puber-graph-seed-step:{work.resolve()}",
-            )),
-        },
-        check=False,
-    )
-    assert seed_ledger.returncode == 0, seed_ledger.stderr or seed_ledger.stdout
-    test_home = base / 'home'
-    test_cli_bin = test_home / '.kent' / 'bin'
-    test_cli_bin.mkdir(parents=True)
-    (test_cli_bin / 'kent-prepare-github-ci').symlink_to(
-        KIT / 'scripts' / 'prepare-github-ci'
-    )
-    test_bin = test_home / 'bin'
-    test_bin.mkdir(parents=True)
-    fake_kent = test_bin / 'kent'
-    fake_kent.write_text(
-        "#!/usr/bin/env python3\n"
-        "import json, os, sys\n"
-        "args = sys.argv[1:]\n"
-        "if args[:1] == ['project']:\n"
-        " print(os.environ['PUBER_FAKE_PROJECT_ID']); sys.exit(0)\n"
-        "if args[:2] == ['task', 'show']:\n"
-        " print(open(os.environ['PUBER_D13_NATIVE_STATE'], encoding='utf-8').read()); sys.exit(0)\n"
-        "if args[:3] == ['workflow', 'graph', 'inspect']:\n"
-        " print(open(os.environ['PUBER_D13_NATIVE_GRAPH'], encoding='utf-8').read()); sys.exit(0)\n"
-        "sys.exit(2)\n",
-        encoding='utf-8',
-    )
-    fake_kent.chmod(0o755)
-    test_env = {f'KENT_{kind}_WATCH_{key}':value for kind in ('CI','PR') for key,value in (
-        ('TEST_MODE','1'),('MAX_ERRORS','1'),('MAX_POLLS','1'),('INTERVAL_SECONDS','0'))}
-    test_env['HOME'] = str(test_home)
-    test_env['PATH'] = str(test_bin) + os.pathsep + os.environ.get('PATH', '')
-    test_env['PUBER_FAKE_PROJECT_ID'] = helper.PROJECT_ID
-    test_env['PUBER_D13_NATIVE_STATE'] = str(native_task_path)
-    test_env['PUBER_D13_NATIVE_GRAPH'] = str(native_graph_path)
-    class FixtureObserver:
-        def read_pr(self, _url):
-            return {
-                **actual_pr,
-                'mergeable': 'MERGEABLE',
-                'mergeStateStatus': 'CLEAN',
-                'reviewDecision': 'APPROVED',
-                'statusCheckRollup': [],
-            }
-    with patch.dict(os.environ,test_env), patch.object(helper,'task_show',return_value=task), \
-         patch.object(helper,'gh',side_effect=github_command), patch.object(helper,'run',side_effect=shared_process), \
-         patch.object(ci_contract,'read_pull_request',side_effect=lambda *a,**k:dict(actual_pr)), \
-         patch.object(helper,'_github_observer',return_value=FixtureObserver()):
-        # Do not intercept local Git commands; helper.run owns both Git and Script execution.
-        def effects(command, **kwargs):
-            return shared_process(command,**kwargs) if Path(command[0]).name in adapter.SHARED_PATHS.values() else original_run(command,**kwargs)
-        helper.run.side_effect = effects
-        initial = invoke(
-            'ci_prepare',
-            'ship_pr_ci_watch',
-            carrier,
-            native_commentary='Rendered native commentary',
+        builder = __import__("runpy").run_path(str(ROOT/".kent/workflows/builders/puber_release.py"))
+        initial_producer_fields = (
+            "workspace_path",
+            "operation_id",
+            "task_short_id",
+            "release_type",
+            "release_version",
+            "release_tag",
+            "release_branch",
+            "release_base_oid",
+            "candidate_oid",
+            "release_head_oid",
+            "profile_report",
+            "profile_report_digest",
+            "release_preparation_report",
+            "release_preparation_report_digest",
+            "verification_summary",
+            "pr_url",
+            "branch_name",
+            "merge_strategy",
+            "pr_head_oid",
+            "pr_base_oid",
         )
-        assert initial['transition'] == 'ci_prepare_ready_initial', initial
-        assert initial.get('commentary') != 'Rendered native commentary'
-        admitted = helper.validate_task(work.resolve(), task_id, 'ci_prepare', task)
-        assert admitted['commit'] == policy and admitted['controller_commit'] == head
-        assert admitted['task']['execution_target']['commit_oid'] == policy
-        task_without_tag = {**task, 'body': task['body'].replace('release_tag: v99.0.0\n', '')}
-        assert helper.validate_task(work.resolve(), task_id, 'ci_prepare', task_without_tag)['controller_commit'] == head
-        attested = helper.attest(work.resolve(), admitted, 'ci_prepare', 'ship_pr_ci_watch')
-        assert attested['selected'].project_commit == head
-        assert attested['context'].project_commit == head and admitted['commit'] != head
-        checkpoint_path = work / '.kent/runtime/PUB-99/release-profile-checkpoint.json'
-        saved = checkpoint_path.read_bytes()
-        for label, altered in (
-            ('foreign lock', {**checkpoint, 'release_base_oid': 'f' * 40}),
-            ('foreign head', {**checkpoint, 'release_head_oid': policy}),
-            ('missing preparation', {**checkpoint, 'release_preparation_report': '', 'release_preparation_report_digest': ''}),
-        ):
-            checkpoint_path.write_bytes(helper.canonical_bytes(altered) + b'\n')
-            try:
-                helper.validate_task(work.resolve(), task_id, 'ci_prepare', task)
-            except helper.ContractError:
-                pass
+        initial_producer_input = {
+            key: f"fixture-{key}" for key in initial_producer_fields
+        }
+        assert initial_producer_fields == tuple(builder["RELEASE_CI_INITIAL"])
+        initial_edge_fields = tuple(
+            item["key"] for item in edge("ship_pr_ci_watch")["parameters"]
+        )
+        missing_initial_inputs = sorted(
+            set(initial_edge_fields) - set(initial_producer_input)
+        )
+        assert not missing_initial_inputs, (
+            "ship_pr_ci_watch requires values before ci_prepare produces them: "
+            + ", ".join(missing_initial_inputs)
+        )
+        assert initial_edge_fields == initial_producer_fields, (
+            "the first CI edge must carry the flat release proof and observed PR "
+            "identity only"
+        )
+        assert not {"ci_contract", "ci_report", "pr_feedback_cursor"} & set(
+            initial_producer_input
+        ), "the first CI producer input must not invent CI packets"
+        for entity_kind in ("workflow", "nodes", "transition_groups", "edges"):
+            invalid_id_graph = copy.deepcopy(source)
+            entity = invalid_id_graph[entity_kind] if entity_kind == "workflow" else invalid_id_graph[entity_kind][0]
+            entity["id"] = "0b0ccf3b-8ad1-5e3c-a982-b2b836432a5e"
+            with _fixture_sandbox.temporary_directory() as directory:
+                path = Path(directory) / "invalid-id.json"
+                path.write_text(json.dumps(invalid_id_graph))
+                assert "graph entity IDs must be canonical UUIDv4" in builder["check_graph"](path)
+        assert edge("release_intent_passed")["context_mode"] == "new_session"
+        assert edge("release_intent_passed")["context_source"] == {"kind": "immediate_source"}
+        for defect in ("description", "continuation"):
+            invalid_graph = copy.deepcopy(source)
+            selected = next(item for item in invalid_graph["edges"] if item["key"] == ("ci_fix" if defect == "description" else "release_intent_passed"))
+            if defect == "description":
+                next(item for item in selected["parameters"] if item["key"] == "operation_id")["description"] = "Conflicting definition."
+                expected_error = "source node provision descriptions must agree"
             else:
-                raise AssertionError('K/H admission accepted ' + label)
-            checkpoint_path.write_bytes(saved)
-        assert task['execution_target']['commit_oid'] == policy
-
-        assert 'ci_report' not in initial and initial['verification_summary'] == carrier['verification_summary']
-        passed = invoke('ci_watch','ci_prepare_ready_initial',initial)
-        assert passed['transition'] == 'ci_watch_passed', passed
-        assert 'KENT_PACKET_SOURCE_V1 ' in passed['commentary']
-        report = runtime.validate_dynamic_ci_report(json.loads(passed['ci_report']))
-        assert report['attempts'][-1]['head_oid'] == head
-        missing_report_context = {
-            'schema': 'workflow-delivery-context-v2',
-            'phase': 'post_pr',
-            'pr_url': initial['pr_url'],
-            'branch_name': initial['branch_name'],
-            'pr_base_branch': initial['pr_base_branch'],
-            'merge_strategy': initial['merge_strategy'],
-            'ci_contract': initial['ci_contract'],
-            'pr_feedback_cursor': initial['pr_feedback_cursor'],
-        }
-        missing_report_text = helper.canonical_json(missing_report_context)
-        unwrapped_missing_report = adapter._unwrap_shared_delivery_context({
-            'delivery_context': missing_report_text,
-            'ci_contract': initial['ci_contract'],
-        })
-        assert 'ci_report' not in unwrapped_missing_report
-        try:
-            adapter._unwrap_shared_delivery_context({
-                'delivery_context': missing_report_text,
-                'ci_contract': 'conflicting CI contract',
-            })
-        except helper.ContractError:
-            pass
-        else:
-            raise AssertionError(
-                'shared CI delivery context accepted conflicting flat bytes'
-            )
-        retry = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
-        assert retry['transition'] == 'ci_prepare_ready_retry' and retry['ci_report'] == passed['ci_report'], retry
-        assert 'KENT_PACKET_SOURCE_V1 ' in retry['commentary']
-        for label, altered in (
-            ('failed',[{**row,'bucket':'fail','state':'FAILURE'} if row['name']=='Build' else row for row in checks]),
-            ('missing',[row for row in checks if row['name']!='Build']),
-            ('skipped',[{**row,'bucket':'skipping','state':'SKIPPED'} if row['name']=='Build' else row for row in checks]),
+                selected["context_mode"] = "compact_and_continue_session"
+                expected_error = "release intent Script must start a new prepare Agent"
+            with _fixture_sandbox.temporary_directory() as directory:
+                path = Path(directory) / "invalid-provision.json"
+                path.write_text(json.dumps(invalid_graph))
+                assert expected_error in builder["check_graph"](path)
+        changed_entry = edge("ci_watch_state_changed")
+        changed_prompt = changed_entry.get("prompt_template", "")
+        assert changed_prompt.strip(), "ci_watch_state_changed requires an Agent handoff prompt"
+        assert changed_entry["target_node_id"] == by_key["waiting_pr"]["id"]
+        changed_fields = {item["key"] for item in changed_entry["parameters"]}
+        assert len(changed_fields) == 24
+        assert set(re.findall(r"\{\{\.Params\.([A-Za-z_][A-Za-z0-9_]*)\}\}", changed_prompt)) == changed_fields
+        for field in changed_fields:
+            assert f"{field}: {{{{.Params.{field}}}}}" in changed_prompt
+        for instruction in (
+            "read-only PR/CI reconciliation",
+            "not successful CI or release acceptance",
+            "source_changed",
+            "waiting_pr_ci_recheck",
+            "ci_prepare",
+            "historical opaque inputs",
+            "never successful CI evidence for the newly observed head/base",
+            "Preserve merge/tag/publication approval gates",
         ):
-            original = checks[:]; checks[:] = altered
-            observed = invoke('ci_watch','ci_prepare_ready_initial',initial)
-            expected_transition = 'ci_watch_failed' if label == 'failed' else 'ci_watch_passed'
-            assert observed['transition'] == expected_transition, (label,observed)
-            runtime.validate_dynamic_ci_report(json.loads(observed['ci_report']))
-            checks[:] = original
-        checks.append(dict(workflow='Other',name='Extra',bucket='pass',state='SUCCESS',link='https://github.com/rovkinmax/Puber/actions/runs/2'))
-        extra = invoke('ci_watch','ci_prepare_ready_initial',initial)
-        assert extra['transition'] == 'ci_watch_passed', extra
-        assert json.loads(extra['ci_report'])['attempts'][-1]['check_count'] == 4
-        checks.pop()
-        waiting = invoke('merge_watch','waiting_pr_merge_watch',passed)
-        assert waiting['transition'] in {'merge_watch_state_changed','merge_watch_still_waiting'}, waiting
-        if waiting['transition'] == 'merge_watch_state_changed':
-            assert waiting['pr_feedback_cursor'] != 'uninitialized'
-            waiting = invoke('merge_watch','waiting_pr_merge_watch',waiting)
-        assert waiting['transition'] == 'merge_watch_still_waiting', waiting
-        # P advances without an effective required-policy change: retain history.
-        advanced = fixture.target_with_changes(work, policy, {'docs/ci-policy-fixture.txt':b'new mainline\n'})
-        actual_pr['baseRefOid'] = advanced
-        changed = invoke('ci_watch','ci_prepare_ready_retry',retry)
-        assert changed['transition'] == 'ci_watch_state_changed', changed
-        reprepared = invoke('ci_prepare','waiting_pr_ci_recheck',changed)
-        assert reprepared['transition'] == 'ci_prepare_ready_initial', reprepared
-        assert json.loads(reprepared['ci_contract'])['base_oid'] == advanced
-        assert reprepared.get('ci_report', '') == ''
-        reprepared = invoke('ci_watch','ci_prepare_ready_initial',reprepared)
-        assert reprepared['transition'] == 'ci_watch_passed', reprepared
-        # A changed H cannot borrow the old preparation checkpoint or go green.
-        actual_pr['headRefOid'] = advanced
-        bad_head = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
-        assert bad_head['transition'] == 'ci_prepare_failed', bad_head
-        assert {'workspace_path', 'task_short_id', 'ci_preparation_diagnostic'} <= set(bad_head)
-        assert 'ci_report' not in bad_head and 'ci_contract' not in bad_head
-        ci_contract.validate_ci_preparation_diagnostic(
-            bad_head['ci_preparation_diagnostic']
-        )
-        actual_pr['headRefOid'] = head
-        # Production requires new preparation for H changes. Independently execute the
-        # actual shared new-H cycle and verify its omitted report is not synthesized.
-        newer_head = fixture.target_with_changes(work, head, {'docs/new-ci-head.txt':b'new H source\n'})
-        actual_pr['headRefOid'] = newer_head
-        with patch.object(Path, 'cwd', return_value=work):
-            fresh_cycle = ci_contract.prepare_ci_payload(reprepared, gh_bin='/fixture/gh')
-        assert fresh_cycle['transition'] == 'ci_prepare_ready_initial' and 'ci_report' not in fresh_cycle
-        assert json.loads(fresh_cycle['ci_contract'])['head_oid'] == newer_head
-        actual_pr['headRefOid'] = head
-        methods['allow_squash_merge'] = True
-        ambiguous = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
-        assert ambiguous['transition'] == 'ci_prepare_failed', ambiguous
-        assert 'ci_report' not in ambiguous and 'ci_contract' not in ambiguous
-        ci_contract.validate_ci_preparation_diagnostic(
-            ambiguous['ci_preparation_diagnostic']
-        )
-        methods['allow_squash_merge'] = False
-        # A genuinely merged PR has actual base B distinct from prior policy P.
-        target = fixture.rebased_target(work, policy, head)
-        actual_pr.update(state='MERGED',mergedAt='2026-09-08T12:00:00Z',mergeCommit={'oid':target},baseRefOid=policy)
-        recovered = invoke('ci_prepare','waiting_pr_ci_recheck',reprepared)
-        assert recovered['transition'] == 'ci_prepare_already_merged', recovered
-        published = invoke('merge_watch','ci_prepare_already_merged',recovered)
-        assert published['transition'] == 'merge_watch_pr_merged', published
-        assert published['pr_base_oid'] == policy != advanced
-        assert published['entry_transition'] == 'merge_watch_pr_merged'
-        assert all(value in published['commentary'] for value in ('99.0.0','v99.0.0',target))
-        assert 'Rendered native commentary' not in published['commentary']
-        files = list((work/'.kent/runtime/PUB-99').glob('ci-report-*.json'))
-        assert files and all(runtime.validate_dynamic_ci_report(json.loads(path.read_bytes())) for path in files)
-        assert {'workflow-prepare-github-ci','workflow-wait-github-ci','workflow-wait-github-pr'} <= set(executions)
-print('puber-ci-real-producer-watch-pr-carrier: passed')
+            assert instruction in changed_prompt, instruction
+        print("ci-state-changed-agent-handoff: passed (24 exact Params bindings)")
 
-assert by_key["cleanup"]["kind"] == "agent" and by_key["cleanup"]["subagent_role"] == "delivery-operator"
-assert "script_path" not in by_key["cleanup"]
-for key in ("release_release_published", "release_cancel_cleanup", "merge_watch_close_without_merge", "task_janitor_blocked"):
-    target = edge(key)
-    assert target["context_mode"] == ("continue_session" if key == "task_janitor_blocked" else "new_session")
-    assert target["context_source"] == {"kind": "previous_target" if key == "task_janitor_blocked" else "immediate_source"}
-    assert "KENT_SESSION_ID" in target["prompt_template"] and "observable outcome" in target["prompt_template"]
-print("cleanup-agent-native-context: passed")
+        # Check every Agent entry, not merely the builder's selected CI prompt mapping.
+        agent_ids = {node["id"] for node in source["nodes"] if node["kind"] == "agent"}
+        for agent_entry in source["edges"]:
+            if agent_entry["target_node_id"] not in agent_ids:
+                continue
+            assert isinstance(agent_entry.get("prompt_template"), str) and agent_entry["prompt_template"].strip()
+            for empty_prompt in (None, "", " \n\t"):
+                invalid_graph = copy.deepcopy(source)
+                selected = next(item for item in invalid_graph["edges"] if item["key"] == agent_entry["key"])
+                if empty_prompt is None:
+                    selected.pop("prompt_template")
+                else:
+                    selected["prompt_template"] = empty_prompt
+                with _fixture_sandbox.temporary_directory() as directory:
+                    path = Path(directory) / "empty-agent-entry-prompt.json"
+                    path.write_text(json.dumps(invalid_graph))
+                    assert f"Agent entry requires a nonempty prompt: {agent_entry['key']}" in builder["check_graph"](path)
+        print("all-agent-entry-nonempty-prompts: passed")
+
+        for entry_key, prompt in builder["CI_AGENT_ENTRY_PROMPTS"].items():
+            assert edge(entry_key)["prompt_template"] == prompt
+            invalid_graph = copy.deepcopy(source)
+            next(item for item in invalid_graph["edges"] if item["key"] == entry_key).pop("prompt_template")
+            with _fixture_sandbox.temporary_directory() as directory:
+                path = Path(directory) / "missing-ci-agent-prompt.json"
+                path.write_text(json.dumps(invalid_graph))
+                assert "CI Agent entry prompt must match the approved read-only handoff" in builder["check_graph"](path)
+        def manifest_errors(value):
+            with _fixture_sandbox.temporary_directory() as d:
+                path = Path(d) / "manifest.json"
+                path.write_text(json.dumps(value))
+                check_manifest = builder["check_manifest"]
+                original = check_manifest.__globals__["MANIFEST"]
+                check_manifest.__globals__["MANIFEST"] = path
+                try:
+                    return check_manifest()
+                finally:
+                    check_manifest.__globals__["MANIFEST"] = original
+
+        manifest = json.loads(MANIFEST.read_text())
+        bad_manifest = copy.deepcopy(manifest)
+        bad_manifest["external_roots"][0], bad_manifest["external_roots"][1] = (
+            bad_manifest["external_roots"][1],
+            bad_manifest["external_roots"][0],
+        )
+        assert "manifest external_roots must be sorted and unique by kind and key" in manifest_errors(bad_manifest)
+        bad_manifest = copy.deepcopy(manifest)
+        bad_manifest["external_roots"].insert(1, copy.deepcopy(bad_manifest["external_roots"][0]))
+        assert "manifest external_roots must be sorted and unique by kind and key" in manifest_errors(bad_manifest)
+        bad_manifest = copy.deepcopy(manifest)
+        bad_manifest["additional_paths"] = sorted(
+            bad_manifest["additional_paths"] + [".kent/project-contract.md"]
+        )
+        assert "manifest additional_paths may not repeat a derived path" in manifest_errors(
+            bad_manifest
+        )
+        bad_manifest = copy.deepcopy(manifest)
+        bad_manifest["additional_paths"] = sorted(
+            bad_manifest["additional_paths"] + ["app/debug.jks"]
+        )
+        assert "manifest additional_path must be valid UTF-8: app/debug.jks" in manifest_errors(
+            bad_manifest
+        )
+        assert source["derived_wiring"] == builder["expected_derived_wiring"](source)
+        assert [item["edge_id"] for item in source["derived_wiring"]["edges"]] == [
+            item["id"] for item in source["edges"]
+        ]
+        assert [item["transition_group_id"] for item in source["derived_wiring"]["transition_groups"]] == [
+            item["id"] for item in source["transition_groups"]
+        ]
+        assert [item["node_id"] for item in source["derived_wiring"]["nodes"]] == [
+            item["id"] for item in source["nodes"]
+        ]
+        prepare_wiring = next(
+            item for item in source["derived_wiring"]["edges"]
+            if item["edge_id"] == edge("prepare_profile_generation")["id"]
+        )
+        assert [item["name"] for item in prepare_wiring["required_provision_fields"]] == [
+            item["key"] for item in edge("prepare_profile_generation")["parameters"]
+        ]
+        assert "candidate_oid" in [item["name"] for item in prepare_wiring["required_provision_fields"]]
+        assert "version_bump_commit" not in [item["name"] for item in prepare_wiring["required_provision_fields"]]
+        graph_errors = builder["check_graph"](GRAPH)
+        assert graph_errors == [], "\n".join(graph_errors)
+        for key, (target, params) in builder["REQUIRED_EDGE_PARAMETERS"].items():
+            matches=[edge for edge in source["edges"] if edge["key"]==key]
+            assert len(matches)==1 and [item["key"] for item in matches[0].get("parameters",[])] == list(params)
+        bad=copy.deepcopy(source); bad["workflow"]["default"]=True
+        assert run(bad)
+        bad=copy.deepcopy(source); next(n for n in bad["nodes"] if n["key"]=="publish")["kind"]="agent"
+        assert run(bad)
+        bad=copy.deepcopy(source); publish=next(n["id"] for n in bad["nodes"] if n["key"]=="publish"); next(e for e in bad["edges"] if e.get("target_node_id")==publish)["requires_approval"]=False
+        assert run(bad)
+        bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="monitor_release")["parameters"].pop()
+        assert run(bad)
+        bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="publish_needs_user_action")["parameters"].append({"key":"stale"})
+        assert run(bad)
+        bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="release_release_published")["target_node_id"]=next(n["id"] for n in bad["nodes"] if n["key"]=="publish")
+        assert run(bad)
+        bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="release_intent_passed")["parameters"].pop()
+        assert run(bad)
+        bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="compliance_fix")["parameters"].pop(1)
+        assert run(bad)
+        bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="prepare_profile_generation")["target_node_id"]=by_key["finalize_release"]["id"]
+        assert run(bad)
+        bad=copy.deepcopy(source); next(e for e in bad["edges"] if e["key"]=="profile_generation_passed")["target_node_id"]=by_key["compliance"]["id"]
+        assert run(bad)
+        bad=copy.deepcopy(source); bad["derived_wiring"]["edges"].pop()
+        assert run(bad)
+        bad=copy.deepcopy(source); next(
+            item for item in bad["derived_wiring"]["edges"]
+            if item["edge_id"] == edge("prepare_profile_generation")["id"]
+        )["required_provision_fields"][0]["name"] = "version_bump_commit"
+        assert run(bad)
+        bad = copy.deepcopy(source)
+        next(e for e in bad["edges"] if e["key"] == "profile_generation_passed")["context_mode"] = "compact_and_continue_session"
+        assert run(bad)
+        print("puber-release-graph: passed")
+        if os.environ.get("PUBER_RELEASE_GRAPH_ONLY") == "1":
+            sys.exit(0)
+
+        bad = copy.deepcopy(source)
+        next(e for e in bad["edges"] if e["key"] == "profile_generation_passed")["prompt_template"] = "Finalize without signing proof"
+        assert run(bad)
+
+        # Real project adapter -> shared producer/watchers. Only GitHub/Kent and the
+        # subprocess execution boundary are fake; source reads, DTOs and ledger are real.
+        import contextlib
+        import importlib.util
+        import io
+        import runpy
+        from importlib.machinery import SourceFileLoader
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        def load(path, name):
+            spec = importlib.util.spec_from_loader(name, SourceFileLoader(name, str(path)))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+
+        fixture = load(ROOT / '.kent/scripts/tests/test-workflow-puber-release-publish', 'ci_release_fixture')
+        with fixture.fixture_context(mode="mock", sandbox=_fixture_sandbox, candidate_freeze=fixture.candidate_freeze_argument(sys.argv[1:])):
+            fixture.helper._kit_modules()
+            unqualified_helper = load(
+                ROOT / ".kent/scripts/workflow-puber-release-intent",
+                "release_intent_unqualified_graph_test",
+            )
+            try:
+                unqualified_helper._normalized_workflow(
+                    ROOT,
+                    ".github/workflows/release.yml",
+                )
+            except unqualified_helper.ContractError as error:
+                assert "native qualified Kit runtime is unavailable" in str(error)
+            else:
+                raise AssertionError("source-only workflow normalization accepted no runtime authority")
+
+            original_run_path = runpy.run_path
+            def qualified_test_run_path(path, *args, **kwargs):
+                if Path(path).resolve() == (
+                    ROOT / ".kent/scripts/workflow-puber-release-intent"
+                ).resolve():
+                    return fixture.helper.__dict__
+                return original_run_path(path, *args, **kwargs)
+
+            with patch.object(
+                builder["runpy"],
+                "run_path",
+                side_effect=qualified_test_run_path,
+            ):
+                assert builder["check_signing_contract"]() == []
+            from workflowkit import ci_contract, runtime
+
+            for key in ('ci_prepare', 'ci_watch', 'merge_watch'):
+                assert by_key[key]['script_path'] == '.kent/scripts/workflow-puber-release-ci'
+            assert len(edge('merge_watch_pr_merged')['parameters']) == 7
+            assert 'ci_report' not in [p['key'] for p in edge('ci_prepare_ready_initial')['parameters']]
+            for key in ('waiting_pr_merge_watch', 'merge_watch_still_waiting', 'merge_watch_state_changed'):
+                assert {'verification_summary', 'ci_report', 'pr_feedback_cursor', 'release_head_oid'} <= {p['key'] for p in edge(key)['parameters']}
+
+            with _fixture_sandbox.temporary_directory() as directory:
+                base = Path(directory)
+                work, policy, head, bare = fixture.materialize(
+                    base,
+                    base / 'origin.git',
+                    append_test_checkpoint=False,
+                )
+                adapter = load(work / '.kent/scripts/workflow-puber-release-ci', 'actual_ci_adapter')
+                adapter.helper._qualified_checkpoint_module = (
+                    lambda _root, *, required=(): fixture._test_checkpoint
+                )
+                helper = adapter.helper
+                runtime_graph = json.loads((work / helper.GRAPH_PATH).read_text())
+                def runtime_edge(key):
+                    matches = [item for item in runtime_graph["edges"] if item["key"] == key]
+                    assert len(matches) == 1, key
+                    return matches[0]
+                task_id = 'task-12345678-1234-4234-8234-123456789abc'
+                checkpoint = fixture.fixture_checkpoint(work, policy, head, task_id)
+                helper.write_profile_checkpoint(work, 'PUB-99', checkpoint)
+                preparation = json.loads(checkpoint['release_preparation_report'])
+                carrier = {key: preparation[key] for key in revisioned_carrier if key in preparation}
+                carrier.update({key: checkpoint[key] for key in ('profile_report','profile_report_digest','release_preparation_report','release_preparation_report_digest')})
+                carrier.update(workspace_path=str(work), task_short_id='PUB-99', verification_summary='Actual fixture packaging evidence',
+                    pr_url='https://github.com/rovkinmax/Puber/pull/7', branch_name='release/99.0.0', merge_strategy='rebase', pr_head_oid=head, pr_base_oid=policy, pr_base_branch='master')
+                assert not {"ci_contract", "ci_report", "pr_feedback_cursor"} & set(carrier)
+                actual_pr = dict(url=carrier['pr_url'], headRefOid=head, baseRefOid=policy, headRefName=carrier['branch_name'],
+                    baseRefName='master', state='OPEN', mergedAt=None, mergeCommit=None)
+                methods = dict(full_name='rovkinmax/Puber', default_branch='master', allow_merge_commit=True, allow_squash_merge=False, allow_rebase_merge=True)
+                rules = [{'type':'required_linear_history'}]
+                checks = [dict(workflow='PR Checks',name=name,bucket='pass',state='SUCCESS',link='https://github.com/rovkinmax/Puber/actions/runs/1') for name in ('Build','Detekt','Unit Tests')]
+                workspace_id = 'workspace-12345678-1234-4234-8234-123456789abc'
+                task = {key: [] for key in ('actions','current_nodes','current_scripts','label_ids','live_sessions')}
+                task.update(attention_count=0, retained_session_count=0,
+                    project={'default_workspace_id':workspace_id},
+                    source_workspace={'is_primary':True,'workspace_id':workspace_id,'root_path':str(work.resolve())},
+                    worktree_path=str(work.resolve()),
+                    body='release_type: minor\nrelease_version: 99.0.0\nrelease_tag: v99.0.0\nrelease_branch: release/99.0.0\n',
+                    execution_target={'commit_oid':policy}, status={},
+                    summary={'id':task_id,'short_id':'PUB-99','project_id':helper.PROJECT_ID,'workflow_id':helper.WORKFLOW_ID},
+                    workflow={'workflow_id':helper.WORKFLOW_ID,'version':helper.WORKFLOW_REVISION,'name':'Puber Release'})
+                native_task_path = base / 'native-task.json'
+                native_graph_path = base / 'native-graph.json'
+                native_graph_path.write_text(json.dumps({
+                    'workflow_id': helper.WORKFLOW_ID,
+                    'graph': runtime_graph,
+                }), encoding='utf-8')
+                original_run = helper.run
+                executions = []
+                def github_command(_root, args, **kwargs):
+                    assert args[0] == 'api'
+                    endpoint = args[1]
+                    if endpoint == 'repos/rovkinmax/Puber': value = dict(methods)
+                    elif endpoint.endswith('/rules/branches/master'): value = list(rules)
+                    elif endpoint.endswith('/protection'): return subprocess.CompletedProcess(args, 1, '', '404')
+                    elif endpoint.endswith('/pulls/7'):
+                        value = {'html_url':actual_pr['url'],'state':'closed','merged':True,'merged_at':actual_pr['mergedAt'],
+                            'head':{'ref':actual_pr['headRefName'],'sha':actual_pr['headRefOid'],'repo':{'full_name':'rovkinmax/Puber'}},
+                            'base':{'ref':'master','sha':actual_pr['baseRefOid'],'repo':{'full_name':'rovkinmax/Puber'}},
+                            'merge_commit_sha':actual_pr['mergeCommit']['oid']}
+                    else: raise AssertionError(endpoint)
+                    return subprocess.CompletedProcess(args, 0, json.dumps(value), '')
+
+                def shared_process(command, *, input_text, **kwargs):
+                    path = Path(command[0]); payload = json.loads(input_text)
+                    assert set(payload) <= set(adapter.SHARED_INPUTS) | {'_kent', 'commentary'}
+                    executions.append(path.name)
+                    if path.name == 'workflow-prepare-github-ci':
+                        try:
+                            result = ci_contract.prepare_ci_payload(payload, gh_bin='/fixture/gh')
+                        except ci_contract.CiContractError:
+                            result = ci_contract.preparation_failure(payload)
+                        return subprocess.CompletedProcess(command, 0, json.dumps(result), '')
+                    shared = load(path, 'actual_shared_' + path.name.replace('-', '_'))
+                    original_sibling = shared._sibling
+                    def fixture_sibling(name):
+                        module = original_sibling(name)
+                        if name == "workflow-checkpoint":
+                            def qualified_kit_runtime(project_root=None, source_binding=None):
+                                return fixture._test_checkpoint.qualified_kit_runtime(
+                                    project_root=project_root or work,
+                                    source_binding=source_binding,
+                                )
+                            def kit_module(name, project_root=None, qualified=None):
+                                return fixture._test_checkpoint.kit_module(
+                                    name,
+                                    project_root=project_root or work,
+                                    qualified=qualified,
+                                )
+                            def delivery_module(project_root=None, qualified=None):
+                                return fixture._test_checkpoint.delivery_module(
+                                    project_root=project_root or work,
+                                    qualified=qualified,
+                                )
+                            module.qualified_kit_runtime = qualified_kit_runtime
+                            module.kit_module = kit_module
+                            module.delivery_module = delivery_module
+                            def admitted_ci_command(project_root, native_context, *, operation):
+                                # This process is explicitly the ordinary mock
+                                # route test, not native/source admission proof.
+                                assert project_root == work.resolve()
+                                assert native_context == payload['_kent']
+                                assert operation == 'archive_script_ci_report_v2'
+                                return SimpleNamespace(
+                                    path=KIT / 'scripts/prepare-github-ci', arguments=(),
+                                )
+                            module.admitted_ci_command = admitted_ci_command
+                        return module
+                    def gh(_bin, _workspace, args, **kw):
+                        if 'input_bytes' in kw:
+                            request = json.loads(kw['input_bytes'])
+                            assert request['operation'] == 'archive_ci_report'
+                            artifact = ci_contract.archive_ci_report(work, 'PUB-99', json.loads(request['ci_report']))
+                            return subprocess.CompletedProcess(args, 0, json.dumps({'ci_report_artifact':artifact}).encode(), b'')
+                        raise AssertionError(args)
+                    output = io.BytesIO()
+                    text_output = io.TextIOWrapper(output, encoding='utf-8', write_through=True)
+                    class FixtureObserver:
+                        def __init__(self, *_args, **_kwargs):
+                            pass
+
+                        def observe_pr(self, _url):
+                            return {
+                                'pr': {
+                                    **actual_pr,
+                                    'mergeable': 'MERGEABLE',
+                                    'mergeStateStatus': 'CLEAN',
+                                    'reviewDecision': 'APPROVED',
+                                    'statusCheckRollup': [],
+                                },
+                                'checks': [{
+                                    'workflow_name': row['workflow'],
+                                    'check_name': row['name'],
+                                    'event': 'pull_request',
+                                    'bucket': row['bucket'],
+                                    'state': row['state'],
+                                    'link': row['link'],
+                                } for row in checks],
+                                'feedback_items': [],
+                            }
+
+                    def archive_read_json(_tool, _workspace, _args, **kwargs):
+                        request = json.loads(kwargs['input_bytes'])
+                        assert request['operation'] == 'archive_script_ci_report_v2'
+                        try:
+                            # Deliberate legacy compatibility producer in the
+                            # ordinary mock lane only. It does not manufacture
+                            # an admitted-v2 source proof; genuine prepared
+                            # watcher lanes separately exercise that API.
+                            artifact = ci_contract.archive_script_ci_report(
+                                {**request, 'operation': 'archive_script_ci_report'},
+                                evidence_command='.kent/scripts/workflow-evidence-ledger',
+                            )
+                        except Exception as error:
+                            cause = error
+                            while cause is not None:
+                                print(
+                                    "archive fixture diagnostic:",
+                                    type(cause).__name__,
+                                    str(cause),
+                                    file=sys.stderr,
+                                )
+                                cause = cause.__cause__
+                            raise
+                        return {'ci_report_artifact': artifact}
+
+                    observation = SimpleNamespace(
+                        parse_pr_url=lambda _url: ('rovkinmax/Puber', 7),
+                        GitHubObserver=FixtureObserver,
+                        read_json=archive_read_json,
+                    )
+                    with contextlib.ExitStack() as stack:
+                        stack.enter_context(
+                            patch.object(shared, "_sibling", side_effect=fixture_sibling)
+                        )
+                        stack.enter_context(patch.object(shared, 'github_observation', return_value=observation))
+                        stack.enter_context(patch.object(sys, 'stdin', io.StringIO(input_text)))
+                        stack.enter_context(contextlib.redirect_stdout(text_output))
+                        stack.enter_context(patch.object(ci_contract.Path, 'cwd', return_value=work))
+                        code = shared.main()
+                    text_output.flush()
+                    return subprocess.CompletedProcess(command, code, output.getvalue().decode('utf-8'), '')
+
+                def invoke(operation, incoming, values, *, native_commentary=None):
+                    invoke_index[0] += 1
+                    os.environ['KENT_SESSION_ID'] = fixture_session
+                    os.environ['KENT_STEP_ID'] = str(uuid.uuid5(
+                        uuid.NAMESPACE_URL,
+                        f"puber-graph-step:{work.resolve()}:{invoke_index[0]}",
+                    ))
+                    node = by_key[operation]['id']
+                    task.update(current_nodes=[{'node_id':node}],current_scripts=[{'path':str(work.resolve() / '.kent/scripts/workflow-puber-release-ci'),'current_node':{'node_id':node}}],status={'node_ids':[node]})
+                    native_task_path.write_text(json.dumps(task), encoding='utf-8')
+                    fields = {
+                        field['key']: values[field['key']]
+                        for field in runtime_edge(incoming)['parameters']
+                        if field['key'] != 'entry_transition'
+                    }
+                    if native_commentary is None:
+                        native_commentary = (
+                            ''
+                            if incoming == 'ship_pr_ci_watch'
+                            else values.get('commentary', 'Rendered native commentary')
+                        )
+                    payload = {
+                        **fields,
+                        'entry_transition':incoming,
+                        'commentary':native_commentary,
+                        '_kent':{'task_id':task_id,'node_id':node},
+                    }
+                    output = io.BytesIO()
+                    text_output = io.TextIOWrapper(output, encoding='utf-8', write_through=True)
+                    with patch.object(sys,'stdin',io.BytesIO(helper.canonical_bytes(payload))) as stream, \
+                         contextlib.redirect_stdout(text_output), \
+                         patch.object(Path, 'cwd', return_value=work):
+                        # The real helper expects stdin.buffer; use a text wrapper just as a Script process.
+                        with patch.object(sys,'stdin',io.TextIOWrapper(stream,encoding='utf-8')):
+                            code = adapter.main()
+                    text_output.flush()
+                    output_text = output.getvalue().decode('utf-8')
+                    assert code == 0, output_text
+                    result = json.loads(output_text)
+                    assert set(result) - {'transition','commentary'} == {field['key'] for field in runtime_edge(result['transition'])['parameters']}
+                    assert task['execution_target']['commit_oid'] == policy
+                    return result
+
+                invoke_index = [0]
+                fixture_session = str(uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"puber-graph-session:{work.resolve()}",
+                ))
+                seed_ledger = subprocess.run(
+                    [
+                        str(work / '.kent/scripts/workflow-evidence-ledger'),
+                        'append',
+                        '--task',
+                        'PUB-99',
+                        '--workspace',
+                        str(work),
+                    ],
+                    input=json.dumps({
+                        'node_key': 'ci_prepare',
+                        'evidence_type': 'workflow_setup',
+                        'summary': 'Initial release-workflow evidence before CI observation.',
+                        'artifacts': [],
+                        'checks': [],
+                        'decisions': [],
+                        'context': {
+                            'manifest_path': '.kent/context/delivery.md',
+                            'files_read': [],
+                            'model_calls': 0,
+                            'compaction_count': 0,
+                        },
+                    }),
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=work,
+                    env={
+                        **os.environ,
+                        'KENT_SESSION_ID': fixture_session,
+                        'KENT_STEP_ID': str(uuid.uuid5(
+                            uuid.NAMESPACE_URL,
+                            f"puber-graph-seed-step:{work.resolve()}",
+                        )),
+                    },
+                    check=False,
+                )
+                assert seed_ledger.returncode == 0, seed_ledger.stderr or seed_ledger.stdout
+                test_home = base / 'home'
+                test_cli_bin = test_home / '.kent' / 'bin'
+                test_cli_bin.mkdir(parents=True)
+                (test_cli_bin / 'kent-prepare-github-ci').symlink_to(
+                    KIT / 'scripts' / 'prepare-github-ci'
+                )
+                test_bin = test_home / 'bin'
+                test_bin.mkdir(parents=True)
+                fake_kent = test_bin / 'kent'
+                fake_kent.write_text(
+                    "#!/usr/bin/env python3\n"
+                    "import json, os, sys\n"
+                    "args = sys.argv[1:]\n"
+                    "if args[:1] == ['project']:\n"
+                    " print(os.environ['PUBER_FAKE_PROJECT_ID']); sys.exit(0)\n"
+                    "if args[:2] == ['task', 'show']:\n"
+                    " print(open(os.environ['PUBER_D13_NATIVE_STATE'], encoding='utf-8').read()); sys.exit(0)\n"
+                    "if args[:3] == ['workflow', 'graph', 'inspect']:\n"
+                    " print(open(os.environ['PUBER_D13_NATIVE_GRAPH'], encoding='utf-8').read()); sys.exit(0)\n"
+                    "sys.exit(2)\n",
+                    encoding='utf-8',
+                )
+                fake_kent.chmod(0o755)
+                test_env = {f'KENT_{kind}_WATCH_{key}':value for kind in ('CI','PR') for key,value in (
+                    ('TEST_MODE','1'),('MAX_ERRORS','1'),('MAX_POLLS','1'),('INTERVAL_SECONDS','0'))}
+                test_env['HOME'] = str(test_home)
+                test_env['PATH'] = str(test_bin) + os.pathsep + os.environ.get('PATH', '')
+                test_env['PUBER_FAKE_PROJECT_ID'] = helper.PROJECT_ID
+                test_env['PUBER_D13_NATIVE_STATE'] = str(native_task_path)
+                test_env['PUBER_D13_NATIVE_GRAPH'] = str(native_graph_path)
+                class FixtureObserver:
+                    def read_pr(self, _url):
+                        return {
+                            **actual_pr,
+                            'mergeable': 'MERGEABLE',
+                            'mergeStateStatus': 'CLEAN',
+                            'reviewDecision': 'APPROVED',
+                            'statusCheckRollup': [],
+                        }
+                with patch.dict(os.environ,test_env), patch.object(helper,'task_show',return_value=task), \
+                     patch.object(helper,'gh',side_effect=github_command), patch.object(helper,'run',side_effect=shared_process), \
+                     patch.object(ci_contract,'read_pull_request',side_effect=lambda *a,**k:dict(actual_pr)), \
+                     patch.object(helper,'_github_observer',return_value=FixtureObserver()):
+                    # Do not intercept local Git commands; helper.run owns both Git and Script execution.
+                    def effects(command, **kwargs):
+                        return shared_process(command,**kwargs) if Path(command[0]).name in adapter.SHARED_PATHS.values() else original_run(command,**kwargs)
+                    helper.run.side_effect = effects
+                    initial = invoke(
+                        'ci_prepare',
+                        'ship_pr_ci_watch',
+                        carrier,
+                        native_commentary='Rendered native commentary',
+                    )
+                    assert initial['transition'] == 'ci_prepare_ready_initial', initial
+                    assert initial.get('commentary') != 'Rendered native commentary'
+                    admitted = helper.validate_task(work.resolve(), task_id, 'ci_prepare', task)
+                    assert admitted['commit'] == policy and admitted['controller_commit'] == head
+                    assert admitted['task']['execution_target']['commit_oid'] == policy
+                    task_without_tag = {**task, 'body': task['body'].replace('release_tag: v99.0.0\n', '')}
+                    assert helper.validate_task(work.resolve(), task_id, 'ci_prepare', task_without_tag)['controller_commit'] == head
+                    attested = helper.attest(work.resolve(), admitted, 'ci_prepare', 'ship_pr_ci_watch')
+                    assert attested['selected'].project_commit == head
+                    assert attested['context'].project_commit == head and admitted['commit'] != head
+                    checkpoint_path = work / '.kent/runtime/PUB-99/release-profile-checkpoint.json'
+                    saved = checkpoint_path.read_bytes()
+                    for label, altered in (
+                        ('foreign lock', {**checkpoint, 'release_base_oid': 'f' * 40}),
+                        ('foreign head', {**checkpoint, 'release_head_oid': policy}),
+                        ('missing preparation', {**checkpoint, 'release_preparation_report': '', 'release_preparation_report_digest': ''}),
+                    ):
+                        checkpoint_path.write_bytes(helper.canonical_bytes(altered) + b'\n')
+                        try:
+                            helper.validate_task(work.resolve(), task_id, 'ci_prepare', task)
+                        except helper.ContractError:
+                            pass
+                        else:
+                            raise AssertionError('K/H admission accepted ' + label)
+                        checkpoint_path.write_bytes(saved)
+                    assert task['execution_target']['commit_oid'] == policy
+
+                    assert 'ci_report' not in initial and initial['verification_summary'] == carrier['verification_summary']
+                    passed = invoke('ci_watch','ci_prepare_ready_initial',initial)
+                    assert passed['transition'] == 'ci_watch_passed', passed
+                    assert 'KENT_PACKET_SOURCE_V1 ' in passed['commentary']
+                    report = runtime.validate_dynamic_ci_report(json.loads(passed['ci_report']))
+                    assert report['attempts'][-1]['head_oid'] == head
+                    missing_report_context = {
+                        'schema': 'workflow-delivery-context-v2',
+                        'phase': 'post_pr',
+                        'pr_url': initial['pr_url'],
+                        'branch_name': initial['branch_name'],
+                        'pr_base_branch': initial['pr_base_branch'],
+                        'merge_strategy': initial['merge_strategy'],
+                        'ci_contract': initial['ci_contract'],
+                        'pr_feedback_cursor': initial['pr_feedback_cursor'],
+                    }
+                    missing_report_text = helper.canonical_json(missing_report_context)
+                    unwrapped_missing_report = adapter._unwrap_shared_delivery_context({
+                        'delivery_context': missing_report_text,
+                        'ci_contract': initial['ci_contract'],
+                    })
+                    assert 'ci_report' not in unwrapped_missing_report
+                    try:
+                        adapter._unwrap_shared_delivery_context({
+                            'delivery_context': missing_report_text,
+                            'ci_contract': 'conflicting CI contract',
+                        })
+                    except helper.ContractError:
+                        pass
+                    else:
+                        raise AssertionError(
+                            'shared CI delivery context accepted conflicting flat bytes'
+                        )
+                    retry = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
+                    assert retry['transition'] == 'ci_prepare_ready_retry' and retry['ci_report'] == passed['ci_report'], retry
+                    assert 'KENT_PACKET_SOURCE_V1 ' in retry['commentary']
+                    for label, altered in (
+                        ('failed',[{**row,'bucket':'fail','state':'FAILURE'} if row['name']=='Build' else row for row in checks]),
+                        ('missing',[row for row in checks if row['name']!='Build']),
+                        ('skipped',[{**row,'bucket':'skipping','state':'SKIPPED'} if row['name']=='Build' else row for row in checks]),
+                    ):
+                        original = checks[:]; checks[:] = altered
+                        observed = invoke('ci_watch','ci_prepare_ready_initial',initial)
+                        expected_transition = 'ci_watch_failed' if label == 'failed' else 'ci_watch_passed'
+                        assert observed['transition'] == expected_transition, (label,observed)
+                        runtime.validate_dynamic_ci_report(json.loads(observed['ci_report']))
+                        checks[:] = original
+                    checks.append(dict(workflow='Other',name='Extra',bucket='pass',state='SUCCESS',link='https://github.com/rovkinmax/Puber/actions/runs/2'))
+                    extra = invoke('ci_watch','ci_prepare_ready_initial',initial)
+                    assert extra['transition'] == 'ci_watch_passed', extra
+                    assert json.loads(extra['ci_report'])['attempts'][-1]['check_count'] == 4
+                    checks.pop()
+                    waiting = invoke('merge_watch','waiting_pr_merge_watch',passed)
+                    assert waiting['transition'] in {'merge_watch_state_changed','merge_watch_still_waiting'}, waiting
+                    if waiting['transition'] == 'merge_watch_state_changed':
+                        assert waiting['pr_feedback_cursor'] != 'uninitialized'
+                        waiting = invoke('merge_watch','waiting_pr_merge_watch',waiting)
+                    assert waiting['transition'] == 'merge_watch_still_waiting', waiting
+                    # P advances without an effective required-policy change: retain history.
+                    advanced = fixture.target_with_changes(work, policy, {'docs/ci-policy-fixture.txt':b'new mainline\n'})
+                    actual_pr['baseRefOid'] = advanced
+                    changed = invoke('ci_watch','ci_prepare_ready_retry',retry)
+                    assert changed['transition'] == 'ci_watch_state_changed', changed
+                    reprepared = invoke('ci_prepare','waiting_pr_ci_recheck',changed)
+                    assert reprepared['transition'] == 'ci_prepare_ready_initial', reprepared
+                    assert json.loads(reprepared['ci_contract'])['base_oid'] == advanced
+                    assert reprepared.get('ci_report', '') == ''
+                    reprepared = invoke('ci_watch','ci_prepare_ready_initial',reprepared)
+                    assert reprepared['transition'] == 'ci_watch_passed', reprepared
+                    # A changed H cannot borrow the old preparation checkpoint or go green.
+                    actual_pr['headRefOid'] = advanced
+                    bad_head = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
+                    assert bad_head['transition'] == 'ci_prepare_failed', bad_head
+                    assert {'workspace_path', 'task_short_id', 'ci_preparation_diagnostic'} <= set(bad_head)
+                    assert 'ci_report' not in bad_head and 'ci_contract' not in bad_head
+                    ci_contract.validate_ci_preparation_diagnostic(
+                        bad_head['ci_preparation_diagnostic']
+                    )
+                    actual_pr['headRefOid'] = head
+                    # Production requires new preparation for H changes. Independently execute the
+                    # actual shared new-H cycle and verify its omitted report is not synthesized.
+                    newer_head = fixture.target_with_changes(work, head, {'docs/new-ci-head.txt':b'new H source\n'})
+                    actual_pr['headRefOid'] = newer_head
+                    with patch.object(Path, 'cwd', return_value=work):
+                        fresh_cycle = ci_contract.prepare_ci_payload(reprepared, gh_bin='/fixture/gh')
+                    assert fresh_cycle['transition'] == 'ci_prepare_ready_initial' and 'ci_report' not in fresh_cycle
+                    assert json.loads(fresh_cycle['ci_contract'])['head_oid'] == newer_head
+                    actual_pr['headRefOid'] = head
+                    methods['allow_squash_merge'] = True
+                    ambiguous = invoke('ci_prepare','waiting_pr_ci_recheck',passed)
+                    assert ambiguous['transition'] == 'ci_prepare_failed', ambiguous
+                    assert 'ci_report' not in ambiguous and 'ci_contract' not in ambiguous
+                    ci_contract.validate_ci_preparation_diagnostic(
+                        ambiguous['ci_preparation_diagnostic']
+                    )
+                    methods['allow_squash_merge'] = False
+                    # A genuinely merged PR has actual base B distinct from prior policy P.
+                    target = fixture.rebased_target(work, policy, head)
+                    actual_pr.update(state='MERGED',mergedAt='2026-09-08T12:00:00Z',mergeCommit={'oid':target},baseRefOid=policy)
+                    recovered = invoke('ci_prepare','waiting_pr_ci_recheck',reprepared)
+                    assert recovered['transition'] == 'ci_prepare_already_merged', recovered
+                    published = invoke('merge_watch','ci_prepare_already_merged',recovered)
+                    assert published['transition'] == 'merge_watch_pr_merged', published
+                    assert published['pr_base_oid'] == policy != advanced
+                    assert published['entry_transition'] == 'merge_watch_pr_merged'
+                    assert all(value in published['commentary'] for value in ('99.0.0','v99.0.0',target))
+                    assert 'Rendered native commentary' not in published['commentary']
+                    files = list((work/'.kent/runtime/PUB-99').glob('ci-report-*.json'))
+                    assert files and all(runtime.validate_dynamic_ci_report(json.loads(path.read_bytes())) for path in files)
+                    assert {'workflow-prepare-github-ci','workflow-wait-github-ci','workflow-wait-github-pr'} <= set(executions)
+            print('puber-ci-real-producer-watch-pr-carrier: passed')
+
+            assert by_key["cleanup"]["kind"] == "agent" and by_key["cleanup"]["subagent_role"] == "delivery-operator"
+            assert "script_path" not in by_key["cleanup"]
+            for key in ("release_release_published", "release_cancel_cleanup", "merge_watch_close_without_merge", "task_janitor_blocked"):
+                target = edge(key)
+                assert target["context_mode"] == ("continue_session" if key == "task_janitor_blocked" else "new_session")
+                assert target["context_source"] == {"kind": "previous_target" if key == "task_janitor_blocked" else "immediate_source"}
+                assert "KENT_SESSION_ID" in target["prompt_template"] and "observable outcome" in target["prompt_template"]
+            print("cleanup-agent-native-context: passed")

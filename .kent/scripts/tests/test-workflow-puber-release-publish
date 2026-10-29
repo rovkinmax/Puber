@@ -17,195 +17,105 @@ import tempfile
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
-_profile = tomllib.loads(
-    (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8")
-)
-_kit_binding = _profile.get("kit_runtime")
-if (
-    not isinstance(_kit_binding, dict)
-    or set(_kit_binding) != {"schema_version", "root", "commit", "publication_ref"}
-    or _kit_binding.get("schema_version") != 1
-    or _kit_binding.get("commit") != "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
-    or _kit_binding.get("publication_ref") != "refs/remotes/origin/main"
-):
-    raise SystemExit("publish tests require Puber's exact qualified Kit source binding")
-KIT = Path(_kit_binding["root"]).resolve(strict=True)
-if str(KIT) != _kit_binding["root"]:
-    raise SystemExit("Puber Kit binding root must be canonical")
-_kit_override = os.environ.get("PUBER_STAGE_A_KIT_ROOT")
-if _kit_override and Path(_kit_override).resolve(strict=True) != KIT:
-    raise SystemExit("Puber test Kit override differs from the profile binding")
-if subprocess.check_output(
-    ["git", "-C", str(KIT), "rev-parse", "HEAD"], text=True,
-).strip() != _kit_binding["commit"]:
-    raise SystemExit("Puber test Kit HEAD differs from the profile binding")
-if subprocess.check_output(
-    ["git", "-C", str(KIT), "rev-parse", "--verify", _kit_binding["publication_ref"]],
-    text=True,
-).strip() != _kit_binding["commit"]:
-    raise SystemExit("Puber test Kit publication ref differs from the profile binding")
-if subprocess.check_output(
-    ["git", "-C", str(KIT), "status", "--porcelain=v1", "--untracked-files=all"],
-    text=True,
-):
-    raise SystemExit("Puber test Kit binding must remain clean")
+from contextlib import contextmanager
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from puber_native_fixture import check_ship_contract_drift, FixtureSandbox, NativeFixture, MockCheckpointFacade, mock_checkpoint_source, verify_kit_binding, candidate_freeze_argument, prepare_candidate_kit, install_fixture_kit
+
+KIT = None
+_kit_binding = None
+_ACTIVE_CONTEXT = None
+_PROCESS_MODE = None
+
+
+def require_context():
+    if _ACTIVE_CONTEXT is None:
+        raise AssertionError("publisher fixture requires an explicit context")
+    return _ACTIVE_CONTEXT
+
+
 helper_spec = importlib.util.spec_from_loader("publish_runtime_test", SourceFileLoader("publish_runtime_test", str(ROOT / ".kent/scripts/workflow-puber-release-intent")))
-helper = importlib.util.module_from_spec(helper_spec); assert helper_spec and helper_spec.loader; helper_spec.loader.exec_module(helper)
+helper = importlib.util.module_from_spec(helper_spec); assert helper_spec and helper_spec.loader; _import_environment = dict(os.environ)
+try:
+    helper_spec.loader.exec_module(helper)
+finally:
+    os.environ.clear()
+    os.environ.update(_import_environment)
 
 
-class _TestRuntimeHandle:
-    def __init__(self, project_root):
-        self.project_root = Path(project_root).resolve(strict=False)
-        self.source_root = KIT
-        self.native_authorized = True
-
-    def module(self, name):
-        return _test_checkpoint.kit_module(
-            name,
-            project_root=self.project_root,
-            qualified=self,
-        )
+_test_checkpoint = None
 
 
-class _TestCheckpointFacade:
-    """Explicitly test-only facade; it does not select production Kit source."""
-
-    def __init__(self):
-        self.handles = {}
-
-    def qualified_kit_runtime(self, *, project_root, source_binding):
-        root = Path(project_root).resolve(strict=False)
-        if source_binding is not None and (
-            not isinstance(source_binding, dict)
-            or set(source_binding) != {"task_id", "node_id"}
-        ):
-            raise ValueError("test fixture requires exact native Script fields")
-        return self.handles.setdefault(root, _TestRuntimeHandle(root))
-
-    def kit_module(self, name, project_root=None, qualified=None):
-        if project_root is None and qualified is not None:
-            project_root = qualified.project_root
-        root = Path(project_root).resolve(strict=False)
-        if self.handles.get(root) is not qualified:
-            raise ValueError("test fixture received a foreign runtime handle")
-        if str(KIT) not in sys.path:
-            sys.path.insert(0, str(KIT))
-        selected = (
-            name if name == "workflowkit" or name.startswith("workflowkit.")
-            else "workflowkit." + name
-        )
-        module = importlib.import_module(selected)
-        if not Path(module.__file__).resolve().is_relative_to(KIT):
-            raise ValueError("test Kit module escaped the selected fixture root")
-        return module
-
-    def delivery_module(self, *, project_root, qualified):
-        return self.kit_module(
-            "delivery",
-            project_root=project_root,
-            qualified=qualified,
-        )
+def _build_checkpoint_source():
+    return mock_checkpoint_source(KIT, variant="publisher-shim", commit=_kit_binding["commit"])
 
 
-_test_checkpoint = _TestCheckpointFacade()
-helper._qualified_checkpoint_module = (
-    lambda _root, *, required=(): _test_checkpoint
-)
-helper._reset_runtime_invocation()
-helper._bind_qualified_runtime(
-    helper.ROOT,
-    {
-        "task_id": "task-12345678-1234-4234-8234-123456789abc",
-        "node_id": "test-only-publisher-fixture",
-    },
-)
-
-_TEST_CHECKPOINT_SOURCE = f"""
-from importlib import import_module as _import_module
-from pathlib import Path as _Path
-from types import SimpleNamespace as _SimpleNamespace
-import sys as _sys
-
-_TEST_KIT_ROOT = _Path({str(KIT)!r}).resolve(strict=True)
-_TEST_HANDLES = {{}}
-
-class _TestRuntimeHandle:
-    def __init__(self, project_root):
-        self.project_root = project_root
-        self.source_root = _TEST_KIT_ROOT
-        self.native_authorized = True
-    def module(self, name):
-        return kit_module(
-            name,
-            project_root=self.project_root,
-            qualified=self,
-        )
-
-def qualified_kit_runtime(project_root=None, source_binding=None):
-    root = (
-        _Path(project_root).resolve(strict=False)
-        if project_root is not None
-        else _Path(__file__).resolve().parents[2]
-    )
-    if source_binding is not None and (
-        not isinstance(source_binding, dict)
-        or set(source_binding) != {{'task_id', 'node_id'}}
-        or any(not isinstance(value, str) or not value for value in source_binding.values())
+@contextmanager
+def fixture_context(*, mode, sandbox, candidate_freeze=None):
+    global KIT, _kit_binding, _ACTIVE_CONTEXT, _PROCESS_MODE, _test_checkpoint
+    if mode not in {"mock", "canonical"}:
+        raise AssertionError("unknown publisher fixture mode")
+    if _ACTIVE_CONTEXT is not None or (_PROCESS_MODE is not None and _PROCESS_MODE != mode):
+        raise AssertionError("fixture modes cannot nest or switch within a process")
+    if not isinstance(sandbox, FixtureSandbox) or sandbox.closed:
+        raise AssertionError("an active owned sandbox is required")
+    if mode == "canonical" and not (
+        Path(sys.argv[0]).resolve() == ROOT / ".kent/scripts/tests/test-workflow-wait-github-release"
+        and sys.argv[1:2] in (["--canonical-happy"], ["--canonical-blocker"])
+        and (sys.argv[2:] == [] or (len(sys.argv) == 4 and sys.argv[2] == "--kit-candidate-freeze"
+             and candidate_freeze is not None and Path(sys.argv[3]).resolve() == Path(candidate_freeze).resolve()))
     ):
-        raise ValueError('invalid test-only native Script fixture')
-    handle = _TEST_HANDLES.get(root)
-    if handle is None:
-        handle = _TestRuntimeHandle(root)
-        _TEST_HANDLES[root] = handle
-    return handle
+        raise AssertionError("canonical fixture requires its dedicated child entrypoint")
+    from contextlib import ExitStack
+    resources = ExitStack()
+    saved_env, saved_path = dict(os.environ), list(sys.path)
+    saved_modules = {key: value for key, value in sys.modules.items()
+                     if key == "workflowkit" or key.startswith("workflowkit.")}
+    saved_helper = dict(helper.__dict__)
+    for name in saved_modules:
+        sys.modules.pop(name, None)
+    _PROCESS_MODE = mode
+    _ACTIVE_CONTEXT = {"mode": mode, "sandbox": sandbox, "native": None}
+    try:
+        os.environ.clear()
+        os.environ.update(sandbox.environment)
+        KIT, _kit_binding = verify_kit_binding(ROOT, sandbox=sandbox, publication="ancestor")
+        if candidate_freeze is not None:
+            directory = resources.enter_context(sandbox.temporary_directory())
+            prepared = prepare_candidate_kit(sandbox, Path(directory), KIT, candidate_freeze)
+            KIT, commit = prepared
+            _kit_binding = {**_kit_binding, "root": str(KIT), "commit": commit}
+            _ACTIVE_CONTEXT["prepared_kit"] = prepared
+        if mode == "mock":
+            _test_checkpoint = MockCheckpointFacade(KIT, variant="publisher")
+            helper._qualified_checkpoint_module = lambda _root, *, required=(): _test_checkpoint
+            helper._reset_runtime_invocation()
+            helper._bind_qualified_runtime(helper.ROOT, {
+                "task_id": "task-12345678-1234-4234-8234-123456789abc",
+                "node_id": "test-only-publisher-fixture",
+            })
+        else:
+            assert _test_checkpoint is None
+            assert helper._QUALIFIED_KIT_RUNTIME is None
+        yield _ACTIVE_CONTEXT
+    finally:
+        try:
+            resources.close()
+        finally:
+            helper.__dict__.clear()
+            helper.__dict__.update(saved_helper)
+            os.environ.clear()
+            os.environ.update(saved_env)
+            sys.path[:] = saved_path
+            for key in tuple(sys.modules):
+                if key == "workflowkit" or key.startswith("workflowkit."):
+                    sys.modules.pop(key)
+            sys.modules.update(saved_modules)
+            _ACTIVE_CONTEXT = None
+            _test_checkpoint = None
+            KIT = None
+            _kit_binding = None
 
-def kit_module(name, project_root=None, qualified=None):
-    if project_root is None and qualified is not None:
-        project_root = qualified.project_root
-    root = _Path(project_root).resolve(strict=False)
-    if _TEST_HANDLES.get(root) is not qualified:
-        raise ValueError('foreign test-only native runtime handle')
-    if str(_TEST_KIT_ROOT) not in _sys.path:
-        _sys.path.insert(0, str(_TEST_KIT_ROOT))
-    selected = (
-        name if name == 'workflowkit' or name.startswith('workflowkit.')
-        else 'workflowkit.' + name
-    )
-    module = _import_module(selected)
-    if not _Path(module.__file__).resolve().is_relative_to(_TEST_KIT_ROOT):
-        raise ValueError('test Kit import escaped its selected root')
-    return module
 
-class _DeliveryProxy:
-    def __init__(self, module):
-        self._module = module
-    def __getattr__(self, name):
-        return getattr(self._module, name)
-    def admit_script_source_ingress(self, root, native_context, *, kent_path):
-        if set(native_context) != {{'task_id', 'node_id'}}:
-            raise ValueError('invalid fixture native context')
-        return _SimpleNamespace(
-            project_id='project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176',
-            workflow_id='10d8adb2-c74c-4ef0-8b5c-311cb5cd0459',
-            source_admission_sha256='f' * 64,
-            receipt_sha256='e' * 64,
-            gate='test-only',
-        )
-
-def delivery_module(project_root=None, qualified=None):
-    root = (
-        _Path(project_root).resolve(strict=False)
-        if project_root is not None
-        else _Path(__file__).resolve().parents[2]
-    )
-    selected = qualified or qualified_kit_runtime(
-        project_root=root,
-        source_binding=None,
-    )
-    return _DeliveryProxy(
-        kit_module('delivery', project_root=root, qualified=selected)
-    )
-"""
 SCRIPT_PATHS = [
     ".kent/workflow-profile.toml",
     ".kent/scripts/workflow_runtime_contracts.py",
@@ -221,7 +131,9 @@ SCRIPT_PATHS = [
 ]
 
 def sh(args, cwd, **kwargs):
-    return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+    context = require_context()
+    return context["sandbox"].run_child(args, cwd=cwd, check=True, text=True,
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
 
 def native_transition_id(graph: dict, edge_key: str) -> str:
     edges = [edge for edge in graph["edges"] if edge["key"] == edge_key]
@@ -240,6 +152,9 @@ def materialize(
     linked: bool = False,
     append_test_checkpoint: bool = True,
 ) -> tuple[Path, str, str, str]:
+    context = require_context()
+    if append_test_checkpoint and context["mode"] != "mock":
+        raise AssertionError("canonical managed readers cannot be appended")
     primary = root / "primary"
     work = root / "work" if linked else primary
     shutil.copytree(
@@ -247,12 +162,14 @@ def materialize(
         primary,
         ignore=shutil.ignore_patterns(".git", "__pycache__"),
     )
+    if context.get("prepared_kit"):
+        install_fixture_kit(primary, *context["prepared_kit"])
     if append_test_checkpoint:
         checkpoint = primary / ".kent/scripts/workflow-checkpoint"
         checkpoint.write_text(
             checkpoint.read_text(encoding="utf-8")
             + "\n\n"
-            + _TEST_CHECKPOINT_SOURCE,
+            + _build_checkpoint_source(),
             encoding="utf-8",
         )
     manifest_path = primary / ".kent/workflows/puber-release-current.manifest.json"
@@ -336,7 +253,7 @@ def target_with_changes(work: Path, target: str, changes: dict[str, bytes | None
             if path in changes and changes[path] is not None:
                 external["key"] = path + "=" + helper.sha256_bytes(changes[path])
     changes = {**changes, manifest_path: (json.dumps(manifest, indent=2) + "\n").encode()}
-    with tempfile.TemporaryDirectory() as temporary:
+    with require_context()["sandbox"].temporary_directory() as temporary:
         env = {**os.environ, "GIT_INDEX_FILE": str(Path(temporary) / "index")}
         sh(["git", "read-tree", target], work, env=env)
         for path, raw in changes.items():
@@ -734,6 +651,21 @@ class Revision90StageRunner:
         incoming: str,
         carrier: dict,
     ) -> tuple[str, dict]:
+        native = require_context()["native"]
+        if native:
+            node = self.nodes[stage]
+            if node["kind"] == "script":
+                native_context = native.enter_script(stage)
+                for key in ("KENT_SESSION_ID", "KENT_STEP_ID"):
+                    self.env.pop(key, None)
+                    os.environ.pop(key, None)
+            else:
+                native.enter_agent(stage)
+                native_context = None
+            self.env.update(native.env)
+            os.environ.update(self.env)
+            helper._reset_runtime_invocation()
+            helper._bind_qualified_runtime(self.work, native_context)
         self._admit(stage, incoming, carrier)
         self.stage_log.append(stage)
         if stage == "prepare":
@@ -1159,18 +1091,35 @@ class Revision90StageRunner:
         return carrier
 
 def test_clean_master_to_exactly_one_release_pr(continuation=None) -> None:
-    with tempfile.TemporaryDirectory() as directory:
+    with require_context()["sandbox"].temporary_directory() as directory:
         root = Path(directory)
         work = (root / "primary/.kent/worktrees/release-work").resolve()
         bare = root / "origin.git"
         control = root / "control"
         control.mkdir()
         primary = root / "primary"
+        context = require_context()
+        native = NativeFixture(context["sandbox"], root, KIT, prepared_kit=context.get("prepared_kit")) if context["mode"] == "canonical" else None
+        context["native"] = native
+        if native:
+            assert _test_checkpoint is None
+            before = set(root.iterdir())
+            try:
+                materialize(root, bare, append_test_checkpoint=True)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("canonical mode allowed managed checkpoint append")
+            assert before == set(root.iterdir())
         shutil.copytree(
             ROOT,
             primary,
             ignore=shutil.ignore_patterns(".git", "__pycache__"),
         )
+        if native:
+            native.install_profile(primary)
+        elif context.get("prepared_kit"):
+            install_fixture_kit(primary, *context["prepared_kit"])
         sh(["git", "init", "--quiet", "-b", "master"], primary)
         sh(["git", "config", "user.email", "test@example.invalid"], primary)
         sh(["git", "config", "user.name", "Puber Test"], primary)
@@ -1191,17 +1140,20 @@ def test_clean_master_to_exactly_one_release_pr(continuation=None) -> None:
             ):
                 fixture_paths.add(external["key"].split("=", 1)[0])
         for relative in sorted(fixture_paths):
+            if (native or context.get("prepared_kit")) and relative == ".kent/workflow-profile.toml":
+                continue
             source = ROOT / relative
             target_path = work / relative
             target_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target_path)
+        if context.get("prepared_kit"):
+            install_fixture_kit(work, *context["prepared_kit"])
         checkpoint_fixture = work / ".kent/scripts/workflow-checkpoint"
-        checkpoint_fixture.write_text(
-            checkpoint_fixture.read_text(encoding="utf-8")
-            + "\n\n"
-            + _TEST_CHECKPOINT_SOURCE,
-            encoding="utf-8",
-        )
+        if require_context()["mode"] == "mock":
+            checkpoint_fixture.write_text(
+                checkpoint_fixture.read_text(encoding="utf-8") + "\n\n" + _build_checkpoint_source(),
+                encoding="utf-8",
+            )
         for external in manifest["external_roots"]:
             if external["kind"] == "source-sha256":
                 relative, _digest = external["key"].split("=", 1)
@@ -1378,7 +1330,9 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
             ):
                 relative, expected_digest = external["key"].split("=", 1)
                 actual_digest = helper.sha256_bytes((work / relative).read_bytes())
-                if relative in {"tools/agentw", "tools/generate-baseline-profile.sh", ".kent/adapters/mobile/emulator-resource-lock.sh"}:
+                if relative in {"tools/agentw", "tools/generate-baseline-profile.sh", ".kent/adapters/mobile/emulator-resource-lock.sh"} or (
+                    native and relative == ".kent/workflow-profile.toml"
+                ):
                     external["key"] = f"{relative}={actual_digest}"
                 else:
                     assert actual_digest == expected_digest, relative
@@ -1528,6 +1482,75 @@ sys.exit(2)
             "FAKE_GITHUB_LOG": str(github_log),
             "FAKE_GITHUB_BARE": str(bare),
         }
+        if native:
+            native.bind_native_fixture(primary, work, task, graph)
+            task_path = native.task_path
+            kent = native.native
+            env.update(native.env)
+            env.update(PUBER_FAKE_TASK=str(task_path))
+            helper.ROOT = work
+            helper._reset_runtime_invocation()
+            os.environ.update(env)
+            native.enter_script("profile_generation")
+            helper._bind_qualified_runtime(work, {
+                "task_id": task_id, "node_id": profile_node["id"],
+            })
+            # Exercise genuine admission failures before preparation effects.
+            native_context = {"task_id": task_id, "node_id": profile_node["id"]}
+            for label, path, replacement in (
+                ("canonical reader drift", work / ".kent/scripts/workflow-checkpoint",
+                 (work / ".kent/scripts/workflow-checkpoint").read_bytes() + b"\n# rejected reader drift\n"),
+                ("receipt digest mismatch", native.receipt_path, native.receipt_path.read_bytes() + b"\n"),
+            ):
+                saved = path.read_bytes()
+                try:
+                    path.write_bytes(replacement)
+                    helper._reset_runtime_invocation()
+                    try:
+                        helper._bind_qualified_runtime(work, native_context)
+                    except (ValueError, RuntimeError, OSError):
+                        pass
+                    else:
+                        raise AssertionError(label + " was admitted")
+                finally:
+                    path.write_bytes(saved)
+                    helper._reset_runtime_invocation()
+                assert sh(["git", "rev-parse", "HEAD"], work).stdout.strip() == base_oid
+            saved_task = native.task_path.read_bytes()
+            mismatched = json.loads(saved_task)
+            mismatched["source_workspace"] = {**mismatched["source_workspace"], "workspace_id": "foreign-workspace"}
+            try:
+                native.task_path.write_text(json.dumps(mismatched))
+                try:
+                    helper._bind_qualified_runtime(work, native_context)
+                except (ValueError, RuntimeError, OSError):
+                    pass
+                else:
+                    raise AssertionError("inconsistent native workspace identity was admitted")
+            finally:
+                native.task_path.write_bytes(saved_task)
+                helper._reset_runtime_invocation()
+            for private_path in (native.frame_path, native.receipt_path):
+                assert not private_path.is_relative_to(primary) and not private_path.is_relative_to(work)
+                tracked = sh(["git", "ls-files", "-z"], work).stdout.split("\0")
+                assert str(private_path) not in {str(work / relative) for relative in tracked if relative}
+            for managed in ("workflow-checkpoint", "workflow_kit_runtime.py", "workflow_runtime_contracts.py"):
+                expected = native.kit / ("workflowkit/kit_runtime.py" if managed == "workflow_kit_runtime.py"
+                    else "templates/project/workflow-checkpoint" if managed == "workflow-checkpoint"
+                    else ".kent/scripts/workflow_runtime_contracts.py")
+                actual = work / ".kent/scripts" / managed
+                assert actual.read_bytes() == expected.read_bytes()
+                if managed == "workflow_kit_runtime.py":
+                    # Published bootstrap contract intentionally has distinct
+                    # consumer executable and Kit module identities.
+                    assert stat.S_IMODE(actual.stat().st_mode) == 0o700
+                    assert stat.S_IMODE(expected.stat().st_mode) == 0o600
+                else:
+                    assert bool(actual.stat().st_mode & 0o111) == bool(expected.stat().st_mode & 0o111)
+                assert context["sandbox"].run_child(["git", "show", f"{base_oid}:.kent/scripts/{managed}"],
+                    cwd=work, capture_output=True, check=True).stdout == actual.read_bytes()
+            helper._bind_qualified_runtime(work, native_context)
+            print("canonical reader/receipt/native identity negatives and A reader inventory: passed", flush=True)
         initial = {
             "workspace_path": str(work),
             "operation_id": "a" * 64,
@@ -1670,19 +1693,11 @@ sys.exit(2)
             work,
         ).stdout.strip() == before_remote
 
-        ship_contract = work / ".kent/commands/ship-pr.md"
-        original_contract = ship_contract.read_bytes()
-        ship_contract.write_bytes(original_contract + b"\ncontract drift\n")
-        try:
-            runner.execute("ship_pr", "compliance_ship_pr", ship_input)
-        except StageContractError:
-            pass
-        else:
-            raise AssertionError("unbound Ship command drift was accepted")
-        finally:
-            ship_contract.write_bytes(original_contract)
-        assert github_state.read_bytes() == before_state
-        assert github_log.read_bytes() == before_github_calls
+        check_ship_contract_drift(
+            runner, ship_input, native=require_context()["native"], helper=helper,
+            stage_error_type=StageContractError,
+            github_state=github_state, github_log=github_log,
+        )
 
         missing_carrier = dict(ship_input)
         missing_carrier.pop("compliance_report")
@@ -1702,7 +1717,8 @@ sys.exit(2)
             assert task["execution_target"]["commit_oid"] == base_oid != first_head
             continuation({"root": root, "work": work, "base_oid": base_oid, "head": first_head,
                 "bare_path": str(bare), "task": task, "task_path": task_path,
-                "carrier": first_result, "checkpoint": checkpoint, "stages": expected_stages})
+                "carrier": first_result, "checkpoint": checkpoint, "stages": expected_stages,
+                "native_fixture": native, "env": env, "graph": graph})
             assert task["execution_target"]["commit_oid"] == base_oid
 
 def fixture_checkpoint(work: Path, base_oid: str, target: str, task_id: str) -> dict:
@@ -1795,7 +1811,7 @@ def fixture_checkpoint(work: Path, base_oid: str, target: str, task_id: str) -> 
     return checkpoint
 
 def test_publication(rebased: bool) -> None:
-    with tempfile.TemporaryDirectory() as directory:
+    with require_context()["sandbox"].temporary_directory() as directory:
         root = Path(directory); bare = root / "origin.git"
         fake_home = root / "home"
         kit_bin = fake_home / ".kent/bin"
@@ -2080,9 +2096,121 @@ def test_publication(rebased: bool) -> None:
         assert not any("/git/ref/tags/" in call[1] for call in new_calls if len(call) > 1)
         assert unrelated_task["execution_target"]["commit_oid"] == base_oid
 
-if __name__ == "__main__":
-    test_publication(False)
-    test_publication(True)
+def test_explicit_context_contract():
+    # This child deliberately enters mock mode and tests that canonical cannot
+    # be entered in the same process; no facade crosses the process boundary.
+    code = r'''
+import sys, pathlib, importlib.util, os, subprocess
+from importlib.machinery import SourceFileLoader
+from unittest.mock import patch
+sys.dont_write_bytecode=True
+root=pathlib.Path(sys.argv[1]);path=root/'.kent/scripts/tests/test-workflow-puber-release-publish'
+spec=importlib.util.spec_from_loader('pub_context_test',SourceFileLoader('pub_context_test',str(path)));pub=importlib.util.module_from_spec(spec)
+with patch.object(subprocess,'run',side_effect=AssertionError('import attempted Git/process')):
+ spec.loader.exec_module(pub)
+assert pub._test_checkpoint is None and pub._ACTIVE_CONTEXT is None and pub._kit_binding is None
+try:pub.require_context()
+except AssertionError:pass
+else:raise AssertionError('missing context accepted')
+with pub.FixtureSandbox.create() as sb:
+ for mode in ['unknown','canonical']:
+  try:
+   with pub.fixture_context(mode=mode,sandbox=sb):raise RuntimeError('unexpected enter')
+  except AssertionError:pass
+  else:raise AssertionError('unknown mode/non-child canonical accepted')
+ env=dict(os.environ);path=list(sys.path);modules={k:v for k,v in sys.modules.items() if k=='workflowkit' or k.startswith('workflowkit.')};helper=dict(pub.helper.__dict__)
+ try:
+  with pub.fixture_context(mode='mock',sandbox=sb):
+   for mode in ['mock','canonical']:
+    try:
+     with pub.fixture_context(mode=mode,sandbox=sb):raise RuntimeError('unexpected nested context')
+    except AssertionError:pass
+    else:raise AssertionError('nested context accepted')
+   raise LookupError('forced context failure')
+ except LookupError:pass
+ assert env==dict(os.environ) and path==sys.path
+ assert modules=={k:v for k,v in sys.modules.items() if k=='workflowkit' or k.startswith('workflowkit.')}
+ assert helper==pub.helper.__dict__ and pub._test_checkpoint is None
+ try:
+  with pub.fixture_context(mode='canonical',sandbox=sb):raise RuntimeError('unexpected mode switch')
+ except AssertionError:pass
+ else:raise AssertionError('mode switch accepted')
+print('import/no-bind, missing/unknown/nested/non-child/mode-switch, exception restoration PASS')
+'''
+    with FixtureSandbox.create() as sandbox:
+        result = sandbox.run_child([sys.executable, "-I", "-B", "-c", code, str(ROOT)],
+            capture_output=True, text=True)
+        assert result.returncode == 0, result.stdout + result.stderr
+        print(result.stdout.strip())
 
-    test_clean_master_to_exactly_one_release_pr()
-    print("workflow-puber-release-publish: passed scenarios=happy,retry,local_tag_only,lost_ack,conflicts,strict_phase_status,zero_effect_task_pr_kit_source_transition_diff_gates,clean_master_one_pr_rerun")
+
+def test_profile_streaming_guard():
+    """The profile caller must account preflight and eager verification together."""
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    spec = importlib.util.spec_from_loader("profile_shared_budget_test", SourceFileLoader(
+        "profile_shared_budget_test", str(ROOT / ".kent/scripts/workflow-puber-release-profile-generation")))
+    script = importlib.util.module_from_spec(spec)
+    environment = dict(os.environ)
+    try:
+        spec.loader.exec_module(script)
+    finally:
+        os.environ.clear()
+        os.environ.update(environment)
+    budget = object()
+    commit = "a" * 40
+    events = []
+    selected_value = SimpleNamespace(project_commit=commit)
+    @contextmanager
+    def accounting():
+        events.append("enter")
+        try:
+            yield budget
+        finally:
+            events.append("exit")
+    def preflight(root, exact_commit, *, budget):
+        assert root == ROOT and exact_commit == commit and budget is accounting_budget
+        events.append("preflight")
+        return SimpleNamespace(selected_runtime_source_inputs=selected_value)
+    def verify(root, profile, selected, *, budget):
+        assert root == ROOT and selected is selected_value and budget is accounting_budget
+        events.append("verify")
+    accounting_budget = budget
+    kit = {"source_read_budget": accounting, "preflight_project_revision": preflight,
+        "ProjectProfile": SimpleNamespace(from_toml=lambda *a, **kw: object())}
+    with patch.object(script.helper, "_kit_modules", return_value=kit), \
+         patch.object(script.helper, "_external_captures", side_effect=verify):
+        script._assert_runtime_source_closure({"commit": commit})
+        assert events == ["enter", "preflight", "verify", "exit"]
+        for selected_value in (None, SimpleNamespace(project_commit="b" * 40)):
+            events.clear()
+            try:
+                script._assert_runtime_source_closure({"commit": commit})
+            except script.ProfileError:
+                pass
+            else:
+                raise AssertionError("profile guard accepted absent or foreign selected source")
+            assert events == ["enter", "preflight", "exit"]
+        selected_value = SimpleNamespace(project_commit=commit)
+        events.clear()
+        with patch.object(script.helper, "_external_captures", side_effect=RuntimeError("resource capacity")):
+            try:
+                script._assert_runtime_source_closure({"commit": commit})
+            except RuntimeError as error:
+                assert str(error) == "resource capacity"
+            else:
+                raise AssertionError("profile guard swallowed verification failure")
+        assert events == ["enter", "preflight", "exit"]
+    print("profile guard shared accounting / eager complete verification / fail-closed: passed")
+
+
+if __name__ == "__main__":
+    candidate_freeze = candidate_freeze_argument(sys.argv[1:])
+    test_explicit_context_contract()
+    test_profile_streaming_guard()
+    with FixtureSandbox.create() as sandbox:
+        with fixture_context(mode="mock", sandbox=sandbox, candidate_freeze=candidate_freeze):
+            test_publication(False)
+            test_publication(True)
+            test_clean_master_to_exactly_one_release_pr()
+            print("workflow-puber-release-publish: passed mock publication and preparation matrix")

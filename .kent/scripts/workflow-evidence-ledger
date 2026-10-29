@@ -2066,7 +2066,9 @@ def _validate_script_ci_reader_proof(root, task, native_context, proof, runtime)
         or set(proof) != {
             "schema", "reader_proof_sha256", "native_script_identity",
         }
-        or proof.get("schema") != "script-ci-archive-reader-proof-v1"
+        or proof.get("schema") not in {
+            "script-ci-archive-reader-proof-v1", "script-ci-archive-reader-proof-v2",
+        }
         or not isinstance(proof.get("reader_proof_sha256"), str)
         or not re.fullmatch(r"[0-9a-f]{64}", proof["reader_proof_sha256"])
         or not isinstance(proof.get("native_script_identity"), dict)
