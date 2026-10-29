@@ -351,7 +351,7 @@ def _archive(
         request = {
             **values,
             "operation": (
-                "archive_script_ci_report"
+                "archive_script_ci_report_v2"
                 if typed_script_archive
                 else "archive_ci_report"
             ),
@@ -359,6 +359,13 @@ def _archive(
         }
         if isinstance(native_context, dict):
             request["_kent"] = native_context
+        if typed_script_archive:
+            checkpoint = _sibling("workflow-checkpoint")
+            command = checkpoint.admitted_ci_command(
+                Path(str(values["workspace_path"])), native_context,
+                operation="archive_script_ci_report_v2",
+            )
+            tool = str(command.path)
         result = observation.read_json(
             tool,
             Path(str(values["workspace_path"])),

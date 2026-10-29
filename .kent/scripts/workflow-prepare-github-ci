@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if (( $# )); then
+    echo "workflow-prepare-github-ci: unsupported arguments" >&2
+    exit 2
+fi
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -L)"
 project_root="$(cd -- "$script_dir/../.." && pwd -L)"
@@ -7,152 +11,112 @@ exec python3 -B -c '
 import importlib.machinery
 import importlib.util
 import os
+import io
+import json
 from pathlib import Path
 import stat
 import sys
+import subprocess
 import tomllib
 
-
-def exec_legacy():
+root = Path(sys.argv[1]).resolve(strict=True)
+# The project-owned checkpoint is the existing trusted loader facade.
+# It safely classifies its own profile and bounded stdin before any helper.
+for directory in (root / ".kent", root / ".kent/scripts"):
+    metadata = directory.lstat()
+    if (not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid()
+            or metadata.st_mode & 0o7022):
+        raise SystemExit("workflow-prepare-github-ci: project .kent directory is unsafe")
+raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+if len(raw) > 1024 * 1024:
+    raise SystemExit("workflow-prepare-github-ci: oversized input")
+def pairs(items):
+    result = {}
+    for key, value in items:
+        if key in result:
+            raise ValueError("duplicate input key")
+        result[key] = value
+    return result
+payload = json.loads(raw, object_pairs_hook=pairs,
+                     parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+workspace = payload.get("workspace_path") if isinstance(payload, dict) else None
+if (not isinstance(workspace, str) or not Path(workspace).is_absolute()
+        or ".." in Path(workspace).parts or Path(workspace).resolve(strict=True) != root):
+    raise SystemExit("workflow-prepare-github-ci: invalid input workspace")
+operation = payload.get("operation")
+if "operation" in payload and operation not in {
+    "archive_ci_report", "archive_script_ci_report", "archive_script_ci_report_v2",
+}:
+    raise SystemExit("workflow-prepare-github-ci: unsupported operation")
+try:
+    fd = os.open(root / ".kent/workflow-profile.toml",
+                 os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+except FileNotFoundError:
+    profile = None
+else:
+    try:
+        before = os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid()
+                or before.st_nlink != 1 or before.st_mode & 0o7022
+                or before.st_size > 65536):
+            raise ValueError("unsafe project profile")
+        profile_raw = os.read(fd, 65537)
+        after = os.fstat(fd)
+        fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if len(profile_raw) != before.st_size or any(
+            getattr(before, key) != getattr(after, key) for key in fields
+        ):
+            raise ValueError("project profile changed")
+        profile = tomllib.loads(profile_raw.decode("utf-8"))
+    finally:
+        os.close(fd)
+versions = profile.get("command_versions", {}) if profile is not None else {}
+policies = profile.get("policies", {}) if profile is not None else {}
+if not isinstance(versions, dict) or not isinstance(policies, dict):
+    raise ValueError("invalid project profile")
+if policies.get("delivery_reliability") not in {None, "v1"}:
+    raise ValueError("unsupported project profile policy")
+current = (
+    policies.get("delivery_reliability") == "v1"
+    or versions.get("runtime_contracts") in {"2.1.0", "2.2.0"}
+    or versions.get("prepare_ci") in {"3.0.0", "3.1.0"}
+)
+exception = (
+    operation == "archive_ci_report" and "_kent" not in payload
+    and profile is not None and profile.get("schema_version") == 4
+    and policies.get("delivery_reliability") == "v1"
+    and versions.get("runtime_contracts") == "2.0.0"
+    and versions.get("prepare_ci") == "2.0.0"
+    and isinstance(profile.get("kit_managed_commands"), list)
+    and {"runtime_contracts", "prepare_ci"}.issubset(profile.get("kit_managed_commands", []))
+)
+if profile is not None and not current and (
+    profile.get("schema_version") not in {3, 4}
+    or versions.get("runtime_contracts") not in {None, "1.0.0", "2.0.0"}
+    or versions.get("prepare_ci") not in {None, "1.0.0", "2.0.0"}
+):
+    raise ValueError("unsupported legacy profile")
+requested_v2 = operation == "archive_script_ci_report_v2"
+if (current or requested_v2) and not exception and not isinstance(payload.get("_kent"), dict):
+    raise ValueError("current CI requires native Script identity")
+if (exception or (not current and not requested_v2 and "_kent" not in payload)) and (
+    profile is None or "kit_runtime" not in profile
+):
     selected = os.environ.get("KENT_PREPARE_GITHUB_CI_BIN")
     if not selected:
         selected = str(Path.home() / ".kent/bin/kent-prepare-github-ci")
-    if not os.access(selected, os.X_OK):
-        print(
-            "workflow-prepare-github-ci: first-party CLI is not executable: "
-            + selected,
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
-    os.execv(selected, [selected])
-
-
-root = Path(sys.argv[1]).resolve(strict=True)
-directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-directory_flags |= getattr(os, "O_NOFOLLOW", 0)
-root_fd = os.open(root, directory_flags)
-try:
-    kent_fd = os.open(".kent", directory_flags, dir_fd=root_fd)
-except FileNotFoundError:
-    os.close(root_fd)
-    exec_legacy()
-except OSError as error:
-    os.close(root_fd)
-    raise SystemExit("workflow-prepare-github-ci: project .kent directory is unsafe") from error
-kent_metadata = os.fstat(kent_fd)
-if (
-    not stat.S_ISDIR(kent_metadata.st_mode)
-    or kent_metadata.st_uid != os.getuid()
-    or kent_metadata.st_mode & 0o7022
-):
-    os.close(kent_fd)
-    os.close(root_fd)
-    raise SystemExit("workflow-prepare-github-ci: project .kent directory is unsafe")
-try:
-    profile_fd = os.open(
-        "workflow-profile.toml",
-        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
-        dir_fd=kent_fd,
-    )
-except FileNotFoundError:
-    os.close(kent_fd)
-    os.close(root_fd)
-    exec_legacy()
-except OSError as error:
-    os.close(kent_fd)
-    os.close(root_fd)
-    raise SystemExit("workflow-prepare-github-ci: workflow profile is unsafe") from error
-profile_metadata = os.fstat(profile_fd)
-if (
-    not stat.S_ISREG(profile_metadata.st_mode)
-    or profile_metadata.st_uid != os.getuid()
-    or profile_metadata.st_nlink != 1
-    or profile_metadata.st_mode & 0o7022
-    or profile_metadata.st_size > 64 * 1024
-):
-    os.close(profile_fd)
-    os.close(kent_fd)
-    os.close(root_fd)
-    raise SystemExit("workflow-prepare-github-ci: workflow profile is unsafe")
-try:
-    profile_chunks = []
-    profile_size = 0
-    while True:
-        chunk = os.read(
-            profile_fd,
-            min(65536, 64 * 1024 + 1 - profile_size),
-        )
-        if not chunk:
-            break
-        profile_size += len(chunk)
-        if profile_size > 64 * 1024:
-            raise SystemExit(
-                "workflow-prepare-github-ci: workflow profile is oversized"
-            )
-        profile_chunks.append(chunk)
-    profile_after = os.fstat(profile_fd)
-finally:
-    os.close(profile_fd)
-    os.close(kent_fd)
-    os.close(root_fd)
-profile_bytes = b"".join(profile_chunks)
-if (
-    len(profile_bytes) != profile_metadata.st_size
-    or len(profile_bytes) > 64 * 1024
-    or (
-        profile_metadata.st_dev,
-        profile_metadata.st_ino,
-        profile_metadata.st_mode,
-        profile_metadata.st_size,
-        profile_metadata.st_mtime_ns,
-        profile_metadata.st_ctime_ns,
-    )
-    != (
-        profile_after.st_dev,
-        profile_after.st_ino,
-        profile_after.st_mode,
-        profile_after.st_size,
-        profile_after.st_mtime_ns,
-        profile_after.st_ctime_ns,
-    )
-):
-    raise SystemExit("workflow-prepare-github-ci: workflow profile changed during read")
-try:
-    profile = tomllib.loads(profile_bytes.decode("utf-8"))
-except (UnicodeError, tomllib.TOMLDecodeError) as error:
-    raise SystemExit("workflow-prepare-github-ci: workflow profile is invalid") from error
-if not isinstance(profile, dict):
-    raise SystemExit("workflow-prepare-github-ci: workflow profile is invalid")
-if "kit_runtime" not in profile:
-    exec_legacy()
-
-checkpoint_path = root / ".kent/scripts/workflow-checkpoint"
-try:
-    metadata = checkpoint_path.lstat()
-except OSError as error:
-    raise SystemExit("workflow-prepare-github-ci: checkpoint adapter unavailable") from error
-if (
-    not stat.S_ISREG(metadata.st_mode)
-    or metadata.st_uid != os.getuid()
-    or metadata.st_nlink != 1
-    or metadata.st_mode & 0o7022
-):
-    raise SystemExit("workflow-prepare-github-ci: checkpoint adapter is unsafe")
-loader = importlib.machinery.SourceFileLoader(
-    "prepare_ci_qualified_checkpoint",
-    str(checkpoint_path),
-)
+    raise SystemExit(subprocess.run([selected], cwd=root, input=raw, check=False).returncode)
+checkpoint = root / ".kent/scripts/workflow-checkpoint"
+metadata = checkpoint.lstat()
+if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid()
+        or metadata.st_nlink != 1 or metadata.st_mode & 0o7022
+        or metadata.st_size > 1024 * 1024):
+    raise SystemExit("workflow-prepare-github-ci: unsafe checkpoint adapter")
+loader = importlib.machinery.SourceFileLoader("prepare_ci_checkpoint", str(checkpoint))
 spec = importlib.util.spec_from_loader(loader.name, loader)
-if spec is None:
-    raise SystemExit("workflow-prepare-github-ci: checkpoint adapter unavailable")
 module = importlib.util.module_from_spec(spec)
-previous_bytecode_policy = sys.dont_write_bytecode
 sys.dont_write_bytecode = True
-try:
-    loader.exec_module(module)
-finally:
-    sys.dont_write_bytecode = previous_bytecode_policy
-raise SystemExit(
-    module.prepare_github_ci_command(root, require_runtime_binding=True)
-)
+loader.exec_module(module)
+sys.stdin = io.TextIOWrapper(io.BytesIO(raw), encoding="utf-8")
+raise SystemExit(module.prepare_github_ci_command(root))
 ' "$project_root"

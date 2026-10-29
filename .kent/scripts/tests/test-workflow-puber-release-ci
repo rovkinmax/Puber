@@ -665,7 +665,11 @@ assert restored["delivery_context"] == context_text
 assert restored["pr_feedback_cursor"] == "uninitialized"
 
 
-def actual_typed_roundtrip(candidate_value: str) -> None:
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from puber_native_fixture import FixtureSandbox, NativeFixture, inventory as native_inventory, candidate_freeze_argument, prepare_candidate_kit, install_fixture_kit
+
+
+def _actual_typed_roundtrip(candidate_value: str, sandbox, candidate_freeze=None) -> None:
     """Exercise the real shared CI CLI and Kit producer/Agent protocols.
 
     The dirty Kit source is read-only input. A private, disposable copy of its
@@ -674,6 +678,7 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
     Neither fixture revision is a released/qualified production source.
     """
     candidate_root = Path(candidate_value).expanduser().resolve(strict=True)
+    sandbox.allow_read(candidate_root)
     checkpoint_source = candidate_root / "templates/project/workflow-checkpoint"
     janitor_source = candidate_root / "templates/project/workflow-task-janitor"
     cli_source = candidate_root / "scripts/prepare-github-ci"
@@ -721,7 +726,7 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
         del sys.modules[name]
 
     try:
-        with tempfile.TemporaryDirectory(prefix="puber-d13-ci-roundtrip-") as temporary:
+        with sandbox.temporary_directory() as temporary:
             temp_root = Path(temporary).resolve()
             fixture_root = temp_root / "project"
             fixture_root.mkdir()
@@ -745,80 +750,22 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
                 fixture_root / ".kent/scripts/workflow-task-janitor",
             )
 
-            candidate_kit = temp_root / "candidate-kit"
-            candidate_kit.mkdir()
-            for name in (
-                "scripts", "workflowkit", "templates", "agents", "global",
-                "prompts", "skills", "adapters", "contracts",
-            ):
-                source = candidate_root / name
-                if source.is_dir():
-                    shutil.copytree(
-                        source,
-                        candidate_kit / name,
-                        ignore=shutil.ignore_patterns(
-                            "__pycache__", "*.pyc", ".pytest_cache",
-                        ),
-                    )
-            assert (candidate_kit / "workflowkit").is_dir()
-            assert (candidate_kit / "scripts/prepare-github-ci").is_file()
-            assert (candidate_kit / "scripts/inspect-delivery-source").is_file()
-            assert (
-                (fixture_root / ".kent/scripts/workflow_kit_runtime.py").read_bytes()
-                == (candidate_kit / "workflowkit/kit_runtime.py").read_bytes()
-            )
-            subprocess.run(
-                ["git", "-C", str(candidate_kit), "init", "-q", "-b", "main"],
-                check=True,
-                capture_output=True,
-            )
-            subprocess.run(
-                ["git", "-C", str(candidate_kit), "add", "-A"],
-                check=True,
-                capture_output=True,
-            )
-            subprocess.run(
-                [
-                    "git", "-C", str(candidate_kit),
-                    "-c", "user.name=Disposable fixture",
-                    "-c", "user.email=fixture.invalid",
-                    "commit", "-qm", "Disposable D13 CI candidate",
-                ],
-                check=True,
-                capture_output=True,
-            )
-            candidate_commit = subprocess.run(
-                ["git", "-C", str(candidate_kit), "rev-parse", "HEAD"],
-                check=True,
-                capture_output=True,
-            ).stdout.decode().strip()
-            home = temp_root / "home"
-            tool_dir = home / ".kent/bin"
-            tool_dir.mkdir(parents=True)
-            prepare_cli = tool_dir / "kent-prepare-github-ci"
-            prepare_cli.symlink_to(candidate_kit / "scripts/prepare-github-ci")
-            assert subprocess.run(
-                ["git", "-C", str(candidate_kit), "status", "--porcelain"],
-                check=True,
-                capture_output=True,
-            ).stdout == b""
+            prepared_kit = prepare_candidate_kit(sandbox, temp_root, candidate_root, candidate_freeze) if candidate_freeze else None
+            native = NativeFixture(sandbox, temp_root, candidate_root, prepared_kit=prepared_kit)
+            candidate_kit = native.kit
+            candidate_commit = native.kit_commit
+            home = sandbox.home
+            tool_dir = sandbox.bin
+            prepare_cli = native.ci_helper
             kit_publication_ref = "refs/remotes/origin/main"
-            subprocess.run(
-                [
-                    "git", "-C", str(candidate_kit), "update-ref",
-                    kit_publication_ref, candidate_commit,
-                ],
-                check=True,
-                capture_output=True,
-            )
 
             profile_path = fixture_root / ".kent/workflow-profile.toml"
             profile_text = profile_path.read_text(encoding="utf-8")
             production_binding = (
                 "[kit_runtime]\n"
                 "schema_version = 1\n"
-                'root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/runtime-sdk-puber-30b908c9"\n'
-                'commit = "30b908c9fc7097c0464ae67d58f891a1dd7103fb"\n'
+                'root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/archive-published-2708-456"\n'
+                'commit = "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"\n'
                 'publication_ref = "refs/remotes/origin/main"\n'
             )
             assert profile_text.count(production_binding) == 1
@@ -832,6 +779,8 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
                 1,
             )
             profile_path.write_text(profile_text, encoding="utf-8")
+            if prepared_kit:
+                install_fixture_kit(fixture_root, candidate_kit, candidate_commit)
             profile_value = tomllib.loads(profile_text)
             assert profile_value["command_versions"] == {
                 "runtime_contracts": "2.2.0",
@@ -900,156 +849,14 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
             fixture_ci = importlib.util.module_from_spec(fixture_spec)
             fixture_spec.loader.exec_module(fixture_ci)
 
-            project_prefixes = (
-                ".kent/scripts/", ".kent/commands/", ".kent/context/",
-                ".kent/skills/", ".kent/workflows/",
-            )
-            project_files = {
-                "AGENTS.md", ".gitignore", ".kent/workflow-profile.toml",
-                ".kent/project-contract.md",
-            }
-            kit_prefixes = (
-                "scripts/", "workflowkit/", "templates/", "agents/", "global/",
-                "prompts/", "skills/", "adapters/", "contracts/",
-            )
-
-            def inventory(root: Path, *, prefixes: tuple[str, ...], files=()):
-                tracked = subprocess.run(
-                    ["git", "-C", str(root), "ls-files", "-z"],
-                    check=True,
-                    capture_output=True,
-                ).stdout.decode("utf-8").split("\0")
-                result = []
-                for relative in tracked:
-                    if not relative or not (
-                        relative in files
-                        or any(relative.startswith(prefix) for prefix in prefixes)
-                    ):
-                        continue
-                    path = root / relative
-                    metadata = path.stat()
-                    raw = path.read_bytes()
-                    result.append({
-                        "root": str(root),
-                        "relative_path": relative,
-                        "sha256": hashlib.sha256(raw).hexdigest(),
-                        "byte_size": len(raw),
-                        "mode": stat.S_IMODE(metadata.st_mode),
-                    })
-                return sorted(
-                    result,
-                    key=lambda item: (
-                        item["root"], item["relative_path"],
-                    ),
-                )
-
-            graph_workflow_id = json.loads(
-                (fixture_root / fixture_ci.helper.GRAPH_PATH).read_text(
-                    encoding="utf-8",
-                )
-            )["workflow"]["id"]
-            source_receipt = {
-                "schema": "delivery-source-publication-v1",
-                "project_id": fixture_ci.helper.PROJECT_ID,
-                "workflow_id": graph_workflow_id,
-                "source_commit": project_commit,
-                "kit_commit": candidate_commit,
-                "runtime_roots": [str(fixture_root), str(candidate_kit)],
-                "files": (
-                    inventory(
-                        fixture_root,
-                        prefixes=project_prefixes,
-                        files=project_files,
-                    )
-                    + inventory(candidate_kit, prefixes=kit_prefixes)
-                ),
-                "policy": "published_source_v1",
-                "local_inputs": [],
-            }
-            receipt_dir = temp_root / "native-receipts"
-            receipt_dir.mkdir(mode=0o700)
-            receipt_path = receipt_dir / "source-receipt.json"
-            receipt_bytes = canonical(source_receipt)
-            receipt_path.write_bytes(receipt_bytes)
-            receipt_path.chmod(0o600)
-
-            source_graph = json.loads(
-                (fixture_root / fixture_ci.helper.GRAPH_PATH).read_text(
-                    encoding="utf-8",
-                )
-            )
-            graph = {
-                "workflow_id": source_graph["workflow"]["id"],
-                "expected_version": source_graph["workflow"]["version"],
-                "graph": {
-                    key: source_graph[key]
-                    for key in ("nodes", "transition_groups", "edges")
-                },
-            }
-            source_nodes = {
-                node["key"]: node for node in graph["graph"]["nodes"]
-            }
-            ingress_edges = [
-                edge for edge in graph["graph"]["edges"]
-                if edge.get("target_node_id")
-                == source_nodes["release_intent_gate"]["id"]
-                and any(
-                    group.get("id") == edge.get("transition_group_id")
-                    and group.get("source_node_id")
-                    == source_nodes["backlog"]["id"]
-                    for group in graph["graph"]["transition_groups"]
-                )
-            ]
-            assert len(ingress_edges) == 1
-            ingress_edge = ingress_edges[0]
-            admission = {
-                "schema": "delivery-source-admission-v2",
-                "receipt_ref": {
-                    "path": str(receipt_path),
-                    "sha256": hashlib.sha256(receipt_bytes).hexdigest(),
-                },
-                "primary_workspace_id": "workspace-d13-candidate-fixture",
-                "primary_root": str(fixture_root),
-                "kit_root": str(candidate_kit),
-                "source_ref": source_publication_ref,
-                "kit_ref": kit_publication_ref,
-                "ci_helper": str(prepare_cli),
-                "helper_bindings": [],
-                "binding": {"kind": "plan-publication"},
-                "ingress": {
-                    "kind": "script-edge",
-                    "edge_id": ingress_edge["id"],
-                },
-            }
-            frame = {
-                "project_id": fixture_ci.helper.PROJECT_ID,
-                "workflow_id": graph_workflow_id,
-                "source_admission": admission,
-            }
-            frame_bytes = canonical(frame)
-            frame_path = receipt_dir / "script-ingress.json"
-            frame_path.write_bytes(frame_bytes)
-            frame_path.chmod(0o600)
-            ingress_description = canonical({
-                "schema": "delivery-script-ingress-ref-v1",
-                "path": str(frame_path),
-                "sha256": hashlib.sha256(frame_bytes).hexdigest(),
-            }).decode("utf-8")
-            ingress_group = next(
-                group for group in graph["graph"]["transition_groups"]
-                if group.get("id") == ingress_edge["transition_group_id"]
-            )
-            # Keep the committed source graph receipt acyclic; the native
-            # Workflow view carries this private admission frame at ingress.
-            ingress_group["description"] = ingress_description
-
-            nodes = {node["key"]: node for node in graph["graph"]["nodes"]}
-            prepare_node = nodes["ci_prepare"]
-            monitor_node = nodes["ci_monitor"]
+            source_graph = json.loads((fixture_root / fixture_ci.helper.GRAPH_PATH).read_text())
+            graph_workflow_id = source_graph["workflow"]["id"]
+            nodes = {node["key"]: node for node in source_graph["nodes"]}
+            prepare_node, monitor_node = nodes["ci_prepare"], nodes["ci_monitor"]
             task_id_fixture = f"task-{uuid.uuid4()}"
             task_short_fixture = "PUB-99"
             project_id_fixture = fixture_ci.helper.PROJECT_ID
-            workspace_id = "workspace-d13-candidate-fixture"
+            workspace_id = "workspace-puber-native-fixture"
             native_detail = {
                 "actions": [],
                 "attention_count": 0,
@@ -1076,61 +883,22 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
                     "id": task_id_fixture,
                     "short_id": task_short_fixture,
                     "project_id": project_id_fixture,
-                    "workflow_id": graph["workflow_id"],
+                    "workflow_id": graph_workflow_id,
                 },
                 "workflow": {
-                    "workflow_id": graph["workflow_id"],
-                    "version": graph["expected_version"],
+                    "workflow_id": graph_workflow_id,
+                    "version": source_graph["workflow"]["version"],
                     "name": fixture_ci.helper.WORKFLOW_NAME,
                 },
                 "worktree_path": str(fixture_root),
             }
-            native_state = temp_root / "native-state.json"
-            native_state.write_text(
-                json.dumps(
-                    {
-                        "project_id": project_id_fixture,
-                        "project_root": str(fixture_root),
-                        "task_detail": native_detail,
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                ),
-                encoding="utf-8",
-            )
-            native_graph_path = temp_root / "native-graph.json"
-            native_graph_path.write_text(
-                json.dumps(graph, ensure_ascii=False, sort_keys=True),
-                encoding="utf-8",
-            )
-
+            native.bind_native_fixture(fixture_root, fixture_root, native_detail, source_graph)
+            native_state = native.task_path
+            native_graph_path = native.graph_path
+            graph = native.graph
             fake_bin = temp_root / "bin"
             fake_bin.mkdir()
-            fake_kent = fake_bin / "kent"
-            fake_kent.write_text(
-                "#!/usr/bin/env python3\n"
-                "import json, os, sys\n"
-                "from pathlib import Path\n"
-                f"state = json.loads(Path({str(native_state)!r}).read_text())\n"
-                f"graph = json.loads(Path({str(native_graph_path)!r}).read_text())\n"
-                "args = sys.argv[1:]\n"
-                "if args == ['project', 'list']:\n"
-                "    print(f\"{state['project_id']}\\tPuber\\t{state['project_root']}\")\n"
-                "elif args[:3] == ['project', 'workspaces', '--project']:\n"
-                "    print(json.dumps({'project_id':state['project_id'],'offset':0,"
-                "'workspaces':[{'workspace_id':state['task_detail']['source_workspace']['workspace_id'],"
-                "'root_path':state['project_root'],'is_default':True}]}))\n"
-                "elif args[:1] == ['project']:\n"
-                "    print(state['project_id'])\n"
-                "elif args[:2] == ['task', 'show']:\n"
-                "    print(json.dumps(state['task_detail']))\n"
-                "elif args[:3] == ['workflow', 'graph', 'inspect']:\n"
-                "    print(json.dumps(graph))\n"
-                "else:\n"
-                "    raise SystemExit(2)\n",
-                encoding="utf-8",
-            )
-            fake_kent.chmod(0o755)
+            fake_kent = native.native
             fake_gh = fake_bin / "gh"
             fake_gh.write_text(
                 "#!/usr/bin/env python3\n"
@@ -1142,7 +910,7 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
                 "        stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
                 "failure = os.environ.get('PUBER_D13_FAKE_GH_FAIL', '0')\n"
                 "if failure in {'known', 'unknown'}:\n"
-                "    retry_after = '20' if failure == 'known' else 'not-a-duration'\n"
+                "    retry_after = '600' if failure == 'known' else 'not-a-duration'\n"
                 "    sys.stderr.write(\n"
                 "        '< HTTP/2.0 429 Too Many Requests\\r\\n'\n"
                 "        '< Retry-After: ' + retry_after + '\\r\\n\\r\\n'\n"
@@ -1164,7 +932,7 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
             gh_calls = temp_root / "github-calls.jsonl"
             environment = {
                 "HOME": str(home),
-                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "PATH": f"{sandbox.bin}{os.pathsep}{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "PYTHONPATH": str(candidate_kit),
                 "KENT_PREPARE_GITHUB_CI_BIN": str(prepare_cli),
                 "KENT_GH_BIN": str(fake_gh),
@@ -1637,6 +1405,9 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
                 "known cooldown did not stop the Puber wrapper provider pre-read"
             )
             second_failure = run_native(first_retry_input)
+            print("known cooldown real-clock elapsed milliseconds:",
+                time.time_ns() // 1_000_000 - (known_constraint["not_before_unix_ms"] - 600_000),
+                flush=True)
             assert gh_call_count() == calls_before_known_block, (
                 "known cooldown did not stop the shared prepare-CI query"
             )
@@ -1835,18 +1606,7 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
                 }],
                 "status": {"node_ids": [janitor_node["id"]]},
             }
-            native_state.write_text(
-                json.dumps(
-                    {
-                        "project_id": project_id_fixture,
-                        "project_root": str(fixture_root),
-                        "task_detail": janitor_native_detail,
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                ),
-                encoding="utf-8",
-            )
+            native_state.write_text(json.dumps(janitor_native_detail), encoding="utf-8")
             janitor_input = {
                 "_kent": {
                     "task_id": task_id_fixture,
@@ -1943,9 +1703,22 @@ def actual_typed_roundtrip(candidate_value: str) -> None:
         assert before_head == after_head, "read-only Kit HEAD changed during fixture"
 
 
+
+def actual_typed_roundtrip(candidate_value, candidate_freeze=None):
+    with FixtureSandbox.create() as sandbox:
+        saved = dict(os.environ)
+        try:
+            os.environ.clear()
+            os.environ.update(sandbox.environment)
+            _actual_typed_roundtrip(candidate_value, sandbox, candidate_freeze)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
+
 candidate_value = os.environ.get("PUBER_D13_KIT_CANDIDATE_ROOT")
 if candidate_value:
-    actual_typed_roundtrip(candidate_value)
+    actual_typed_roundtrip(candidate_value, candidate_freeze_argument(sys.argv[1:]))
 
 print(
     "workflow-puber-release-ci: passed S4 context normalization, typed producer "

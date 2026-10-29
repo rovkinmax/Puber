@@ -1195,6 +1195,178 @@ def _validate_script_ingress_graph(
     }
 
 
+def _read_source_ingress_graph(
+    graph_response: Mapping[str, Any], *, project_id: str, workflow_id: str,
+) -> dict[str, Any]:
+    """Pure closed carrier read shared by Agent bootstrap and offline capture.
+
+    Compact references are safely read locally. No native call or Script owner
+    is invented here; actual Script ownership remains a separate native gate.
+    """
+    graph = graph_response.get("graph")
+    if not isinstance(graph, dict):
+        raise KitRuntimeError("source ingress graph is malformed")
+    frames = []
+    references = []
+    marker_count = [0, 0]
+    for collection in ("nodes", "edges", "node_groups", "transition_groups"):
+        rows = graph.get(collection, [])
+        if not isinstance(rows, list):
+            raise KitRuntimeError("source ingress graph collection is malformed")
+        for row in rows:
+            if not isinstance(row, dict):
+                raise KitRuntimeError("source ingress graph row is malformed")
+            if SCRIPT_INGRESS_REF_SCHEMA in str(row.get("description", "")):
+                references.append((collection, row))
+            for key in ("prompt_template", "prompt"):
+                prompt = row.get(key)
+                if not isinstance(prompt, str):
+                    continue
+                marker_count[0] += prompt.count(SOURCE_ADMISSION_BEGIN)
+                marker_count[1] += prompt.count(SOURCE_ADMISSION_END)
+                if SOURCE_ADMISSION_BEGIN in prompt:
+                    lines = prompt.splitlines()
+                    if not lines or lines[0] != SOURCE_ADMISSION_BEGIN or len(lines) < 3:
+                        raise KitRuntimeError("source admission prefix is malformed")
+                    frame = _parse_json(lines[1].encode("utf-8"), "source admission prefix")
+                    if (set(frame) != {"project_id", "workflow_id", "source_admission"}
+                            or _canonical_json(frame).decode("utf-8") != lines[1]):
+                        raise KitRuntimeError("source admission prefix is not canonical")
+                    admission = _closed_source_admission(frame["source_admission"])
+                    if SOURCE_ADMISSION_END not in prompt:
+                        raise KitRuntimeError("source admission prefix is incomplete")
+                    expected = prompt.split(SOURCE_ADMISSION_END, 1)[0] + SOURCE_ADMISSION_END
+                    suffix = prompt[len(expected):]
+                    if suffix and not suffix.startswith("\n\n"):
+                        raise KitRuntimeError("source admission prefix separator differs")
+                    frames.append((collection, row, frame, expected))
+    if references:
+        if frames or marker_count != [0, 0] or len(references) != 1 or references[0][0] != "transition_groups":
+            raise KitRuntimeError("source admission carrier is ambiguous")
+        result = _validate_script_ingress_graph(
+            graph_response, project_id=project_id, workflow_id=workflow_id,
+        )
+        result["carrier"] = {"kind": "script-edge", "reference": references[0][1]["description"]}
+        return result
+    if len(frames) != 1 or marker_count != [1, 1] or frames[0][0] != "edges":
+        raise KitRuntimeError("source admission carrier is ambiguous")
+    _, edge, frame, prefix = frames[0]
+    if frame["project_id"] != project_id or frame["workflow_id"] != workflow_id:
+        raise KitRuntimeError("source admission frame identity differs")
+    admission = _closed_source_admission(frame["source_admission"])
+    if admission.get("ingress") != {"kind": "agent-edge", "edge_id": edge.get("id")}:
+        raise KitRuntimeError("source admission Agent ingress differs")
+    groups = {_node_id(row): row for row in graph["transition_groups"]}
+    group = groups.get(edge.get("transition_group_id"))
+    source = _graph_node(graph, group.get("source_node_id")) if group else None
+    target = _graph_node(graph, edge.get("target_node_id"))
+    if (not source or source.get("key") not in {"start", "backlog"}
+            or not target or target.get("kind") != "agent"):
+        raise KitRuntimeError("source admission Agent endpoints differ")
+    outgoing = [candidate for candidate in graph["edges"]
+                if groups.get(candidate.get("transition_group_id"), {}).get("source_node_id") == _node_id(source)]
+    if len(outgoing) != 1 or outgoing[0].get("id") != edge.get("id"):
+        raise KitRuntimeError("source admission has a bypass route")
+    return {"frame": frame, "admission": admission, "ingress_node_id": _node_id(target),
+            "carrier": {"kind": "agent-edge", "prefix": prefix}}
+
+
+def validate_runtime_v3_receipt(receipt, primary, kit_root):
+    """Closed metadata validation before importing or invoking publication code.
+
+    Kept identical in the inspector, bootstrap, adapter and operations readers.
+    This validates declarations only; it is not source admission or authority.
+    """
+    def check(ok):
+        if not ok:
+            raise ValueError("invalid v3 publication metadata")
+
+    def identity(value):
+        check(isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,255}", value))
+
+    def root(value):
+        check(isinstance(value, str) and "\x00" not in value
+              and Path(value).is_absolute() and str(Path(value)) == value
+              and ".." not in Path(value).parts and str(Path(value).resolve()) == value)
+
+    check(isinstance(receipt, dict) and set(receipt) == {
+        "schema", "policy", "project_id", "workflow_id", "source_commit", "kit_commit",
+        "runtime_roots", "files", "local_inputs", "project_memory",
+    })
+    check(receipt["schema"] == "delivery-runtime-publication-v3"
+          and receipt["policy"] == "delivery_reliability_project_content_v1")
+    identity(receipt["project_id"])
+    identity(receipt["workflow_id"])
+    for name in ("source_commit", "kit_commit"):
+        check(isinstance(receipt[name], str) and re.fullmatch(r"[0-9a-f]{40}", receipt[name]))
+    roots = receipt["runtime_roots"]
+    check(isinstance(roots, list) and 0 < len(roots) <= 256)
+    for value in roots:
+        root(value)
+    check(len(set(roots)) == len(roots) and str(primary) in roots and str(kit_root) in roots)
+    files, local_inputs = receipt["files"], receipt["local_inputs"]
+    check(isinstance(files, list) and isinstance(local_inputs, list)
+          and 0 < len(files) and len(files) + len(local_inputs) <= 512)
+    seen = set()
+    total = 0
+    for local, items in ((False, files), (True, local_inputs)):
+        for item in items:
+            check(isinstance(item, dict) and set(item) == {
+                "root", "relative_path", "sha256", "byte_size", "mode",
+            } | ({"kind"} if local else set()))
+            name, source_root = item["relative_path"], item["root"]
+            check(isinstance(source_root, str) and source_root in roots
+                  and isinstance(name, str) and name and not name.startswith("/")
+                  and "\\" not in name and "\x00" not in name
+                  and all(part not in ("", ".", "..") for part in name.split("/")))
+            check(not name.startswith((".kent/runtime/", ".kent/retained-evidence/", "build/")))
+            check(isinstance(item["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", item["sha256"])
+                  and type(item["byte_size"]) is int and 0 <= item["byte_size"] <= 8 * 1024 * 1024
+                  and type(item["mode"]) is int and 0 <= item["mode"] <= 0o777
+                  and not item["mode"] & 0o022)
+            check(not any(other_root == source_root and (
+                other == name or other.startswith(name + "/") or name.startswith(other + "/"))
+                for other_root, other in seen))
+            if local:
+                check(item["kind"] == "local-instruction" and source_root in {str(primary), str(kit_root)}
+                      and name.startswith(".kent/skills/") and name.endswith(".md")
+                      and not any(c in name for c in "*?[]") and not item["mode"] & 0o111)
+            seen.add((source_root, name))
+            total += item["byte_size"]
+            check(total <= 32 * 1024 * 1024)
+    memory = receipt["project_memory"]
+    check(isinstance(memory, dict) and set(memory) == {
+        "root", "project_key", "project_uid", "legacy_task_ids",
+    })
+    root(memory["root"])
+    identity(memory["project_key"])
+    identity(memory["project_uid"])
+    legacy = memory["legacy_task_ids"]
+    check(isinstance(legacy, list) and len(legacy) <= 256)
+    for value in legacy:
+        identity(value)
+    check(len(set(legacy)) == len(legacy))
+    return len(files) + len(local_inputs)
+
+
+def validate_source_v2_receipt(receipt, primary, kit_root):
+    """Validate source-only content declarations, without granting R2 identity."""
+    if (not isinstance(receipt, dict) or set(receipt) != {
+        "schema", "policy", "project_id", "workflow_id", "source_commit", "kit_commit",
+        "runtime_roots", "files", "local_inputs",
+    } or receipt["schema"] != "delivery-source-publication-v2"
+            or receipt["policy"] != "published_source_project_content_v1"):
+        raise ValueError("invalid source-only v2 publication metadata")
+    # Reuse the bounded structural checks only. No synthetic admission or native
+    # identity is constructed, returned or used to access project memory.
+    return validate_runtime_v3_receipt({
+        **receipt, "schema": "delivery-runtime-publication-v3",
+        "policy": "delivery_reliability_project_content_v1",
+        "project_memory": {"root": str(primary), "project_key": "metadata-only",
+                           "project_uid": "metadata-only", "legacy_task_ids": []},
+    }, primary, kit_root)
+
+
 def _read_source_receipt(
     admission: Mapping[str, Any],
     *,
@@ -1211,7 +1383,23 @@ def _read_source_receipt(
         raise KitRuntimeError("native source receipt digest drifted")
     receipt = _parse_json(raw, "native source publication receipt")
     schema = receipt.get("schema")
+    source_v2 = schema == "delivery-source-publication-v2"
+    if source_v2:
+        try:
+            validate_source_v2_receipt(receipt, admission["primary_root"], admission["kit_root"])
+        except ValueError as error:
+            raise KitRuntimeError("invalid source-only v2 publication metadata") from error
+    v3 = schema == "delivery-runtime-publication-v3"
+    if v3:
+        try:
+            validate_runtime_v3_receipt(receipt, admission["primary_root"], admission["kit_root"])
+        except ValueError as error:
+            raise KitRuntimeError("invalid v3 publication metadata") from error
     expected_fields = {
+        "delivery-runtime-publication-v3": {
+            "schema", "project_id", "workflow_id", "source_commit", "kit_commit",
+            "runtime_roots", "files", "policy", "project_memory", "local_inputs",
+        },
         "delivery-runtime-publication-v1": {
             "schema", "project_id", "workflow_id", "source_commit", "kit_commit",
             "runtime_roots", "files", "policy", "project_memory",
@@ -1219,6 +1407,10 @@ def _read_source_receipt(
         "delivery-runtime-publication-v2": {
             "schema", "project_id", "workflow_id", "source_commit", "kit_commit",
             "runtime_roots", "files", "policy", "project_memory", "local_inputs",
+        },
+        "delivery-source-publication-v2": {
+            "schema", "project_id", "workflow_id", "source_commit", "kit_commit",
+            "runtime_roots", "files", "policy", "local_inputs",
         },
         "delivery-source-publication-v1": {
             "schema", "project_id", "workflow_id", "source_commit", "kit_commit",
@@ -1228,9 +1420,9 @@ def _read_source_receipt(
     if expected_fields is None or set(receipt) != expected_fields:
         raise KitRuntimeError("native source receipt schema is not closed")
     expected_policy = (
-        "published_source_v1"
-        if schema == "delivery-source-publication-v1"
-        else "delivery_reliability_v1"
+        ("published_source_project_content_v1" if source_v2 else "published_source_v1")
+        if schema in ("delivery-source-publication-v1", "delivery-source-publication-v2")
+        else "delivery_reliability_project_content_v1" if v3 else "delivery_reliability_v1"
     )
     if (
         receipt.get("project_id") != project_id
@@ -1636,7 +1828,7 @@ def qualified_kit_runtime(
             native_script_context=native_script_context,
         )
     else:
-        ingress = _validate_script_ingress_graph(
+        ingress = _read_source_ingress_graph(
             graph_response,
             project_id=project_id,
             workflow_id=workflow_id,
@@ -1672,12 +1864,24 @@ def qualified_kit_runtime(
     selected_root = _qualify_git_cohort(expected_binding)
     _validate_loader_profile(project, profile, expected_binding)
 
-    if native_context is not None and not source_binding_command:
+    if not source_binding_command and ingress.get("carrier", {}).get("kind") == "agent-edge":
+        if _receipt["schema"] not in ("delivery-runtime-publication-v3", "delivery-source-publication-v2"):
+            raise KitRuntimeError("Agent prefix bootstrap requires the explicit content policy")
+        delivery = _import_kit_module("delivery", selected_root)
+        expected_prefix = delivery.source_admission_gate(
+            ingress["admission"], project_id=project_id, workflow_id=workflow_id,
+            project_root=ingress["admission"]["primary_root"],
+        )
+        if ingress["carrier"]["prefix"] != expected_prefix:
+            raise KitRuntimeError("source admission prefix differs from its closed frame")
+
+    if not source_binding_command and (native_context is not None or
+            _receipt["schema"] in ("delivery-runtime-publication-v3", "delivery-source-publication-v2")):
         operations = _import_kit_module("operations", selected_root)
         try:
             # Initial ingress admission is deliberately strict. Later native
             # Scripts reuse its graph-bound frame after owner/path validation.
-            if task["current_node_id"] == ingress["ingress_node_id"]:
+            if native_context is not None and task["current_node_id"] == ingress["ingress_node_id"]:
                 verified = operations.admit_script_source_ingress(
                     project,
                     native_context,
@@ -1711,6 +1915,56 @@ def qualified_kit_runtime(
         source_root=selected_root,
         binding=expected_binding,
         native_authorized=True,
+    )
+
+
+@dataclass(frozen=True)
+class VerifiedCiCommand:
+    path: Path
+    arguments: tuple[str, ...]
+
+    def __reduce__(self):
+        raise TypeError("qualified commands are invocation-local")
+
+
+def admitted_ci_command(project_root, native_context, *, operation):
+    """Qualify the entire serving archive cohort before dispatching its CLI."""
+    if operation not in {None, "archive_script_ci_report_v2", "archive_script_ci_report", "archive_ci_report"}:
+        raise KitRuntimeError("unsupported admitted CI operation")
+    from . import ci_contract
+
+    root = _canonical_directory(project_root, "CI project root")
+    context_task = native_context.get("task_id") if isinstance(native_context, Mapping) else None
+    if not isinstance(context_task, str):
+        raise KitRuntimeError("native Script context is unavailable")
+    executable = _native_executable()
+    project_id = _native_project_id(executable, root)
+    task = _task_from_script_context(executable, root, project_id, native_context)
+    graph = _native_graph(executable, root, task["workflow_id"])
+    _validate_script_owner(task, graph, root)
+    node = _graph_node(graph["graph"], task["current_node_id"])
+    if operation is None and node.get("key") != "ci_prepare":
+        raise KitRuntimeError("prepare dispatch requires its native Script node")
+    resolver = (
+        ci_contract.resolve_script_ci_archive_readers_admitted
+        if operation in {None, "archive_script_ci_report_v2"}
+        else ci_contract.resolve_script_ci_archive_readers
+    )
+    resolver(
+        root, task["short_id"], dict(native_context),
+        native_read=ci_contract._native_read_adapter(root),
+    )
+    source_root = Path(__file__).resolve(strict=True).parents[1]
+    # Loaded resolver dependencies must originate in the same qualified K;
+    # the snapshot above checks their current bytes against its immutable Git.
+    for name, module in tuple(sys.modules.items()):
+        if name == "workflowkit" or name.startswith("workflowkit."):
+            origin = getattr(module, "__file__", None)
+            if not isinstance(origin, str) or not Path(origin).resolve().is_relative_to(source_root):
+                raise KitRuntimeError("CI module escaped its qualified cohort")
+    return VerifiedCiCommand(
+        source_root / "scripts/prepare-github-ci",
+        ("--admitted-reader-source",) if operation is None else (),
     )
 
 

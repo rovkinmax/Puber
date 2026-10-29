@@ -532,6 +532,17 @@ def _prepare_ci_legacy_cli():
     return selected
 
 
+def admitted_ci_command(project_root, native_context, *, operation):
+    root = _project_root(project_root)
+    profile = _runtime_profile(root)
+    if "kit_runtime" in profile:
+        qualified = qualified_kit_runtime(root, source_binding=native_context)
+        module = qualified.module("kit_runtime")
+    else:
+        module = kit_module("kit_runtime", root)
+    return module.admitted_ci_command(root, native_context, operation=operation)
+
+
 def _prepare_ci_qualified_cli(root, payload):
     native_context = payload.get("_kent")
     if not isinstance(native_context, dict):
@@ -580,36 +591,86 @@ def prepare_github_ci_command(
     *,
     require_runtime_binding=False,
 ):
-    """Dispatch CI preparation only through an opted-in native Kit binding."""
+    """Classify bounded input against this wrapper's own safe project profile."""
     payload = None
     try:
         root = _project_root(project_root)
+        raw_bytes = sys.stdin.buffer.read(MAX_JSON_INPUT_BYTES + 1)
+        if len(raw_bytes) > MAX_JSON_INPUT_BYTES:
+            raise ValueError("CI preparation input exceeds its bound")
+        payload = decode_payload(raw_bytes.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("CI preparation input is invalid")
         try:
             profile = _runtime_profile(root)
         except FileNotFoundError:
             if require_runtime_binding:
                 raise ValueError("workflow Kit runtime profile disappeared")
+            profile = None
+        workspace = payload.get("workspace_path")
+        if (not isinstance(workspace, str) or not Path(workspace).is_absolute()
+                or ".." in Path(workspace).parts or Path(workspace).resolve(strict=True) != root):
+            raise ValueError("CI workspace differs from wrapper root")
+        operation = payload.get("operation")
+        if ("operation" in payload and operation not in {
+            "archive_ci_report", "archive_script_ci_report", "archive_script_ci_report_v2",
+        }):
+            raise ValueError("unsupported CI operation")
+        versions = profile.get("command_versions", {}) if profile else {}
+        policies = profile.get("policies", {}) if profile else {}
+        if not isinstance(versions, dict) or not isinstance(policies, dict):
+            raise ValueError("invalid CI profile")
+        if policies.get("delivery_reliability") not in {None, "v1"}:
+            raise ValueError("unsupported CI profile policy")
+        current = (
+            policies.get("delivery_reliability") == "v1"
+            or versions.get("runtime_contracts") in {"2.1.0", "2.2.0"}
+            or versions.get("prepare_ci") in {"3.0.0", "3.1.0"}
+        )
+        if profile is not None and not current:
+            if (
+                profile.get("schema_version") not in {3, 4}
+                or versions.get("runtime_contracts") not in {None, "1.0.0", "2.0.0"}
+                or versions.get("prepare_ci") not in {None, "1.0.0", "2.0.0"}
+            ):
+                raise ValueError("unsupported legacy CI profile")
+        exception = (
+            operation == "archive_ci_report" and "_kent" not in payload
+            and profile is not None and profile.get("schema_version") == 4
+            and policies.get("delivery_reliability") == "v1"
+            and versions.get("runtime_contracts") == "2.0.0"
+            and versions.get("prepare_ci") == "2.0.0"
+            and isinstance(profile.get("kit_managed_commands"), list)
+            and {"runtime_contracts", "prepare_ci"}.issubset(profile.get("kit_managed_commands", []))
+        )
+        arguments = []
+        if (current or "_kent" in payload or operation == "archive_script_ci_report_v2") and not exception:
+            native_context = payload.get("_kent")
+            if not isinstance(native_context, dict):
+                raise ValueError("current CI requires native Script identity")
+            if profile is not None and "kit_runtime" in profile:
+                qualified = qualified_kit_runtime(root, source_binding=native_context)
+                delivery = qualified.module("ci_contract")
+            else:
+                delivery = kit_module("ci_contract", root)
+            observed, protocol, *_ = delivery.observe_script_delivery_protocol(payload)
+            if observed is None:
+                raise ValueError("native CI observation unavailable")
+            if operation == "archive_script_ci_report_v2" and protocol != "typed-v1":
+                raise ValueError("v2 Script archive requires the typed CI protocol")
+            if protocol == "typed-v1":
+                command = admitted_ci_command(root, native_context, operation=operation)
+                selected, arguments = command.path, list(command.arguments)
+            else:
+                selected = (_prepare_ci_qualified_cli(root, payload)
+                            if profile is not None and "kit_runtime" in profile
+                            else _prepare_ci_legacy_cli())
+        elif profile is not None and "kit_runtime" in profile:
+            selected = _prepare_ci_qualified_cli(root, payload)
+        else:
             selected = _prepare_ci_legacy_cli()
-            os.execv(selected, [selected])
-            return 0
-        if "kit_runtime" not in profile:
-            if require_runtime_binding:
-                raise ValueError("workflow Kit runtime binding disappeared")
-            selected = _prepare_ci_legacy_cli()
-            os.execv(selected, [selected])
-            return 0
-
-        raw_bytes = sys.stdin.buffer.read(MAX_JSON_INPUT_BYTES + 1)
-        if len(raw_bytes) > MAX_JSON_INPUT_BYTES:
-            raise ValueError("CI preparation input exceeds its bound")
-        try:
-            payload = decode_payload(raw_bytes.decode("utf-8"))
-        except (UnicodeError, RecursionError) as error:
-            raise ValueError("CI preparation input is invalid") from error
-
-        selected = _prepare_ci_qualified_cli(root, payload)
         result = subprocess.run(
-            [sys.executable, "-B", str(selected)],
+            [str(selected), *arguments],
             cwd=root,
             input=raw_bytes,
             check=False,

@@ -150,17 +150,18 @@ def _assert_no_unexpected_changes() -> None:
 
 def _assert_runtime_source_closure(validated: Mapping[str, Any]) -> None:
     kit = helper._kit_modules()
-    revision = kit["preflight_project_revision"](ROOT, validated["commit"])
-    selected = revision.selected_runtime_source_inputs
-    if selected is None or selected.project_commit != validated["commit"]:
-        raise ProfileError("selected sealed RuntimeSourceInputs are missing or stale")
-    profile = kit["ProjectProfile"].from_toml(
-        ROOT,
-        (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8"),
-        source=".kent/workflow-profile.toml",
-        check_files=False,
-    )
-    helper._external_captures(ROOT, profile, selected)
+    with kit["source_read_budget"]() as budget:
+        revision = kit["preflight_project_revision"](ROOT, validated["commit"], budget=budget)
+        selected = revision.selected_runtime_source_inputs
+        if selected is None or selected.project_commit != validated["commit"]:
+            raise ProfileError("selected sealed RuntimeSourceInputs are missing or stale")
+        profile = kit["ProjectProfile"].from_toml(
+            ROOT,
+            (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8"),
+            source=".kent/workflow-profile.toml",
+            check_files=False,
+        )
+        helper._external_captures(ROOT, profile, selected, budget=budget)
 
 
 def _read_checkpoint(task_short_id: str):

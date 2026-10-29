@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from contextlib import contextmanager
 import hashlib
 import importlib
 import importlib.machinery
@@ -18,14 +19,15 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
 KIT_ROOT = Path(
     "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/"
-    "runtime-sdk-puber-30b908c9"
+    "archive-published-2708-456"
 )
-KIT_COMMIT = "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
+KIT_COMMIT = "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"
 BASE_COMMIT = "a7b4486412c69c7708a3c5a78515dfde870eb88f"
 WORKFLOW_ID = "7061fc98-aae5-4468-9d89-fa28bfe30c72"
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
@@ -87,6 +89,22 @@ def canonical(value: object) -> bytes:
 
 
 def command(*args: str, cwd: Path = ROOT, env=None) -> str:
+    if args[0] == "git":
+        env = {
+            **{key: value for key, value in (os.environ if env is None else env).items()
+               if not key.startswith("GIT_")},
+            "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1", "GIT_NO_LAZY_FETCH": "1",
+            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_CONFIG_GLOBAL": os.devnull,
+        }
+        if args[1] == "clone":
+            confined_fixture_root(Path(args[-1]))
+        args = (
+            "git", "--no-replace-objects", "-c", f"core.hooksPath={os.devnull}",
+            "-c", "core.fsmonitor=false", "-c", "protocol.allow=never",
+            "-c", "protocol.file.allow=always", "-c", "gc.auto=0", *args[1:],
+        )
     result = subprocess.run(
         list(args), cwd=cwd, env=env, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True, check=False, timeout=120,
@@ -99,7 +117,53 @@ def command(*args: str, cwd: Path = ROOT, env=None) -> str:
     return result.stdout.strip()
 
 
+OWNED_FIXTURE_ROOTS: set[Path] = set()
+
+
+@contextmanager
+def fixture_repositories():
+    with tempfile.TemporaryDirectory() as directory:
+        base = Path(directory).resolve()
+        registered = set()
+
+        def create(name):
+            if Path(name).name != name or name in {".", ".."}:
+                raise AssertionError("fixture repository requires a single directory name")
+            root = base / name
+            root.mkdir()
+            OWNED_FIXTURE_ROOTS.add(root)
+            registered.add(root)
+            return root
+
+        try:
+            yield create
+        finally:
+            OWNED_FIXTURE_ROOTS.difference_update(registered)
+
+
+def confined_fixture_root(root: Path) -> Path:
+    canonical = root.resolve()
+    if canonical.is_relative_to(ROOT.resolve()) or canonical.is_relative_to(KIT_ROOT.resolve()):
+        raise AssertionError("source repositories cannot be fixture write targets")
+    if canonical not in OWNED_FIXTURE_ROOTS:
+        raise AssertionError("fixture writes require an owned registered repository")
+    if (canonical / ".git").is_symlink():
+        raise AssertionError("fixture Git directory cannot be a symlink")
+    return canonical
+
+
 def git(root: Path, *args: str) -> str:
+    if args[0] not in {"ls-files", "ls-tree", "rev-parse", "status", "show"}:
+        canonical = confined_fixture_root(root)
+        if args[0] == "init" and (canonical / ".git").exists():
+            raise AssertionError("fixture init cannot reinitialize an existing Git directory")
+        if args[0] != "init":
+            if not (canonical / ".git").is_dir():
+                raise AssertionError("fixture writes require a private Git directory")
+            top = command("git", "-C", str(root), "rev-parse", "--show-toplevel", cwd=root)
+            directory = command("git", "-C", str(root), "rev-parse", "--absolute-git-dir", cwd=root)
+            if Path(top).resolve() != canonical or Path(directory).resolve() != canonical / ".git":
+                raise AssertionError("fixture write target escaped its disposable repository")
     return command("git", "-C", str(root), *args, cwd=root)
 
 
@@ -149,7 +213,32 @@ def release_snapshot() -> dict[str, tuple[str, int]]:
             hashlib.sha256(current.read_bytes()).hexdigest(),
             stat.S_IMODE(current.stat().st_mode),
         )
-        assert current.read_bytes() == expected.stdout, relative
+        expected_bytes = expected.stdout
+        if relative == ".kent/workflow-profile.toml":
+            expected_bytes = expected_bytes.replace(
+                b"runtime-sdk-puber-30b908c9", b"archive-published-2708-456",
+            ).replace(
+                b"30b908c9fc7097c0464ae67d58f891a1dd7103fb", KIT_COMMIT.encode("ascii"),
+            )
+        elif relative == ".kent/scripts/workflow_kit_runtime.py":
+            expected_bytes = (KIT_ROOT / "workflowkit/kit_runtime.py").read_bytes()
+        elif relative == ".kent/workflows/puber-release-current.manifest.json":
+            release_builder = runpy.run_path(str(ROOT / ".kent/workflows/builders/puber_release_current.py"))
+            expected_bytes = (
+                json.dumps(release_builder["_expected_manifest"](), ensure_ascii=False, indent=2) + "\n"
+            ).encode("utf-8")
+        # The separately approved streaming source package owns these Release
+        # integration inputs. Engineering still snapshots their actual bytes
+        # and modes before/after its operations; it must not revert that package
+        # to the older Engineering baseline. Package suites validate their API,
+        # canonical copy and full source closure independently.
+        streaming_inputs = {
+            ".kent/scripts/workflow-puber-release-intent",
+            ".kent/scripts/workflow_runtime_contracts.py",
+            ".kent/workflows/builders/puber_release_current.py",
+        }
+        if relative not in streaming_inputs:
+            assert current.read_bytes() == expected_bytes, relative
         current_mode = stat.S_IMODE(current.stat().st_mode)
         assert bool(current_mode & 0o111) == bool(
             tracked_mode(ROOT, BASE_COMMIT, relative) & 0o111
@@ -293,26 +382,210 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
         self.assertEqual(release_snapshot(), before_release)
 
     def test_allowlist_modes_and_release_source_preservation(self):
-        self.assertEqual(release_snapshot(), release_snapshot())
-        expected_modes = {
-            ".kent/scripts/workflow-puber-engineering-admission": 0o755,
-            ".kent/workflows/builders/puber_engineering_delivery_current.py": 0o755,
-            ".kent/workflows/puber-engineering-delivery-current.json": 0o644,
-            ".kent/scripts/tests/fixtures/puber-engineering-delivery-native-v13.json": 0o644,
-            ".kent/scripts/tests/test-puber-engineering-delivery-current": 0o755,
-            ".kent/workflows/puber-engineering-delivery-current.md": 0o644,
-        }
-        for relative, mode in expected_modes.items():
-            self.assertEqual(stat.S_IMODE((ROOT / relative).stat().st_mode), mode, relative)
+        before_release = release_snapshot()
+        before = self.source_snapshot(ROOT)
+        self.assert_source_shape(ROOT)
+        command(sys.executable, str(BUILDER_PATH), "--check")
+        self.assertEqual(self.source_snapshot(ROOT), before)
+        self.assertEqual(release_snapshot(), before_release)
 
-        status = command(
-            "git", "-C", str(ROOT), "status", "--short", "--untracked-files=all",
-        ).splitlines()
-        added = {line[3:] for line in status if line.startswith("?? ")}
-        self.assertEqual(added, ALLOWLIST)
-        self.assertFalse(command(
-            "git", "-C", str(ROOT), "diff", "--name-only",
-        ))
+    def assert_source_shape(self, root):
+        expected_executable = {
+            ".kent/scripts/workflow-puber-engineering-admission",
+            ".kent/workflows/builders/puber_engineering_delivery_current.py",
+            ".kent/scripts/tests/test-puber-engineering-delivery-current",
+        }
+        self.assertEqual(len(ALLOWLIST), 6)
+        for relative in ALLOWLIST:
+            path = root / relative
+            self.assertFalse(path.is_symlink(), relative)
+            self.assertTrue(path.is_file(), relative)
+            mode = stat.S_IMODE(path.stat().st_mode)
+            allowed = {0o700, 0o755} if relative in expected_executable else {0o600, 0o644}
+            self.assertIn(mode, allowed, relative)
+
+    def test_source_shape_modes_in_disposable_fixture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_source_tree(ROOT, root, sorted(ALLOWLIST))
+            executable = root / ADMISSION_PATH.relative_to(ROOT)
+            document = root / DOC_PATH.relative_to(ROOT)
+            for script_mode, data_mode in ((0o700, 0o600), (0o755, 0o644)):
+                executable.chmod(script_mode)
+                document.chmod(data_mode)
+                self.assert_source_shape(root)
+            for path, modes in ((executable, (0o600, 0o777, 0o775, 0o4755)),
+                                (document, (0o755, 0o666, 0o664, 0o1644))):
+                original = stat.S_IMODE(path.stat().st_mode)
+                for mode in modes:
+                    with self.subTest(path=path.name, mode=oct(mode)):
+                        path.chmod(mode)
+                        with self.assertRaises(AssertionError):
+                            self.assert_source_shape(root)
+                path.chmod(original)
+            document.unlink()
+            with self.assertRaises(AssertionError):
+                self.assert_source_shape(root)
+            document.symlink_to(DOC_PATH)
+            with self.assertRaises(AssertionError):
+                self.assert_source_shape(root)
+
+    @staticmethod
+    def source_snapshot(root):
+        return (
+            git(root, "rev-parse", "HEAD"),
+            git(root, "status", "--porcelain=v1", "--untracked-files=all"),
+            {str(path.relative_to(root)): (
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+                stat.S_IMODE(path.stat().st_mode),
+            ) for path in (root / relative for relative in ALLOWLIST | set(PRESERVED_RELEASE_PATHS))},
+        )
+
+    def test_committed_and_untracked_candidates_are_equally_checkable(self):
+        before_release = release_snapshot()
+        with fixture_repositories() as create:
+            root = create("project")
+            paths = [
+                path for path in source_paths(ROOT)
+                if infrastructure_path(path, kit=False) or path.startswith(".kent/adapters/")
+            ]
+            copy_source_tree(ROOT, root, [path for path in paths if path not in ALLOWLIST])
+            git(root, "init", "-q")
+            git(root, "config", "user.email", "fixture@example.invalid")
+            git(root, "config", "user.name", "Disposable fixture")
+            git(root, "config", "core.hooksPath", os.devnull)
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "Fixture baseline")
+            copy_source_tree(ROOT, root, sorted(ALLOWLIST))
+            for committed in (False, True):
+                with self.subTest(committed=committed):
+                    if committed:
+                        git(root, "add", ".")
+                        git(root, "commit", "-qm", "Fixture candidate")
+                    before = self.source_snapshot(root)
+                    command(sys.executable, str(root / BUILDER_PATH.relative_to(ROOT)), "--check", cwd=root)
+                    self.assertEqual(self.source_snapshot(root), before)
+        self.assertEqual(release_snapshot(), before_release)
+
+    def test_poisoned_git_environment_cannot_write_foreign_repository(self):
+        with fixture_repositories() as create:
+            intended = create("intended")
+            foreign = create("foreign")
+            for root in (intended, foreign):
+                git(root, "init", "-q")
+            sentinel = foreign / "sentinel"
+            sentinel.write_text("untouched", encoding="utf-8")
+
+            def foreign_snapshot():
+                return {str(path.relative_to(foreign)): path.read_bytes()
+                        for path in foreign.rglob("*") if path.is_file()}
+
+            before = foreign_snapshot()
+            with mock.patch.dict(os.environ, {
+                "GIT_DIR": str(foreign / ".git"), "GIT_WORK_TREE": str(foreign),
+                "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "user.name",
+                "GIT_CONFIG_VALUE_0": "Poisoned config",
+            }):
+                git(intended, "config", "user.email", "fixture@example.invalid")
+            self.assertEqual(foreign_snapshot(), before)
+            self.assertEqual(git(intended, "config", "user.email"), "fixture@example.invalid")
+            linked = create("linked")
+            (linked / ".git").symlink_to(foreign / ".git")
+            with self.assertRaises(AssertionError):
+                git(linked, "config", "user.email", "must-not-write@example.invalid")
+            self.assertEqual(foreign_snapshot(), before)
+
+    def test_temporary_source_model_is_not_a_fixture_write_target(self):
+        with fixture_repositories() as create:
+            source = create("source")
+            git(source, "init", "-q")
+            config = source / ".git/config"
+            before = config.read_bytes()
+            for role in ("ROOT", "KIT_ROOT"):
+                with mock.patch.dict(globals(), {role: source}):
+                    with self.assertRaises(AssertionError):
+                        git(source, "config", "user.email", "must-not-write@example.invalid")
+                self.assertEqual(config.read_bytes(), before)
+            OWNED_FIXTURE_ROOTS.remove(source)
+            with self.assertRaises(AssertionError):
+                git(source, "config", "user.email", "must-not-write@example.invalid")
+            self.assertEqual(config.read_bytes(), before)
+
+    def test_publication_ancestry_and_exact_runtime_in_disposable_fixture(self):
+        with fixture_repositories() as create:
+            kit = create("kit")
+            base = kit.parent
+            command("git", "clone", "--shared", "--no-checkout", str(KIT_ROOT), str(kit))
+            git(kit, "config", "user.email", "fixture@example.invalid")
+            git(kit, "config", "user.name", "Disposable fixture")
+            git(kit, "config", "core.hooksPath", os.devnull)
+            git(kit, "checkout", "--detach", KIT_COMMIT)
+            kit_bootstrap = kit / "workflowkit/kit_runtime.py"
+            kit_bootstrap.chmod(0o600)
+            git(kit, "commit", "--allow-empty", "-qm", "Published descendant")
+            descendant = git(kit, "rev-parse", "HEAD")
+            git(kit, "update-ref", "refs/remotes/origin/main", descendant)
+            git(kit, "checkout", "--detach", KIT_COMMIT)
+            builder = module_from_bootstrap(BUILDER_PATH, "puber_builder_fixture")
+            builder.KIT_ROOT = kit
+            builder.PROFILE = base / "profile.toml"
+            builder.PROFILE.write_text(
+                (ROOT / ".kent/workflow-profile.toml").read_text().replace(str(KIT_ROOT), str(kit)),
+                encoding="utf-8",
+            )
+            builder.BOOTSTRAP = base / "bootstrap.py"
+            shutil.copy2(ROOT / ".kent/scripts/workflow_kit_runtime.py", builder.BOOTSTRAP)
+            # Qualification inspects loaded module provenance too. Do not borrow
+            # workflowkit modules from another test's retained source root.
+            loaded = {key: sys.modules.pop(key) for key in tuple(sys.modules)
+                      if key == "workflowkit" or key.startswith("workflowkit.")}
+            try:
+                builder.qualify_inputs()  # Published descendant; runtime still exact K.
+                with mock.patch.dict(os.environ, {
+                    "GIT_DIR": str(ROOT / ".git"), "GIT_WORK_TREE": str(ROOT),
+                    "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.hooksPath",
+                    "GIT_CONFIG_VALUE_0": "/nonexistent/foreign-hooks",
+                }):
+                    builder.qualify_inputs()
+                git(kit, "update-ref", "-d", builder.KIT_REF)
+                with self.assertRaises(ValueError):
+                    builder.qualify_inputs()
+                unrelated = git(
+                    kit, "commit-tree", git(kit, "rev-parse", "HEAD^{tree}"),
+                    "-m", "Unrelated publication",
+                )
+                git(kit, "update-ref", builder.KIT_REF, unrelated)
+                with self.assertRaises(ValueError):
+                    builder.qualify_inputs()
+                git(kit, "replace", unrelated, descendant)
+                with self.assertRaises(ValueError):
+                    builder.qualify_inputs()
+                git(kit, "replace", "-d", unrelated)
+                git(kit, "update-ref", builder.KIT_REF, descendant)
+                git(kit, "checkout", "--detach", descendant)
+                with self.assertRaises(ValueError):
+                    builder.qualify_inputs()
+                git(kit, "checkout", "--detach", KIT_COMMIT)
+                dirty = kit / "unexpected-source"
+                dirty.write_text("dirty\n", encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    builder.qualify_inputs()
+                dirty.unlink()
+                for path, mode in ((builder.BOOTSTRAP, 0o755), (kit_bootstrap, 0o644)):
+                    original = stat.S_IMODE(path.stat().st_mode)
+                    path.chmod(mode)
+                    with self.assertRaises(ValueError):
+                        builder.qualify_inputs()
+                    path.chmod(original)
+                for path in (builder.BOOTSTRAP, kit_bootstrap):
+                    original = path.read_bytes()
+                    path.write_bytes(original + b"\n")
+                    with self.assertRaises(ValueError):
+                        builder.qualify_inputs()
+                    path.write_bytes(original)
+                builder.qualify_inputs()
+            finally:
+                sys.modules.update(loaded)
 
     def test_initial_script_later_agent_and_script_use_real_qualified_admission(self):
         create_verified_source_fixture = fixture_helper()

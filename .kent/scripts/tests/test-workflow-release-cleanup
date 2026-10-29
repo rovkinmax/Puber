@@ -691,374 +691,356 @@ def verify_janitor_post_effect_failure(f):
     assert moved.is_dir() and not f.work.exists()
     print('post-effect Janitor failure reports unknown effect, never no-effect/done: passed')
 
-def retention_path(f):
-    return f.work/'build/kent-workflow/PUB-99/release-cleanup-retention.json'
+with pub.FixtureSandbox.create() as _fixture_sandbox:
+    with pub.fixture_context(mode="mock", sandbox=_fixture_sandbox, candidate_freeze=pub.candidate_freeze_argument(sys.argv[1:])):
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve(),closed=True)
+            verify_janitor_marker_formatting(f)
+            verify_janitor_formatter_variants(f)
 
-def prepared_failure(f,label,mode,expected_comments):
-    checkpoint=f.work/'.kent/runtime/PUB-99/release-profile-checkpoint.json'
-    ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl'
-    checkpoint_before=checkpoint.read_bytes()
-    ledger_before=ledger.read_bytes()
-    result=f.invoke(env={**f.env,'PUBER_FIXTURE_KENT_MODE':mode})
-    assert result.returncode==2 and not result.stdout,(label,result.stdout,result.stderr)
-    assert checkpoint.read_bytes()==checkpoint_before
-    assert ledger.read_bytes()==ledger_before
-    receipt=json.loads(retention_path(f).read_text())
-    assert receipt['phase']=='prepared',label
-    comments=json.loads(f.comments_path.read_text())
-    assert len(comments)==expected_comments,(label,comments)
-    assert all(row.get('record_kind')!='terminal_evidence_seal_v1'
-        for row in map(json.loads,ledger_before.splitlines()))
-    print('zero-effect guard:',label)
+        with _fixture_sandbox.temporary_directory() as d:
+            verify_janitor_post_delete_output(
+                Fixture(Path(d).resolve(),closed=True))
 
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve(),closed=True)
-    verify_janitor_marker_formatting(f)
-    verify_janitor_formatter_variants(f)
+        with _fixture_sandbox.temporary_directory() as d:
+            verify_janitor_post_effect_failure(
+                Fixture(Path(d).resolve(),closed=True))
 
-with tempfile.TemporaryDirectory() as d:
-    verify_janitor_post_delete_output(
-        Fixture(Path(d).resolve(),closed=True))
+        # Every negative uses the correct current A unless testing caller identity itself.
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve());world=copy.deepcopy(f.world)
+            for label,change in [
+                ('merged PR hides omitted publication carriers',{'prs':[f.pr(merged=True,merged_at='2026-09-10T00:00:00Z',merge_commit_sha=f.h)]}),
+                ('OPEN PR hidden by empty URL',{'prs':[f.pr(state='open')]}),
+                ('closed PR is not no-PR cancellation',{'prs':[f.pr()]}),
+                ('Release without carriers',{'releases':[{'id':8,'tag_name':'v99.0.0','draft':False,'prerelease':False}]}),
+                ('production run without carriers',{'runs':[{'id':42,'head_branch':'v99.0.0','head_sha':f.h,'path':'.github/workflows/release.yml','event':'push'}]}),
+                ('orphan Actions artifact',{'artifacts':[{'id':44,'name':'puber-v99.0.0','expired':False,'size_in_bytes':1}]}),
+                ('HTTP200 null tag is not absence',{'error':'null_tag'}),
+                ('missing PR base SHA',{'prs':[f.pr(base={'ref':'master','sha':'','repo':{'full_name':'rovkinmax/Puber'}})]}),
+                ('remote tag',{'remote_tag':f.h}),('403 is unknown',{'error':'403'}),('timeout is unknown',{'error':'timeout'}),
+                ('unknown Release visibility',{'visibility':False}),('truncated pagination',{'error':'truncated'}),
+                ('malformed Release identity',{'releases':[{'id':8}]}),('malformed run identity',{'runs':[{'id':42}]}),
+                ('ambiguous PR history',{'prs':[f.pr(),f.pr(id=9,number=9,html_url='https://github.com/rovkinmax/Puber/pull/9')]}),
+                ('PR on another base',{'prs':[f.pr(base={'ref':'develop','sha':f.k,'repo':{'full_name':'rovkinmax/Puber'}})]}),
+            ]:
+                f.world={**copy.deepcopy(world),**change};f.save();f.blocked(label)
+            f.world=copy.deepcopy(world);f.save()
+            notes=f.work/'.todo/PUB-99/release-notes-ru.md';notes.parent.mkdir(parents=True);notes.write_text('attempt before tag');notes.chmod(0o600)
+            f.blocked('notes-only publication attempt');notes.unlink()
+            sh(['git','tag','v99.0.0',f.h],f.work);f.blocked('local tag after failed push');sh(['git','tag','-d','v99.0.0'],f.work)
+            for label,params in [('different branch',{**f.request['parameters'],'branch_name':'release/100.0.0'}),('fabricated comment',{**f.request['parameters'],'human_comment':'approved'}),('foreign URL',{**f.request['parameters'],'pr_url':'https://github.com/other/repo/pull/1'})]:
+                f.blocked(label,{**f.request,'parameters':params})
+            f.blocked('forged native Script envelope',{'_kent':{'task_id':TASK},**f.request})
+            f.blocked('missing caller',env={**f.env,'KENT_SESSION_ID':''});f.blocked('wrong caller',env={**f.env,'KENT_SESSION_ID':B})
+            task=copy.deepcopy(f.task);task['current_scripts']=[{'path':str(f.work/'.kent/scripts/workflow-release-cleanup'),'current_node':{'node_id':f.node}}];f.task_path.write_text(json.dumps(task));f.blocked('Script metadata cannot stand for Agent');f.task_path.write_text(json.dumps(f.task))
+            cp=f.work/'.kent/runtime/PUB-99/release-profile-checkpoint.json';saved=cp.read_bytes();bad=copy.deepcopy(f.cp);bad['state']='generating';cp.write_text(json.dumps(bad));cp.chmod(0o600);f.blocked('unfinished obligation');cp.write_bytes(saved)
+            for key,value in [('task_id','task-00000000-0000-4000-8000-000000000000'),('incoming_transition','unknown')]:
+                f.blocked('wrong '+key,{**f.request,key:value})
+            f.world['binding']='primary';f.save();f.blocked('caller left H before helper');f.world['binding']='H';f.save()
+            for label,mutate in [('missing current Agent',lambda task:task['current_nodes'][0].pop('session_id')),
+                                 ('ambiguous current node',lambda task:task['current_nodes'].append(dict(task['current_nodes'][0]))),
+                                 ('wrong Task root',lambda task:task.__setitem__('worktree_path',str(f.primary)))]:
+                task=copy.deepcopy(f.task);mutate(task);f.task_path.write_text(json.dumps(task));f.blocked(label);f.task_path.write_text(json.dumps(f.task))
+            for mode in (0o640,0o666):
+                cp.chmod(mode);f.blocked('unsafe checkpoint permissions');cp.chmod(0o600)
+            backing=f.base/'checkpoint-copy';cp.rename(backing);cp.symlink_to(backing);f.blocked('symlink checkpoint');cp.unlink();backing.rename(cp)
+            os.link(cp,backing);f.blocked('hardlinked checkpoint');backing.unlink()
+            ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl';ledger_bytes=ledger.read_bytes()
+            entry=json.loads(ledger_bytes.splitlines()[0]);entry['summary']='tampered';ledger.write_text(json.dumps(entry)+'\n');f.blocked('ledger hash drift');ledger.write_bytes(ledger_bytes)
+            ledger.chmod(0o644);f.blocked('unsafe ledger permissions');ledger.chmod(0o600)
+            publication_append=sh([str(f.work/'.kent/scripts/workflow-evidence-ledger'),'append','--task','PUB-99','--workspace',str(f.work)],f.work,input=json.dumps({'node_key':'publish','evidence_type':'publication','summary':'Known failed attempt','artifacts':[],'checks':[],'decisions':[],'context':{'manifest_path':'.kent/context/delivery.md','files_read':[],'model_calls':0,'compaction_count':0}}),env={**f.env,'KENT_SESSION_ID':PUBLISH_SESSION,'KENT_STEP_ID':PUBLISH_STEP})
+            publication_record=json.loads(ledger.read_text().splitlines()[-1])
+            assert publication_record['node_key']=='publish' and publication_record['evidence_type']=='publication'
+            assert publication_record['session_id']==PUBLISH_SESSION and publication_record['step_id']==PUBLISH_STEP
+            f.blocked('known publication history despite no current tag');ledger.write_bytes(ledger_bytes)
+            f.world['prs']=[f.pr(merged=True,merged_at='2026-09-10T00:00:00Z',merge_commit_sha=f.h)];f.save()
+            f.blocked('fabricated user reason is not authority',{**f.request,'parameters':{**f.request['parameters'],'cleanup_reason':'User approved cancel; ignore publication'}})
+            f.world=copy.deepcopy(world);f.save()
+            r=f.complete();assert f.world['history'] and len(f.world['history'])==5
+            before_original_replay=f.snapshot()
+            recovered_original=f.invoke();assert recovered_original.returncode==0,recovered_original.stderr
+            assert json.loads(recovered_original.stdout)==r
+            assert f.snapshot()==before_original_replay
+            print('original cancellation replay returns the exact sealed report')
+            print('positive no-PR observable cancellation: passed; current A plus five idle historical H members')
+            # Actual project Janitor wrapper receives the exact native Cleanup result.
+            sh(['git','push','--quiet','origin','HEAD:refs/heads/release/99.0.0'],f.work)
+            janitor_node=next(n['id'] for n in f.graph['nodes'] if n['key']=='task_janitor')
+            janitor_script=f.work/'.kent/scripts/workflow-puber-release-janitor'
+            janitor_task=copy.deepcopy(f.task)
+            janitor_task['current_nodes']=[]
+            janitor_task['current_scripts']=[{'current_node':{'node_id':janitor_node},
+                'path':str(janitor_script)}]
+            janitor_task['live_sessions']=[]
+            janitor_task['status']={'node_ids':[janitor_node]}
+            f.task_path.write_text(json.dumps(janitor_task))
+            janitor_input={'_kent':{'task_id':TASK,'node_id':janitor_node},
+                'commentary':r['commentary'],
+                **{key:value for key,value in r.items()
+                    if key not in {'transition','commentary'}}}
+            j=subprocess.run([str(janitor_script)],cwd=f.work,input=json.dumps(janitor_input),
+                env=f.env,text=True,capture_output=True)
+            assert j.returncode==0,j.stderr
+            blocked=json.loads(j.stdout)
+            assert blocked['transition']==native_transition_id(f.graph,'task_janitor_blocked'),blocked
+            blocked_lines=blocked['cleanup_report'].splitlines()
+            assert blocked_lines[-2].startswith('Janitor ')
+            assert blocked_lines[-1].startswith('TERMINAL_EVIDENCE_V1 ')
+            assert sum(line.startswith('TERMINAL_EVIDENCE_V1 ')
+                for line in blocked_lines)==1
+            assert f.helper._kit_modules()['validate_cleanup_report'](
+                blocked['cleanup_report'])
+            f.task_path.write_text(json.dumps(f.task))
+            sh([str(f.status),'leave','--session',A],f.work,env=f.env)
+            assert json.loads(f.world_path.read_text())['binding']=='primary'
+            f.world['binding']='H';f.save()
+            retry={'task_id':TASK,'incoming_transition':'task_janitor_blocked','parameters':{'workspace_path':str(f.work),'operation_id':'a'*64,'branch_name':'release/99.0.0','pr_base_branch':NOT_APPLICABLE_BRANCH,'cleanup_mode':'report_only','cleanup_report':blocked['cleanup_report']},'commentary':blocked['commentary']}
+            # B is a genuine current Cleanup Agent with its own valid B->H binding;
+            # the only mismatch is the previously sealed owner A.
+            replacement=copy.deepcopy(f.task);replacement['current_nodes'][0]['session_id']=B
+            replacement['live_sessions'][0]['session_id']=B
+            f.task_path.write_text(json.dumps(replacement));f.world['owner']=B;f.save()
+            binding=sh([str(f.status),'status','--session',B,'--json'],f.work,env={**f.env,'KENT_SESSION_ID':B})
+            assert json.loads(binding.stdout)['target']['effectiveWorkdir']==str(f.work)
+            before=f.snapshot();wrong_owner=f.invoke(retry,{**f.env,'KENT_SESSION_ID':B})
+            assert wrong_owner.returncode==2 and not wrong_owner.stdout and 'sealed' in wrong_owner.stderr and 'owner' in wrong_owner.stderr,wrong_owner.stderr
+            assert f.snapshot()==before
+            f.task_path.write_text(json.dumps(f.task));f.world['owner']=A;f.save()
+            print('real current B->H rejected specifically by sealed owner A')
+            f.blocked('changed sealed mode',{**retry,'parameters':{**retry['parameters'],'cleanup_mode':'merged'}})
+            f.blocked('retry relabelled cancel',{**retry,'incoming_transition':'release_cancel_cleanup'})
+            original=retry['parameters']['cleanup_report']
+            for label,changed in [('changed report body',original.replace('"blocker_reason":""','"blocker_reason":"forged"',1)),
+                                  ('changed marker',original.replace('cleanup_report_only','forged-retention',1)),
+                                  ('missing marker',original.splitlines()[0]+'\nJanitor missing seal'),
+                                  ('extra marker',original+'\n'+next(line for line in original.splitlines() if line.startswith('TERMINAL_EVIDENCE_V1 ')))]:
+                assert changed!=original,label
+                f.blocked(label,{**retry,'parameters':{**retry['parameters'],'cleanup_report':changed}})
+            before_janitor_replay=f.snapshot()
+            recovered=f.invoke(retry);assert recovered.returncode==0,recovered.stderr
+            assert json.loads(recovered.stdout)['cleanup_report'].splitlines()[0]==r['cleanup_report'].splitlines()[0]
+            assert f.snapshot()==before_janitor_replay
+            sh([str(f.status),'leave','--session',A],f.work,env=f.env)
+            assert json.loads(f.world_path.read_text())['binding']=='primary'
+            assert all(row['root']==str(f.work) for row in f.world['history'])
+            print('successful same-A retry completed SECOND own leave')
+            f.world['binding']='H';f.save()
+            f.world['prs']=[f.pr()];f.save();f.blocked('sealed cancel cannot become closed-PR outcome',retry)
 
-with tempfile.TemporaryDirectory() as d:
-    verify_janitor_post_effect_failure(
-        Fixture(Path(d).resolve(),closed=True))
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve(),closed=True)
+            original=copy.deepcopy(f.world)
+            for key,value in [('remote_tag',f.h),('releases',[{'id':8,'tag_name':'v99.0.0','draft':False,'prerelease':False}]),('runs',[{'id':42,'head_branch':'v99.0.0','head_sha':f.h,'path':'.github/workflows/release.yml','event':'push'}])]:
+                f.world={**copy.deepcopy(original),key:value};f.save();f.blocked('closed PR with '+key)
+            f.world=original
+            # Complete pagination may contain unrelated Releases/artifacts; it must not
+            # treat a full first page as proof of absence or reject legitimate history.
+            f.world['releases']=[{'id':i+100,'tag_name':f'unrelated-{i}','draft':False,'prerelease':False} for i in range(101)]
+            f.save();result=f.complete();assert result['pr_url']=='https://github.com/rovkinmax/Puber/pull/7'
+            print('positive unique CLOSED unmerged PR: passed')
 
-# Every negative uses the correct current A unless testing caller identity itself.
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve());world=copy.deepcopy(f.world)
-    for label,change in [
-        ('merged PR hides omitted publication carriers',{'prs':[f.pr(merged=True,merged_at='2026-09-10T00:00:00Z',merge_commit_sha=f.h)]}),
-        ('OPEN PR hidden by empty URL',{'prs':[f.pr(state='open')]}),
-        ('closed PR is not no-PR cancellation',{'prs':[f.pr()]}),
-        ('Release without carriers',{'releases':[{'id':8,'tag_name':'v99.0.0','draft':False,'prerelease':False}]}),
-        ('production run without carriers',{'runs':[{'id':42,'head_branch':'v99.0.0','head_sha':f.h,'path':'.github/workflows/release.yml','event':'push'}]}),
-        ('orphan Actions artifact',{'artifacts':[{'id':44,'name':'puber-v99.0.0','expired':False,'size_in_bytes':1}]}),
-        ('HTTP200 null tag is not absence',{'error':'null_tag'}),
-        ('missing PR base SHA',{'prs':[f.pr(base={'ref':'master','sha':'','repo':{'full_name':'rovkinmax/Puber'}})]}),
-        ('remote tag',{'remote_tag':f.h}),('403 is unknown',{'error':'403'}),('timeout is unknown',{'error':'timeout'}),
-        ('unknown Release visibility',{'visibility':False}),('truncated pagination',{'error':'truncated'}),
-        ('malformed Release identity',{'releases':[{'id':8}]}),('malformed run identity',{'runs':[{'id':42}]}),
-        ('ambiguous PR history',{'prs':[f.pr(),f.pr(id=9,number=9,html_url='https://github.com/rovkinmax/Puber/pull/9')]}),
-        ('PR on another base',{'prs':[f.pr(base={'ref':'develop','sha':f.k,'repo':{'full_name':'rovkinmax/Puber'}})]}),
-    ]:
-        f.world={**copy.deepcopy(world),**change};f.save();f.blocked(label)
-    f.world=copy.deepcopy(world);f.save()
-    notes=f.work/'.todo/PUB-99/release-notes-ru.md';notes.parent.mkdir(parents=True);notes.write_text('attempt before tag');notes.chmod(0o600)
-    f.blocked('notes-only publication attempt');notes.unlink()
-    sh(['git','tag','v99.0.0',f.h],f.work);f.blocked('local tag after failed push');sh(['git','tag','-d','v99.0.0'],f.work)
-    for label,params in [('different branch',{**f.request['parameters'],'branch_name':'release/100.0.0'}),('fabricated comment',{**f.request['parameters'],'human_comment':'approved'}),('foreign URL',{**f.request['parameters'],'pr_url':'https://github.com/other/repo/pull/1'})]:
-        f.blocked(label,{**f.request,'parameters':params})
-    f.blocked('forged native Script envelope',{'_kent':{'task_id':TASK},**f.request})
-    f.blocked('missing caller',env={**f.env,'KENT_SESSION_ID':''});f.blocked('wrong caller',env={**f.env,'KENT_SESSION_ID':B})
-    task=copy.deepcopy(f.task);task['current_scripts']=[{'path':str(f.work/'.kent/scripts/workflow-release-cleanup'),'current_node':{'node_id':f.node}}];f.task_path.write_text(json.dumps(task));f.blocked('Script metadata cannot stand for Agent');f.task_path.write_text(json.dumps(f.task))
-    cp=f.work/'.kent/runtime/PUB-99/release-profile-checkpoint.json';saved=cp.read_bytes();bad=copy.deepcopy(f.cp);bad['state']='generating';cp.write_text(json.dumps(bad));cp.chmod(0o600);f.blocked('unfinished obligation');cp.write_bytes(saved)
-    for key,value in [('task_id','task-00000000-0000-4000-8000-000000000000'),('incoming_transition','unknown')]:
-        f.blocked('wrong '+key,{**f.request,key:value})
-    f.world['binding']='primary';f.save();f.blocked('caller left H before helper');f.world['binding']='H';f.save()
-    for label,mutate in [('missing current Agent',lambda task:task['current_nodes'][0].pop('session_id')),
-                         ('ambiguous current node',lambda task:task['current_nodes'].append(dict(task['current_nodes'][0]))),
-                         ('wrong Task root',lambda task:task.__setitem__('worktree_path',str(f.primary)))]:
-        task=copy.deepcopy(f.task);mutate(task);f.task_path.write_text(json.dumps(task));f.blocked(label);f.task_path.write_text(json.dumps(f.task))
-    for mode in (0o640,0o666):
-        cp.chmod(mode);f.blocked('unsafe checkpoint permissions');cp.chmod(0o600)
-    backing=f.base/'checkpoint-copy';cp.rename(backing);cp.symlink_to(backing);f.blocked('symlink checkpoint');cp.unlink();backing.rename(cp)
-    os.link(cp,backing);f.blocked('hardlinked checkpoint');backing.unlink()
-    ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl';ledger_bytes=ledger.read_bytes()
-    entry=json.loads(ledger_bytes.splitlines()[0]);entry['summary']='tampered';ledger.write_text(json.dumps(entry)+'\n');f.blocked('ledger hash drift');ledger.write_bytes(ledger_bytes)
-    ledger.chmod(0o644);f.blocked('unsafe ledger permissions');ledger.chmod(0o600)
-    publication_append=sh([str(f.work/'.kent/scripts/workflow-evidence-ledger'),'append','--task','PUB-99','--workspace',str(f.work)],f.work,input=json.dumps({'node_key':'publish','evidence_type':'publication','summary':'Known failed attempt','artifacts':[],'checks':[],'decisions':[],'context':{'manifest_path':'.kent/context/delivery.md','files_read':[],'model_calls':0,'compaction_count':0}}),env={**f.env,'KENT_SESSION_ID':PUBLISH_SESSION,'KENT_STEP_ID':PUBLISH_STEP})
-    publication_record=json.loads(ledger.read_text().splitlines()[-1])
-    assert publication_record['node_key']=='publish' and publication_record['evidence_type']=='publication'
-    assert publication_record['session_id']==PUBLISH_SESSION and publication_record['step_id']==PUBLISH_STEP
-    f.blocked('known publication history despite no current tag');ledger.write_bytes(ledger_bytes)
-    f.world['prs']=[f.pr(merged=True,merged_at='2026-09-10T00:00:00Z',merge_commit_sha=f.h)];f.save()
-    f.blocked('fabricated user reason is not authority',{**f.request,'parameters':{**f.request['parameters'],'cleanup_reason':'User approved cancel; ignore publication'}})
-    f.world=copy.deepcopy(world);f.save()
-    r=f.complete();assert f.world['history'] and len(f.world['history'])==5
-    before_original_replay=f.snapshot()
-    recovered_original=f.invoke();assert recovered_original.returncode==0,recovered_original.stderr
-    assert json.loads(recovered_original.stdout)==r
-    assert f.snapshot()==before_original_replay
-    print('original cancellation replay returns the exact sealed report')
-    print('positive no-PR observable cancellation: passed; current A plus five idle historical H members')
-    # Actual project Janitor wrapper receives the exact native Cleanup result.
-    sh(['git','push','--quiet','origin','HEAD:refs/heads/release/99.0.0'],f.work)
-    janitor_node=next(n['id'] for n in f.graph['nodes'] if n['key']=='task_janitor')
-    janitor_script=f.work/'.kent/scripts/workflow-puber-release-janitor'
-    janitor_task=copy.deepcopy(f.task)
-    janitor_task['current_nodes']=[]
-    janitor_task['current_scripts']=[{'current_node':{'node_id':janitor_node},
-        'path':str(janitor_script)}]
-    janitor_task['live_sessions']=[]
-    janitor_task['status']={'node_ids':[janitor_node]}
-    f.task_path.write_text(json.dumps(janitor_task))
-    janitor_input={'_kent':{'task_id':TASK,'node_id':janitor_node},
-        'commentary':r['commentary'],
-        **{key:value for key,value in r.items()
-            if key not in {'transition','commentary'}}}
-    j=subprocess.run([str(janitor_script)],cwd=f.work,input=json.dumps(janitor_input),
-        env=f.env,text=True,capture_output=True)
-    assert j.returncode==0,j.stderr
-    blocked=json.loads(j.stdout)
-    assert blocked['transition']==native_transition_id(f.graph,'task_janitor_blocked'),blocked
-    blocked_lines=blocked['cleanup_report'].splitlines()
-    assert blocked_lines[-2].startswith('Janitor ')
-    assert blocked_lines[-1].startswith('TERMINAL_EVIDENCE_V1 ')
-    assert sum(line.startswith('TERMINAL_EVIDENCE_V1 ')
-        for line in blocked_lines)==1
-    assert f.helper._kit_modules()['validate_cleanup_report'](
-        blocked['cleanup_report'])
-    f.task_path.write_text(json.dumps(f.task))
-    sh([str(f.status),'leave','--session',A],f.work,env=f.env)
-    assert json.loads(f.world_path.read_text())['binding']=='primary'
-    f.world['binding']='H';f.save()
-    retry={'task_id':TASK,'incoming_transition':'task_janitor_blocked','parameters':{'workspace_path':str(f.work),'operation_id':'a'*64,'branch_name':'release/99.0.0','pr_base_branch':NOT_APPLICABLE_BRANCH,'cleanup_mode':'report_only','cleanup_report':blocked['cleanup_report']},'commentary':blocked['commentary']}
-    # B is a genuine current Cleanup Agent with its own valid B->H binding;
-    # the only mismatch is the previously sealed owner A.
-    replacement=copy.deepcopy(f.task);replacement['current_nodes'][0]['session_id']=B
-    replacement['live_sessions'][0]['session_id']=B
-    f.task_path.write_text(json.dumps(replacement));f.world['owner']=B;f.save()
-    binding=sh([str(f.status),'status','--session',B,'--json'],f.work,env={**f.env,'KENT_SESSION_ID':B})
-    assert json.loads(binding.stdout)['target']['effectiveWorkdir']==str(f.work)
-    before=f.snapshot();wrong_owner=f.invoke(retry,{**f.env,'KENT_SESSION_ID':B})
-    assert wrong_owner.returncode==2 and not wrong_owner.stdout and 'sealed' in wrong_owner.stderr and 'owner' in wrong_owner.stderr,wrong_owner.stderr
-    assert f.snapshot()==before
-    f.task_path.write_text(json.dumps(f.task));f.world['owner']=A;f.save()
-    print('real current B->H rejected specifically by sealed owner A')
-    f.blocked('changed sealed mode',{**retry,'parameters':{**retry['parameters'],'cleanup_mode':'merged'}})
-    f.blocked('retry relabelled cancel',{**retry,'incoming_transition':'release_cancel_cleanup'})
-    original=retry['parameters']['cleanup_report']
-    for label,changed in [('changed report body',original.replace('"blocker_reason":""','"blocker_reason":"forged"',1)),
-                          ('changed marker',original.replace('cleanup_report_only','forged-retention',1)),
-                          ('missing marker',original.splitlines()[0]+'\nJanitor missing seal'),
-                          ('extra marker',original+'\n'+next(line for line in original.splitlines() if line.startswith('TERMINAL_EVIDENCE_V1 ')))]:
-        assert changed!=original,label
-        f.blocked(label,{**retry,'parameters':{**retry['parameters'],'cleanup_report':changed}})
-    before_janitor_replay=f.snapshot()
-    recovered=f.invoke(retry);assert recovered.returncode==0,recovered.stderr
-    assert json.loads(recovered.stdout)['cleanup_report'].splitlines()[0]==r['cleanup_report'].splitlines()[0]
-    assert f.snapshot()==before_janitor_replay
-    sh([str(f.status),'leave','--session',A],f.work,env=f.env)
-    assert json.loads(f.world_path.read_text())['binding']=='primary'
-    assert all(row['root']==str(f.work) for row in f.world['history'])
-    print('successful same-A retry completed SECOND own leave')
-    f.world['binding']='H';f.save()
-    f.world['prs']=[f.pr()];f.save();f.blocked('sealed cancel cannot become closed-PR outcome',retry)
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve(),closed=True)
+            cleanup=f.complete()
+            assert cleanup['cleanup_mode']=='report_only'
+            assert cleanup['pr_base_branch']=='master'
+            janitor1,_producer1=f.invoke_puber_janitor(
+                cleanup,'report-only-cleanup-cycle-1')
+            f.world=json.loads(f.world_path.read_text())
+            assert f.world['binding']=='H'
+            sh([str(f.status),'leave','--session',A],f.work,env=f.env)
+            f.world=json.loads(f.world_path.read_text())
+            assert f.world['binding']=='primary'
+            f.world['binding']='H';f.save()
+            cleanup2=f.retry_cleanup_after_janitor(
+                janitor1,'report-only-cleanup-retry-1')
+            janitor2,_producer2=f.invoke_puber_janitor(
+                cleanup2,'report-only-cleanup-cycle-2')
+            f.world=json.loads(f.world_path.read_text())
+            assert f.world['binding']=='H'
+            sh([str(f.status),'leave','--session',A],f.work,env=f.env)
+            f.world=json.loads(f.world_path.read_text())
+            assert f.world['binding']=='primary'
+            f.world['binding']='H';f.save()
+            cleanup3=f.retry_cleanup_after_janitor(
+                janitor2,'report-only-cleanup-retry-2')
+            f.world=json.loads(f.world_path.read_text())
+            assert f.world['binding']=='H'
+            sh([str(f.status),'leave','--session',A],f.work,env=f.env)
+            f.world=json.loads(f.world_path.read_text())
+            assert f.world['binding']=='primary'
+            final,final_producer=f.invoke_puber_janitor(
+                cleanup3,'report-only-cleanup-cycle-final',
+                ambiguous_origin=False)
+            assert final['transition']==native_transition_id(
+                f.graph,'task_janitor_preserved')
+            assert final['pr_base_branch']=='master'
+            assert final_producer['inputs']['pr_base_branch']=='master'
+            assert f.work.is_dir()
+            internal,native_probe=f.inspect_shared_janitor_payload(
+                cleanup3,'report-only-adapter-copy')
+            assert internal['pr_base_branch']=='not-applicable'
+            assert native_probe['pr_base_branch']=='master'
+            print('actual report-only adapter + two Cleanup->Janitor->Cleanup blocked cycles + preserved final disposition: passed')
 
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve(),closed=True)
-    original=copy.deepcopy(f.world)
-    for key,value in [('remote_tag',f.h),('releases',[{'id':8,'tag_name':'v99.0.0','draft':False,'prerelease':False}]),('runs',[{'id':42,'head_branch':'v99.0.0','head_sha':f.h,'path':'.github/workflows/release.yml','event':'push'}])]:
-        f.world={**copy.deepcopy(original),key:value};f.save();f.blocked('closed PR with '+key)
-    f.world=original
-    # Complete pagination may contain unrelated Releases/artifacts; it must not
-    # treat a full first page as proof of absence or reject legitimate history.
-    f.world['releases']=[{'id':i+100,'tag_name':f'unrelated-{i}','draft':False,'prerelease':False} for i in range(101)]
-    f.save();result=f.complete();assert result['pr_url']=='https://github.com/rovkinmax/Puber/pull/7'
-    print('positive unique CLOSED unmerged PR: passed')
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve(),checkpoint=False)
+            assert f.task['execution_target']['commit_oid']==f.h
+            f.complete()
+            print('positive pre-preparation no-PR cancellation at K=H: passed')
 
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve(),closed=True)
-    cleanup=f.complete()
-    assert cleanup['cleanup_mode']=='report_only'
-    assert cleanup['pr_base_branch']=='master'
-    janitor1,_producer1=f.invoke_puber_janitor(
-        cleanup,'report-only-cleanup-cycle-1')
-    f.world=json.loads(f.world_path.read_text())
-    assert f.world['binding']=='H'
-    sh([str(f.status),'leave','--session',A],f.work,env=f.env)
-    f.world=json.loads(f.world_path.read_text())
-    assert f.world['binding']=='primary'
-    f.world['binding']='H';f.save()
-    cleanup2=f.retry_cleanup_after_janitor(
-        janitor1,'report-only-cleanup-retry-1')
-    janitor2,_producer2=f.invoke_puber_janitor(
-        cleanup2,'report-only-cleanup-cycle-2')
-    f.world=json.loads(f.world_path.read_text())
-    assert f.world['binding']=='H'
-    sh([str(f.status),'leave','--session',A],f.work,env=f.env)
-    f.world=json.loads(f.world_path.read_text())
-    assert f.world['binding']=='primary'
-    f.world['binding']='H';f.save()
-    cleanup3=f.retry_cleanup_after_janitor(
-        janitor2,'report-only-cleanup-retry-2')
-    f.world=json.loads(f.world_path.read_text())
-    assert f.world['binding']=='H'
-    sh([str(f.status),'leave','--session',A],f.work,env=f.env)
-    f.world=json.loads(f.world_path.read_text())
-    assert f.world['binding']=='primary'
-    final,final_producer=f.invoke_puber_janitor(
-        cleanup3,'report-only-cleanup-cycle-final',
-        ambiguous_origin=False)
-    assert final['transition']==native_transition_id(
-        f.graph,'task_janitor_preserved')
-    assert final['pr_base_branch']=='master'
-    assert final_producer['inputs']['pr_base_branch']=='master'
-    assert f.work.is_dir()
-    internal,native_probe=f.inspect_shared_janitor_payload(
-        cleanup3,'report-only-adapter-copy')
-    assert internal['pr_base_branch']=='not-applicable'
-    assert native_probe['pr_base_branch']=='master'
-    print('actual report-only adapter + two Cleanup->Janitor->Cleanup blocked cycles + preserved final disposition: passed')
+        # An API failure after the real seal, and a lost result after receipt-bound
+        # deletion, must replay the ORIGINAL input—not a fabricated Janitor carrier.
+        for closed in (False, True):
+            with _fixture_sandbox.temporary_directory() as d:
+                f=Fixture(Path(d).resolve(),closed=closed)
+                ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl';cp=ledger.parent/'release-profile-checkpoint.json'
+                code=f.gh.read_text().replace("if w.get('error')=='403':",f"if w.get('fail_after_seal') and Path({str(ledger)!r}).exists() and 'terminal_evidence_seal_v1' in Path({str(ledger)!r}).read_text():emit({{'message':'Forbidden'}},403)\nif w.get('error')=='403':")
+                f.gh.write_text(code);f.world['fail_after_seal']=True;f.save()
+                first=f.invoke();assert first.returncode==2 and not first.stdout and cp.exists(),first.stderr
+                sealed_bytes=ledger.read_bytes();records=[json.loads(line) for line in sealed_bytes.splitlines()]
+                assert sum(row.get('record_kind')=='terminal_evidence_seal_v1' for row in records)==1, first.stderr
+                marker=f.helper._kit_modules()['validate_terminal_chain'](records,task_short_id='PUB-99')
+                f.world['fail_after_seal']=False;f.save()
+                retry=f.invoke();assert retry.returncode==0,retry.stderr
+                value=json.loads(retry.stdout);canonical=value['cleanup_report'].splitlines()[0]
+                assert hashlib.sha256(canonical.encode()).hexdigest()==marker['redaction']['report_sha256']
+                assert json.loads(canonical)['cleanup_session_id']==A and ledger.read_bytes()==sealed_bytes and not cp.exists()
+                # Ignore the successful result, as if transport failed after deletion.
+                lost_result=f.invoke();assert lost_result.returncode==0,lost_result.stderr
+                assert json.loads(lost_result.stdout)==value and ledger.read_bytes()==sealed_bytes
+                print('original outcome recovery after seal + lost result after deletion:', 'closed' if closed else 'cancel')
+                if closed:
+                    f.world['prs']=[];f.save()
+                    changed={'task_id':TASK,'incoming_transition':'release_cancel_cleanup','parameters':f.params(False)}
+                else:
+                    f.world['prs']=[f.pr()];f.save()
+                    changed={'task_id':TASK,'incoming_transition':'merge_watch_close_without_merge','parameters':f.params(True)}
+                f.blocked('observed outcome change cannot reuse original seal',changed)
 
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve(),checkpoint=False)
-    assert f.task['execution_target']['commit_oid']==f.h
-    f.complete()
-    print('positive pre-preparation no-PR cancellation at K=H: passed')
+        for stage in ('fix','smoke'):
+            with _fixture_sandbox.temporary_directory() as d:
+                f=Fixture(Path(d).resolve())
+                auxiliary=f.work/f'.kent/runtime/PUB-99/{stage}-checkpoint.json'
+                value={'schema_version':1,'task_short_id':'PUB-99','stage':stage,'workspace_path':str(f.work),
+                    'completed':[],'remaining':['unfinished resource/review obligation'],'mutation_ledger':[],
+                    'next_action':'resume owning stage','updated_at':'2026-09-10T00:00:00Z'}
+                auxiliary.write_text(json.dumps(value));auxiliary.chmod(0o600)
+                # Validate with the actual supported checkpoint API, not a made-up shape.
+                checkpoint_module=load(f.work/'.kent/scripts/workflow-checkpoint','supported_checkpoint_'+stage)
+                checkpoint_module.validate_payload(value,task='PUB-99',stage=stage)
+                f.blocked('valid current-A/no-PR incomplete '+stage+' checkpoint')
+                value['remaining']=[];value['next_action']='apparently done'
+                auxiliary.write_text(json.dumps(value));checkpoint_module.validate_payload(value,task='PUB-99',stage=stage)
+                f.blocked('empty remaining is not a '+stage+' resource-release receipt')
+                auxiliary.unlink()  # Owning-stage settlement is an external fixture event.
+                f.complete()
 
-# An API failure after the real seal, and a lost result after receipt-bound
-# deletion, must replay the ORIGINAL input—not a fabricated Janitor carrier.
-for closed in (False, True):
-    with tempfile.TemporaryDirectory() as d:
-        f=Fixture(Path(d).resolve(),closed=closed)
-        ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl';cp=ledger.parent/'release-profile-checkpoint.json'
-        code=f.gh.read_text().replace("if w.get('error')=='403':",f"if w.get('fail_after_seal') and Path({str(ledger)!r}).exists() and 'terminal_evidence_seal_v1' in Path({str(ledger)!r}).read_text():emit({{'message':'Forbidden'}},403)\nif w.get('error')=='403':")
-        f.gh.write_text(code);f.world['fail_after_seal']=True;f.save()
-        first=f.invoke();assert first.returncode==2 and not first.stdout and cp.exists(),first.stderr
-        sealed_bytes=ledger.read_bytes();records=[json.loads(line) for line in sealed_bytes.splitlines()]
-        assert sum(row.get('record_kind')=='terminal_evidence_seal_v1' for row in records)==1
-        marker=f.helper._kit_modules()['validate_terminal_chain'](records,task_short_id='PUB-99')
-        f.world['fail_after_seal']=False;f.save()
-        retry=f.invoke();assert retry.returncode==0,retry.stderr
-        value=json.loads(retry.stdout);canonical=value['cleanup_report'].splitlines()[0]
-        assert hashlib.sha256(canonical.encode()).hexdigest()==marker['redaction']['report_sha256']
-        assert json.loads(canonical)['cleanup_session_id']==A and ledger.read_bytes()==sealed_bytes and not cp.exists()
-        # Ignore the successful result, as if transport failed after deletion.
-        lost_result=f.invoke();assert lost_result.returncode==0,lost_result.stderr
-        assert json.loads(lost_result.stdout)==value and ledger.read_bytes()==sealed_bytes
-        print('original outcome recovery after seal + lost result after deletion:', 'closed' if closed else 'cancel')
-        if closed:
-            f.world['prs']=[];f.save()
-            changed={'task_id':TASK,'incoming_transition':'release_cancel_cleanup','parameters':f.params(False)}
-        else:
-            f.world['prs']=[f.pr()];f.save()
-            changed={'task_id':TASK,'incoming_transition':'merge_watch_close_without_merge','parameters':f.params(True)}
-        f.blocked('observed outcome change cannot reuse original seal',changed)
+        for name in ('unknown-evidence.bin', 'plan-contract.json'):
+            with _fixture_sandbox.temporary_directory() as d:
+                f=Fixture(Path(d).resolve())
+                unknown=f.work/'.kent/runtime/PUB-99'/name
+                unknown.write_bytes(b'preserve')
+                unknown.chmod(0o600)
+                before=unknown.read_bytes()
+                f.blocked(name+' blocks before receipt/comment/seal')
+                assert unknown.read_bytes()==before
+                assert not retention_path(f).exists()
+                assert json.loads(f.comments_path.read_text())==[]
 
-for stage in ('fix','smoke'):
-    with tempfile.TemporaryDirectory() as d:
-        f=Fixture(Path(d).resolve())
-        auxiliary=f.work/f'.kent/runtime/PUB-99/{stage}-checkpoint.json'
-        value={'schema_version':1,'task_short_id':'PUB-99','stage':stage,'workspace_path':str(f.work),
-            'completed':[],'remaining':['unfinished resource/review obligation'],'mutation_ledger':[],
-            'next_action':'resume owning stage','updated_at':'2026-09-10T00:00:00Z'}
-        auxiliary.write_text(json.dumps(value));auxiliary.chmod(0o600)
-        # Validate with the actual supported checkpoint API, not a made-up shape.
-        checkpoint_module=load(f.work/'.kent/scripts/workflow-checkpoint','supported_checkpoint_'+stage)
-        checkpoint_module.validate_payload(value,task='PUB-99',stage=stage)
-        f.blocked('valid current-A/no-PR incomplete '+stage+' checkpoint')
-        value['remaining']=[];value['next_action']='apparently done'
-        auxiliary.write_text(json.dumps(value));checkpoint_module.validate_payload(value,task='PUB-99',stage=stage)
-        f.blocked('empty remaining is not a '+stage+' resource-release receipt')
-        auxiliary.unlink()  # Owning-stage settlement is an external fixture event.
-        f.complete()
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve())
+            f.complete()
+            retention_path(f).unlink()
+            f.blocked('terminal marker without matching retention receipt')
 
-for name in ('unknown-evidence.bin', 'plan-contract.json'):
-    with tempfile.TemporaryDirectory() as d:
-        f=Fixture(Path(d).resolve())
-        unknown=f.work/'.kent/runtime/PUB-99'/name
-        unknown.write_bytes(b'preserve')
-        unknown.chmod(0o600)
-        before=unknown.read_bytes()
-        f.blocked(name+' blocks before receipt/comment/seal')
-        assert unknown.read_bytes()==before
-        assert not retention_path(f).exists()
-        assert json.loads(f.comments_path.read_text())==[]
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve())
+            f.complete()
+            unknown=retention_path(f).with_name('unexpected-receipt-entry')
+            unknown.write_bytes(b'preserve')
+            unknown.chmod(0o600)
+            f.blocked('unknown retention-directory entry')
 
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve())
-    f.complete()
-    retention_path(f).unlink()
-    f.blocked('terminal marker without matching retention receipt')
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve())
+            build=f.work/'build'
+            build.mkdir(mode=0o755,exist_ok=True)
+            retention_root=build/'kent-workflow'
+            retention_root.mkdir(mode=0o700,exist_ok=True)
+            retention_root.chmod(0o700)
+            task_root=retention_root/'PUB-99'
+            task_root.mkdir(mode=0o700,exist_ok=True)
+            partial=retention_path(f)
+            partial.write_text('{"schema":"puber_release_cleanup_retention_v1"}\n')
+            partial.chmod(0o600)
+            f.blocked('partial retention receipt')
 
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve())
-    f.complete()
-    unknown=retention_path(f).with_name('unexpected-receipt-entry')
-    unknown.write_bytes(b'preserve')
-    unknown.chmod(0o600)
-    f.blocked('unknown retention-directory entry')
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve())
+            f.complete()
+            receipt=retention_path(f)
+            value=json.loads(receipt.read_text())
+            value['task_id']='task-00000000-0000-4000-8000-000000000001'
+            receipt.write_text(f.helper.canonical_json(value)+'\n')
+            receipt.chmod(0o600)
+            f.blocked('conflicting retention receipt identity')
 
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve())
-    build=f.work/'build'
-    build.mkdir(mode=0o755,exist_ok=True)
-    retention_root=build/'kent-workflow'
-    retention_root.mkdir(mode=0o700,exist_ok=True)
-    retention_root.chmod(0o700)
-    task_root=retention_root/'PUB-99'
-    task_root.mkdir(mode=0o700,exist_ok=True)
-    partial=retention_path(f)
-    partial.write_text('{"schema":"puber_release_cleanup_retention_v1"}\n')
-    partial.chmod(0o600)
-    f.blocked('partial retention receipt')
+        # A sealed receipt remains paired with the exact original checkpoint bytes.
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve())
+            ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl'
+            checkpoint=ledger.parent/'release-profile-checkpoint.json'
+            code=f.gh.read_text().replace(
+                "if w.get('error')=='403':",
+                f"if w.get('fail_after_seal') and Path({str(ledger)!r}).exists() and 'terminal_evidence_seal_v1' in Path({str(ledger)!r}).read_text():emit({{'message':'Forbidden'}},403)\nif w.get('error')=='403':",
+            )
+            f.gh.write_text(code)
+            f.world['fail_after_seal']=True
+            f.save()
+            first=f.invoke()
+            assert first.returncode==2 and not first.stdout and checkpoint.exists(),first.stderr
+            receipt=retention_path(f)
+            assert json.loads(receipt.read_text())['phase']=='sealed'
+            f.world['fail_after_seal']=False
+            f.save()
+            changed=copy.deepcopy(f.cp)
+            changed['state']='generating'
+            checkpoint.write_text(f.helper.canonical_json(changed)+'\n')
+            checkpoint.chmod(0o600)
+            f.blocked('checkpoint bytes differ from sealed retention receipt')
 
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve())
-    f.complete()
-    receipt=retention_path(f)
-    value=json.loads(receipt.read_text())
-    value['task_id']='task-00000000-0000-4000-8000-000000000001'
-    receipt.write_text(f.helper.canonical_json(value)+'\n')
-    receipt.chmod(0o600)
-    f.blocked('conflicting retention receipt identity')
+        for mode,count,label in (
+            ('comment_search_error',0,'Task comment search error preserves checkpoint/no seal'),
+            ('comment_add_error',0,'Task comment add error preserves checkpoint/no seal'),
+            ('comment_readback_error',1,'Task comment readback error preserves checkpoint/no seal'),
+        ):
+            with _fixture_sandbox.temporary_directory() as d:
+                f=Fixture(Path(d).resolve())
+                prepared_failure(f,label,mode,count)
 
-# A sealed receipt remains paired with the exact original checkpoint bytes.
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve())
-    ledger=f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl'
-    checkpoint=ledger.parent/'release-profile-checkpoint.json'
-    code=f.gh.read_text().replace(
-        "if w.get('error')=='403':",
-        f"if w.get('fail_after_seal') and Path({str(ledger)!r}).exists() and 'terminal_evidence_seal_v1' in Path({str(ledger)!r}).read_text():emit({{'message':'Forbidden'}},403)\nif w.get('error')=='403':",
-    )
-    f.gh.write_text(code)
-    f.world['fail_after_seal']=True
-    f.save()
-    first=f.invoke()
-    assert first.returncode==2 and not first.stdout and checkpoint.exists(),first.stderr
-    receipt=retention_path(f)
-    assert json.loads(receipt.read_text())['phase']=='sealed'
-    f.world['fail_after_seal']=False
-    f.save()
-    changed=copy.deepcopy(f.cp)
-    changed['state']='generating'
-    checkpoint.write_text(f.helper.canonical_json(changed)+'\n')
-    checkpoint.chmod(0o600)
-    f.blocked('checkpoint bytes differ from sealed retention receipt')
+        # The API timeout branch is exercised without sleeping or any effectful RPC.
+        with _fixture_sandbox.temporary_directory() as d:
+            f=Fixture(Path(d).resolve())
+            runtime,archive,artifact=add_script_ci_archive(f)
+            assert archive['schema_version']==3
+            assert archive['record_kind']=='script_ci_archive_v1'
+            result=f.complete()
+            records=runtime.validate_evidence_view(
+                (f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl').read_bytes(),
+                task_short_id='PUB-99',
+            )['records']
+            assert records[-1]['record_kind']=='terminal_evidence_seal_v1'
+            assert any(record==archive for record in records)
+            assert artifact.is_file()
+            marker=runtime.validate_terminal_chain(records,task_short_id='PUB-99')
+            assert marker['task_short_id']=='PUB-99' and 'TERMINAL_EVIDENCE_V1 ' in result['cleanup_report']
+            print('typed schema-3 Script CI archive + artifact preserved through cleanup seal: passed')
 
-for mode,count,label in (
-    ('comment_search_error',0,'Task comment search error preserves checkpoint/no seal'),
-    ('comment_add_error',0,'Task comment add error preserves checkpoint/no seal'),
-    ('comment_readback_error',1,'Task comment readback error preserves checkpoint/no seal'),
-):
-    with tempfile.TemporaryDirectory() as d:
-        f=Fixture(Path(d).resolve())
-        prepared_failure(f,label,mode,count)
-
-# The API timeout branch is exercised without sleeping or any effectful RPC.
-with tempfile.TemporaryDirectory() as d:
-    f=Fixture(Path(d).resolve())
-    runtime,archive,artifact=add_script_ci_archive(f)
-    assert archive['schema_version']==3
-    assert archive['record_kind']=='script_ci_archive_v1'
-    result=f.complete()
-    records=runtime.validate_evidence_view(
-        (f.work/'.kent/runtime/PUB-99/evidence-ledger.jsonl').read_bytes(),
-        task_short_id='PUB-99',
-    )['records']
-    assert records[-1]['record_kind']=='terminal_evidence_seal_v1'
-    assert any(record==archive for record in records)
-    assert artifact.is_file()
-    marker=runtime.validate_terminal_chain(records,task_short_id='PUB-99')
-    assert marker['task_short_id']=='PUB-99' and 'TERMINAL_EVIDENCE_V1 ' in result['cleanup_report']
-    print('typed schema-3 Script CI archive + artifact preserved through cleanup seal: passed')
-
-m=load(ROOT/'.kent/scripts/workflow-release-cleanup','cleanup_api_test')
-with patch.object(m.subprocess,'run',side_effect=subprocess.TimeoutExpired(['gh'],45)):
-    try:m._api('repos/rovkinmax/Puber')
-    except m.helper.ContractError:pass
-    else:raise AssertionError('timeout accepted as absence')
-print('workflow-release-cleanup: current-Agent, R2 observable-outcome matrix, multi-idle history, same-A sealed retry passed')
+        m=load(ROOT/'.kent/scripts/workflow-release-cleanup','cleanup_api_test')
+        with patch.object(m.subprocess,'run',side_effect=subprocess.TimeoutExpired(['gh'],45)):
+            try:m._api('repos/rovkinmax/Puber')
+            except m.helper.ContractError:pass
+            else:raise AssertionError('timeout accepted as absence')
+        print('workflow-release-cleanup: current-Agent, R2 observable-outcome matrix, multi-idle history, same-A sealed retry passed')

@@ -146,6 +146,7 @@ CLOSED_PATHS = (
     ".kent/scripts/tests/test-puber-release-current",
     ".kent/scripts/tests/test-puber-qualified-runtime",
     ".kent/scripts/tests/test-puber-qualified-runtime-integration",
+    ".kent/scripts/tests/puber_native_fixture.py",
     ".kent/scripts/tests/test-workflow-puber-release-ci",
     ".kent/scripts/tests/test-workflow-puber-release-intent",
     ".kent/scripts/tests/test-workflow-puber-release-profile-generation",

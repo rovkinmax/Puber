@@ -21,6 +21,10 @@ class RuntimeContractError(ValueError):
     """Raised when a runtime contract is malformed or inconsistent."""
 
 
+class SourceResourceBudgetExceeded(RuntimeContractError):
+    """Execution capacity exhausted; not a statement about source identity."""
+
+
 def validate_retained_script_reader(native_kent, *, detail, graph, workspace):
     """Pure native Script binding for retained reads, never an Agent owner.
 
@@ -1504,6 +1508,21 @@ def capture_runtime_authority_binding(
     inputs = _require_proven_inputs(inputs)
     context = _require_context(execution_context, inputs)
     captured = capture_runtime_source_envelope(inputs, captures)
+    return _bind_captured_runtime_authority(inputs, context, observed_authority, captured)
+
+
+def capture_runtime_authority_binding_verified(
+    inputs, observations, execution_context, observed_authority, *, envelope_version,
+):
+    inputs = _require_proven_inputs(inputs)
+    context = _require_context(execution_context, inputs)
+    captured = capture_runtime_source_envelope_verified(
+        inputs, observations, envelope_version=envelope_version,
+    )
+    return _bind_captured_runtime_authority(inputs, context, observed_authority, captured)
+
+
+def _bind_captured_runtime_authority(inputs, context, observed_authority, captured):
     authority = _authority_values(observed_authority)
     if authority["kind"] != context.kind:
         raise RuntimeContractError("authority kind does not match execution context")
@@ -1671,6 +1690,110 @@ def _resolve_runtime_authority_binding(
     }
 
 
+_VERIFIED_CAPTURE_TOKEN = object()
+SOURCE_CAPTURE_METADATA_BYTES = 4 * 1024 * 1024
+SOURCE_CAPTURE_RECORDS = 4096
+
+
+def _capture_metadata_bound(value):
+    roots = value.get("external_roots")
+    if isinstance(roots, (list, tuple)) and len(roots) > SOURCE_CAPTURE_RECORDS:
+        raise SourceResourceBudgetExceeded("source capture descriptor capacity exceeded")
+    size = 0
+    try:
+        for chunk in _canonical_byte_chunks(value):
+            size += len(chunk)
+            if size > SOURCE_CAPTURE_METADATA_BYTES:
+                raise SourceResourceBudgetExceeded("source capture metadata capacity exceeded")
+    except SourceResourceBudgetExceeded:
+        raise
+    except (TypeError, ValueError, RecursionError) as error:
+        raise RuntimeContractError("source capture metadata is not canonical JSON") from error
+
+
+@dataclass(frozen=True)
+class VerifiedSourceObservation:
+    kind: str
+    key: str
+    path: str
+    mode: str
+    object_id: str
+    byte_count: int
+    sha256: str
+
+
+@dataclass(frozen=True, init=False)
+class VerifiedSourceCaptures:
+    """COMPLETE-only invocation proof, never a serialized authority input."""
+
+    project_commit: str
+    selected_inputs_sha256: str
+    observations: tuple[VerifiedSourceObservation, ...]
+    _proof: object
+
+    def __init__(self, inputs, observations, *, _proof=None):
+        if _proof is not _VERIFIED_CAPTURE_TOKEN:
+            raise RuntimeContractError("verified captures require complete Git verification")
+        inputs = _require_proven_inputs(inputs)
+        values = tuple(observations)
+        if len(values) != len(inputs.external_roots):
+            raise RuntimeContractError("verified captures are incomplete")
+        for row, descriptor in zip(values, inputs.external_roots):
+            if not isinstance(row, VerifiedSourceObservation):
+                raise RuntimeContractError("verified capture record is not typed")
+            if (row.kind, row.key) != (descriptor.kind, descriptor.key):
+                raise RuntimeContractError("verified capture order differs")
+            if (not isinstance(row.path, str) or not row.path or row.path.startswith("/")
+                    or any(part in ("", ".", "..") for part in row.path.split("/"))
+                    or "\\" in row.path or "\x00" in row.path
+                    or row.mode not in ("100644", "100755")):
+                raise RuntimeContractError("verified capture path/mode is invalid")
+            _commit(row.object_id, "verified blob OID")
+            _integer(row.byte_count, "verified byte count")
+            _digest(row.sha256, "verified blob digest")
+        _capture_metadata_bound({"external_roots": [row.__dict__ for row in values]})
+        object.__setattr__(self, "project_commit", inputs.project_commit)
+        object.__setattr__(self, "selected_inputs_sha256", inputs.selected_runtime_source_inputs_sha256)
+        object.__setattr__(self, "observations", values)
+        object.__setattr__(self, "_proof", _proof)
+
+    def __reduce_ex__(self, protocol):
+        raise TypeError("verified source captures cannot be serialized")
+
+
+def _make_verified_source_captures(inputs, observations):
+    return VerifiedSourceCaptures(inputs, observations, _proof=_VERIFIED_CAPTURE_TOKEN)
+
+
+def capture_runtime_source_envelope_verified(inputs, observations, *, envelope_version):
+    inputs = _require_proven_inputs(inputs)
+    if type(envelope_version) is not int or envelope_version not in (1, 2):
+        raise RuntimeContractError("envelope_version must be explicitly integer 1 or 2")
+    if (not isinstance(observations, VerifiedSourceCaptures)
+            or getattr(observations, "_proof", None) is not _VERIFIED_CAPTURE_TOKEN
+            or observations.project_commit != inputs.project_commit
+            or observations.selected_inputs_sha256 != inputs.selected_runtime_source_inputs_sha256):
+        raise RuntimeContractError("verified captures do not match selected inputs")
+    # Revalidate completeness and exact ordered descriptor identity at consumption.
+    checked = _make_verified_source_captures(inputs, observations.observations)
+    payload = {
+        "schema": f"runtime-source-envelope-v{envelope_version}",
+        "project_name": inputs.project_name,
+        "repository": inputs.repository,
+        "topology_kind": inputs.topology_kind,
+        "project_commit": inputs.project_commit,
+        "source_preview_sha256": inputs.source_preview_sha256,
+        "artifact_digests": dict(inputs.artifact_digests),
+        "external_roots": [{"kind": row.kind, "key": row.key,
+                            "byte_count": row.byte_count, "sha256": row.sha256}
+                           for row in checked.observations],
+    }
+    payload = validate_runtime_source_envelope(payload)
+    return {"runtime_source_envelope": payload,
+            "runtime_source_envelope_digest": canonical_sha256(payload),
+            "project_commit": inputs.project_commit}
+
+
 def _envelope_payload(
     inputs: SelectedRuntimeSourceInputs,
     captures: Sequence[tuple[str, str, bytes]],
@@ -1789,8 +1912,11 @@ def validate_runtime_source_envelope(
         "external_roots",
     }:
         raise RuntimeContractError("runtime source envelope has missing fields")
-    if data["schema"] != SOURCE_ENVELOPE_SCHEMA:
+    v2 = data["schema"] == "runtime-source-envelope-v2"
+    if data["schema"] not in (SOURCE_ENVELOPE_SCHEMA, "runtime-source-envelope-v2"):
         raise RuntimeContractError("unsupported runtime source envelope schema")
+    if v2:
+        _capture_metadata_bound(data)
     project_name = _string(data["project_name"], "project_name")
     repository = _string(data["repository"], "repository")
     if not REPOSITORY_RE.fullmatch(repository):
@@ -1834,7 +1960,7 @@ def validate_runtime_source_envelope(
             f"external_roots[{index}].byte_count",
         )
         total_bytes += byte_count
-        if total_bytes > MAX_EXTERNAL_TOTAL_BYTES:
+        if not v2 and total_bytes > MAX_EXTERNAL_TOTAL_BYTES:
             raise RuntimeContractError(
                 "external_roots exceed the total byte limit"
             )
@@ -1849,7 +1975,7 @@ def validate_runtime_source_envelope(
                 ),
             }
         )
-        if normalized_roots[-1]["byte_count"] > MAX_EXTERNAL_ROOT_BYTES:
+        if not v2 and normalized_roots[-1]["byte_count"] > MAX_EXTERNAL_ROOT_BYTES:
             raise RuntimeContractError(
                 f"external_roots[{index}].byte_count exceeds its limit"
             )
@@ -1858,7 +1984,7 @@ def validate_runtime_source_envelope(
             "external_roots must be sorted and unique"
         )
     result = {
-        "schema": SOURCE_ENVELOPE_SCHEMA,
+        "schema": data["schema"],
         "project_name": project_name,
         "repository": repository,
         "topology_kind": topology,
@@ -4689,6 +4815,11 @@ __all__ = [
     "RejectedObservationHardLimit",
     "RejectedObservationReceipt",
     "SelectedRuntimeSourceInputs",
+    "VerifiedSourceCaptures",
+    "VerifiedSourceObservation",
+    "SourceResourceBudgetExceeded",
+    "capture_runtime_source_envelope_verified",
+    "capture_runtime_authority_binding_verified",
     "TERMINAL_MARKER_SCHEMA",
     "TERMINAL_SEAL_REQUEST_SCHEMA",
     "TERMINAL_SEAL_SCHEMA",

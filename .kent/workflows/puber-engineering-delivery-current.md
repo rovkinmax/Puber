@@ -20,6 +20,14 @@ Plan prompt and fresh-Session handoff are retained after the Script; the stale
 legacy initial-admission header and direct Backlog-to-Plan route are absent.
 
 Use the builder's `--check` mode to verify exact deterministic bytes. The
+retained Kit must remain clean at its exact pinned commit; that commit must
+be an ancestor of the explicit publication ref's observed tip, not necessarily
+its latest commit. Profile, bootstrap bytes/modes, and import provenance remain
+qualified. Checks accept committed or untracked candidate files with the same
+six-file shape and safe executable/non-executable modes, and verify before/after
+source and Release snapshots without changing them.
+
+The candidate remains `UNACTIVATED`: source validation is not installation. The
 candidate and frozen fixture contain no live source-admission receipt or
 execution-target selector. Native projection, review, publication, installation,
 and activation remain separate gated work.

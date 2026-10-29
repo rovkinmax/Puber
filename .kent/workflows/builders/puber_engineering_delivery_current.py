@@ -21,9 +21,9 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
 KIT_ROOT = Path(
     "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/"
-    "runtime-sdk-puber-30b908c9"
+    "archive-published-2708-456"
 )
-KIT_COMMIT = "30b908c9fc7097c0464ae67d58f891a1dd7103fb"
+KIT_COMMIT = "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"
 KIT_REF = "refs/remotes/origin/main"
 WORKFLOW_ID = "7061fc98-aae5-4468-9d89-fa28bfe30c72"
 NATIVE_VERSION = 13
@@ -36,7 +36,7 @@ PROFILE = ROOT / ".kent/workflow-profile.toml"
 BOOTSTRAP = ROOT / ".kent/scripts/workflow_kit_runtime.py"
 GRAPH_PATH = ROOT / ".kent/workflows/puber-engineering-delivery-current.json"
 FIXTURE_SHA256 = "883efe3b5abcd5d987106bdf427d6d1508dcc3bc6620527ea8b253827028f418"
-EXPECTED_BOOTSTRAP_SHA256 = "13c596ff74172a103ce3f4c97a35b05b2090513917562dad914e1a1e39624d99"
+EXPECTED_BOOTSTRAP_SHA256 = "04951ca672d0c0cdd19308ae33a31266eebc88e927335af456d804679700a09a"
 UUID4_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-"
     r"[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
@@ -98,12 +98,19 @@ def fail(message: str) -> None:
 
 def git(root: Path, *args: str) -> str:
     result = subprocess.run(
-        ["git", "--no-optional-locks", "-c", "core.fsmonitor=false",
-         "-c", f"core.hooksPath={os.devnull}", "-C", str(root), *args],
+        ["git", "--no-optional-locks", "--no-replace-objects",
+         "-c", "core.fsmonitor=false", "-c", f"core.hooksPath={os.devnull}",
+         "-c", "protocol.allow=never", "-C", str(root), *args],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
-        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"},
+        env={
+            **{key: value for key, value in os.environ.items() if not key.startswith("GIT_")},
+            "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1", "GIT_NO_LAZY_FETCH": "1",
+            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_CONFIG_GLOBAL": os.devnull,
+        },
     )
     if result.returncode:
         fail("pinned source cohort cannot be qualified")
@@ -165,14 +172,15 @@ def qualify_inputs() -> None:
         or stat.S_IMODE(kit_bootstrap.stat().st_mode) != 0o600
     ):
         fail("published Kit bootstrap bytes or mode differ")
+    publication_tip = git(KIT_ROOT, "rev-parse", "--verify", f"{KIT_REF}^{{commit}}")
     if (
         git(KIT_ROOT, "rev-parse", "--show-toplevel") != str(KIT_ROOT)
         or git(KIT_ROOT, "rev-parse", "--verify", "HEAD^{commit}") != KIT_COMMIT
-        or git(KIT_ROOT, "rev-parse", "--verify", f"{KIT_REF}^{{commit}}") != KIT_COMMIT
         or git(KIT_ROOT, "status", "--porcelain=v1", "-z",
                "--untracked-files=all", "--ignore-submodules=none")
     ):
         fail("retained Kit source cohort is dirty or has moved")
+    git(KIT_ROOT, "merge-base", "--is-ancestor", KIT_COMMIT, publication_tip)
     if hashlib.sha256(FIXTURE.read_bytes()).hexdigest() != FIXTURE_SHA256:
         fail("frozen native Workflow fixture digest differs")
     for name, module in tuple(sys.modules.items()):
