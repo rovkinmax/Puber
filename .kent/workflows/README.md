@@ -231,15 +231,23 @@ non-attested successor derived from the frozen v90 source and historical
 Script/Agent topology, and unrelated approval gates; it adds two S4
 CI-recovery transitions, yielding 53 transition groups and 53 edges.
 The read-only native preflight on October 23, 2026 observed this Workflow UUID
-at version 96 with 18 nodes, 51 transition groups, and 51 edges; this same-UUID
-source successor targets version 97. Re-read native state before any future
-plan or apply because this observation is not a CAS authorization.
-Source revision 92 keeps 20 ordinary business-only `entry_transition` hints
+at version 96 with 18 nodes, 51 transition groups, and 51 edges. The earlier
+same-UUID graph adoption produced version 97; its subsequent metadata-only
+update produced version 98 with the same four graph collections and `head`
+execution policy. Read-only inspection on October 30, 2026 confirmed that
+version-98 preimage. This source-only successor proposes version 99, conditional
+on fresh baseline-98 verification and a reviewed graph-only source-ingress
+update with unchanged metadata. No source publication or activation is claimed.
+Re-read native state before any future plan or apply; this observation is not
+a CAS authorization.
+Source revision 93 keeps 20 ordinary business-only `entry_transition` hints
 and adds target-branch, operation, merged-T, and typed-CI-failure continuity.
 The typed failure, retry, and user-action routes have no synthetic route
 hint. The intent helper and Script-lease adapter both enforce the exact
-version-97 cohort, rejecting the observed version-96 preimage and future
-revisions. No live graph, metadata, Task target, or default is changed here.
+proposed version-99 cohort, rejecting version 97, version 98 and future
+revisions. A metadata save would advance the native version again and requires
+a revised exact cohort preview. No live graph, metadata, Task target, or
+default is changed here.
 
 The current source candidate materializes the shared checkpoint, evidence,
 Janitor and CI-preparation helpers plus the standard-library
@@ -269,13 +277,22 @@ manifest and builder remain historical inputs. No native runtime binding,
 live Workflow, Task, metadata, or default is changed by this source candidate.
 
 The profile-generation Script binds native Task/project/workflow/node/root,
-execution base/controller, and release-operation/source identities through the
-Puber-owned wrapper. The wrapper uses the shared Kit adapter's existing
-resource record/guard; it never creates Session/Run/Step identity, takes over
-Script/Unknown owners, or stores tokens in Task state. The Script node and all
-approval gates remain unchanged. OSM-108 and OSM-110 remain activation blockers
-until their reachable old root-local adapters are proven compatible under a
-separately approved rollout.
+execution base/controller and release-operation/source identities through
+the Puber-owned resource-lease delegate. Release uses synchronous
+`release.clean` command ownership, Smoke uses `smoke.persistent` with genuine
+Session identity, and UI/DPAD delegates to the installed shared facade.
+The current protected checkpoint is `puber_release_profile_checkpoint_v3`;
+report/preparation schemas and all graph identities/carriers/gates remain
+unchanged. Minimal terminal-cleanup proof survives client record pruning.
+Legacy records and historical artifacts remain preserved; neither public nor
+internal retired acquisition entrypoints can reopen admission. The old
+Script-lock wrapper remains unchanged but is no longer selected.
+
+Use `.kent/commands/mobile-operation-policy.md` as the authority for Puber
+operations. The unchanged Kit pin is not a whole-Kit tooling freeze.
+Per-workspace private configuration, new TV resources, installed DPAD,
+retained consumer exclusion and native admission remain separately reviewed
+activation gates. Source fixtures are not runtime Smoke or activation evidence.
 
 Cleanup inventories runtime/history before reading or retaining the profile
 checkpoint. It retains exact checkpoint bytes, original input/proofs, source

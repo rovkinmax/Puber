@@ -52,11 +52,13 @@ trigger matches the current node and task.
 
 - Conditional routing follows `.kent/commands/smoke-policy.md`; execution
   follows `.kent/commands/smoke-test.md`.
-- Use a TV emulator selected by exact serial. Physical TV/device use requires
-  explicit authorization.
-- Acquire the shared lease before build, install, launch, input, logs, or MCP.
-  On resume, reuse a still-owned checkpoint token through the adapter's
-  `resume` operation.
+- Follow `.kent/commands/mobile-operation-policy.md` and the selected
+  resource-lease Smoke procedure. Physical device use requires separate
+  authorization and a separately qualified profile; never substitute an endpoint.
+- Smoke uses `smoke.persistent` with genuine native Project/Task/Session binding;
+  Release uses synchronous `release.clean` command ownership. Recheck custody
+  before product-owned operations. UI/DPAD delegates to shared `android_tools`;
+  no legacy acquisition/resumption or Mobile MCP fallback is selected.
 - Build a fresh task APK, but preserve app data by installing only through
   `.kent/adapters/mobile/android-apk-install-preserve`. Unknown signer,
   downgrade, signer mismatch, or install failure blocks the replacement.
@@ -113,7 +115,10 @@ mutates a live Kent Workflow, Task, default, canonical state, or project link.
 ## Current Release successor source candidate
 
 The profile selects `.kent/workflows/puber-release-current.json` at proposed
-native version 97/source revision 92. It preserves 18 nodes and Script/Agent
+native version 99/source revision 93. This source-only proposal requires a
+revalidated native-98 preimage and a reviewed graph-only source-ingress update
+with unchanged metadata; it does not claim publication or activation. It
+preserves 18 nodes and Script/Agent
 kinds, with 53 transition groups and 53 edges after the S4 CI-recovery
 transitions are added. The 20 ordinary Script routes retain their
 business-only `entry_transition` hints; the typed failure/retry/user-action
@@ -159,14 +164,21 @@ activation is claimed. The v90 and 5af-named v95/source-91 graph/spec/manifest
 snapshots remain historical and byte-stable. Any live effect requires its
 separate explicit authority and compatibility checks.
 
-The profile-owned `mobile_script_resource_lock` adapter is a Puber context
-wrapper, not a second lock implementation. It invokes the same
-`mobile_resource_lock` shared owner record and guard as Session callers. It
-does not forge Session/Run/Step identity, include `entry_transition` in owner
-identity, persist lease tokens, automatically resume/take over Script owners,
-or delete Unknown owners. Activation remains blocked by old reachable Tasks
-OSM-108 and OSM-110 until their actual adapter bytes and lock semantics are
-compatible under separately approved rollout.
+The current source selects project-owned `puber_resource_lease` and
+`android_tools` delegates, not backported Kit-managed templates. It preserves
+the exact Kit pin and command versions. The authoritative operation policy
+is `.kent/commands/mobile-operation-policy.md`.
+
+Release checkpoints use `puber_release_profile_checkpoint_v3` in the existing
+protected store, retaining business/report/preparation identity and terminal
+cleanup proof without receipt secrets. The profile report and preparation
+report schemas remain unchanged. Legacy v2 checkpoints stay diagnostic/recovery
+inputs and are never converted or reused as new ownership.
+
+The historical Script-lock wrapper remains byte-stable but is not selected.
+The retired lock permits only validated status/cleanup. Current source
+selection does not prove host-wide legacy exclusion; retained consumers and
+native admission remain separately reviewed activation gates.
 
 Cleanup classifies Task runtime inventory and seal history before checkpoint
 reads or retention. Before final sealing it retains exact checkpoint bytes,

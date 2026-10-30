@@ -40,6 +40,7 @@ INGRESS_GROUP_ID = "01ab6705-8314-46f0-a31d-bbe36acb70e4"
 FIXTURE_PATH = ROOT / ".kent/scripts/tests/fixtures/puber-engineering-delivery-native-v13.json"
 CANDIDATE_PATH = ROOT / ".kent/workflows/puber-engineering-delivery-current.json"
 BUILDER_PATH = ROOT / ".kent/workflows/builders/puber_engineering_delivery_current.py"
+RELEASE_BUILDER_PATH = ROOT / ".kent/workflows/builders/puber_release_current.py"
 ADMISSION_PATH = ROOT / ".kent/scripts/workflow-puber-engineering-admission"
 TEST_PATH = ROOT / ".kent/scripts/tests/test-puber-engineering-delivery-current"
 DOC_PATH = ROOT / ".kent/workflows/puber-engineering-delivery-current.md"
@@ -79,6 +80,157 @@ PRESERVED_RELEASE_PATHS = (
     ".kent/workflows/puber-release-current.manifest.json",
     ".kent/workflows/specs/puber-release-current.toml",
 )
+RELEASE_COHORT_PATHS = (
+    ".kent/workflow-profile.toml",
+    ".kent/workflows/puber-release-current.json",
+    ".kent/workflows/specs/puber-release-current.toml",
+)
+HISTORICAL_RELEASE_SHA256 = {
+    ".kent/workflow-profile.toml": "88deae631f6b6ad61f7d3d88fbe23db8281a15c0457c7a6e5762427f329160ab",
+    ".kent/workflows/puber-release-current.json": "1c18416645f7f38cc3ffda1919bbc569a176b0ff5229241ccd8a04e51be047fc",
+    ".kent/workflows/specs/puber-release-current.toml": "43d6b762feaa289d90d92454d488ed97ac71d69b1872cf141568ac7cf5cf81dc",
+}
+MOBILE_RELEASE_SHA256 = {
+    ".kent/workflow-profile.toml": "64a601f5db384172413c3a71691763efe50fd7fbe29dc2a37c07c6ccfb73497f",
+    ".kent/workflows/puber-release-current.json": "518c4e7dfe32cb3f57349d69cca4aa4c2badccefdf959cfe7d9f633eeb5af8ac",
+    ".kent/workflows/specs/puber-release-current.toml": "8b226c0d18991e4e6ca396594a3364d6d5b56e9112752e9056d590fdf2d43447",
+}
+
+
+def replace_unique(raw: bytes, old: bytes, new: bytes) -> bytes:
+    occurrences = raw.count(old)
+    if occurrences != 1:
+        raise AssertionError(
+            f"expected exactly one historical normalization token, found {occurrences}: {old!r}"
+        )
+    return raw.replace(old, new, 1)
+
+
+def historical_release_bytes(relative: str) -> bytes:
+    if relative not in RELEASE_COHORT_PATHS:
+        raise AssertionError(f"not a Release cohort path: {relative}")
+    expected = subprocess.run(
+        ["git", "-C", str(ROOT), "show", f"{BASE_COMMIT}:{relative}"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    if expected.returncode:
+        raise AssertionError(f"published Release source is absent: {relative}")
+    raw = expected.stdout
+    if relative == ".kent/workflow-profile.toml":
+        raw = replace_unique(
+            raw, b"runtime-sdk-puber-30b908c9", b"archive-published-2708-456",
+        )
+        raw = replace_unique(
+            raw,
+            b"30b908c9fc7097c0464ae67d58f891a1dd7103fb",
+            KIT_COMMIT.encode("ascii"),
+        )
+    actual_hash = hashlib.sha256(raw).hexdigest()
+    if actual_hash != HISTORICAL_RELEASE_SHA256[relative]:
+        raise AssertionError(f"historical Release cohort changed: {relative}")
+    return raw
+
+
+def mobile_release_bytes(relative: str, historical: bytes) -> bytes:
+    if relative not in RELEASE_COHORT_PATHS:
+        raise AssertionError(f"not a Release cohort path: {relative}")
+    deltas = {
+        ".kent/workflow-profile.toml": (
+            (
+                b'required_adapters = [\n'
+                b'  "android_apk_install",\n'
+                b'  "mcp_policy",\n'
+                b'  "mobile_resource_lock",\n'
+                b'  "mobile_script_resource_lock",\n'
+                b'  "mobile_evidence_audit",\n'
+                b']',
+                b'required_adapters = [\n'
+                b'  "android_apk_install",\n'
+                b'  "mcp_policy",\n'
+                b'  "puber_resource_lease",\n'
+                b'  "android_tools",\n'
+                b'  "mobile_evidence_audit",\n'
+                b']',
+            ),
+            (
+                b'kit_managed_adapters = [\n'
+                b'  "android_apk_install",\n'
+                b'  "mobile_resource_lock",\n'
+                b'  "mobile_evidence_audit",\n'
+                b']',
+                b'kit_managed_adapters = [\n'
+                b'  "android_apk_install",\n'
+                b'  "mobile_evidence_audit",\n'
+                b']',
+            ),
+            (
+                b'mobile_resource_lock = ".kent/adapters/mobile/emulator-resource-lock.sh"\n'
+                b'mobile_script_resource_lock = ".kent/adapters/mobile/puber-script-resource-lock"',
+                b'puber_resource_lease = ".kent/adapters/mobile/puber-resource-lease"\n'
+                b'android_tools = ".kent/adapters/android/android-tools"',
+            ),
+        ),
+        ".kent/workflows/puber-release-current.json": (
+            (
+                b'    "version": 97,\n',
+                b'    "version": 99,\n',
+            ),
+            (
+                b'    "source_revision": 92\n',
+                b'    "source_revision": 93\n',
+            ),
+        ),
+        ".kent/workflows/specs/puber-release-current.toml": (
+            (
+                b'# Release-only source revision 92 preserves v90/5af history and approval\n'
+                b'# gates while repairing target-branch, operation, CI, and native outputs.',
+                b'# Release-only source revision 93 preserves v90/5af history and approval\n'
+                b'# gates while selecting unified Puber resource-lease consumers.',
+            ),
+        ),
+    }
+    raw = historical
+    for old, new in deltas[relative]:
+        raw = replace_unique(raw, old, new)
+    actual_hash = hashlib.sha256(raw).hexdigest()
+    if actual_hash != MOBILE_RELEASE_SHA256[relative]:
+        raise AssertionError(f"mobile Release delta changed: {relative}")
+    return raw
+
+
+def classify_release_cohort(
+    actual_bytes: dict[str, bytes],
+    historical_bytes: dict[str, bytes],
+    mobile_bytes: dict[str, bytes],
+) -> str:
+    expected_paths = set(RELEASE_COHORT_PATHS)
+    cohorts = {
+        "historical": historical_bytes,
+        "mobile": mobile_bytes,
+    }
+    if set(actual_bytes) != expected_paths:
+        raise AssertionError("Release cohort is missing or contains unexpected paths")
+    if any(set(cohort_bytes) != expected_paths for cohort_bytes in cohorts.values()):
+        raise AssertionError("Release cohort definition is incomplete")
+    if cohorts["historical"] == cohorts["mobile"]:
+        raise AssertionError("Release cohorts are not uniquely distinguishable")
+    matches = [
+        name for name, cohort_bytes in cohorts.items()
+        if actual_bytes == cohort_bytes
+    ]
+    if len(matches) != 1:
+        raise AssertionError("Release files are not one exact, coherent byte cohort")
+    return matches[0]
+
+
+def assert_snapshot_unchanged(before, after) -> None:
+    if before != after:
+        raise AssertionError("preserved Release source bytes or modes changed")
+
+
+def assert_exact_bytes(actual: bytes, expected: bytes, relative: str) -> None:
+    if actual != expected:
+        raise AssertionError(relative)
 
 
 def canonical(value: object) -> bytes:
@@ -199,50 +351,78 @@ def tracked_mode(root: Path, revision: str, path: str) -> int:
     return 0o755 if mode == "100755" else 0o644
 
 
-def release_snapshot() -> dict[str, tuple[str, int]]:
+def expected_release_manifest_bytes() -> bytes:
+    release_builder = runpy.run_path(str(RELEASE_BUILDER_PATH))
+    return (
+        json.dumps(
+            release_builder["_expected_manifest"](),
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n"
+    ).encode("utf-8")
+
+
+def release_snapshot(
+    candidate_root: Path = ROOT,
+    release_manifest_bytes: bytes | None = None,
+) -> dict[str, tuple[str, int]]:
     snapshot = {}
+    actual_cohort_bytes = {}
+    expected_historical_bytes = {}
+    expected_mobile_bytes = {}
+    streaming_inputs = {
+        ".kent/scripts/workflow-puber-release-intent",
+        ".kent/scripts/workflow_runtime_contracts.py",
+        ".kent/workflows/builders/puber_release_current.py",
+    }
     for relative in PRESERVED_RELEASE_PATHS:
-        expected = subprocess.run(
-            ["git", "-C", str(ROOT), "show", f"{BASE_COMMIT}:{relative}"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-        )
-        if expected.returncode:
-            raise AssertionError(f"published Release source is absent: {relative}")
-        current = ROOT / relative
+        if relative in RELEASE_COHORT_PATHS:
+            expected_bytes = historical_release_bytes(relative)
+        else:
+            expected = subprocess.run(
+                ["git", "-C", str(ROOT), "show", f"{BASE_COMMIT}:{relative}"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            if expected.returncode:
+                raise AssertionError(f"published Release source is absent: {relative}")
+            expected_bytes = expected.stdout
+        current = candidate_root / relative
+        current_bytes = current.read_bytes()
         snapshot[relative] = (
-            hashlib.sha256(current.read_bytes()).hexdigest(),
+            hashlib.sha256(current_bytes).hexdigest(),
             stat.S_IMODE(current.stat().st_mode),
         )
-        expected_bytes = expected.stdout
-        if relative == ".kent/workflow-profile.toml":
-            expected_bytes = expected_bytes.replace(
-                b"runtime-sdk-puber-30b908c9", b"archive-published-2708-456",
-            ).replace(
-                b"30b908c9fc7097c0464ae67d58f891a1dd7103fb", KIT_COMMIT.encode("ascii"),
-            )
-        elif relative == ".kent/scripts/workflow_kit_runtime.py":
+        if relative == ".kent/scripts/workflow_kit_runtime.py":
             expected_bytes = (KIT_ROOT / "workflowkit/kit_runtime.py").read_bytes()
         elif relative == ".kent/workflows/puber-release-current.manifest.json":
-            release_builder = runpy.run_path(str(ROOT / ".kent/workflows/builders/puber_release_current.py"))
             expected_bytes = (
-                json.dumps(release_builder["_expected_manifest"](), ensure_ascii=False, indent=2) + "\n"
-            ).encode("utf-8")
+                expected_release_manifest_bytes()
+                if release_manifest_bytes is None
+                else release_manifest_bytes
+            )
         # The separately approved streaming source package owns these Release
         # integration inputs. Engineering still snapshots their actual bytes
         # and modes before/after its operations; it must not revert that package
         # to the older Engineering baseline. Package suites validate their API,
         # canonical copy and full source closure independently.
-        streaming_inputs = {
-            ".kent/scripts/workflow-puber-release-intent",
-            ".kent/scripts/workflow_runtime_contracts.py",
-            ".kent/workflows/builders/puber_release_current.py",
-        }
-        if relative not in streaming_inputs:
-            assert current.read_bytes() == expected_bytes, relative
+        if relative in RELEASE_COHORT_PATHS:
+            expected_historical_bytes[relative] = expected_bytes
+            expected_mobile_bytes[relative] = mobile_release_bytes(
+                relative,
+                expected_bytes,
+            )
+            actual_cohort_bytes[relative] = current_bytes
+        elif relative not in streaming_inputs:
+            assert_exact_bytes(current_bytes, expected_bytes, relative)
         current_mode = stat.S_IMODE(current.stat().st_mode)
         assert bool(current_mode & 0o111) == bool(
             tracked_mode(ROOT, BASE_COMMIT, relative) & 0o111
         ), relative
+    cohort = classify_release_cohort(
+        actual_cohort_bytes,
+        expected_historical_bytes,
+        expected_mobile_bytes,
+    )
     return snapshot
 
 
@@ -379,7 +559,7 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
             '"custom_ref"', '"source_admission"',
         ):
             self.assertNotIn(forbidden, candidate_text)
-        self.assertEqual(release_snapshot(), before_release)
+        assert_snapshot_unchanged(before_release, release_snapshot())
 
     def test_allowlist_modes_and_release_source_preservation(self):
         before_release = release_snapshot()
@@ -387,7 +567,166 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
         self.assert_source_shape(ROOT)
         command(sys.executable, str(BUILDER_PATH), "--check")
         self.assertEqual(self.source_snapshot(ROOT), before)
-        self.assertEqual(release_snapshot(), before_release)
+        assert_snapshot_unchanged(before_release, release_snapshot())
+
+    def test_release_cohorts_are_exact_and_preserve_negative_guards(self):
+        historical_bytes = {
+            relative: historical_release_bytes(relative)
+            for relative in RELEASE_COHORT_PATHS
+        }
+        mobile_bytes = {
+            relative: mobile_release_bytes(relative, historical_bytes[relative])
+            for relative in RELEASE_COHORT_PATHS
+        }
+        historical_hashes = {
+            relative: hashlib.sha256(raw).hexdigest()
+            for relative, raw in historical_bytes.items()
+        }
+        mobile_hashes = {
+            relative: hashlib.sha256(raw).hexdigest()
+            for relative, raw in mobile_bytes.items()
+        }
+        self.assertEqual(historical_hashes, HISTORICAL_RELEASE_SHA256)
+        self.assertEqual(mobile_hashes, MOBILE_RELEASE_SHA256)
+        self.assertEqual(
+            classify_release_cohort(
+                historical_bytes, historical_bytes, mobile_bytes,
+            ),
+            "historical",
+        )
+        self.assertEqual(
+            classify_release_cohort(mobile_bytes, historical_bytes, mobile_bytes),
+            "mobile",
+        )
+
+        graph_path = ".kent/workflows/puber-release-current.json"
+        for revision in (97, 98, 100):
+            observed = dict(mobile_bytes)
+            observed[graph_path] = replace_unique(
+                mobile_bytes[graph_path],
+                b"    \"version\": 99,\n",
+                f"    \"version\": {revision},\n".encode("ascii"),
+            )
+            with self.subTest(unqualified_mobile_native_revision=revision):
+                with self.assertRaises(AssertionError):
+                    classify_release_cohort(
+                        observed, historical_bytes, mobile_bytes,
+                    )
+
+        # A partial historical/mobile mixture is never a third accepted cohort.
+        for mask in range(1 << len(RELEASE_COHORT_PATHS)):
+            observed = {
+                relative: (
+                    mobile_bytes[relative]
+                    if mask & (1 << index)
+                    else historical_bytes[relative]
+                )
+                for index, relative in enumerate(RELEASE_COHORT_PATHS)
+            }
+            if mask in {0, (1 << len(RELEASE_COHORT_PATHS)) - 1}:
+                expected = "historical" if mask == 0 else "mobile"
+                self.assertEqual(
+                    classify_release_cohort(
+                        observed, historical_bytes, mobile_bytes,
+                    ),
+                    expected,
+                )
+            else:
+                with self.subTest(mixed_cohort=mask):
+                    with self.assertRaises(AssertionError):
+                        classify_release_cohort(
+                            observed, historical_bytes, mobile_bytes,
+                        )
+
+        missing = dict(historical_bytes)
+        missing.pop(RELEASE_COHORT_PATHS[0])
+        extra = {
+            **historical_bytes,
+            "unexpected-release-file": b"not an approved Release input",
+        }
+        for invalid in (missing, extra):
+            with self.assertRaises(AssertionError):
+                classify_release_cohort(
+                    invalid, historical_bytes, mobile_bytes,
+                )
+
+        profile_path = ".kent/workflow-profile.toml"
+        profile_bytes = historical_bytes[profile_path]
+        normalized_root = b"archive-published-2708-456"
+        with self.assertRaises(AssertionError):
+            replace_unique(profile_bytes, b"missing-kit-root", b"replacement")
+        with self.assertRaises(AssertionError):
+            replace_unique(profile_bytes + normalized_root, normalized_root, b"replacement")
+
+        # An unrelated Kit pin or any extra graph/spec byte must not be
+        # normalized into either accepted cohort.
+        drift_cases = {
+            profile_path: replace_unique(
+                profile_bytes,
+                KIT_COMMIT.encode("ascii"),
+                b"0" * 40,
+            ),
+            ".kent/workflows/puber-release-current.json":
+                historical_bytes[".kent/workflows/puber-release-current.json"] + b"\n",
+            ".kent/workflows/specs/puber-release-current.toml":
+                historical_bytes[".kent/workflows/specs/puber-release-current.toml"] + b"\n",
+        }
+        for relative, drifted_bytes in drift_cases.items():
+            observed = dict(historical_bytes)
+            observed[relative] = drifted_bytes
+            with self.subTest(unrelated_drift=relative):
+                with self.assertRaises(AssertionError):
+                    classify_release_cohort(
+                        observed, historical_bytes, mobile_bytes,
+                    )
+
+        # Exercise the real preservation path against a private source copy:
+        # exact noncohort inputs reject content/mode drift, while the explicitly
+        # streamed inputs are detected by the before/after byte+mode snapshot.
+        with tempfile.TemporaryDirectory() as directory:
+            candidate_root = Path(directory) / "candidate"
+            copy_source_tree(ROOT, candidate_root, list(PRESERVED_RELEASE_PATHS))
+            manifest_bytes = expected_release_manifest_bytes()
+            before = release_snapshot(candidate_root, manifest_bytes)
+
+            exact_path = candidate_root / ".kent/scripts/workflow-puber-release-ci"
+            exact_bytes = exact_path.read_bytes()
+            exact_path.write_bytes(exact_bytes + b"\n")
+            with self.assertRaises(AssertionError):
+                release_snapshot(candidate_root, manifest_bytes)
+            exact_path.write_bytes(exact_bytes)
+
+            exact_mode = stat.S_IMODE(exact_path.stat().st_mode)
+            exact_path.chmod(exact_mode & ~0o111)
+            with self.assertRaises(AssertionError):
+                release_snapshot(candidate_root, manifest_bytes)
+            exact_path.chmod(exact_mode)
+            assert_snapshot_unchanged(
+                before,
+                release_snapshot(candidate_root, manifest_bytes),
+            )
+
+            streamed_path = (
+                candidate_root / ".kent/scripts/workflow-puber-release-intent"
+            )
+            streamed_bytes = streamed_path.read_bytes()
+            streamed_path.write_bytes(streamed_bytes + b"\n")
+            after_stream_drift = release_snapshot(candidate_root, manifest_bytes)
+            with self.assertRaises(AssertionError):
+                assert_snapshot_unchanged(before, after_stream_drift)
+            streamed_path.write_bytes(streamed_bytes)
+
+            cohort_path = candidate_root / profile_path
+            cohort_mode = stat.S_IMODE(cohort_path.stat().st_mode)
+            cohort_path.chmod(0o600 if cohort_mode != 0o600 else 0o644)
+            after_mode_drift = release_snapshot(candidate_root, manifest_bytes)
+            with self.assertRaises(AssertionError):
+                assert_snapshot_unchanged(before, after_mode_drift)
+            cohort_path.chmod(cohort_mode)
+            assert_snapshot_unchanged(
+                before,
+                release_snapshot(candidate_root, manifest_bytes),
+            )
 
     def assert_source_shape(self, root):
         expected_executable = {
@@ -449,6 +788,13 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
                 path for path in source_paths(ROOT)
                 if infrastructure_path(path, kit=False) or path.startswith(".kent/adapters/")
             ]
+            # These approved task-local adapters are intentionally untracked
+            # until delivery, so Git's source inventory cannot discover them.
+            paths.extend((
+                ".kent/adapters/android/android-tools",
+                ".kent/adapters/mobile/puber-resource-lease",
+            ))
+            paths = sorted(set(paths))
             copy_source_tree(ROOT, root, [path for path in paths if path not in ALLOWLIST])
             git(root, "init", "-q")
             git(root, "config", "user.email", "fixture@example.invalid")
@@ -465,7 +811,7 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
                     before = self.source_snapshot(root)
                     command(sys.executable, str(root / BUILDER_PATH.relative_to(ROOT)), "--check", cwd=root)
                     self.assertEqual(self.source_snapshot(root), before)
-        self.assertEqual(release_snapshot(), before_release)
+        assert_snapshot_unchanged(before_release, release_snapshot())
 
     def test_poisoned_git_environment_cannot_write_foreign_repository(self):
         with fixture_repositories() as create:

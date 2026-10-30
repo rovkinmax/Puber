@@ -34,7 +34,9 @@ with FixtureSandbox.create() as _sandbox, \
         ignore=shutil.ignore_patterns(".git", "__pycache__"),
     )
     ROOT = ROOT.resolve()
-    KIT, _kit_binding = verify_kit_binding(ROOT, sandbox=_sandbox)
+    KIT, _kit_binding = verify_kit_binding(
+        ROOT, sandbox=_sandbox, publication="ancestor"
+    )
     _candidate_freeze = candidate_freeze_argument(sys.argv[1:])
     if _candidate_freeze:
         KIT, candidate_commit = prepare_candidate_kit(_sandbox, Path(_source_directory), KIT, _candidate_freeze)
@@ -973,7 +975,7 @@ with FixtureSandbox.create() as _sandbox, \
             "project": {}, "retained_session_count": 0, "source_workspace": {},
             "status": {"node_ids": [node["id"]]},
             "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 97, "name": "Puber Release"},
+            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 99, "name": "Puber Release"},
             "worktree_path": str(work),
         }
         fake = root / "fake"; fake.mkdir()

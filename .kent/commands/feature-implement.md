@@ -218,20 +218,19 @@ After previews are ready, compare implementation with the Figma design screensho
   `~/.kent/bin/kent-mcp-call jetbrains.open_file_in_editor path="<file>"
   --allow-mutate --quiet` for each newly created file.
 
-### Step 6b: Legacy standalone smoke-test prompt
+### Step 6b: Standalone Smoke decision
 
 - Do not run this step inside a generated Kent Engineering Delivery workflow.
   Its post-verification Gate owns the Smoke decision through
   `.kent/commands/smoke-policy.md`, and its Smoke node owns resource handling.
 - For legacy standalone execution only, if the implemented screen is now
   reachable (navigation wired):
-  1. First check if a TV emulator is connected: call
-     `.kent/adapters/mobile/emulator-resource-lock.sh adb-emulators tv`.
-  2. If no emulator is found → skip smoke-test silently (don't ask the user). Physical devices are not eligible unless the
-     user explicitly provided permission and an explicit physical serial.
-  3. If an emulator is available → ask user: "Screen is reachable. Run smoke-test on emulator? (y/n)"
-  4. If yes → **use Kent prompt command to invoke `/prompt:smoke-test`** with the screen name
-  5. Save results to `.todo/<feature>/smoke-results/step-<N>.md`
+  1. Resolve scenario authority through `.kent/commands/smoke-policy.md`.
+  2. Follow `.kent/commands/smoke-test.md` and the authoritative operation
+     policy; never discover or acquire through the retired lock.
+  3. Missing qualified resource configuration/authentication blocks only
+     affected runtime scenarios. Do not silently report an unexecuted Smoke.
+  4. Record sanitized results in the selected evidence store.
 - If navigation is not wired yet → skip (mention it will be testable after nav step)
 
 ### Step 6c: Update shared knowledge (if applicable)

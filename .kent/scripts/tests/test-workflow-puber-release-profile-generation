@@ -11,6 +11,7 @@ import signal
 import stat
 import subprocess
 import tempfile
+from unittest.mock import patch
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from types import SimpleNamespace
@@ -111,7 +112,7 @@ class Fixture:
         module.helper.read_zero_argument = lambda: self.payload
         module.helper.task_show = lambda *_args: self.task
         module.helper.validate_envelope = lambda *_args, **_kwargs: (
-            dict(self.payload),
+            {key: value for key, value in self.payload.items() if key != "_kent"},
             {
                 "task": self.task,
                 "task_id": TASK_ID,
@@ -141,9 +142,14 @@ class Fixture:
             (ROOT / module.helper.GRAPH_PATH).read_bytes()
         )
         (self.root / ".kent").mkdir(exist_ok=True)
-        (self.root / ".kent/workflow-profile.toml").write_bytes(
-            (ROOT / ".kent/workflow-profile.toml").read_bytes()
-        )
+        legacy_profile = (ROOT / "tools/fixtures/mobile-resource-migration/workflow-profile-resource-lease.toml").read_text()
+        legacy_profile = legacy_profile.replace('"puber_resource_lease",', '"mobile_resource_lock",').replace(
+            '"android_tools",', '"mobile_script_resource_lock",').replace(
+            'puber_resource_lease = ".kent/adapters/mobile/puber-resource-lease"',
+            'mobile_resource_lock = ".kent/adapters/mobile/emulator-resource-lock.sh"').replace(
+            'android_tools = ".kent/adapters/android/android-tools"',
+            'mobile_script_resource_lock = ".kent/adapters/mobile/puber-script-resource-lock"')
+        (self.root / ".kent/workflow-profile.toml").write_text(legacy_profile)
         adapter = self.root / ".kent/adapters/mobile/emulator-resource-lock.sh"
         adapter.parent.mkdir(parents=True)
         adapter.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
@@ -403,10 +409,201 @@ def test_release_failure_keeps_generating_checkpoint_and_generated_bytes():
         fixture.close()
 
 
+class ResourceAPI:
+    """Synchronous command fixture, with worker acknowledgement before effects."""
+    def __init__(self, fixture, mode):
+        self.fixture, self.mode, self.calls = fixture, mode, []
+        self.binding = {
+            "protocol": "puber-resource-lease-v1", "profile": "release.clean",
+            "config_sha256": "c" * 64, "context_sha256": "d" * 64,
+            "attempt": "e" * 32,
+            "owner": f"puber-release:{TASK_ID}:{'e' * 32}:{'d' * 64}",
+            "run_directory": "", "resource": None, "cleanup_proof": None,
+        }
+
+    def release_attempt(self, context):
+        assert "session" not in context
+        self.context = context
+        self.calls.append("attempt")
+        return dict(self.binding)
+
+    def private(self, *_args, **_kwargs):
+        pass
+
+    def write(self, path, value):
+        assert value["native_binding"] == self.fixture.payload["_kent"]
+        self.worker = value
+        path.write_text(json.dumps(value))
+        path.chmod(0o600)
+        self.calls.append("persist-worker")
+
+    def configuration(self):
+        return {}, {}, "c" * 64
+
+    def run_release(self, binding, context, worker, *, env):
+        self.calls.append("run")
+        assert "ANDROID_SERIAL" not in env
+        assert not any(key in env for key in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"))
+        checkpoint = self.fixture.checkpoint()
+        assert checkpoint["state"] == "acquiring" and checkpoint["resource_serial"] == ""
+        assert "candidate_serials" not in checkpoint
+        assert checkpoint["resource_lease"] == binding
+        if self.mode == "lost-before-ack":
+            return 1
+        if self.mode == "interrupt-before-generation":
+            raise KeyboardInterrupt()
+        acquired = dict(binding, run_directory=str(self.fixture.root / ".kent/runtime/fake-run"),
+                        resource={"id": "lease-id", "generation": 1, "slot": "release-slot"})
+        before = checkpoint["output_hashes"]
+        module._resource_checkpoint(self.fixture.state, acquired, "generating", SERIALS[1], before)
+        self.calls.append("ack")
+        for relative in module.PROFILE_PATHS:
+            with (self.fixture.root / relative).open("ab") as stream:
+                stream.write(b"Lcom/kino/puber/Generated;\n")
+        self.calls.append("generate")
+        if self.mode == "interrupt-during-generation":
+            raise KeyboardInterrupt()
+        hashes = {p: hashlib.sha256((self.fixture.root / p).read_bytes()).hexdigest() for p in module.PROFILE_PATHS}
+        module._resource_checkpoint(self.fixture.state, acquired, "cleanup", SERIALS[1], hashes)
+        self.calls.append("finalizers")
+        return 1 if self.mode in {"generator-failure", "lost-after-ack"} else 0
+
+    def inspect_command(self, binding, context, *, terminal=False):
+        assert terminal and context == self.context
+        self.calls.append("cleanup")
+        if self.mode in {"cleanup-failure", "lost-before-ack", "lease-loss", "uncertain-stop"}:
+            raise ValueError("unknown ownership/cleanup; preserve evidence")
+        resource = {"id": "lease-id", "generation": 1, "slot": "release-slot"}
+        return str(self.fixture.root / ".kent/runtime/fake-run"), resource, {
+            "phase": "finished", "command_stop": "confirmed", "state": "completed",
+            "cleanup_pending": False, "quarantined": False, "resource": resource,
+        }
+
+
+def test_resource_parent_matrix():
+    for mode in (
+        "success", "lost-before-ack", "lost-after-ack", "generator-failure",
+        "cleanup-failure", "lease-loss", "uncertain-stop",
+        "interrupt-before-generation", "interrupt-during-generation",
+    ):
+        fixture = Fixture()
+        api = ResourceAPI(fixture, mode)
+        # The isolated fixture profile selects the new path; production selection
+        # remains legacy during S3 expansion.
+        profile = fixture.root / ".kent/workflow-profile.toml"
+        profile.write_bytes((ROOT / "tools/fixtures/mobile-resource-migration/workflow-profile-resource-lease.toml").read_bytes())
+        sh(["git", "add", ".kent/workflow-profile.toml"], fixture.root)
+        sh(["git", "commit", "-q", "-m", "resource fixture selection"], fixture.root)
+        fixture.candidate = sh(["git", "rev-parse", "HEAD"], fixture.root)
+        fixture.state.update(candidate_oid=fixture.candidate, release_base_oid=fixture.candidate)
+        fixture.payload.update(candidate_oid=fixture.candidate, release_base_oid=fixture.candidate)
+        fixture.payload["_kent"] = {"task_id": TASK_ID, "node_id": "fixture-profile-node"}
+        try:
+            with patch.object(module, "_load_resource_adapter", return_value=api):
+                assert module.main() == 0, mode
+                checkpoint = fixture.checkpoint()
+                if mode == "success":
+                    assert checkpoint["state"] == "completed"
+                    assert checkpoint["resource_lease"]["cleanup_proof"]["command_stop"] == "confirmed"
+                    assert fixture.events[-1][0] == "profile_generation_passed"
+                    assert api.calls.index("ack") < api.calls.index("generate") < api.calls.index("finalizers") < api.calls.index("cleanup")
+                    run_calls = api.calls.count("run")
+                    assert module.main() == 0
+                    assert api.calls.count("run") == run_calls
+                else:
+                    assert checkpoint["state"] != "completed", mode
+                    assert fixture.events[-1][0] == "profile_generation_needs_user_action", mode
+                    if "generate" in api.calls:
+                        assert all((fixture.root / p).read_bytes() != fixture.original_profiles[p] for p in module.PROFILE_PATHS)
+                    run_calls = api.calls.count("run")
+                    assert module.main() == 0
+                    assert api.calls.count("run") == run_calls, "ambiguous command was replayed"
+                assert TOKEN not in json.dumps(checkpoint)
+        finally:
+            fixture.close()
+
+
+def test_resource_worker_acknowledgement_and_qualified_source():
+    for mode in ("success", "generator-failure"):
+        fixture = Fixture(mode=mode)
+        module._assert_runtime_source_closure = fixture.originals["source"]
+        api = ResourceAPI(fixture, mode)
+        context = module._script_context({
+            "task_id": TASK_ID, "task_short_id": "PUB-99", "node_id": "fixture-profile-node",
+            "commit": fixture.candidate, "controller_commit": fixture.candidate,
+        }, fixture.state)
+        before = {p: hashlib.sha256(raw).hexdigest() for p, raw in fixture.original_profiles.items()}
+        module._resource_checkpoint(fixture.state, api.binding, "acquiring", "", before)
+        worker = {
+            "context": context, "binding": api.binding, "before_hashes": before,
+            "native_binding": fixture.payload["_kent"],
+        }
+        run = str(fixture.root / ".kent/runtime/owned-command")
+        resource = {"id": "lease-id", "generation": 1, "slot": "release-slot"}
+        def owned(binding, _context, **_kwargs):
+            assert fixture.checkpoint()["state"] == "acquiring"
+            return run, resource, SERIALS[1]
+        checks = []
+        def recheck(binding, _context):
+            assert fixture.checkpoint()["state"] == "generating"
+            assert fixture.checkpoint()["resource_lease"]["run_directory"] == run
+            checks.append("owned")
+            return {"ANDROID_SERIAL": SERIALS[1], "RESOURCE_LEASE_RUN_DIRECTORY": run}
+        budget = object()
+        selection = SimpleNamespace(project_commit=context["controller_commit"])
+        profile = object()
+        source_events = []
+
+        @contextlib.contextmanager
+        def source_read_budget():
+            source_events.append("enter")
+            try:
+                yield budget
+            finally:
+                source_events.append("exit")
+
+        def preflight(root, commit, *, budget):
+            assert root == fixture.root and commit == context["controller_commit"]
+            assert budget is source_budget
+            source_events.append("preflight")
+            return SimpleNamespace(selected_runtime_source_inputs=selection)
+
+        def verify(root, selected, *, budget):
+            assert root == fixture.root and selected is selection and budget is source_budget
+            source_events.append("verify")
+            return object()  # Kit-owned opaque proof; callers cannot reconstruct it.
+
+        source_budget = budget
+        kit = {
+            "source_read_budget": source_read_budget,
+            "preflight_project_revision": preflight,
+            "ProjectProfile": SimpleNamespace(from_toml=lambda *_args, **_kwargs: profile),
+            "verify_runtime_source_captures": verify,
+        }
+        mobile = SimpleNamespace(worker_record=lambda _path: worker, inspect_command=owned,
+                                 command_environment=recheck)
+        try:
+            with patch.object(module, "_load_resource_adapter", return_value=mobile), \
+                 patch.object(module.helper, "_bind_qualified_runtime") as bind, \
+                 patch.object(module.helper, "_kit_modules", return_value=kit), \
+                 patch.dict(os.environ, {"ANDROID_SERIAL": SERIALS[1], "RESOURCE_LEASE_RUN_DIRECTORY": run}):
+                code = module._resource_worker("/private/owned-worker.json")
+                assert code == (0 if mode == "success" else 17)
+                assert fixture.checkpoint()["state"] == ("cleanup" if code == 0 else "failed")
+                bind.assert_called_once_with(fixture.root, fixture.payload["_kent"])
+                assert source_events == ["enter", "preflight", "verify", "exit"]
+                assert checks == ["owned", "owned"]
+                assert fixture.events == [], "internal worker emitted native transition"
+        finally:
+            fixture.close()
+
+
 test_report_and_checkpoint_contract()
 test_network_free_stage_forwards_only_valid_producer_commentary()
 test_success_acquires_generates_releases_then_records_completed_checkpoint()
 test_generator_failure_preserves_checkpoint_outputs_and_lease()
 test_ambiguous_prior_owner_blocks_without_acquire_release_or_restore()
 test_release_failure_keeps_generating_checkpoint_and_generated_bytes()
+test_resource_parent_matrix()
+test_resource_worker_acknowledgement_and_qualified_source()
 print("workflow-puber-release-profile-generation: passed Script lease and preservation fixtures")

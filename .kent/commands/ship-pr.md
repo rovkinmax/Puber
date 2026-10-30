@@ -18,6 +18,12 @@ exact PR and observed head/base.
 
 ## Puber Release-only requirements
 
+The current source uses `puber_release_profile_checkpoint_v3` with retained
+terminal resource cleanup proof. Follow the current contract in
+`.kent/commands/release.md` and `.kent/commands/mobile-operation-policy.md`.
+The historical v90 section below remains an audit contract, not permission to
+resume legacy ownership or downgrade a v3 checkpoint.
+
 Apply this section only when shipping a task in the Puber Release workflow.
 Validate the profile/preparation checkpoint against the exact
 `release_head_oid` immediately before push and again after push or PR

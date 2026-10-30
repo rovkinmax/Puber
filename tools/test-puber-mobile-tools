@@ -1,0 +1,822 @@
+#!/usr/bin/env python3
+"""Offline Puber lease custody/checkpoint scenarios; no installed tool calls."""
+from __future__ import annotations
+
+import copy
+import fcntl
+import hashlib
+import importlib.util
+import json
+import os
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = ROOT / "tools/fixtures/mobile-resource-migration"
+TASK = "task-12345678-1234-4234-8234-123456789abc"
+SESSION = "12345678-1234-4234-8234-123456789abc"
+PROJECT = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
+
+
+def load(name, path):
+    spec = importlib.util.spec_from_loader(name, SourceFileLoader(name, str(path)))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+mobile = load("test_puber_mobile", ROOT / ".kent/adapters/mobile/puber-resource-lease")
+helper = load("test_puber_intent", ROOT / ".kent/scripts/workflow-puber-release-intent")
+VERIFY_SMOKE_IDENTITY = mobile.verify_smoke_identity
+
+
+class Fixture:
+    def __enter__(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="puber-mobile-")
+        self.root = Path(self.temp.name).resolve()
+        self.root.chmod(0o700)
+        self.runs = self.root / "runs"
+        self.runs.mkdir(mode=0o700)
+        self.pool = self.root / "pool"
+        self.pool.mkdir(mode=0o700)
+        self.tool = self.root / "fake"
+        self.tool.write_text("#!/bin/sh\nexit 97\n")
+        self.tool.chmod(0o700)
+        self.client = {"schema": 1, "executable": str(self.tool), "pool": str(self.pool),
+                       "runs_directory": str(self.runs), "profiles": {
+                           "smoke.persistent": "puber-tv-smoke-persistent",
+                           "release.clean": "puber-tv-release-clean"}}
+        self.selected = {"schema": 1, "workspace_root": str(self.root),
+                         "client": str(self.tool), "client_config": str(self.root / "client.json"),
+                         "facade": str(self.tool), "facade_config": str(self.root / "facade.json")}
+        mobile.write(self.selected["client_config"], self.client)
+        mobile.write(self.selected["facade_config"], {"source_root": str(self.root), "lease": self.client})
+        self.config = self.root / "selection.json"
+        mobile.write(self.config, self.selected)
+        self.context = {"task_id": TASK}
+        self.native = SimpleNamespace(_fresh_native_context=lambda context: (context, "a" * 64, 1))
+        self.patches = [patch.object(mobile, "ROOT", self.root), patch.object(mobile, "CONFIG", self.config),
+                        patch.object(mobile, "fresh_release_context", self.native._fresh_native_context),
+                        patch.object(mobile, "verify_smoke_identity")]
+        for p in self.patches:
+            p.start()
+        self.binding = mobile.release_attempt(self.context)
+        return self
+
+    def run(self):
+        self.run_dir = self.runs / "attempt"
+        self.run_dir.mkdir(mode=0o700)
+        mobile.write(self.run_dir / "binding.json", {
+            "schema": 1, "config": self.client, "profile": "release.clean",
+            "capability": self.client["profiles"]["release.clean"],
+            "owner": self.binding["owner"], "binding": None})
+        self.lease = {"id": "lease-id", "generation": 1, "slot": "release-slot",
+                      "owner": self.binding["owner"], "capability": "puber-tv-release-clean",
+                      "state": "active", "quarantined": False, "cleanup_pending": False,
+                      "service_available": True, "expires_in": 25,
+                      "endpoint": {"adb_serial": "emulator-5570"}}
+        self.status = {"phase": "active", "updated_at": time.monotonic(),
+                       "run_directory": str(self.run_dir), "lease": self.lease,
+                       "command_stop": "unconfirmed"}
+        self.save()
+        mobile.write(self.run_dir / "receipt.json", {"secret": "NEVER-PUBLISH"})
+        self.lock = os.open(self.run_dir / "helper.lock", os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(self.lock, fcntl.LOCK_EX)
+        return self.run_dir
+
+    def save(self):
+        mobile.write(self.run_dir / "status.json", self.status)
+
+    def finish(self):
+        fcntl.flock(self.lock, fcntl.LOCK_UN)
+        self.status.update(phase="finished", command_stop="confirmed")
+        self.lease.update(state="completed")
+        self.save()
+
+    def __exit__(self, *_args):
+        if hasattr(self, "lock"):
+            os.close(self.lock)
+        for p in reversed(self.patches):
+            p.stop()
+        self.temp.cleanup()
+
+
+class MobileTests(unittest.TestCase):
+    def test_smoke_record_lock_serializes_all_actions_and_keeps_inode(self):
+        for first in ("start", "check", "finish"):
+            with self.subTest(first=first), Fixture() as f:
+                run, identity, record, recovery = self.smoke_finish_setup(f, "active")
+                lock = record.with_name(record.name + ".lock")
+                calls, inodes = [], []
+                def delegate(command, **_kwargs):
+                    calls.append(command[1])
+                    inode = lock.stat().st_ino
+                    inodes.append(inode)
+                    for contender in ("start", "check", "finish"):
+                        with self.assertRaisesRegex(mobile.Error, "busy"):
+                            mobile.smoke(contender, record, identity)
+                        self.assertEqual(lock.stat().st_ino, inode)
+                    # Another record has an independent serialization domain.
+                    other = f.root / "different-smoke.json"
+                    with self.assertRaisesRegex(mobile.Error, "checkpoint missing"):
+                        mobile.smoke("check", other, identity)
+                    if command[1] == "finish":
+                        f.status.update(phase="finished", error=None)
+                        f.lease.update(state="completed")
+                        f.save()
+                    return f.status
+                with patch.object(mobile, "capture", side_effect=delegate):
+                    mobile.smoke(first, record, identity)
+                    mobile.smoke("finish", record, identity)
+                self.assertTrue(lock.exists())
+                self.assertEqual(set(inodes), {lock.stat().st_ino})
+                self.assertEqual(calls.count("start"), int(first == "start"))
+                self.assertFalse(mobile.read(recovery)["pending"])
+
+    def test_smoke_record_lock_rejects_unsafe_or_replaced_paths(self):
+        for kind in ("symlink", "hardlink", "mode", "owner", "inode"):
+            with self.subTest(kind=kind), Fixture() as f:
+                run, identity, record, _recovery = self.smoke_finish_setup(f, "stopped")
+                lock = record.with_name(record.name + ".lock")
+                target = f.root / "lock-target"
+                target.write_bytes(b"")
+                target.chmod(0o600)
+                if kind == "symlink":
+                    lock.symlink_to(target)
+                elif kind == "hardlink":
+                    os.link(target, lock)
+                else:
+                    lock.write_bytes(b"")
+                    lock.chmod(0o644 if kind == "mode" else 0o600)
+                original_fstat, original_lstat = os.fstat, Path.lstat
+                def fstat(fd):
+                    info = original_fstat(fd)
+                    return SimpleNamespace(st_mode=info.st_mode, st_uid=info.st_uid + 1,
+                                           st_nlink=info.st_nlink, st_dev=info.st_dev, st_ino=info.st_ino)
+                def lstat(path, **kwargs):
+                    info = original_lstat(path, **kwargs)
+                    if path == lock:
+                        return SimpleNamespace(st_mode=info.st_mode, st_dev=info.st_dev, st_ino=info.st_ino + 1)
+                    return info
+                from contextlib import ExitStack
+                with ExitStack() as stack, patch.object(mobile, "capture") as dispatch:
+                    if kind == "owner":
+                        stack.enter_context(patch.object(mobile.os, "fstat", side_effect=fstat))
+                    elif kind == "inode":
+                        stack.enter_context(patch.object(Path, "lstat", lstat))
+                    with self.assertRaises((OSError, mobile.Error)):
+                        mobile.smoke("finish", record, identity)
+                    dispatch.assert_not_called()
+                # No recovery or delegate effect; unsafe lock is never removed.
+                self.assertTrue(lock.exists() or lock.is_symlink())
+
+    def test_smoke_record_lock_process_death_releases_without_losing_pending(self):
+        with Fixture() as f:
+            run, identity, record, recovery = self.smoke_finish_setup(f, "active")
+            code = """
+import importlib.machinery, importlib.util, json, sys, time
+from pathlib import Path
+source, root, config, record, identity = sys.argv[1:]
+spec=importlib.util.spec_from_loader('owned_smoke_child', importlib.machinery.SourceFileLoader('owned_smoke_child',source))
+mobile=importlib.util.module_from_spec(spec); spec.loader.exec_module(mobile)
+mobile.ROOT=Path(root); mobile.CONFIG=Path(config)
+mobile.verify_smoke_identity=lambda identity: None
+def capture(command, **kwargs):
+    if command[1]=='check':
+        return mobile.read(Path(json.loads(Path(record).read_text())['run_directory'])/'status.json')
+    assert command[1]=='finish'
+    assert mobile.read(Path(record+'.cleanup.json'))['pending']
+    print('OWNED_CHILD_PENDING',flush=True)
+    time.sleep(120)
+mobile.capture=capture
+mobile.smoke('finish',Path(record),json.loads(identity))
+"""
+            child = subprocess.Popen(
+                [sys.executable, "-B", "-c", code, str(ROOT / ".kent/adapters/mobile/puber-resource-lease"),
+                 str(f.root), str(f.config), str(record), json.dumps(identity)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            try:
+                import select
+                ready, _, _ = select.select([child.stdout], [], [], 15)
+                self.assertTrue(ready, "owned child did not reach durable pending")
+                self.assertEqual(child.stdout.readline().strip(), "OWNED_CHILD_PENDING")
+                lock = record.with_name(record.name + ".lock")
+                inode = lock.stat().st_ino
+                with patch.object(mobile, "capture") as dispatch:
+                    for action in ("start", "check", "finish"):
+                        with self.assertRaisesRegex(mobile.Error, "busy"):
+                            mobile.smoke(action, record, identity)
+                    dispatch.assert_not_called()
+                self.assertTrue(mobile.read(recovery)["pending"])
+                child.terminate()  # Only the exact Popen child created above.
+                child.communicate(timeout=15)
+                self.assertEqual(lock.stat().st_ino, inode)
+                terminal = {"phase": "finished", "run_directory": str(run),
+                            "lease": {"state": "completed", "cleanup_pending": False, "quarantined": False}}
+                with patch.object(mobile, "capture", side_effect=lambda command, **kwargs:
+                                  f.status if command[1] == "check" else terminal):
+                    result = mobile.smoke("finish", record, identity)
+                self.assertTrue(result["cleanup_confirmed"])
+                self.assertTrue(result["smoke_blocked"])
+                self.assertIn("cleanup-unconfirmed", result["recovery_reasons"])
+                self.assertFalse(mobile.read(recovery)["pending"])
+                self.assertEqual(lock.stat().st_ino, inode)
+            finally:
+                if child.poll() is None:
+                    child.terminate()
+                    child.communicate(timeout=15)
+
+    def smoke_finish_setup(self, fixture, phase):
+        run = fixture.run()
+        identity = mobile.smoke_binding(PROJECT, TASK, SESSION)
+        metadata = mobile.read(run / "binding.json")
+        metadata.update(profile="smoke.persistent", binding=identity,
+                        owner=f"smoke:{TASK}:{SESSION}")
+        mobile.write(run / "binding.json", metadata)
+        fixture.status["phase"] = phase
+        fixture.save()
+        record = fixture.root / "smoke.json"
+        mobile.write(record, {"protocol": mobile.PROTOCOL, "profile": "smoke.persistent",
+                              "config_sha256": mobile.configuration()[2], "binding": identity,
+                              "run_directory": str(run)})
+        return run, identity, record, record.with_name(record.name + ".cleanup.json")
+
+    def test_smoke_finish_stopped_active_and_late_loss_reconciliation(self):
+        for phase, state, expected in (
+            ("stopped", "completed", {"helper-stopped"}),
+            ("finished", "completed", {"status-unknown"}),
+            ("active", "completed", set()),
+            ("active", "expired", {"lease-expired"}),
+            ("active", "cancelled", {"lease-cancelled"}),
+        ):
+            with self.subTest(phase=phase, state=state), Fixture() as f:
+                run, identity, record, recovery = self.smoke_finish_setup(f, phase)
+                calls = []
+                def delegate(command, **_kwargs):
+                    self.assertEqual(command[2:], ["--run-dir", str(run)])
+                    calls.append(command[1])
+                    if command[1] == "check":
+                        if f.status["phase"] != "active":
+                            raise mobile.Error("helper is not observably active")
+                        return f.status
+                    self.assertEqual(command[1], "finish")
+                    self.assertTrue(recovery.is_file())
+                    if phase == "stopped":
+                        self.assertIn("helper-stopped", mobile.read(recovery)["reasons"])
+                    f.status.update(phase="finished", error=None)
+                    f.lease.update(state=state)
+                    f.save()
+                    return f.status
+                with patch.object(mobile, "capture", side_effect=delegate):
+                    result = mobile.smoke("finish", record, identity)
+                    self.assertTrue(result["cleanup_confirmed"])
+                    self.assertEqual(set(result["recovery_reasons"]), expected)
+                    self.assertEqual(result["smoke_blocked"], bool(expected))
+                    # Later completed status cannot erase expired/cancelled loss.
+                    f.lease["state"] = "completed"
+                    result = mobile.smoke("finish", record, identity)
+                    self.assertEqual(set(result["recovery_reasons"]), expected)
+                    with self.assertRaises(mobile.Error):
+                        mobile.smoke("check", record, identity)
+                self.assertNotIn("start", calls)
+                self.assertEqual(calls.count("finish"), 2)
+
+    def test_smoke_finish_lost_ack_and_uncertain_stop_remain_blocked(self):
+        for failure in ("lost-ack", "check-failed", "stop-uncertain", "renewal-stopped", "unknown"):
+            with self.subTest(failure=failure), Fixture() as f:
+                run, identity, record, recovery = self.smoke_finish_setup(f, "active")
+                if failure in {"stop-uncertain", "renewal-stopped"}:
+                    marker = "command-stop-uncertain.json" if failure == "stop-uncertain" else "stop-renewal.json"
+                    mobile.write(run / marker, {"schema": 1})
+                if failure == "unknown":
+                    (run / "status.json").unlink()
+                calls = []
+                def delegate(command, **_kwargs):
+                    calls.append(command[1])
+                    if command[1] == "check":
+                        if failure == "check-failed":
+                            raise mobile.Error("lease lost")
+                        return f.status
+                    self.assertEqual(command[1], "finish")
+                    self.assertTrue(recovery.is_file())
+                    f.status.update(phase="finished", error=None)
+                    f.lease.update(state="completed")
+                    f.save()
+                    if failure == "lost-ack" and calls.count("finish") == 1:
+                        raise mobile.Error("response lost after cleanup")
+                    return f.status
+                with patch.object(mobile, "capture", side_effect=delegate):
+                    if failure == "lost-ack":
+                        with self.assertRaises(mobile.Error):
+                            mobile.smoke("finish", record, identity)
+                    else:
+                        self.assertTrue(mobile.smoke("finish", record, identity)["smoke_blocked"])
+                    result = mobile.smoke("finish", record, identity)
+                reason = {"lost-ack": "cleanup-unconfirmed", "unknown": "status-unknown"}.get(failure, failure)
+                self.assertTrue(result["cleanup_confirmed"])
+                self.assertTrue(result["smoke_blocked"])
+                self.assertIn(reason, result["recovery_reasons"])
+                self.assertNotIn("start", calls)
+
+    def test_smoke_finish_rejects_foreign_missing_unsafe_binding_before_dispatch(self):
+        for drift in ("missing", "unsafe", "binding", "config", "owner", "run", "native",
+                      "recovery", "unsafe-recovery", "pending-type", "legacy-recovery"):
+            with self.subTest(drift=drift), Fixture() as f:
+                run, identity, record, recovery = self.smoke_finish_setup(f, "stopped")
+                binding_path = run / "binding.json"
+                if drift == "missing":
+                    binding_path.unlink()
+                elif drift == "unsafe":
+                    binding_path.chmod(0o644)
+                elif drift in {"binding", "config", "owner"}:
+                    metadata = mobile.read(binding_path)
+                    metadata[drift] = "foreign"
+                    mobile.write(binding_path, metadata)
+                elif drift == "run":
+                    value = mobile.read(record)
+                    value["run_directory"] = str(f.root)
+                    mobile.write(record, value)
+                elif drift == "native":
+                    pass
+                elif drift in {"unsafe-recovery", "pending-type", "legacy-recovery"}:
+                    value = mobile.read(record)
+                    note = {"schema": 1, "run_directory": str(run),
+                            "config_sha256": value["config_sha256"], "binding": identity,
+                            "pending": False, "reasons": []}
+                    if drift == "pending-type":
+                        note["pending"] = "false"
+                    elif drift == "legacy-recovery":
+                        note.pop("pending")
+                    mobile.write(recovery, note)
+                    if drift == "unsafe-recovery":
+                        recovery.chmod(0o644)
+                else:
+                    mobile.write(recovery, {"schema": 1, "binding": "foreign"})
+                with patch.object(mobile, "capture") as dispatch:
+                    if drift == "native":
+                        with patch.object(mobile, "verify_smoke_identity", side_effect=mobile.Error("native drift")):
+                            with self.assertRaises(mobile.Error):
+                                mobile.smoke("finish", record, identity)
+                    else:
+                        with self.assertRaises(mobile.Error):
+                            mobile.smoke("finish", record, identity)
+                    dispatch.assert_not_called()
+
+    def test_smoke_finish_terminal_gates_and_recovery_persistence(self):
+        variants = [
+            {"phase": "unknown"}, {"run_directory": "/foreign"},
+            {"lease": {"state": "active", "cleanup_pending": False, "quarantined": False}},
+            {"lease": {"state": "completed", "cleanup_pending": True, "quarantined": False}},
+            {"lease": {"state": "completed", "cleanup_pending": False, "quarantined": True}},
+            {"lease": "malformed"},
+        ]
+        for change in variants:
+            with self.subTest(change=change), Fixture() as f:
+                run, identity, record, recovery = self.smoke_finish_setup(f, "stopped")
+                result = {"phase": "finished", "run_directory": str(run),
+                          "lease": {"state": "completed", "cleanup_pending": False, "quarantined": False}}
+                result.update(change)
+                with patch.object(mobile, "capture", return_value=result):
+                    with self.assertRaises(mobile.Error):
+                        mobile.smoke("finish", record, identity)
+                self.assertIn("cleanup-unconfirmed", mobile.read(recovery)["reasons"])
+        for fail_write in (1, 2):
+            with self.subTest(fail_write=fail_write), Fixture() as f:
+                run, identity, record, recovery = self.smoke_finish_setup(f, "stopped")
+                writes = []
+                original = mobile.write
+                def write(path, value):
+                    writes.append(path)
+                    if len(writes) == fail_write:
+                        raise OSError("private storage unavailable")
+                    original(path, value)
+                terminal = {"phase": "finished", "run_directory": str(run),
+                            "lease": {"state": "expired", "cleanup_pending": False, "quarantined": False}}
+                with patch.object(mobile, "write", side_effect=write), patch.object(
+                    mobile, "capture", return_value=terminal
+                ) as dispatch:
+                    with self.assertRaises(OSError):
+                        mobile.smoke("finish", record, identity)
+                    self.assertEqual(dispatch.call_count, fail_write - 1)
+
+    def test_smoke_finish_crash_write_windows_keep_pending_or_history(self):
+        # Exercise the real atomic writer, including a NEW visible file after
+        # replace but before directory fsync, not merely a mocked write refusal.
+        for fail_at in (1, 2):
+            for window in ("before-replace", "directory-fsync"):
+                with self.subTest(fail_at=fail_at, window=window), Fixture() as f:
+                    run, identity, record, recovery = self.smoke_finish_setup(f, "active")
+                    calls, replacements = [], []
+                    real_replace, real_fsync = os.replace, os.fsync
+                    latest = [None]
+                    def replace(source, destination):
+                        latest[0] = destination
+                        if destination == recovery:
+                            replacements.append(destination)
+                            if len(replacements) == fail_at and window == "before-replace":
+                                raise OSError("crash before recovery replace")
+                        real_replace(source, destination)
+                    def fsync(fd):
+                        if (latest[0] == recovery and len(replacements) == fail_at
+                                and window == "directory-fsync" and stat.S_ISDIR(os.fstat(fd).st_mode)):
+                            raise OSError("crash after replace before directory fsync")
+                        real_fsync(fd)
+                    def delegate(command, **_kwargs):
+                        calls.append(command[1])
+                        if command[1] == "check":
+                            return f.status
+                        self.assertTrue(mobile.read(recovery)["pending"])
+                        f.status.update(phase="finished", error=None)
+                        f.lease.update(state="expired")
+                        f.save()
+                        return f.status
+                    with patch.object(mobile, "capture", side_effect=delegate), patch.object(
+                        mobile.os, "replace", side_effect=replace
+                    ), patch.object(mobile.os, "fsync", side_effect=fsync):
+                        with self.assertRaises(OSError):
+                            mobile.smoke("finish", record, identity)
+                    if fail_at == 1:
+                        self.assertNotIn("finish", calls)
+                    if recovery.exists():
+                        saved = mobile.read(recovery)
+                        self.assertTrue(saved["pending"] or "lease-expired" in saved["reasons"])
+                    with patch.object(mobile, "capture", side_effect=delegate):
+                        result = mobile.smoke("finish", record, identity)
+                    self.assertTrue(result["cleanup_confirmed"])
+                    self.assertTrue(result["smoke_blocked"])
+                    self.assertIn("lease-expired", result["recovery_reasons"])
+                    self.assertFalse(mobile.read(recovery)["pending"])
+                    self.assertNotIn("start", calls)
+
+    def test_smoke_finish_lost_ack_error_write_failure_and_interrupt_retry(self):
+        for failure in ("old-visible", "new-visible", "interrupted"):
+            with self.subTest(failure=failure), Fixture() as f:
+                run, identity, record, recovery = self.smoke_finish_setup(f, "active")
+                calls, writes = [], []
+                original = mobile.write
+                class Interrupted(BaseException):
+                    pass
+                def delegate(command, **_kwargs):
+                    calls.append(command[1])
+                    if command[1] == "check":
+                        return f.status
+                    self.assertTrue(mobile.read(recovery)["pending"])
+                    if failure == "interrupted" and calls.count("finish") == 1:
+                        raise Interrupted()
+                    f.status.update(phase="finished", error=None)
+                    f.lease.update(state="completed")
+                    f.save()
+                    if calls.count("finish") == 1:
+                        raise mobile.Error("lost delegate acknowledgement")
+                    return f.status
+                def write(path, value):
+                    if path == recovery:
+                        writes.append(path)
+                        if len(writes) == 2:
+                            if failure == "new-visible":
+                                original(path, value)
+                            raise OSError("error disposition write failed")
+                    original(path, value)
+                with patch.object(mobile, "capture", side_effect=delegate), patch.object(
+                    mobile, "write", side_effect=write
+                ):
+                    with self.assertRaises(Interrupted if failure == "interrupted" else OSError):
+                        mobile.smoke("finish", record, identity)
+                self.assertTrue(mobile.read(recovery)["pending"])
+                with patch.object(mobile, "capture", side_effect=delegate):
+                    result = mobile.smoke("finish", record, identity)
+                    again = mobile.smoke("finish", record, identity)
+                self.assertTrue(result["cleanup_confirmed"])
+                self.assertIn("cleanup-unconfirmed", result["recovery_reasons"])
+                self.assertEqual(result, again)
+                self.assertTrue(again["smoke_blocked"])
+                self.assertNotIn("start", calls)
+
+    def test_active_source_cutover_and_legacy_admission_retirement(self):
+        import tomllib
+        profile = tomllib.loads((ROOT / ".kent/workflow-profile.toml").read_text())
+        self.assertTrue({"puber_resource_lease", "android_tools"} <= set(profile["required_adapters"]))
+        self.assertFalse({"mobile_resource_lock", "mobile_script_resource_lock"} & set(profile["adapters"]))
+        self.assertNotIn("mobile_resource_lock", profile["kit_managed_adapters"])
+        self.assertIn("smoke-test-resource-lease.md", (ROOT / ".kent/commands/smoke-test.md").read_text())
+        legacy = ROOT / ".kent/adapters/mobile/emulator-resource-lock.sh"
+        with tempfile.TemporaryDirectory(prefix="puber-retirement-") as temporary:
+            directory = Path(temporary).resolve()
+            storage = directory / "must-not-exist"
+            env = dict(os.environ, KENT_RESOURCE_LOCK_DIR=str(storage),
+                       KENT_RESOURCE_ALLOW_LEGACY="1", ANDROID_SERIAL="emulator-5570")
+            for action in ("acquire", "acquire-any", "resume", "resume-owned", "acquire-script",
+                           "acquire-script-any", "adb-emulators", "adb-physical-devices"):
+                result = subprocess.run([str(legacy), action, "emulator-5570"], env=env, capture_output=True)
+                self.assertEqual(result.returncode, 64, action)
+                self.assertIn(b"retired", result.stderr)
+                self.assertFalse(storage.exists())
+            for action in ("try-acquire", "resume", "resume-owned", "script-acquire"):
+                result = subprocess.run([str(legacy), "__locked", action, "emulator-5570"],
+                                        env=env, capture_output=True)
+                self.assertEqual(result.returncode, 64, action)
+                self.assertFalse(storage.exists())
+            status = subprocess.run([str(legacy), "status"], env=env, capture_output=True)
+            self.assertEqual(status.returncode, 0)
+            self.assertFalse(storage.exists())
+            for args in (["release"], ["release-script"], ["inspect-script-recovery"]):
+                result = subprocess.run([str(legacy), *args], env=env, capture_output=True)
+                self.assertNotIn(b"admission is retired", result.stderr)
+                self.assertNotEqual(result.returncode, 0)
+            generation = subprocess.run([str(ROOT / "tools/generate-baseline-profile.sh")],
+                                        env=env, capture_output=True)
+            self.assertNotEqual(generation.returncode, 0)
+            self.assertIn(b"direct generation is retired", generation.stderr)
+
+    def test_smoke_native_identity_readback_not_environment_assertion(self):
+        identity = mobile.smoke_binding(PROJECT, TASK, SESSION)
+        current = {"task_id": TASK, "project_id": PROJECT, "session_id": SESSION,
+                   "task_short_id": "PUB-99", "workspace_path": str(ROOT)}
+        with patch.object(mobile, "capture", side_effect=[
+            {"summary": {"short_id": "PUB-99"}}, current,
+        ]) as capture:
+            mobile.verify_smoke_identity(identity)
+            self.assertIn("workflow-evidence-ledger", capture.call_args.args[0][1])
+        with patch.object(mobile, "capture", side_effect=[
+            {"summary": {"short_id": "PUB-99"}}, dict(current, session_id="foreign"),
+        ]):
+            with self.assertRaises(mobile.Error):
+                mobile.verify_smoke_identity(identity)
+
+    def test_smoke_facade_full_native_binding_and_run_environment(self):
+        facade = load("test_puber_facade", ROOT / ".kent/adapters/android/android-tools")
+        with Fixture() as f:
+            run = f.run()
+            identity = mobile.smoke_binding(PROJECT, TASK, SESSION)
+            metadata = mobile.read(run / "binding.json")
+            metadata.update(profile="smoke.persistent", capability="puber-tv-smoke-persistent",
+                            binding=identity, owner=f"smoke:{TASK}:{SESSION}")
+            mobile.write(run / "binding.json", metadata)
+            _selected, _client, config_sha = mobile.configuration()
+            record = f.root / "smoke.json"
+            mobile.write(record, {"protocol": mobile.PROTOCOL, "profile": "smoke.persistent",
+                                  "config_sha256": config_sha, "binding": identity,
+                                  "run_directory": str(run)})
+            def observe(command, **_kwargs):
+                if command[:3] == ["kent", "task", "show"]:
+                    return {"summary": {"short_id": "PUB-99"}}
+                if command[1].endswith("workflow-evidence-ledger"):
+                    return {"task_id": TASK, "project_id": PROJECT, "session_id": SESSION,
+                            "task_short_id": "PUB-99", "workspace_path": str(f.root)}
+                self.assertEqual(command, [str(f.tool), "check", "--run-dir", str(run)])
+                return f.status
+            environment = {"KENT_PROJECT_ID": PROJECT, "KENT_TASK_ID": TASK,
+                           "KENT_SESSION_ID": SESSION, "PUBER_SMOKE_LEASE_RECORD": str(record)}
+            args = ["android-tools", "device", "ui-tree", "--arguments",
+                    '{"device_serial":"emulator-5570"}']
+            with patch.object(facade, "mobile", mobile), patch.object(
+                mobile, "verify_smoke_identity", VERIFY_SMOKE_IDENTITY
+            ), patch.object(mobile, "capture", side_effect=observe), patch.dict(
+                os.environ, environment, clear=True
+            ), patch.object(sys, "argv", args), patch.object(
+                facade.subprocess, "run", return_value=SimpleNamespace(returncode=0)
+            ) as invoke:
+                self.assertEqual(facade.main(), 0)
+                command = invoke.call_args.args[0]
+                self.assertEqual(command, [str(f.tool), "--config", f.selected["facade_config"], *args[1:]])
+                self.assertEqual(invoke.call_args.kwargs["env"]["RESOURCE_LEASE_RUN_DIRECTORY"], str(run))
+                self.assertEqual(invoke.call_args.kwargs["env"]["ANDROID_SERIAL"], "emulator-5570")
+                with patch.dict(os.environ, {"ANDROID_SERIAL": "emulator-foreign"}):
+                    with self.assertRaises(mobile.Error):
+                        facade.main()
+                self.assertEqual(invoke.call_count, 1)
+
+    def test_historical_bytes_and_pin(self):
+        import tomllib
+        cases = json.loads((FIXTURES / "resource-lease-cases.json").read_text())
+        for example in cases["checkpoint_examples"]:
+            helper.validate_profile_checkpoint(example)
+        for name, expected in cases["historical_sha256"].items():
+            self.assertEqual(hashlib.sha256((FIXTURES / name).read_bytes()).hexdigest(), expected)
+        profile = tomllib.loads((FIXTURES / "workflow-profile-resource-lease.toml").read_text())
+        self.assertEqual(profile["kit_runtime"]["commit"], "30b908c9fc7097c0464ae67d58f891a1dd7103fb")
+        self.assertIn("puber_resource_lease", profile["required_adapters"])
+        self.assertNotIn("mobile_resource_lock", profile["required_adapters"])
+
+    def test_private_config_workspace_path_symlink_and_mode(self):
+        with Fixture() as f:
+            mobile.configuration()
+            selected = dict(f.selected, workspace_root="/foreign")
+            mobile.write(f.config, selected)
+            with self.assertRaises(mobile.Error):
+                mobile.configuration()
+            mobile.write(f.config, f.selected)
+            f.config.chmod(0o644)
+            with self.assertRaises(mobile.Error):
+                mobile.configuration()
+            f.config.chmod(0o600)
+            link = f.root / "link"
+            link.symlink_to(f.config)
+            with self.assertRaises(mobile.Error):
+                mobile.read(link)
+            parent_link = f.root / "parent-link"
+            parent_link.symlink_to(f.runs, target_is_directory=True)
+            mobile.write(f.runs / "record.json", {"schema": 1})
+            with self.assertRaises(mobile.Error):
+                mobile.read(parent_link / "record.json")
+            hardlink = f.root / "hardlink"
+            os.link(f.config, hardlink)
+            with self.assertRaises(mobile.Error):
+                mobile.read(hardlink)
+            hardlink.unlink()
+            with patch.object(mobile.os, "getuid", return_value=os.getuid() + 1):
+                with self.assertRaises(mobile.Error):
+                    mobile.read(f.config)
+
+    def test_preacquisition_no_serial_and_configuration_drift(self):
+        with Fixture() as f:
+            self.assertIsNone(f.binding["resource"])
+            self.assertEqual(f.binding["run_directory"], "")
+            self.assertNotIn("serial", mobile.canonical(f.binding))
+            mobile.verify_attempt(f.binding, f.context)
+            with self.assertRaises(mobile.Error):
+                mobile.verify_attempt(dict(f.binding, context_sha256="b" * 64), f.context)
+            mobile.write(f.selected["facade_config"], {
+                "source_root": str(f.root), "lease": f.client, "policy": "changed"})
+            with self.assertRaises(mobile.Error):
+                mobile.verify_attempt(f.binding, f.context)
+
+    def test_command_binding_null_and_exact_endpoint(self):
+        with Fixture() as f:
+            run = f.run()
+            with patch.object(mobile, "capture", return_value=f.lease) as capture:
+                env = mobile.command_environment(f.binding, f.context)
+                self.assertEqual(env, {"ANDROID_SERIAL": "emulator-5570",
+                                       "RESOURCE_LEASE_RUN_DIRECTORY": str(run)})
+                self.assertIn("inspect", capture.call_args.args[0])
+                self.assertNotIn("check", capture.call_args.args[0])
+                self.assertNotIn("NEVER-PUBLISH", mobile.canonical(env))
+                with patch.dict(os.environ, {"ANDROID_SERIAL": "emulator-foreign"}):
+                    with self.assertRaises(mobile.Error):
+                        mobile.command_environment(f.binding, f.context)
+                f.lease["endpoint"] = {"adb_serial": "emulator-foreign"}
+                with self.assertRaises(mobile.Error):
+                    mobile.command_environment(f.binding, f.context)
+
+    def test_missing_multiple_live_and_foreign_recovery_fail_closed(self):
+        with Fixture() as f:
+            with self.assertRaises(mobile.Error):
+                mobile.run_records(f.binding, f.client)
+            run = f.run()
+            with self.assertRaises(mobile.Error):
+                mobile.inspect_command(f.binding, f.context, terminal=True)
+            extra = f.runs / "duplicate"
+            extra.mkdir(mode=0o700)
+            mobile.write(extra / "binding.json", mobile.read(run / "binding.json"))
+            with self.assertRaises(mobile.Error):
+                mobile.run_records(f.binding, f.client)
+            (extra / "binding.json").unlink()
+            extra.rmdir()
+            metadata = mobile.read(run / "binding.json")
+            metadata["binding"] = {"session": SESSION}
+            mobile.write(run / "binding.json", metadata)
+            with self.assertRaises(mobile.Error):
+                mobile.run_records(f.binding, f.client)
+
+    def test_command_custody_rejects_stale_unlocked_and_lease_loss(self):
+        with Fixture() as f:
+            f.run()
+            with patch.object(mobile, "capture", return_value=f.lease):
+                f.status["updated_at"] = time.monotonic() - 31
+                f.save()
+                with self.assertRaises(mobile.Error):
+                    mobile.inspect_command(f.binding, f.context)
+                f.status["updated_at"] = time.monotonic()
+                f.save()
+                fcntl.flock(f.lock, fcntl.LOCK_UN)
+                with self.assertRaises(mobile.Error):
+                    mobile.inspect_command(f.binding, f.context)
+                fcntl.flock(f.lock, fcntl.LOCK_EX)
+                lost = dict(f.lease, state="expired")
+                with patch.object(mobile, "capture", return_value=lost):
+                    with self.assertRaises(mobile.Error):
+                        mobile.inspect_command(f.binding, f.context)
+
+    def test_cleanup_proof_not_exit_and_survives_record_pruning(self):
+        with Fixture() as f:
+            f.run()
+            f.finish()
+            run, resource, proof = mobile.inspect_command(f.binding, f.context, terminal=True)
+            self.assertEqual(proof["command_stop"], "confirmed")
+            self.assertEqual(proof["resource"], resource)
+            self.assertNotIn("NEVER-PUBLISH", mobile.canonical(proof))
+            for field, invalid in (("command_stop", "unconfirmed"), ("phase", "failed")):
+                old = f.status[field]
+                f.status[field] = invalid
+                f.save()
+                with self.assertRaises(mobile.Error):
+                    mobile.inspect_command(f.binding, f.context, terminal=True)
+                f.status[field] = old
+            f.save()
+            for field in ("cleanup_pending", "quarantined"):
+                f.lease[field] = True
+                f.save()
+                with self.assertRaises(mobile.Error):
+                    mobile.inspect_command(f.binding, f.context, terminal=True)
+                f.lease[field] = False
+            f.save()
+            mobile.write(Path(run) / "command-stop-uncertain.json", {"schema": 1})
+            with self.assertRaises(mobile.Error):
+                mobile.inspect_command(f.binding, f.context, terminal=True)
+            retained = dict(f.binding, run_directory=run, resource=resource, cleanup_proof=proof)
+            # Validation of retained proof is independent of live client files.
+            # A completed report can therefore survive later client pruning.
+            helper.validate_resource_lease_checkpoint(retained, "completed", "emulator-5570")
+            for key in ("command_stop", "cleanup_pending", "quarantined"):
+                altered = copy.deepcopy(retained)
+                altered["cleanup_proof"][key] = "invalid"
+                with self.assertRaises(helper.ContractError):
+                    helper.validate_resource_lease_checkpoint(altered, "completed", "emulator-5570")
+
+    def test_smoke_persists_native_binding_before_dispatch_and_no_replay(self):
+        with Fixture() as f:
+            identity = mobile.smoke_binding(PROJECT, TASK, SESSION)
+            record = f.root / "smoke.json"
+            calls = []
+            def lost(command, **_kwargs):
+                calls.append(command)
+                persisted = mobile.read(record)
+                self.assertEqual(persisted["binding"], identity)
+                self.assertEqual(persisted["profile"], "smoke.persistent")
+                raise mobile.Error("lost response")
+            with patch.object(mobile, "capture", side_effect=lost):
+                with self.assertRaises(mobile.Error):
+                    mobile.smoke("start", record, identity)
+            first = mobile.read(record)
+            with patch.object(mobile, "capture", side_effect=lost):
+                with self.assertRaises(mobile.Error):
+                    mobile.smoke("start", record, identity)
+            self.assertEqual(mobile.read(record), first)
+            self.assertEqual(calls[0], calls[1])
+            with self.assertRaises(mobile.Error):
+                mobile.smoke("start", record, dict(identity, session="foreign"))
+            with self.assertRaises(mobile.Error):
+                mobile.smoke_binding("project-appsome", TASK, SESSION)
+
+    def test_v2_v3_closed_checkpoint_and_no_preacquisition_serial(self):
+        with Fixture() as f:
+            paths = ("app/src/main/generated/baselineProfiles/baseline-prof.txt",
+                     "app/src/main/generated/baselineProfiles/startup-prof.txt")
+            value = {"schema": "puber_release_profile_checkpoint_v3", "task_id": TASK,
+                     "task_short_id": "PUB-99", "operation_id": "a" * 64,
+                     "release_branch": "release/99.0.0", "release_base_oid": "a" * 40,
+                     "candidate_oid": "b" * 40, "release_head_oid": "",
+                     "state": "acquiring", "resource_serial": "", "resource_lease": f.binding,
+                     "profile_report": "", "profile_report_digest": "",
+                     "release_preparation_report": "", "release_preparation_report_digest": "",
+                     "output_hashes": {p: "c" * 64 for p in paths}}
+            helper.validate_profile_checkpoint(value)
+            with self.assertRaises(helper.ContractError):
+                helper.validate_profile_checkpoint(dict(value, token="SECRET"))
+            with self.assertRaises(helper.ContractError):
+                helper.validate_profile_checkpoint(dict(value, resource_serial="emulator-5554"))
+            changed = copy.deepcopy(value)
+            changed["resource_lease"]["config_sha256"] = "e" * 64
+            with self.assertRaises(helper.ContractError):
+                helper.validate_profile_checkpoint(changed, expected=value)
+            legacy = {k: v for k, v in value.items() if k != "resource_lease"}
+            legacy.update(schema="puber_release_profile_checkpoint_v2", candidate_serials=["emulator-5554"])
+            before = mobile.canonical(legacy)
+            helper.validate_profile_checkpoint(legacy)
+            self.assertEqual(mobile.canonical(legacy), before)
+            with self.assertRaises(helper.ContractError):
+                helper.validate_profile_checkpoint(dict(legacy, candidate_serials=[]))
+            # The protected store preserves v2 bytes and never implicitly
+            # upgrades/downgrades an existing ownership record.
+            (f.root / ".kent").mkdir(mode=0o700)
+            helper.write_profile_checkpoint(f.root, "PUB-99", legacy)
+            checkpoint_path = f.root / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
+            old_bytes = checkpoint_path.read_bytes()
+            with self.assertRaises(helper.ContractError):
+                helper.write_profile_checkpoint(f.root, "PUB-99", value)
+            self.assertEqual(checkpoint_path.read_bytes(), old_bytes)
+            # Separate Task storage exercises genuine v3 write/read custody.
+            value2 = dict(value, task_short_id="PUB-100")
+            helper.write_profile_checkpoint(f.root, "PUB-100", value2)
+            retained = helper.read_profile_checkpoint(f.root, "PUB-100")
+            self.assertEqual(retained, value2)
+            changed2 = copy.deepcopy(value2)
+            changed2["resource_lease"]["config_sha256"] = "e" * 64
+            with self.assertRaises(helper.ContractError):
+                helper.write_profile_checkpoint(f.root, "PUB-100", changed2)
+            self.assertEqual(helper.read_profile_checkpoint(f.root, "PUB-100"), value2)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

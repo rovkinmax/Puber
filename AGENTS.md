@@ -54,8 +54,10 @@ current step or finding.
 
 - Smoke follows `.kent/commands/smoke-test.md` and
   `.kent/context/smoke.md`.
-- Acquire a TV emulator lease before install, launch, input, logs, or MCP
-  targeting. Use the exact serial for every adb and target-specific MCP call.
+- Follow `.kent/commands/mobile-operation-policy.md` and the resource-lease
+  Smoke procedure before build, install, launch, input or diagnostics.
+  Use the exact leased endpoint and project `android_tools` facade for UI/DPAD;
+  do not use retired discovery/acquisition or Mobile MCP.
 - Install the freshly built dev APK; do not use an implicit Gradle install
   target.
 - Use `~/.kent/bin/kent-mcp-call` and

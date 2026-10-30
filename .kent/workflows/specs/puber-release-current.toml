@@ -17,8 +17,8 @@ allow_create = false
 allow_default_change = false
 allow_uuid_change = false
 
-# Release-only source revision 92 preserves v90/5af history and approval
-# gates while repairing target-branch, operation, CI, and native outputs.
+# Release-only source revision 93 preserves v90/5af history and approval
+# gates while selecting unified Puber resource-lease consumers.
 [source_manifest]
 schema = "release_source_manifest_v1"
 path = ".kent/workflows/puber-release-current.manifest.json"

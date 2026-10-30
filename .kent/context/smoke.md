@@ -5,10 +5,12 @@ Read `AGENTS.md`, `.kent/project-contract.md`,
 scope/rationale, any existing Smoke checkpoint/evidence ledger, and the
 preservation-install adapter output when build or installation is required.
 
-Load only recipes for the exact TV surface under test and only the MCP/device
-schema needed for the next action. Reuse a valid checkpoint lease with
-`emulator-resource-lock.sh resume`; do not acquire the same TV emulator against
-your own retained token. Reuse durable authorization for the same
+Read `.kent/commands/smoke-test-resource-lease.md` and
+`.kent/commands/mobile-operation-policy.md`. Load only recipes for the exact
+TV surface and shared native facade operations needed for the next action.
+Reuse only an exact live `smoke.persistent` binding through the selected
+Puber adapter. Legacy checkpoints require a compatibility disposition; do
+not resume or reinterpret legacy lock ownership. Reuse durable authorization for the same
 task/account/environment/action scope, but never load or repeat credentials
 from comments into evidence.
 

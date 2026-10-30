@@ -11,9 +11,9 @@ Preparation is ordered and fail-closed:
 1. `prepare` creates or reuses `release/<version>` at the exact current
    `origin/master` commit. It creates neither a version commit nor a pull
    request.
-2. `profile_generation` discovers an eligible TV emulator, acquires its
-   project lease, and runs the mock-backed profile generator with that exact
-   serial.
+2. `profile_generation` persists a native-bound v3 attempt, runs the complete
+   mock-backed generator worker inside synchronous `release.clean` resource
+   ownership, and requires confirmed terminal cleanup before success.
 3. `finalize_release` validates production packaging, applies or reuses the
    version bump, and creates one additive preparation commit. It stages
    `app/build.gradle.kts` and only generated profile files whose bytes changed.
@@ -25,6 +25,37 @@ output creates no synthetic profile diff. Tag and GitHub Release publication
 remain approval-gated and happen only after the release PR is merged.
 
 ## Profile generation
+
+The current source-only successor is version 97/source revision 93, retaining
+18 nodes/53 transition groups/53 edges and `runtime_attested = false`.
+Follow `.kent/commands/release.md` and the authoritative
+`.kent/commands/mobile-operation-policy.md`.
+
+The existing native Script is the sole Workflow producer. The project adapter
+uses `resource-lease-client run`, preserves genuine parent source binding for
+pinned Kit qualification, acknowledges acquisition before generation and maps
+only the exact endpoint to `ANDROID_SERIAL`. The generator rejects direct
+unleased execution, including an arbitrary supplied serial. Command-mode
+ownership has no Session binding; Session-oriented `check` is not its API.
+
+Checkpoints require `puber_release_profile_checkpoint_v3` in the existing
+protected store. They preserve report/preparation identity, unique attempt,
+configuration/context digests, public resource identity and minimal validated
+terminal-cleanup proof, never receipt secrets. The client acquisition deadline
+is 300 seconds with no automatic retry. Ambiguous acquisition, interruption,
+lease loss or failed cleanup preserves the original attempt and partial files;
+it cannot produce PASS or authorize replay.
+
+Smoke uses a separate new persistent TV and genuine Session binding. Release
+uses a separate clean synthetic TV. The old TV is preserved; authentication is
+not automatically transferred. Private configuration, installed facade/DPAD,
+TV qualification, retained-consumer exclusion and actual native admission
+remain separately reviewed activation effects.
+
+### Historical legacy standalone recipe — audit only
+
+The following recipe is retained for historical diagnosis. It is not a current
+execution path: its admission operations are retired and must not be invoked.
 
 The release profile stage requires a running **Android TV emulator**, an exact
 ADB serial, and a lease acquired through:
@@ -143,6 +174,16 @@ lease, mock, network-isolation, output, branch, or checkpoint error blocks
 compliance and cannot reach merge, tag, or GitHub Release publication.
 
 ## Recovery and idempotent retry
+
+For the current resource-lease successor, preserve incomplete checkpoints,
+partial outputs and private client records. Reconcile only the original exact
+binding; do not create another attempt after missing/ambiguous acknowledgement.
+Completed v3 records retain validated cleanup proof independently of later
+client pruning. Legacy v2 records require separate compatibility disposition,
+never conversion or automatic takeover. Cleanup retains its existing protected
+receipt-matched checkpoint retention/deletion rules.
+
+### Historical legacy recovery contract — audit only
 
 The profile operation writes
 `.kent/runtime/<task-short-id>/release-profile-checkpoint.json` atomically

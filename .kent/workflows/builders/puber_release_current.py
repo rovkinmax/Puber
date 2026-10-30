@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the Release-only Puber v97/source-92 successor proposal."""
+"""Build the Release-only Puber v97/source-93 successor proposal."""
 from __future__ import annotations
 
 import argparse
@@ -26,8 +26,8 @@ GRAPH = ROOT / ".kent/workflows/puber-release-current.json"
 MANIFEST = ROOT / ".kent/workflows/puber-release-current.manifest.json"
 PROFILE = ROOT / ".kent/workflow-profile.toml"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
-WORKFLOW_VERSION = 97
-SOURCE_REVISION = 92
+WORKFLOW_VERSION = 99
+SOURCE_REVISION = 93
 SOURCE_92_NATIVE_IDS = {
     "ci_monitor_retry_preparation": {
         "group_id": "f346e6e8-e7c2-459e-9b33-5056a179b64a",
@@ -115,6 +115,7 @@ ROUTE_PARAMETER = {
 BINARY_SOURCE_ROOTS = {"app/debug.jks"}
 DYNAMIC_RELEASE_PATHS = {"app/build.gradle.kts"}
 ENGINEERING_SOURCE = re.compile(r"(?:^|/)puber-engineering-delivery(?:-|\.)")
+V90_AUDIT_SNAPSHOT = ".kent/workflows/puber-release.json"
 
 
 def _validate_source_92_native_ids() -> None:
@@ -139,6 +140,15 @@ def _validate_source_92_native_ids() -> None:
 # Current source closure. Kit qualification and runtime attestation remain
 # separate gates and are intentionally not implied by this proposal.
 CLOSED_PATHS = (
+    ".kent/commands/mobile-operation-policy.md",
+    ".kent/commands/smoke-test-resource-lease.md",
+    ".kent/adapters/mobile/puber-resource-lease",
+    ".kent/adapters/android/android-tools",
+    "tools/test-puber-mobile-tools",
+    "tools/fixtures/mobile-resource-migration/legacy-smoke-test.md",
+    "tools/fixtures/mobile-resource-migration/legacy-emulator-resource-lock.sh",
+    "tools/fixtures/mobile-resource-migration/resource-lease-cases.json",
+    "tools/fixtures/mobile-resource-migration/workflow-profile-resource-lease.toml",
     ".kent/commands/cleanup-task.md",
     ".kent/commands/release.md",
     ".kent/context/delivery.md",
@@ -683,7 +693,7 @@ def validate_graph(value: dict[str, Any], original: dict[str, Any] | None = None
         or workflow.get("name") != "Puber Release"
         or workflow.get("default") is not False
     ):
-        raise ValueError("successor identity must preserve UUID and use 97/source 92")
+        raise ValueError("successor identity must preserve UUID and use 99/source 93")
     if (len(value.get("nodes", [])), len(value.get("transition_groups", [])),
             len(value.get("edges", []))) != (18, 53, 53):
         raise ValueError("successor must preserve 18 nodes and add the approved S4 routes")
@@ -853,8 +863,8 @@ def _build_spec_text() -> str:
         "# sequence and approved route carriers with qualified Cleanup identity prompts."
     )
     new_revision = (
-        "# Release-only source revision 92 preserves v90/5af history and approval\n"
-        "# gates while repairing target-branch, operation, CI, and native outputs."
+        "# Release-only source revision 93 preserves v90/5af history and approval\n"
+        "# gates while selecting unified Puber resource-lease consumers."
     )
     if raw.count(old_revision) != 1:
         raise ValueError("historical revision note is not unique")
@@ -910,7 +920,10 @@ def _expected_manifest() -> dict[str, Any]:
         if isinstance(path, str) and not ENGINEERING_SOURCE.search(path)
     }
     derived = _derived_paths()
-    sources = old_sources | old_additional | set(CLOSED_PATHS) | derived
+    active_sources = set(CLOSED_PATHS) | derived
+    if V90_AUDIT_SNAPSHOT in active_sources:
+        raise ValueError("v90 audit snapshot is required by the current source closure")
+    sources = (old_sources | old_additional | active_sources) - {V90_AUDIT_SNAPSHOT}
     sources = {
         path for path in sources
         if not ENGINEERING_SOURCE.search(path)
@@ -971,7 +984,7 @@ def check() -> list[str]:
     try:
         actual_graph = _load_object(GRAPH)
         if actual_graph != build_graph():
-            errors.append("current Release graph differs from v97/source-92 proposal")
+            errors.append("current Release graph differs from v97/source-93 proposal")
         validate_graph(actual_graph)
         if SPEC.read_text(encoding="utf-8") != _build_spec_text():
             errors.append("current Release spec differs from deterministic successor spec")
@@ -1030,7 +1043,7 @@ def main() -> int:
     if errors:
         print("\n".join(f"puber-release-current: {error}" for error in errors), file=sys.stderr)
         return 1
-    print("puber-release-current: deterministic non-attested v97/source-92 proposal passed")
+    print("puber-release-current: deterministic non-attested v97/source-93 proposal passed")
     return 0
 
 

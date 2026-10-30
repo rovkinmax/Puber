@@ -14,6 +14,10 @@ fail() {
 ANDROID_SERIAL_VALUE="${ANDROID_SERIAL:-}"
 [[ -n "${ANDROID_SERIAL_VALUE//[[:space:]]/}" ]] || fail \
     "ANDROID_SERIAL must be explicitly set to a nonblank leased device serial"
+[[ -n "${PUBER_PROFILE_WORKER:-}" ]] || fail \
+    "direct generation is retired; use the native Release Script command lease"
+python3 "$ROOT_DIR/.kent/adapters/mobile/puber-resource-lease" verify-generator \
+    --worker "$PUBER_PROFILE_WORKER" || fail "verified Puber command-lease binding is required"
 
 [[ -x "$GRADLEW" ]] || fail "Gradle wrapper is missing or not executable: $GRADLEW"
 [[ -f "$PROPERTIES_FILE" ]] || fail "Gradle properties file is missing: $PROPERTIES_FILE"

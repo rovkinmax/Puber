@@ -475,8 +475,8 @@ class Revision90StageRunner:
 
     def _validate_static_contracts(self) -> None:
         if (
-            self.graph["workflow"]["version"] != 97
-            or self.graph["workflow"]["source_revision"] != 92
+            self.graph["workflow"]["version"] != 99
+            or self.graph["workflow"]["source_revision"] != 93
             or self.graph["workflow"]["schema_version"] != 4
             or len(self.graph["nodes"]) != 18
             or len(self.graph["transition_groups"]) != 53
@@ -1180,95 +1180,89 @@ def test_clean_master_to_exactly_one_release_pr(continuation=None) -> None:
                 assert helper.sha256_bytes((work / ".kent/workflows/builders/puber_release_current.py").read_bytes()) == external["key"]
 
         adapter_log = control / "adapter.jsonl"
-        adapter = work / ".kent/adapters/mobile/emulator-resource-lock.sh"
-        adapter.parent.mkdir(parents=True, exist_ok=True)
-        adapter.write_text(
+        resource_client = control / "resource-client"
+        resource_client.write_text(
             f"""#!/usr/bin/env python3
-import json
-import uuid
-import sys
+import fcntl, json, os, subprocess, sys, time, uuid
 from pathlib import Path
 args = sys.argv[1:]
-with Path({str(adapter_log)!r}).open("a", encoding="utf-8") as stream:
-    stream.write(json.dumps(args) + "\\n")
-if args == ["adb-emulators", "tv"]:
-    print("emulator-5554")
+def write(path, value):
+    path.write_text(json.dumps(value))
+    path.chmod(0o600)
+if args[:1] == ["--root"]:
+    assert args[2] == "inspect"
+    receipt = Path(args[args.index("--lease") + 1])
+    value = json.loads((receipt.parent / "status.json").read_text())["lease"]
+    assert args[args.index("--owner") + 1] == value["owner"]
+    print(json.dumps(value))
     sys.exit(0)
-if args and args[0] == "acquire-script-any":
-    try:
-        request = sys.stdin.buffer.read().decode("ascii").splitlines()
-        task_id = request[1].removeprefix("task_id=")
-        uuid.UUID(task_id.removeprefix("task-"))
-        context = request[2].removeprefix("context_sha256=")
-        pid = request[3].removeprefix("pid=")
-    except (IndexError, UnicodeDecodeError, ValueError):
-        sys.exit(64)
-    if (
-        len(args) < 4
-        or args[-2] != "--"
-        or not args[-1].isdecimal()
-        or not args[1:-2]
-        or any(not item.startswith("emulator-") for item in args[1:-2])
-        or len(request) != 4
-        or request[0] != "schema=mobile-script-lease-request-v1"
-        or not task_id.startswith("task-")
-        or len(task_id) != len("task-") + 36
-        or len(context) != 64
-        or any(character not in "0123456789abcdef" for character in context)
-        or not pid.isdecimal()
-        or int(pid) <= 0
-    ):
-        sys.exit(64)
-    print("schema=mobile-script-lease-result-v1")
-    print(f"resource={{args[1]}}")
-    print("token=fixture-script-token")
-    print("owner_sha256=" + "a" * 64)
-    sys.exit(0)
-if len(args) == 2 and args[0] == "inspect-script-recovery":
-    print("schema=mobile-script-recovery-v1")
-    print(f"resource={{args[1]}}")
-    print("owner_kind=Absent")
-    print("owner_sha256=none")
-    sys.exit(0)
-if len(args) == 2 and args[0] == "release-script":
-    try:
-        request = sys.stdin.buffer.read().decode("ascii").splitlines()
-        task_id = request[1].removeprefix("task_id=")
-        uuid.UUID(task_id.removeprefix("task-"))
-        context = request[2].removeprefix("context_sha256=")
-        pid = request[3].removeprefix("pid=")
-        token = request[4].removeprefix("token=")
-        owner = request[5].removeprefix("owner_sha256=")
-    except (IndexError, UnicodeDecodeError, ValueError):
-        sys.exit(64)
-    if (
-        len(request) != 6
-        or request[0] != "schema=mobile-script-lease-request-v1"
-        or not task_id.startswith("task-")
-        or len(context) != 64
-        or any(character not in "0123456789abcdef" for character in context)
-        or not pid.isdecimal()
-        or int(pid) <= 0
-        or not 1 <= len(token) <= 256
-        or any(character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-" for character in token)
-        or len(owner) != 64
-        or any(character not in "0123456789abcdef" for character in owner)
-    ):
-        sys.exit(64)
-    sys.exit(0)
-if args and args[0] == "acquire-any":
-    print("resource=emulator-5554")
-    print("token=fake-release-token")
-    sys.exit(0)
-if args and args[0] == "release":
-    sys.exit(0)
-if args and args[0] == "resume-owned":
-    sys.exit(75)
-sys.exit(2)
+assert args[0] == "run"
+config = json.loads(Path(args[args.index("--config") + 1]).read_text())
+profile = args[args.index("--profile") + 1]
+assert profile == "release.clean"
+assert args[args.index("--env") + 1] == "ANDROID_SERIAL=adb_serial"
+owner = args[args.index("--owner") + 1]
+assert owner.startswith("puber-release:task-") and len(owner.split(":")) == 4
+run = Path(config["runs_directory"]) / uuid.uuid4().hex
+run.mkdir(mode=0o700)
+write(run / "binding.json", {{"schema":1,"config":config,"profile":profile,
+    "capability":config["profiles"][profile],"owner":owner,"binding":None}})
+write(run / "receipt.json", {{"secret":"fixture-only-never-published"}})
+lease = {{"id":"fixture-lease","generation":1,"slot":"release-slot",
+    "state":"active","owner":owner,"capability":config["profiles"][profile],
+    "service_available":True,"quarantined":False,"cleanup_pending":False,
+    "expires_in":300,"endpoint":{{"adb_serial":"emulator-5554"}}}}
+status = {{"phase":"active","updated_at":time.monotonic(),"run_directory":str(run),
+    "lease":lease,"command_stop":"unconfirmed"}}
+write(run / "status.json", status)
+lock = os.open(run / "helper.lock", os.O_CREAT | os.O_RDWR, 0o600)
+fcntl.flock(lock, fcntl.LOCK_EX)
+env = os.environ.copy()
+assert env.get("ANDROID_SERIAL") in (None,"","emulator-5554")
+env.update(ANDROID_SERIAL="emulator-5554",RESOURCE_LEASE_RUN_DIRECTORY=str(run))
+with Path({str(adapter_log)!r}).open("a") as stream:
+    stream.write(json.dumps(["run",profile])+"\\n")
+worker = subprocess.Popen(args[args.index("--") + 1:], env=env,
+    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+while worker.poll() is None:
+    time.sleep(1)
+    status["updated_at"] = time.monotonic()
+    write(run / "status.json", status)
+code = worker.returncode
+lease["state"] = "completed"
+status.update(phase="finished",command_stop="confirmed",updated_at=time.monotonic())
+write(run / "status.json",status)
+os.close(lock)
+sys.exit(code)
 """,
             encoding="utf-8",
         )
-        adapter.chmod(0o755)
+        resource_client.chmod(0o700)
+        private_runtime = work / ".kent/runtime"
+        private_runtime.mkdir(mode=0o700, exist_ok=True)
+        runs = control / "resource-runs"
+        pool = control / "resource-pool"
+        runs.mkdir(mode=0o700)
+        pool.mkdir(mode=0o700)
+        lease_config = {
+            "schema": 1, "executable": str(resource_client), "pool": str(pool),
+            "runs_directory": str(runs), "profiles": {
+                "smoke.persistent": "puber-tv-smoke-persistent",
+                "release.clean": "puber-tv-release-clean"},
+        }
+        private_configs = {
+            "lease.json": lease_config,
+            "facade.json": {"source_root": str(work), "lease": lease_config},
+            "puber-mobile.json": {
+                "schema": 1, "workspace_root": str(work), "client": str(resource_client),
+                "client_config": str(private_runtime / "lease.json"),
+                "facade": str(resource_client), "facade_config": str(private_runtime / "facade.json"),
+            },
+        }
+        for name, value in private_configs.items():
+            path = private_runtime / name
+            path.write_text(json.dumps(value))
+            path.chmod(0o600)
 
         generator_log = control / "generator.jsonl"
         generator = work / "tools/generate-baseline-profile.sh"
@@ -1330,7 +1324,7 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
             ):
                 relative, expected_digest = external["key"].split("=", 1)
                 actual_digest = helper.sha256_bytes((work / relative).read_bytes())
-                if relative in {"tools/agentw", "tools/generate-baseline-profile.sh", ".kent/adapters/mobile/emulator-resource-lock.sh"} or (
+                if relative in {"tools/agentw", "tools/generate-baseline-profile.sh"} or (
                     native and relative == ".kent/workflow-profile.toml"
                 ):
                     external["key"] = f"{relative}={actual_digest}"
@@ -1391,7 +1385,7 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
             },
             "workflow": {
                 "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459",
-                "version": 97,
+                "version": 99,
                 "name": "Puber Release",
             },
             "worktree_path": str(work),
@@ -1402,7 +1396,11 @@ with Path({str(gradle_log)!r}).open("a", encoding="utf-8") as stream:
         task_path.write_text(json.dumps(task), encoding="utf-8")
         kent = fake / "kent"
         kent.write_text(
-            "#!/bin/sh\nexec /bin/cat \"$PUBER_FAKE_TASK\"\n",
+            f"""#!/usr/bin/env python3
+import sys
+from pathlib import Path
+sys.stdout.write(Path({str(task_path)!r}).read_text(encoding="utf-8"))
+""",
             encoding="utf-8",
         )
         kent.chmod(0o755)
@@ -1644,11 +1642,9 @@ sys.exit(2)
             json.loads(line)
             for line in adapter_log.read_text(encoding="utf-8").splitlines()
         ]
-        assert adapter_calls == [
-            ["adb-emulators", "tv"],
-            ["acquire-script-any", "emulator-5554", "--", "900"],
-            ["release-script", "emulator-5554"],
-        ]
+        assert adapter_calls == [["run", "release.clean"]]
+        assert checkpoint["schema"] == "puber_release_profile_checkpoint_v3"
+        assert checkpoint["resource_lease"]["cleanup_proof"]["command_stop"] == "confirmed"
         github_calls = [
             json.loads(line)
             for line in github_log.read_text(encoding="utf-8").splitlines()
@@ -1828,7 +1824,7 @@ def test_publication(rebased: bool) -> None:
             "current_nodes": [{"node_id": publish_node["id"]}], "current_scripts": [{"path": str(work.resolve() / ".kent/scripts/workflow-puber-release-publish"), "current_node": {"node_id": publish_node["id"]}}],
             "execution_target": {"commit_oid": base_oid}, "label_ids": [], "live_sessions": [], "project": {"default_workspace_id": "workspace-12345678-1234-4234-8234-123456789abc"}, "retained_session_count": 0,
             "source_workspace": {"is_primary": True, "workspace_id": "workspace-12345678-1234-4234-8234-123456789abc", "root_path": str(work.resolve())}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 97, "name": "Puber Release"}, "worktree_path": str(work.resolve()),
+            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 99, "name": "Puber Release"}, "worktree_path": str(work.resolve()),
         }
         checkpoint = fixture_checkpoint(work, base_oid, target, task_id)
         profile_path = "app/src/main/generated/baselineProfiles/baseline-prof.txt"

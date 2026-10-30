@@ -42,13 +42,13 @@ credentials, or headers.
 
 ## Mobile
 
-- Discover devices with `mobile.device action=list`.
-- Pass `platform=android` and the exact locked `deviceId` to every
-  target-specific call.
-- Do not use process-local `set`, `get_target`, `list_modules`, or
-  `enable_module`; every invocation uses an ephemeral server.
-- Every call other than device discovery requires a safe output mode.
-- If a target-specific tool lacks `deviceId`, use `adb -s` instead.
+Mobile MCP is not the current Puber device interface. Follow
+`.kent/commands/smoke-test-resource-lease.md` and
+`.kent/commands/mobile-operation-policy.md`. UI/DPAD uses the project
+`android_tools` delegate with exact resource-lease endpoint/custody.
+Product-owned installation and scoped diagnostics retain their qualified
+adapters and require a fresh ownership check. No retired discovery or raw
+fallback is authorized by this rule. Other MCP integrations are unchanged.
 
 ## Mutation
 

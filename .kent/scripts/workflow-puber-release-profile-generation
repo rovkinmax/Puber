@@ -181,6 +181,7 @@ def _checkpoint(
     release_head_oid: str = "",
     preparation_report: str = "",
     preparation_report_digest: str = "",
+    resource_lease: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     value = {
         "schema": CHECKPOINT_SCHEMA,
@@ -200,6 +201,9 @@ def _checkpoint(
         "release_preparation_report_digest": preparation_report_digest,
         "output_hashes": dict(output_hashes or {}),
     }
+    if resource_lease is not None:
+        value.pop("candidate_serials")
+        value.update(schema="puber_release_profile_checkpoint_v3", resource_lease=dict(resource_lease))
     helper.write_profile_checkpoint(ROOT, task_short_id, value)
     return value
 
@@ -346,7 +350,7 @@ def _child_env(serial: str) -> dict[str, str]:
     allow = {
         "PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "TERM",
         "LANG", "LC_ALL", "JAVA_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT",
-        "GRADLE_USER_HOME", "KOTLIN_HOME", "CI",
+        "GRADLE_USER_HOME", "KOTLIN_HOME", "CI", "PUBER_KENT_BIN",
     }
     env = {key: value for key, value in os.environ.items() if key in allow}
     env["ANDROID_SERIAL"] = serial
@@ -575,6 +579,184 @@ def _owner_summary(observations: list[dict[str, str]]) -> str:
     )
 
 
+def _resource_selected() -> bool:
+    profile = tomllib.loads((ROOT / ".kent/workflow-profile.toml").read_text())
+    return "puber_resource_lease" in profile.get("required_adapters", [])
+
+
+def _load_resource_adapter():
+    path = _profile_adapter_path("puber_resource_lease")
+    spec = importlib.util.spec_from_loader("puber_profile_resource", SourceFileLoader("puber_profile_resource", str(path)))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _resource_checkpoint(state, binding, status, serial, hashes, **proof):
+    return _checkpoint(state["task_short_id"], state=state, candidate_serials=[],
+                       status=status, resource_serial=serial, output_hashes=hashes,
+                       resource_lease=binding, **proof)
+
+
+def _resource_worker(path: str) -> int:
+    """Internal bounded command worker; cannot emit native Workflow output."""
+    mobile = _load_resource_adapter()
+    record = mobile.worker_record(path)
+    context = record["context"]
+    # Reuse the parent's exact genuine native source binding for qualification,
+    # never a Session identity or a new Workflow producer.
+    helper._bind_qualified_runtime(ROOT, record["native_binding"])
+    _assert_runtime_source_closure({"commit": context["controller_commit"]})
+    state = {key: context[key] for key in (
+        "task_id", "task_short_id", "operation_id", "release_type", "release_version",
+        "release_tag", "release_branch", "release_base_oid", "candidate_oid",
+    )}
+    checkpoint = helper.read_profile_checkpoint(ROOT, state["task_short_id"], expected=state)
+    if (checkpoint["schema"] != "puber_release_profile_checkpoint_v3"
+            or checkpoint["state"] != "acquiring"
+            or checkpoint["resource_lease"] != record["binding"]
+            or checkpoint["output_hashes"] != record["before_hashes"]):
+        raise ProfileError("worker attempt is not the persisted pre-dispatch checkpoint")
+    binding = dict(record["binding"])
+    run, resource, serial = mobile.inspect_command(binding, context)
+    environment = {"ANDROID_SERIAL": serial, "RESOURCE_LEASE_RUN_DIRECTORY": run}
+    if any(os.environ.get(key) != item for key, item in environment.items()):
+        raise ProfileError("worker environment differs from acquired command lease")
+    _assert_candidate_unchanged(state)
+    _assert_owned_output_hashes(record["before_hashes"])
+    binding.update(run_directory=run, resource=resource)
+    # Acknowledge acquisition durably before the first generator/build effect.
+    _resource_checkpoint(state, binding, "generating", serial, record["before_hashes"])
+    env = _child_env(serial)
+    env.update(environment, PUBER_PROFILE_WORKER=str(path))
+    generator = _tool(ROOT / "tools/generate-baseline-profile.sh", "PUBER_PROFILE_GENERATOR_BIN")
+    mobile.command_environment(binding, context)
+    # The resource client's command process group owns the worker and generator.
+    # The outer command deadline handles termination and drain. A local timeout
+    # killing only Gradle's shell would not prove that its descendants stopped.
+    generated = subprocess.run([generator], cwd=ROOT, env=env,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               check=False)
+    _assert_candidate_unchanged(state)
+    mobile.command_environment(binding, context)
+    after = _profile_bytes()
+    _assert_no_unexpected_changes()
+    hashes = {key: helper.sha256_bytes(raw) for key, raw in after.items()}
+    _resource_checkpoint(state, binding, "cleanup" if generated.returncode == 0 else "failed",
+                         serial, hashes)
+    return generated.returncode
+
+
+def _resource_report(state, serial, before, after, started):
+    return {
+        "schema": PROFILE_REPORT_SCHEMA,
+        **{key: state[key] for key in (
+            "operation_id", "task_short_id", "release_type", "release_version",
+            "release_tag", "release_branch", "release_base_oid", "candidate_oid",
+        )},
+        "tv_serial": serial, "command": COMMAND_IDENTITY,
+        "lease_state": "released", "generation_state": "passed",
+        "network_isolation_state": "passed",
+        "elapsed_ms": int((time.monotonic() - started) * 1000),
+        "baseline_before_sha256": before[PROFILE_PATHS[0]],
+        "baseline_after_sha256": after[PROFILE_PATHS[0]],
+        "startup_before_sha256": before[PROFILE_PATHS[1]],
+        "startup_after_sha256": after[PROFILE_PATHS[1]],
+        "changed_profiles": sorted(path for path in PROFILE_PATHS if before[path] != after[path]),
+    }
+
+
+def _resource_parent(payload, validated, commentary):
+    state = _state_from_payload(payload, {**validated, "operation_id": payload["operation_id"]})
+    context = _script_context(validated, state)
+    mobile = _load_resource_adapter()
+    existing = _read_checkpoint(state["task_short_id"])
+    if existing is not None:
+        helper.validate_profile_checkpoint(existing, expected=state)
+        if existing["schema"] != "puber_release_profile_checkpoint_v3":
+            raise InterruptProfileError("legacy profile checkpoint requires separate recovery disposition")
+        _assert_runtime_source_closure(validated)
+        if existing["state"] != "completed":
+            # Inspection binds the original attempt. Never dispatch a second
+            # acquisition, including lost responses before worker acknowledgement.
+            mobile.inspect_command(existing["resource_lease"], context, terminal=True)
+            return _emit_failure(_base_transition_fields(payload),
+                "prior resource command has no completed profile proof; preserve original attempt and outputs",
+                commentary=commentary)
+        # Terminal proof is retained in the protected checkpoint and remains
+        # valid after the client's own finished-run pruning.
+        _selected, _client, config_sha = mobile.configuration()
+        if existing["resource_lease"]["config_sha256"] != config_sha:
+            raise InterruptProfileError("completed profile configuration drift")
+        report = _validate_report(existing["profile_report"], existing["profile_report_digest"], state=state)
+        _assert_owned_output_hashes(existing["output_hashes"])
+        _assert_no_unexpected_changes()
+        head = helper.git(ROOT, "rev-parse", "HEAD")
+        if head != state["candidate_oid"]:
+            if existing["release_head_oid"] != head:
+                raise InterruptProfileError("completed profile release head drift")
+            preparation = helper.parse_release_preparation_report(
+                existing["release_preparation_report"], existing["release_preparation_report_digest"], expected=state)
+            helper.validate_release_diff(ROOT, state["release_base_oid"], head, report, preparation)
+        encoded, report_digest = existing["profile_report"], existing["profile_report_digest"]
+    else:
+        _validate_local_properties()
+        _assert_candidate_unchanged(state)
+        _assert_clean_start()
+        _assert_runtime_source_closure(validated)
+        before = {path: helper.sha256_bytes(raw) for path, raw in _profile_bytes().items()}
+        binding = mobile.release_attempt(context)
+        _resource_checkpoint(state, binding, "acquiring", "", before)
+        directory = ROOT / ".kent/runtime/profile-workers"
+        directory.mkdir(mode=0o700, exist_ok=True)
+        mobile.private(directory, directory=True)
+        worker = directory / (binding["attempt"] + ".json")
+        mobile.write(worker, {"schema": "puber-profile-worker-v1", "context": context,
+                              "binding": binding, "before_hashes": before,
+                              "native_binding": dict(payload["_kent"])})
+        env = _child_env("")
+        env.pop("ANDROID_SERIAL")
+        if os.environ.get("ANDROID_SERIAL"):
+            env["ANDROID_SERIAL"] = os.environ["ANDROID_SERIAL"]
+        started = time.monotonic()
+        old_handlers = {number: signal.getsignal(number) for number in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM)}
+        def cancel_resource(_number, _frame):
+            raise KeyboardInterrupt("resource command cancelled")
+        try:
+            for number in old_handlers:
+                signal.signal(number, cancel_resource)
+            code = mobile.run_release(binding, context, worker, env=env)
+        finally:
+            for number, handler in old_handlers.items():
+                signal.signal(number, handler)
+        current = _read_checkpoint(state["task_short_id"])
+        if (current is None or current["schema"] != "puber_release_profile_checkpoint_v3"
+                or current["state"] != "cleanup" or code != 0):
+            # Best-effort exact read-only reconciliation; never infer absence
+            # or authorize another attempt from a missing response.
+            mobile.inspect_command(binding, context, terminal=True)
+            raise ProfileError("resource command failed or acquisition acknowledgement missing; preserve attempt and outputs")
+        helper.validate_profile_checkpoint(current, expected={**state, "resource_lease": binding})
+        acquired = dict(current["resource_lease"])
+        run, resource, cleanup = mobile.inspect_command(acquired, context, terminal=True)
+        acquired.update(run_directory=run, resource=resource, cleanup_proof=cleanup)
+        _assert_candidate_unchanged(state)
+        _assert_runtime_source_closure(validated)
+        _assert_owned_output_hashes(current["output_hashes"])
+        _assert_no_unexpected_changes()
+        report = _resource_report(state, current["resource_serial"], before, current["output_hashes"], started)
+        encoded = helper.canonical_json(report)
+        report_digest = helper.sha256_bytes(encoded.encode())
+        _validate_report(encoded, report_digest, state=state)
+        _resource_checkpoint(state, acquired, "completed", current["resource_serial"], current["output_hashes"],
+                             report=encoded, report_digest=report_digest, release_head_oid=state["candidate_oid"])
+    helper.emit_exact(ROOT, "profile_generation_passed", "finalize_release",
+        {**_base_transition_fields(payload), "profile_report": encoded, "profile_report_digest": report_digest},
+        commentary=commentary)
+    return 0
+
+
 def main() -> int:
     try:
         raw_payload = helper.read_zero_argument()
@@ -618,6 +800,18 @@ def main() -> int:
     except helper.ContractError as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 2
+
+    if _resource_selected():
+        try:
+            # validate_envelope intentionally projects business-only fields.
+            # Carry the exact admitted native input separately, never recreate it.
+            return _resource_parent({**payload, "_kent": dict(raw_payload["_kent"])},
+                                    validated, producer_commentary)
+        except KeyboardInterrupt:
+            reason = "resource command interrupted; preserve original attempt and output state"
+        except (helper.ContractError, OSError, ValueError, subprocess.SubprocessError) as error:
+            reason = str(error)
+        return _emit_failure(_base_transition_fields(payload), reason, commentary=producer_commentary)
 
     state: dict[str, Any] = {}
     checkpoint_task: str | None = None
@@ -939,4 +1133,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--resource-lease-worker":
+        try:
+            raise SystemExit(_resource_worker(sys.argv[2]))
+        except (helper.ContractError, OSError, ValueError, subprocess.SubprocessError):
+            print("Puber profile worker refused; preserve original command and outputs", file=sys.stderr)
+            raise SystemExit(2)
     raise SystemExit(main())

@@ -191,7 +191,7 @@ def test_monitor(
             # prepared controller head H and the rebased merged target T.
             "execution_target": {"commit_oid": base_oid}, "label_ids": [], "live_sessions": [], "project": {"default_workspace_id": "workspace-12345678-1234-4234-8234-123456789abc"}, "retained_session_count": 0,
             "source_workspace": {"is_primary": True, "workspace_id": "workspace-12345678-1234-4234-8234-123456789abc", "root_path": str(work.resolve())}, "status": {"node_ids": [publish_node["id"]]}, "summary": {"id": task_id, "project_id": "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176", "workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "short_id": "PUB-99"},
-            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 97, "name": "Puber Release"}, "worktree_path": str(work.resolve()),
+            "workflow": {"workflow_id": "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459", "version": 99, "name": "Puber Release"}, "worktree_path": str(work.resolve()),
         }
         if prepared:
             task = prepared["task"]
@@ -384,6 +384,8 @@ sys.exit(3)
             checkpoint = publish_fixture.helper.read_profile_checkpoint(work.resolve(), "PUB-99", expected={
                 "task_id": task_id, "release_base_oid": base_oid, "release_head_oid": head})
             assert checkpoint == prepared["checkpoint"]
+            assert checkpoint["schema"] == "puber_release_profile_checkpoint_v3"
+            assert checkpoint["resource_lease"]["cleanup_proof"]["command_stop"] == "confirmed"
             profile_report, profile_digest = checkpoint["profile_report"], checkpoint["profile_report_digest"]
             preparation_report, preparation_digest = checkpoint["release_preparation_report"], checkpoint["release_preparation_report_digest"]
         if rebased:

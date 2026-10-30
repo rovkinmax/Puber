@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Delegate native UI to the shared facade after genuine Puber Smoke binding."""
+import importlib.util
+import os
+import subprocess
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+path = Path(__file__).resolve().parents[1] / "mobile/puber-resource-lease"
+spec = importlib.util.spec_from_loader("puber_mobile", SourceFileLoader("puber_mobile", str(path)))
+mobile = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mobile)
+
+
+def main():
+    # A caller cannot substitute config, source root, owner or facade binary.
+    if "--config" in sys.argv[1:] or any(arg.startswith("--config=") for arg in sys.argv[1:]):
+        raise mobile.Error("configuration is project-owned")
+    identity = mobile.smoke_binding(
+        os.environ.get("KENT_PROJECT_ID", ""), os.environ.get("KENT_TASK_ID", ""),
+        os.environ.get("KENT_SESSION_ID", ""))
+    result = mobile.smoke("check", os.environ.get("PUBER_SMOKE_LEASE_RECORD", ""), identity)
+    selected, _client, _digest = mobile.configuration()
+    env = os.environ.copy()
+    for key, value in result["environment"].items():
+        if env.get(key) not in (None, "", value):
+            raise mobile.Error("conflicting inherited lease environment")
+        env[key] = value
+    return subprocess.run([selected["facade"], "--config", selected["facade_config"],
+                           *sys.argv[1:]], env=env).returncode
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (mobile.Error, OSError, ValueError, KeyError, TypeError):
+        print("Puber Android operation refused; verify native owner and configuration", file=sys.stderr)
+        raise SystemExit(2)

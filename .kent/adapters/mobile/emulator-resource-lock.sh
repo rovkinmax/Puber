@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Retired source admission: deny before discovery, guard or storage effects.
+# Legacy inspection/cleanup remains available with its original validation.
+case "${1:-}" in
+  acquire|acquire-any|resume|resume-owned|acquire-script|acquire-script-any|adb-emulators|adb-physical-devices)
+    echo 'Puber legacy resource admission is retired; use the selected resource-lease protocol' >&2
+    exit 64
+    ;;
+  __locked)
+    case "${2:-}" in
+      try-acquire|resume|resume-owned|script-acquire)
+        echo 'Puber internal legacy resource admission is retired' >&2
+        exit 64
+        ;;
+    esac
+    ;;
+esac
+
 umask 077
 
 script_path="$(
