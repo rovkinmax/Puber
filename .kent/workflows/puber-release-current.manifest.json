@@ -5,10 +5,14 @@
   "repository": "rovkinmax/Puber",
   "topology_kind": "puber-release",
   "additional_paths": [
+    ".kent/adapters/mobile/emulator-resource-lock.sh",
+    ".kent/adapters/mobile/puber-script-resource-lock",
+    ".kent/commands/mobile-operation-policy.md",
     ".kent/commands/mock-scenario-policy.md",
     ".kent/commands/release-branch.md",
     ".kent/commands/release-tag.md",
     ".kent/commands/release.md",
+    ".kent/commands/smoke-test-resource-lease.md",
     ".kent/scripts/tests/puber_native_fixture.py",
     ".kent/scripts/tests/test-delivery-continuity",
     ".kent/scripts/tests/test-github-release-workflow",
@@ -43,15 +47,19 @@
     ".kent/workflows/builders/puber_release.py",
     ".kent/workflows/puber-release-kit-5af.json",
     ".kent/workflows/puber-release-kit-5af.manifest.json",
-    ".kent/workflows/puber-release.json",
     ".kent/workflows/specs/puber-release-kit-5af.toml",
     "docs/release.md",
     "tools/agentw",
     "tools/configure-worktree-sdk",
+    "tools/fixtures/mobile-resource-migration/legacy-emulator-resource-lock.sh",
+    "tools/fixtures/mobile-resource-migration/legacy-smoke-test.md",
+    "tools/fixtures/mobile-resource-migration/resource-lease-cases.json",
+    "tools/fixtures/mobile-resource-migration/workflow-profile-resource-lease.toml",
     "tools/fixtures/smoke-lease/baseline.json",
     "tools/fixtures/smoke-lease/eligible-resources.json",
     "tools/fixtures/smoke-lease/native-task.json",
     "tools/generate-baseline-profile.sh",
+    "tools/test-puber-mobile-tools",
     "tools/test-smoke-lease-procedure",
     "tools/test-workflow-mock-scenario-evidence"
   ],
@@ -60,7 +68,7 @@
   "external_roots": [
     {
       "kind": "builder-sha256",
-      "key": "c8263d719cbc04642ac01a013d7abe8531688a91e267b5576c0bd0a8748803ad",
+      "key": "ace9625d170ec3ecf974c2a9848b32926710ef61901e3713e83c307cc4e267ba",
       "runtime_digest_required": true
     },
     {
@@ -75,6 +83,11 @@
     },
     {
       "kind": "source-sha256",
+      "key": ".kent/adapters/android/android-tools=6ad0ca675044d51e76a0d586472da94cdbc1f04f09f699091ac80e6f94aef88f",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
       "key": ".kent/adapters/mcp/policy=3bbbfb840b6d7ce635597a85a13318bec1437d3a9edddae8d5c96274e85cc170",
       "runtime_digest_required": true
     },
@@ -85,7 +98,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/adapters/mobile/emulator-resource-lock.sh=c16db4187a7a8dde19d9f8662346e099676efc16dc711b08d277b9eeac9f5279",
+      "key": ".kent/adapters/mobile/emulator-resource-lock.sh=5d2868455371d0646f9cc553471300c4aadb8d0544e226ae506221e1cdf36147",
       "runtime_digest_required": true
     },
     {
@@ -95,7 +108,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/adapters/mobile/puber-script-resource-lock=1aa504755fe73f4722e18c8dbb413663baf566661f83ac5a831a7abe51fba0d4",
+      "key": ".kent/adapters/mobile/puber-resource-lease=b822c54895335471cf10d6ad5823c6739d7ce876754bc7b1b50b7dd629a3e248",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": ".kent/adapters/mobile/puber-script-resource-lock=b1edd4846dee83ee6e2f40bdaaee7123d12cc707ea0502e15535d51eed694fc5",
       "runtime_digest_required": true
     },
     {
@@ -125,7 +143,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/feature-implement.md=eb553693e8e329b75a9b716b7a16c2408144a8bc33f4c86386108d78a06701ce",
+      "key": ".kent/commands/feature-implement.md=832627fd9994a1d72153c71242c9c1ea2b6364b3fc064326d8e5e98a912f64d4",
       "runtime_digest_required": true
     },
     {
@@ -136,6 +154,11 @@
     {
       "kind": "source-sha256",
       "key": ".kent/commands/migration-start.md=dc89dc5e9395fd344e54a171cd5a2d45466bc18371fc933a72a2e16399cc52e5",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": ".kent/commands/mobile-operation-policy.md=8ae9ac080dd471c46ca33bdbbfbb78a471834a17eeb5ca300b76c26c46330774",
       "runtime_digest_required": true
     },
     {
@@ -160,12 +183,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/release.md=b73ff4e5b8b0a3d2b4fdce9175bdb229fa84d1e16bd01c401ab3a8d09d12380f",
+      "key": ".kent/commands/release.md=695b7fde6ec0cfc32fec0d7b01c2ebd503c6b660b98a22ee43fe14bf3c6202bd",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/ship-pr.md=b92c391b56fb82a7ec846512f3518fbfcbd4c0304719d4e24f96f730c9879236",
+      "key": ".kent/commands/ship-pr.md=6839e2b0186575ff0c3ea467bacd6c470ba5db5ffb25f2f3afdee4d3e06b50dc",
       "runtime_digest_required": true
     },
     {
@@ -175,7 +198,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/smoke-test.md=db55f3102f96f5b06308427849b768b5d3451c98d369521a11450967a09c636b",
+      "key": ".kent/commands/smoke-test-resource-lease.md=70f84a7ca6e555397dc3263b1d8850c8aba6fabf8402d7e66ccdd33ef3cbafe9",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": ".kent/commands/smoke-test.md=9fb780a149a413670fc3999f134d26f5cc91c431ac38f0b82fbff4a5d7288e01",
       "runtime_digest_required": true
     },
     {
@@ -205,12 +233,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/context/smoke.md=4dfac174b68329f8f3f850c417bba35fb6cc66607c67036f89b4f6b8cafb99e6",
+      "key": ".kent/context/smoke.md=d574dd418e29e9e28e067e578617101e2e9d48a90bc78aef70d8a0b5059ee92e",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/project-contract.md=7b30a2cc790e17b0a81baaec602d8975c14fa5ee671b6988f1c36bbec80600f7",
+      "key": ".kent/project-contract.md=072769b8688af60786517ba72659a7d1f709bd932170e3f7d9be04e5039a4e65",
       "runtime_digest_required": true
     },
     {
@@ -245,7 +273,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-puber-release-current=a2ce6429fdc2d0ef212f20d947c2c682f44995fc1ea72a82dcee343f194764ea",
+      "key": ".kent/scripts/tests/test-puber-release-current=c935071d77697c6d51e19f011749b76cd07cb0cf653ea6381b361afeff478c64",
       "runtime_digest_required": true
     },
     {
@@ -260,7 +288,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-puber-script-resource-lock=1efca77ca21aa0b3fd0b3bbad225679c3ca96f023c254c9aa6a247314549ede8",
+      "key": ".kent/scripts/tests/test-puber-script-resource-lock=dd691f94fdf4e7cb21243795ad97a03b34732ab506652eecc7ff8caf66a36b9f",
       "runtime_digest_required": true
     },
     {
@@ -275,22 +303,22 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-puber-release-intent=5867ed3d6fae2cbef87c8437dd5549987e64470d56d02c0b9681aa060beb167f",
+      "key": ".kent/scripts/tests/test-workflow-puber-release-intent=118f6f87b4fcafb54c1dcbcc264ae0da039a848d2025da7a2201bf598b5f1901",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-puber-release-profile-generation=0a34de0cf4d891c2e9e27aec032902e5be00af2e4b75b10f1d1920a1c39f6a0f",
+      "key": ".kent/scripts/tests/test-workflow-puber-release-profile-generation=eb14382eeff17237a6559c5e50afe061bad57d183a6430bdb5c2a601a12fd010",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-puber-release-publish=59c58ae5df580d28df0c82719a6c2d24f93d401c2458893faaaad2e449eb4442",
+      "key": ".kent/scripts/tests/test-workflow-puber-release-publish=e0681968d50bf8a55da713219fb9b3bf9529986b11a9b7944591886ffcfe1b42",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-release-cleanup=878ee04705cd3131839dbb0bdb522d8a51e2e578491e399b0b963aff3057483a",
+      "key": ".kent/scripts/tests/test-workflow-release-cleanup=471b8e8b0f197aa6ce75b9d1555b467fefa119fd95cadfac1100e3d5b1d83640",
       "runtime_digest_required": true
     },
     {
@@ -305,7 +333,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-wait-github-release=e79304073f5c8845a274bb75e2049226e35805b858dc35a3f42b1899967a9fe6",
+      "key": ".kent/scripts/tests/test-workflow-wait-github-release=71a5cadbe9198ff420f5806fc791ce31d2b412071851546bd2451f12cc98e6e7",
       "runtime_digest_required": true
     },
     {
@@ -375,7 +403,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-puber-release-intent=02d8a95dd3ccf56cfbb1b9b8062e87afbe49016b98739d13e626ea3bb387f742",
+      "key": ".kent/scripts/workflow-puber-release-intent=45a0ca1fbfcc1191c71ee18836cf0287ee81d9e3c28ceb4a23a2921620aeb6fd",
       "runtime_digest_required": true
     },
     {
@@ -385,7 +413,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-puber-release-profile-generation=4977215b7d778dcc74dba69361e9cecb530b40a3c2e895653d42ba89216d364d",
+      "key": ".kent/scripts/workflow-puber-release-profile-generation=978e672377314a7a7ce0b56787e7e2219330c94c2c8d2605021700108b86649a",
       "runtime_digest_required": true
     },
     {
@@ -455,17 +483,17 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/subagents/release-manager.md=b494e6a2cd0c83512c182d71d3d0705f5547cf5faa0287fa3eac81584303a4ef",
+      "key": ".kent/subagents/release-manager.md=68e5891ffbf1ad3ccbbd436454b1ff5d9585ca7ba06fe67a597d1a107abb5402",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/workflow-profile.toml=88deae631f6b6ad61f7d3d88fbe23db8281a15c0457c7a6e5762427f329160ab",
+      "key": ".kent/workflow-profile.toml=64a601f5db384172413c3a71691763efe50fd7fbe29dc2a37c07c6ccfb73497f",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/workflows/README.md=1f389325c0f8f4dbcccead12a768436175770123c6a54dfab40746e08ca14fbc",
+      "key": ".kent/workflows/README.md=e93f3f55b7698ea5c9140d318482fbba6cc286751ea460b3da80421cc325d91e",
       "runtime_digest_required": true
     },
     {
@@ -475,7 +503,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/workflows/puber-release-current.json=1c18416645f7f38cc3ffda1919bbc569a176b0ff5229241ccd8a04e51be047fc",
+      "key": ".kent/workflows/puber-release-current.json=518c4e7dfe32cb3f57349d69cca4aa4c2badccefdf959cfe7d9f633eeb5af8ac",
       "runtime_digest_required": true
     },
     {
@@ -490,12 +518,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/workflows/puber-release.json=6d4db0b24aa85071ddb920a289c9932b590ed5ef4603688b3353d0b3e902940a",
-      "runtime_digest_required": true
-    },
-    {
-      "kind": "source-sha256",
-      "key": ".kent/workflows/specs/puber-release-current.toml=43d6b762feaa289d90d92454d488ed97ac71d69b1872cf141568ac7cf5cf81dc",
+      "key": ".kent/workflows/specs/puber-release-current.toml=8b226c0d18991e4e6ca396594a3364d6d5b56e9112752e9056d590fdf2d43447",
       "runtime_digest_required": true
     },
     {
@@ -510,7 +533,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": "docs/release.md=2bd83d5aff7b6741cb870add55d0bd69f46470e35c7cac2741740a4675eee6fd",
+      "key": "docs/release.md=5f2c63e031160fc95f83285e06e14bbd110640b2fe47fe356b37767cf75f4e87",
       "runtime_digest_required": true
     },
     {
@@ -521,6 +544,26 @@
     {
       "kind": "source-sha256",
       "key": "tools/configure-worktree-sdk=3612a08d678af2bc680c5290b651b47978afe393a774c24078c3a597f8ef7251",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": "tools/fixtures/mobile-resource-migration/legacy-emulator-resource-lock.sh=c16db4187a7a8dde19d9f8662346e099676efc16dc711b08d277b9eeac9f5279",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": "tools/fixtures/mobile-resource-migration/legacy-smoke-test.md=db55f3102f96f5b06308427849b768b5d3451c98d369521a11450967a09c636b",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": "tools/fixtures/mobile-resource-migration/resource-lease-cases.json=1dd3c52d228d01843104dea5fc93c8d03e1bdbd6ad0ebd1671ba37f0690664f1",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": "tools/fixtures/mobile-resource-migration/workflow-profile-resource-lease.toml=28c302d769b4408fe0e86647c76f4d511b801cf6d9685aa33c4db2db227d5c24",
       "runtime_digest_required": true
     },
     {
@@ -540,12 +583,17 @@
     },
     {
       "kind": "source-sha256",
-      "key": "tools/generate-baseline-profile.sh=7801253a5f0fad86e4e1949fe0e903175a87d88287080a13c88ba08ca87633b5",
+      "key": "tools/generate-baseline-profile.sh=e01169c8eaff3fadd8ae8954cb77048c0df79ec4f28fd487afba4494656e8c51",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": "tools/test-smoke-lease-procedure=d6c6144814936c9640217e2aa8e2bc0c638265053ea9d9739fe236eb9e86c3e6",
+      "key": "tools/test-puber-mobile-tools=40173431325cf2b980217e87b27eef4bf8a6618d83bcf98a0f5dd83f75df5b37",
+      "runtime_digest_required": true
+    },
+    {
+      "kind": "source-sha256",
+      "key": "tools/test-smoke-lease-procedure=308865ddd579b22c297be7ff113027cb2c31f010264e43a2c762522776d48be6",
       "runtime_digest_required": true
     },
     {

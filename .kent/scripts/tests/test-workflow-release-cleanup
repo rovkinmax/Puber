@@ -189,7 +189,7 @@ class Fixture:
             'source_workspace':{'is_primary':True,'workspace_id':'workspace-fixture','root_path':str(self.primary)},
             'status':{'node_ids':[self.node]},
             'summary':{'id':TASK,'short_id':'PUB-99','project_id':self.helper.PROJECT_ID,'workflow_id':self.helper.WORKFLOW_ID},
-            'workflow':{'workflow_id':self.helper.WORKFLOW_ID,'version':97,'name':'Puber Release'},'worktree_path':str(self.work)}
+            'workflow':{'workflow_id':self.helper.WORKFLOW_ID,'version':99,'name':'Puber Release'},'worktree_path':str(self.work)}
         self.task_path=base/'task.json';self.task_path.write_text(json.dumps(self.task))
         self.comments_path=base/'comments.json';self.comments_path.write_text('[]')
         self.world={'prs':[],'releases':[],'runs':[],'artifacts':[],'remote_tag':None,'visibility':True,'error':None,
@@ -307,7 +307,7 @@ emit({key:current,'total_count':len(rows)} if key else current,next_page=len(row
         detail['live_sessions']=[{'session_id':B,'session_name':'Waiting PR',
             'node_display_name':'Waiting PR'}]
         detail['status']={'node_ids':[source_node['id']]}
-        graph={'workflow_id':self.helper.WORKFLOW_ID,'expected_version':97,
+        graph={'workflow_id':self.helper.WORKFLOW_ID,'expected_version':99,
             'graph':{key:self.graph[key] for key in ('nodes','transition_groups','edges')}}
         source_step='07b2d24a-81c8-4b2c-9153-c049226b8939'
         source_env={**self.env,'KENT_SESSION_ID':B,'KENT_STEP_ID':source_step}

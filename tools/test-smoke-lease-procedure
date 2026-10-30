@@ -18,8 +18,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tools/fixtures/smoke-lease"
-SOURCE = ROOT / ".kent/commands/smoke-test.md"
-ADAPTER_SOURCE = ROOT / ".kent/adapters/mobile/emulator-resource-lock.sh"
+# These scenarios preserve the historical protocol, not current admission.
+SOURCE = ROOT / "tools/fixtures/mobile-resource-migration/legacy-smoke-test.md"
+ADAPTER_SOURCE = ROOT / "tools/fixtures/mobile-resource-migration/legacy-emulator-resource-lock.sh"
 CHECKPOINT_SOURCE = ROOT / ".kent/scripts/workflow-checkpoint"
 LEASE_STOP = "3. **Builds"
 NATIVE_ID = "task-00000000-0000-4000-8000-000000000083"

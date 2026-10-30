@@ -57,10 +57,10 @@ def context() -> dict[str, object]:
 
 
 def test_native_revision_matches_release_helper() -> None:
-    assert module.WORKFLOW_VERSION == module._helper.WORKFLOW_REVISION == 97
-    value = {**context(), "workflow_version": 97}
+    assert module.WORKFLOW_VERSION == module._helper.WORKFLOW_REVISION == 99
+    value = {**context(), "workflow_version": 99}
     module._canonical_context(value)
-    for revision in (95, 96, 98):
+    for revision in (95, 96, 97, 98, 100):
         try:
             module._canonical_context({**value, "workflow_version": revision})
         except module.ScriptLeaseError:

@@ -1,0 +1,606 @@
+#!/usr/bin/env python3
+"""Puber context/custody delegate; never implements resource locking or UI."""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import importlib.util
+import json
+import math
+import os
+import re
+import stat
+import subprocess
+import sys
+import time
+import uuid
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[3]
+CONFIG = ROOT / ".kent/runtime/puber-mobile.json"
+PROTOCOL = "puber-resource-lease-v1"
+LIMIT = 262144
+
+
+class Error(ValueError):
+    pass
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def digest(value):
+    return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def unique(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise Error("duplicate JSON field")
+        result[key] = value
+    return result
+
+
+def private(path, directory=False):
+    path = Path(path)
+    # Reject symlinks in the supplied spelling, including its ancestors.
+    if not path.is_absolute() or path != path.resolve():
+        raise Error("private path must be canonical")
+    info = path.lstat()
+    if (info.st_uid != os.getuid() or info.st_mode & 0o077
+            or not (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))
+            or (not directory and info.st_nlink != 1)):
+        raise Error("owner-private storage required")
+    return path
+
+
+def read(path):
+    path = private(path)
+    with path.open("rb") as stream:
+        raw = stream.read(LIMIT + 1)
+    if len(raw) > LIMIT:
+        raise Error("record exceeds limit")
+    value = json.loads(raw, object_pairs_hook=unique)
+    if not isinstance(value, dict):
+        raise Error("object required")
+    return value
+
+
+def write(path, value):
+    path = Path(path)
+    private(path.parent, directory=True)
+    if path.exists() or path.is_symlink():
+        private(path)
+    raw = (canonical(value) + "\n").encode()
+    if len(raw) > LIMIT:
+        raise Error("record exceeds limit")
+    temporary = path.with_name("." + uuid.uuid4().hex)
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def executable(value):
+    if not isinstance(value, str):
+        raise Error("executable path required")
+    path = Path(value)
+    info = path.lstat()
+    if (not path.is_absolute() or path != path.resolve()
+            or not stat.S_ISREG(info.st_mode) or info.st_mode & 0o022
+            or info.st_uid != os.getuid() or not os.access(path, os.X_OK)):
+        raise Error("unsafe executable")
+    return str(path)
+
+
+def configuration():
+    value = read(CONFIG)
+    if (set(value) != {"schema", "workspace_root", "client", "client_config", "facade", "facade_config"}
+            or value["schema"] != 1 or type(value["schema"]) is not int
+            or value["workspace_root"] != str(ROOT)):
+        raise Error("explicit per-workspace Puber configuration required")
+    executable(value["client"])
+    executable(value["facade"])
+    client = read(value["client_config"])
+    if (set(client) != {"schema", "executable", "pool", "runs_directory", "profiles"}
+            or type(client["schema"]) is not int or client["schema"] != 1
+            or client["profiles"] != {
+                "smoke.persistent": "puber-tv-smoke-persistent",
+                "release.clean": "puber-tv-release-clean"}):
+        raise Error("Puber resource profiles are not exact")
+    executable(client["executable"])
+    for name in ("pool", "runs_directory"):
+        private(client[name], directory=True)
+    facade = read(value["facade_config"])
+    if facade.get("source_root") != str(ROOT) or facade.get("lease") != client:
+        raise Error("facade and resource configuration differ")
+    # Bind every selected configuration byte semantically, including policy.
+    return value, client, digest({"selection": value, "client": client, "facade": facade})
+
+
+def capture(command, *, env=None, timeout=20):
+    completed = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, timeout=timeout)
+    if len(completed.stdout) + len(completed.stderr) > LIMIT:
+        raise Error("tool output exceeds limit")
+    if completed.returncode:
+        raise Error("delegate refused operation; preserve private recovery records")
+    value = json.loads(completed.stdout, object_pairs_hook=unique)
+    if not isinstance(value, dict):
+        raise Error("delegate returned no object")
+    return value
+
+
+def native_module():
+    path = ROOT / ".kent/adapters/mobile/puber-script-resource-lock"
+    spec = importlib.util.spec_from_loader("puber_native_context", SourceFileLoader("puber_native_context", str(path)))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def release_attempt(context):
+    # Reuse only the qualified native context admission, not legacy locking.
+    admitted, context_sha, _pid = fresh_release_context(context)
+    selected, client, config_sha = configuration()
+    attempt = uuid.uuid4().hex
+    return {
+        "protocol": PROTOCOL, "profile": "release.clean",
+        "config_sha256": config_sha, "context_sha256": context_sha,
+        "attempt": attempt,
+        "owner": f"puber-release:{admitted['task_id']}:{attempt}:{context_sha}",
+        "run_directory": "", "resource": None, "cleanup_proof": None,
+    }
+
+
+def verify_attempt(binding, context):
+    admitted, context_sha, _pid = fresh_release_context(context)
+    selected, client, config_sha = configuration()
+    if (binding["protocol"] != PROTOCOL or binding["profile"] != "release.clean"
+            or binding["context_sha256"] != context_sha or binding["config_sha256"] != config_sha
+            or binding["owner"] != f"puber-release:{admitted['task_id']}:{binding['attempt']}:{context_sha}"):
+        raise Error("command attempt identity/configuration drift")
+    return selected, client
+
+
+def fresh_release_context(context):
+    native = native_module()
+    value, context_sha = native._canonical_context(context)
+    helper = native._helper
+    if (value["node_id"] != helper._node_id(ROOT, "profile_generation")
+            or helper.git(ROOT, "rev-parse", "HEAD") != value["controller_commit"]):
+        raise Error("native Script source drift")
+    task = helper.task_show(ROOT, value["task_id"])
+
+    def admit_outputs(_state):
+        checkpoint = helper.read_profile_checkpoint(ROOT, value["task_short_id"], expected=value)
+        if checkpoint["schema"] != "puber_release_profile_checkpoint_v3":
+            raise Error("legacy profile recovery requires separate disposition")
+        # Only this exact candidate's unstaged generated outputs are admitted.
+        if (checkpoint["candidate_oid"] != value["candidate_oid"]
+                or checkpoint["resource_lease"]["context_sha256"] != context_sha
+                or checkpoint["state"] not in {"acquiring", "generating", "cleanup", "failed", "completed"}):
+            raise Error("profile recovery context drift")
+        status = helper.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all", "-z"],
+            cwd=ROOT, check=True,
+        ).stdout
+        for entry in filter(None, status.split("\0")):
+            if entry[:3] not in {" M ", " D ", " T "} or entry[3:] not in native.PROFILE_OUTPUT_PATHS:
+                raise Error("non-profile source changed")
+
+    validated = helper.validate_task(
+        ROOT, value["task_id"], "profile_generation", task=task,
+        allowed_checkout_head=value["controller_commit"],
+        profile_recovery_admission=admit_outputs,
+    )
+    if (validated["task_short_id"] != value["task_short_id"]
+            or validated["node_id"] != value["node_id"]
+            or validated["commit"] != value["execution_base_oid"]
+            or validated["controller_commit"] != value["controller_commit"]
+            or task.get("worktree_path") != str(ROOT)):
+        raise Error("fresh native Script context differs from parent binding")
+    return value, context_sha, os.getpid()
+
+
+def worker_record(path):
+    path = Path(path)
+    if path.parent != ROOT / ".kent/runtime/profile-workers":
+        raise Error("worker input is outside project-owned private storage")
+    value = read(path)
+    if (set(value) != {"schema", "context", "binding", "before_hashes", "native_binding"}
+            or value["schema"] != "puber-profile-worker-v1"
+            or path.name != value["binding"]["attempt"] + ".json"):
+        raise Error("worker input is not closed")
+    if value["native_binding"] != {
+        "task_id": value["context"]["task_id"], "node_id": value["context"]["node_id"],
+    }:
+        raise Error("worker native binding differs from the parent's admitted context")
+    helper = native_module()._helper
+    helper._bind_qualified_runtime(ROOT, value["native_binding"])
+    kit = helper._kit_modules()
+    with kit["source_read_budget"]() as budget:
+        revision = kit["preflight_project_revision"](
+            ROOT, value["context"]["controller_commit"], budget=budget
+        )
+        selected = revision.selected_runtime_source_inputs
+        if (selected is None
+                or selected.project_commit != value["context"]["controller_commit"]):
+            raise Error("selected worker source closure is missing or stale")
+        helper._external_captures(ROOT, None, selected, budget=budget)
+    verify_attempt(value["binding"], value["context"])
+    return value
+
+
+def verify_generator(path):
+    value = worker_record(path)
+    native = native_module()
+    checkpoint = native._helper.read_profile_checkpoint(
+        ROOT, value["context"]["task_short_id"], expected=value["context"],
+    )
+    if (checkpoint["schema"] != "puber_release_profile_checkpoint_v3"
+            or checkpoint["state"] != "generating"):
+        raise Error("generator has no acquired checkpoint")
+    binding = checkpoint["resource_lease"]
+    if any(binding[k] != value["binding"][k] for k in (
+        "protocol", "profile", "config_sha256", "context_sha256", "attempt", "owner",
+    )):
+        raise Error("generator attempt differs from dispatched worker")
+    environment = command_environment(binding, value["context"])
+    if any(os.environ.get(key) != item for key, item in environment.items()):
+        raise Error("generator command environment is not lease-bound")
+    return environment
+
+
+def run_release(binding, context, worker, *, env):
+    selected, _client = verify_attempt(binding, context)
+    record = worker_record(worker)
+    if record["binding"] != binding or record["context"] != context:
+        raise Error("worker dispatch input differs from persisted attempt")
+    # No run --run-dir extension, automatic acquisition retry or Session check.
+    command = [selected["client"], "run", "--config", selected["client_config"],
+               "--profile", "release.clean", "--owner", binding["owner"],
+               "--env", "ANDROID_SERIAL=adb_serial", "--", sys.executable,
+               str(ROOT / ".kent/scripts/workflow-puber-release-profile-generation"),
+               "--resource-lease-worker", str(worker)]
+    child = subprocess.Popen(command, cwd=ROOT, env=env, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+    try:
+        return child.wait(timeout=7500)
+    except BaseException:
+        child.terminate()
+        try:
+            child.wait(timeout=150)
+        except subprocess.TimeoutExpired:
+            # Preserve evidence. Do not claim that timed-out descendants drained.
+            raise Error("command stop uncertain; reconcile original run")
+        raise
+
+
+def run_records(binding, client):
+    root = private(client["runs_directory"], directory=True)
+    paths = list(root.iterdir())
+    if len(paths) > 257:
+        raise Error("run inventory exceeds limit")
+    matches = []
+    for run in paths:
+        if run.name == "admission.lock":
+            continue
+        private(run, directory=True)
+        metadata = read(run / "binding.json")
+        if metadata.get("owner") != binding["owner"]:
+            continue
+        if (set(metadata) != {"schema", "config", "profile", "capability", "owner", "binding"}
+                or type(metadata["schema"]) is not int or metadata["schema"] != 1
+                or metadata["binding"] is not None or metadata["config"] != client
+                or metadata["profile"] != binding["profile"]
+                or metadata["capability"] != client["profiles"][binding["profile"]]):
+            raise Error("command run binding conflicts")
+        matches.append(run)
+    if len(matches) != 1:
+        raise Error("command acquisition missing or ambiguous; no automatic replay")
+    if binding["run_directory"] and str(matches[0]) != binding["run_directory"]:
+        raise Error("command run directory drift")
+    return matches[0]
+
+
+def public_resource(value):
+    result = {key: value.get(key) for key in ("id", "generation", "slot")}
+    if (any(not isinstance(result[k], str) or not result[k] or len(result[k]) > 256
+            for k in ("id", "slot")) or type(result["generation"]) is not int
+            or result["generation"] < 1):
+        raise Error("public resource identity invalid")
+    return result
+
+
+def inspect_command(binding, context, *, terminal=False):
+    selected, client = verify_attempt(binding, context)
+    run = run_records(binding, client)
+    state = read(run / "status.json")
+    if state.get("run_directory") != str(run):
+        raise Error("run status directory drift")
+    for name in ("command-stop-uncertain.json",):
+        if (run / name).exists() or (run / name).is_symlink():
+            raise Error("command stop uncertain")
+    prior = state.get("lease") or {}
+    resource = public_resource(prior)
+    if binding["resource"] is not None and resource != binding["resource"]:
+        raise Error("resource identity drift")
+    if terminal:
+        if (state.get("phase") != "finished" or state.get("command_stop") != "confirmed"
+                or prior.get("state") not in {"completed", "cancelled", "expired"}
+                or prior.get("cleanup_pending") is not False or prior.get("quarantined") is not False):
+            raise Error("terminal command cleanup not confirmed")
+        # The client has reaped its command and completed authoritative cleanup.
+        fd = os.open(run / "helper.lock", os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            private(run / "helper.lock")
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise Error("command helper still running") from error
+        finally:
+            os.close(fd)
+        return str(run), resource, {
+            "phase": "finished", "command_stop": "confirmed",
+            "state": prior["state"], "cleanup_pending": False, "quarantined": False,
+            "resource": resource,
+        }
+    if (state.get("phase") != "active" or type(state.get("updated_at")) not in (float, int)
+            or not math.isfinite(state["updated_at"])
+            or not 0 <= time.monotonic() - state["updated_at"] <= 30
+            or any((run / name).exists() for name in ("finish.json", "stop-renewal.json"))):
+        raise Error("command is not observably active")
+    private(run / "receipt.json")
+    private(run / "helper.lock")
+    fd = os.open(run / "helper.lock", os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            pass
+        else:
+            raise Error("command renewal helper is not running")
+    finally:
+        os.close(fd)
+    current = capture([client["executable"], "--root", client["pool"], "inspect",
+                       "--owner", binding["owner"], "--lease", str(run / "receipt.json")])
+    serial = current.get("endpoint", {}).get("adb_serial")
+    if (current.get("state") != "active" or current.get("quarantined") is not False
+            or current.get("service_available") is not True
+            or current.get("owner") != binding["owner"]
+            or current.get("capability") != client["profiles"]["release.clean"]
+            or public_resource(current) != resource or current.get("expires_in", 0) <= 0
+            or not isinstance(serial, str) or not re.fullmatch(r"emulator-[A-Za-z0-9._=-]+", serial)
+            or prior.get("endpoint", {}).get("adb_serial") != serial):
+        raise Error("command lease lost or endpoint changed")
+    return str(run), resource, serial
+
+
+def command_environment(binding, context):
+    run, _resource, serial = inspect_command(binding, context)
+    if os.environ.get("ANDROID_SERIAL") not in (None, "", serial):
+        raise Error("conflicting inherited ANDROID_SERIAL")
+    return {"ANDROID_SERIAL": serial, "RESOURCE_LEASE_RUN_DIRECTORY": run}
+
+
+def smoke_binding(project, task, session):
+    if (project != "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
+            or not re.fullmatch(r"task-[0-9a-f-]{36}", task)
+            or "task-" + str(uuid.UUID(task[5:])) != task
+            or str(uuid.UUID(session)) != session):
+        raise Error("genuine Puber native identity required")
+    return {"project": project, "task": task, "session": session}
+
+
+def verify_smoke_identity(identity):
+    # The supplied values are comparison inputs, never native identity proof.
+    task = capture(["kent", "task", "show", identity["task"],
+                    "--project", identity["project"], "--json"])
+    short = task.get("summary", {}).get("short_id")
+    if not isinstance(short, str) or not re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", short):
+        raise Error("native Task short identity unavailable")
+    current = capture([sys.executable, str(ROOT / ".kent/scripts/workflow-evidence-ledger"),
+                       "identity", "--task", short, "--workspace", str(ROOT)])
+    if current != {"project_id": identity["project"], "task_id": identity["task"],
+                   "session_id": identity["session"], "task_short_id": short,
+                   "workspace_path": str(ROOT)}:
+        raise Error("native Smoke invocation identity drift")
+
+
+SMOKE_RECOVERY_REASONS = frozenset({
+    "helper-stopped", "status-unknown", "helper-error", "renewal-stopped",
+    "stop-uncertain", "check-failed", "cleanup-unconfirmed",
+    "lease-expired", "lease-cancelled",
+})
+
+
+def _finish_smoke_locked(path, record, selected, run):
+    recovery_path = path.with_name(path.name + ".cleanup.json")
+    binding = {"schema": 1, "run_directory": str(run),
+               "config_sha256": record["config_sha256"], "binding": record["binding"]}
+    exists = recovery_path.exists() or recovery_path.is_symlink()
+    recovery = read(recovery_path) if exists else {**binding, "reasons": [], "pending": False}
+    if (set(recovery) != {*binding, "reasons", "pending"}
+            or any(recovery.get(key) != value for key, value in binding.items())
+            or type(recovery["schema"]) is not int
+            or type(recovery["pending"]) is not bool
+            or not isinstance(recovery["reasons"], list)
+            or any(not isinstance(reason, str) or reason not in SMOKE_RECOVERY_REASONS
+                   for reason in recovery["reasons"])
+            or len(recovery["reasons"]) != len(set(recovery["reasons"]))):
+        raise Error("foreign or invalid Smoke cleanup recovery record")
+    reasons = set(recovery["reasons"])
+    if recovery["pending"]:
+        reasons.add("cleanup-unconfirmed")
+
+    def persist():
+        recovery["reasons"] = sorted(reasons)
+        write(recovery_path, recovery)
+
+    try:
+        status = read(run / "status.json")
+    except (OSError, ValueError):
+        status = {}
+    phase = status.get("phase")
+    if not isinstance(phase, str):
+        phase = "unknown"
+    if phase in {"stopped", "failed"}:
+        reasons.add("helper-stopped")
+    elif phase not in {"active", "finished"} or (phase == "finished" and not exists):
+        reasons.add("status-unknown")
+    if status.get("error"):
+        reasons.add("helper-error")
+    for name, reason in (("stop-renewal.json", "renewal-stopped"),
+                         ("command-stop-uncertain.json", "stop-uncertain")):
+        marker = run / name
+        if marker.exists() or marker.is_symlink():
+            reasons.add(reason)
+    if phase == "active":
+        try:
+            observed = capture([selected["client"], "check", "--run-dir", str(run)])
+            if observed.get("run_directory") != str(run):
+                raise Error("Smoke observation run drift")
+        except (OSError, ValueError, subprocess.SubprocessError):
+            reasons.add("check-failed")
+    recovery["pending"] = True
+    persist()  # Write-ahead before the shared finish replaces status.
+    try:
+        result = capture([selected["client"], "finish", "--run-dir", str(run)], timeout=150)
+        lease = result.get("lease")
+        if (result.get("run_directory") != str(run) or result.get("phase") != "finished"
+                or not isinstance(lease, dict) or lease.get("cleanup_pending") is not False
+                or lease.get("quarantined") is not False
+                or not isinstance(lease.get("state"), str)
+                or lease.get("state") not in {"completed", "cancelled", "expired"}):
+            raise Error("Smoke cleanup unconfirmed")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        reasons.add("cleanup-unconfirmed")
+        persist()
+        raise
+    if lease["state"] in {"expired", "cancelled"}:
+        reasons.add("lease-" + lease["state"])
+    recovery["pending"] = False
+    persist()  # Late lease loss and persistence failure cannot become success.
+    return {"protocol": PROTOCOL, "run_directory": str(run), "cleanup_confirmed": True,
+            "smoke_blocked": bool(reasons), "recovery_reasons": sorted(reasons)}
+
+
+def smoke(action, record_path, identity):
+    path = Path(record_path)
+    private(path.parent, directory=True)
+    if not path.is_absolute() or path != path.resolve():
+        raise Error("Smoke checkpoint path must be canonical")
+    lock_path = path.with_name(path.name + ".lock")
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+            raise Error("unsafe Smoke checkpoint lock")
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise Error("Smoke checkpoint operation busy; retain the exact record") from error
+        observed = lock_path.lstat()
+        if ((observed.st_dev, observed.st_ino) != (info.st_dev, info.st_ino)
+                or not stat.S_ISREG(observed.st_mode)):
+            raise Error("Smoke checkpoint lock path changed")
+        return _smoke_locked(action, path, identity)
+    finally:
+        # Never unlink/replace this inode: another caller may already hold it.
+        os.close(fd)
+
+
+def _smoke_locked(action, record_path, identity):
+    verify_smoke_identity(identity)
+    selected, client, config_sha = configuration()
+    path = Path(record_path)
+    private(path.parent, directory=True)
+    if path.exists() or path.is_symlink():
+        record = read(path)
+        if (set(record) != {"protocol", "profile", "config_sha256", "binding", "run_directory"}
+                or record["protocol"] != PROTOCOL or record["profile"] != "smoke.persistent"
+                or record["binding"] != identity or record["config_sha256"] != config_sha):
+            raise Error("legacy or foreign Smoke checkpoint; no implicit transfer")
+    elif action == "start":
+        record = {"protocol": PROTOCOL, "profile": "smoke.persistent",
+                  "config_sha256": config_sha, "binding": identity,
+                  "run_directory": str(Path(client["runs_directory"]) / uuid.uuid4().hex)}
+        write(path, record)  # Before acquisition; never replace an ambiguous attempt.
+    else:
+        raise Error("Smoke checkpoint missing")
+    run = Path(record["run_directory"])
+    if run.parent != Path(client["runs_directory"]) or run != run.resolve():
+        raise Error("Smoke run outside selected workspace configuration")
+    command = [selected["client"], action, "--run-dir", str(run)]
+    if action == "start":
+        command += ["--config", selected["client_config"], "--profile", "smoke.persistent"]
+        for key, value in identity.items():
+            command += ["--" + key, value]
+    if action == "finish" and not (run / "binding.json").exists():
+        raise Error("Smoke cleanup requires the exact retained native binding")
+    if (run / "binding.json").exists():
+        metadata = read(run / "binding.json")
+        if (metadata.get("binding") != identity or metadata.get("config") != client
+                or metadata.get("profile") != "smoke.persistent"
+                or metadata.get("owner") != f"smoke:{identity['task']}:{identity['session']}"):
+            raise Error("Smoke native binding drift")
+    if action == "finish":
+        return _finish_smoke_locked(path, record, selected, run)
+    result = capture(command, timeout=330 if action == "start" else 150)
+    if result.get("run_directory") != str(run):
+        raise Error("Smoke delegate run drift")
+    lease = result.get("lease") or {}
+    metadata = read(run / "binding.json")
+    if (metadata.get("binding") != identity or metadata.get("config") != client
+            or metadata.get("profile") != "smoke.persistent"):
+        raise Error("Smoke acquisition binding drift")
+    serial = lease.get("endpoint", {}).get("adb_serial")
+    if not isinstance(serial, str) or not re.fullmatch(r"emulator-[A-Za-z0-9._=-]+", serial):
+        raise Error("Smoke endpoint invalid")
+    return {"protocol": PROTOCOL, "profile": "smoke.persistent", "binding": identity,
+            "run_directory": str(run), "resource": public_resource(lease),
+            "environment": {"ANDROID_SERIAL": serial, "RESOURCE_LEASE_RUN_DIRECTORY": str(run)}}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("start", "check", "finish", "verify-generator"))
+    parser.add_argument("--worker")
+    for key in ("record", "project", "task", "session"):
+        parser.add_argument("--" + key)
+    args = parser.parse_args()
+    try:
+        if args.action == "verify-generator":
+            if not args.worker or any((args.record, args.project, args.task, args.session)):
+                raise Error("generator verification requires only its private worker input")
+            verify_generator(args.worker)
+            return 0
+        if not all((args.record, args.project, args.task, args.session)) or args.worker:
+            raise Error("Smoke requires its exact native binding")
+        result = smoke(args.action, args.record, smoke_binding(args.project, args.task, args.session))
+        print(canonical(result))
+        return 0
+    except (Error, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        print("Puber resource lease refused; preserve checkpoint and private recovery records", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

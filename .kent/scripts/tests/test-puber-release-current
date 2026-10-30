@@ -10,6 +10,8 @@ import subprocess
 import sys
 import tomllib
 import uuid
+import shutil
+import tempfile
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from unittest.mock import patch
@@ -88,8 +90,8 @@ with patch.dict(
 ):
     builder["write_graph_and_manifest"]()
 assert write_targets == [builder["GRAPH"], builder["MANIFEST"]]
-assert graph["workflow"]["version"] == 97
-assert graph["workflow"]["source_revision"] == 92
+assert graph["workflow"]["version"] == 99
+assert graph["workflow"]["source_revision"] == 93
 assert len(graph["nodes"]) == 18
 assert len(graph["transition_groups"]) == 53
 assert len(graph["edges"]) == 53
@@ -128,6 +130,76 @@ assert captured_bytes == sum(
     (ROOT / path).stat().st_size for path in set(physical_capture_paths)
 )
 print(f"Complete selected closure: {len(physical_capture_paths)} roots, {captured_bytes} logical bytes")
+
+# Verify the complete selected closure on an immutable disposable revision.
+# Preflight and capture verification share one operation-wide budget, and the
+# proof remains the Kit-owned opaque VerifiedSourceCaptures value.
+kit_root = Path(profile["kit_runtime"]["root"])
+assert subprocess.check_output(
+    ["git", "-C", str(kit_root), "rev-parse", "HEAD"], text=True
+).strip() == profile["kit_runtime"]["commit"]
+sys.path.insert(0, str(kit_root))
+from workflowkit import (
+    VerifiedSourceCaptures,
+    preflight_project_revision,
+    source_read_budget,
+    verify_runtime_source_captures,
+)
+
+with tempfile.TemporaryDirectory(prefix="puber-current-captures-") as temporary:
+    fixture = Path(temporary).resolve() / "project"
+    fixture.mkdir()
+    fixture_paths = (
+        set(physical_capture_paths)
+        | set(expected_manifest["additional_paths"])
+        | builder["_derived_paths"]()
+        | {
+            ".kent/workflows/puber-release-current.manifest.json",
+            "app/build.gradle.kts",
+        }
+    )
+    for relative in sorted(fixture_paths):
+        target = fixture / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, target, follow_symlinks=False)
+
+    def fixture_git(*arguments):
+        return subprocess.check_output(
+            ["git", "-c", "core.hooksPath=/dev/null", "-C", str(fixture), *arguments],
+            text=True,
+            stderr=subprocess.PIPE,
+        ).strip()
+
+    fixture_git("init", "--quiet")
+    fixture_git("add", "-f", ".")
+    fixture_git(
+        "-c", "user.name=Puber Fixture",
+        "-c", "user.email=fixture@example.invalid",
+        "-c", "commit.gpgsign=false",
+        "commit", "--quiet", "-m", "immutable source capture fixture",
+    )
+    revision = fixture_git("rev-parse", "HEAD")
+    with source_read_budget() as budget:
+        selected = preflight_project_revision(
+            fixture, revision, budget=budget
+        ).selected_runtime_source_inputs
+        assert selected is not None and selected.project_commit == revision
+        verified = verify_runtime_source_captures(
+            fixture, selected, budget=budget
+        )
+    assert isinstance(verified, VerifiedSourceCaptures)
+    assert verified.project_commit == revision
+    assert len(verified.observations) == len(physical_capture_paths)
+    assert sum(item.byte_count for item in verified.observations) == captured_bytes
+    assert not any(
+        item.path == builder["V90_AUDIT_SNAPSHOT"]
+        for item in verified.observations
+    )
+    print(
+        "puber-release-current: immutable pinned verifier captured "
+        f"{len(verified.observations)} roots / {captured_bytes} bytes"
+    )
+
 assert not any(
     "delivery-script-ingress-ref-v1" in str(group.get("description", ""))
     for group in graph["transition_groups"]
@@ -268,8 +340,8 @@ intent = importlib.util.module_from_spec(intent_spec)
 assert intent_spec and intent_spec.loader
 intent_spec.loader.exec_module(intent)
 
-assert intent.WORKFLOW_REVISION == 97
-assert intent.SOURCE_REVISION == 92
+assert intent.WORKFLOW_REVISION == 99
+assert intent.SOURCE_REVISION == 93
 assert intent.GRAPH_PATH == ".kent/workflows/puber-release-current.json"
 assert intent.normalize_transport_nulls(
     {"ci_contract": None, "ci_report": None, "pr_feedback_cursor": "uninitialized"},

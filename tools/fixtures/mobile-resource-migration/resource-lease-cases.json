@@ -1,0 +1,76 @@
+{
+  "schema": "puber-mobile-migration-cases-v1",
+  "baseline": "cee88699d44f4c8a7d4687f63323ab028a2a049e",
+  "historical_sha256": {
+    "legacy-smoke-test.md": "db55f3102f96f5b06308427849b768b5d3451c98d369521a11450967a09c636b",
+    "legacy-emulator-resource-lock.sh": "c16db4187a7a8dde19d9f8662346e099676efc16dc711b08d277b9eeac9f5279"
+  },
+  "checkpoint_examples": [
+    {
+      "schema": "puber_release_profile_checkpoint_v2",
+      "task_id": "task-12345678-1234-4234-8234-123456789abc",
+      "task_short_id": "PUB-99",
+      "operation_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "release_branch": "release/99.0.0",
+      "release_base_oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "candidate_oid": "cccccccccccccccccccccccccccccccccccccccc",
+      "release_head_oid": "",
+      "candidate_serials": ["emulator-5570"],
+      "state": "acquiring",
+      "resource_serial": "",
+      "profile_report": "",
+      "profile_report_digest": "",
+      "release_preparation_report": "",
+      "release_preparation_report_digest": "",
+      "output_hashes": {
+        "app/src/main/generated/baselineProfiles/baseline-prof.txt": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app/src/main/generated/baselineProfiles/startup-prof.txt": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    },
+    {
+      "schema": "puber_release_profile_checkpoint_v3",
+      "task_id": "task-12345678-1234-4234-8234-123456789abc",
+      "task_short_id": "PUB-99",
+      "operation_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "release_branch": "release/99.0.0",
+      "release_base_oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "candidate_oid": "cccccccccccccccccccccccccccccccccccccccc",
+      "release_head_oid": "",
+      "state": "acquiring",
+      "resource_serial": "",
+      "profile_report": "",
+      "profile_report_digest": "",
+      "release_preparation_report": "",
+      "release_preparation_report_digest": "",
+      "resource_lease": {
+        "protocol": "puber-resource-lease-v1",
+        "profile": "release.clean",
+        "config_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "context_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "attempt": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "owner": "puber-release:task-12345678-1234-4234-8234-123456789abc:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "run_directory": "",
+        "resource": null,
+        "cleanup_proof": null
+      },
+      "output_hashes": {
+        "app/src/main/generated/baselineProfiles/baseline-prof.txt": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app/src/main/generated/baselineProfiles/startup-prof.txt": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    }
+  ],
+  "cases": [
+    "pre-dispatch-persistence",
+    "configuration-context-drift",
+    "no-fake-serial",
+    "worker-acknowledgement",
+    "endpoint-propagation",
+    "foreign-session",
+    "command-binding-null",
+    "ambiguous-acquisition-no-replay",
+    "cleanup-failure-no-pass",
+    "uncertain-command-stop",
+    "partial-output-preservation",
+    "public-internal-legacy-retirement"
+  ]
+}

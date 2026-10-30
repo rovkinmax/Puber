@@ -7,13 +7,12 @@ platforms = ["android-tv"]
 required_adapters = [
   "android_apk_install",
   "mcp_policy",
-  "mobile_resource_lock",
-  "mobile_script_resource_lock",
+  "puber_resource_lease",
+  "android_tools",
   "mobile_evidence_audit",
 ]
 kit_managed_adapters = [
   "android_apk_install",
-  "mobile_resource_lock",
   "mobile_evidence_audit",
 ]
 source_control = "github"
@@ -152,8 +151,8 @@ implement = ".kent/commands/test-coverage.md"
 [adapters]
 android_apk_install = ".kent/adapters/mobile/android-apk-install-preserve"
 mcp_policy = ".kent/adapters/mcp/policy"
-mobile_resource_lock = ".kent/adapters/mobile/emulator-resource-lock.sh"
-mobile_script_resource_lock = ".kent/adapters/mobile/puber-script-resource-lock"
+puber_resource_lease = ".kent/adapters/mobile/puber-resource-lease"
+android_tools = ".kent/adapters/android/android-tools"
 mobile_evidence_audit = ".kent/adapters/mobile/mobile-evidence-audit.sh"
 
 [roles]

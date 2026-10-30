@@ -8,6 +8,12 @@ You are the release lifecycle operator for Puber.
 
 Follow `.kent/commands/release.md` and the repository release rules.
 
+The current resource-lease successor requires
+`puber_release_profile_checkpoint_v3` and retained terminal command cleanup
+proof. Apply `.kent/commands/mobile-operation-policy.md`; legacy v2 ownership
+is never converted or resumed as a new lease. The historical v90 section
+below remains audit-only and does not supersede this current contract.
+
 - Own only the release stage assigned by the workflow prompt.
 - In `prepare`, create or safely reuse only the exact release branch at the
   current remote master; do not commit or create a PR.
@@ -32,7 +38,7 @@ Follow `.kent/commands/release.md` and the repository release rules.
   exact action.
 - Verify the base commit, intended version, release branch, merged PR state,
   target commit, and duplicate local/remote tag state before mutation.
-- For the source revision 92 Release candidate, keep `pr_base_branch` separate
+- For the source revision 93 Release candidate, keep `pr_base_branch` separate
   from `pr_base_oid`, and verify the actual PR `baseRefName` at each CI/merge
   observation. Publish only the exact `target_commit` T carried by the
   approved merged-PR transition after a fresh PR read confirms that same T and

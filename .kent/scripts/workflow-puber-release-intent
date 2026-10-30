@@ -16,8 +16,8 @@ PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 WORKFLOW_NAME = "Puber Release"
 # Private proposal cohort only; no current Task or live runtime is repinned.
-WORKFLOW_REVISION = 97
-SOURCE_REVISION = 92
+WORKFLOW_REVISION = 99
+SOURCE_REVISION = 93
 REPOSITORY = "rovkinmax/Puber"
 GRAPH_PATH = ".kent/workflows/puber-release-current.json"
 SCRIPT_PATHS = {
@@ -135,6 +135,53 @@ PROFILE_CHECKPOINT_KEYS = {
     "profile_report_digest", "release_preparation_report",
     "release_preparation_report_digest", "output_hashes",
 }
+PROFILE_CHECKPOINT_V3_KEYS = (PROFILE_CHECKPOINT_KEYS - {"candidate_serials"}) | {"resource_lease"}
+
+
+def validate_resource_lease_checkpoint(binding, state, serial):
+    keys = {"protocol", "profile", "config_sha256", "context_sha256", "attempt",
+            "owner", "run_directory", "resource", "cleanup_proof"}
+    if (not isinstance(binding, dict) or set(binding) != keys
+            or binding["protocol"] != "puber-resource-lease-v1"
+            or binding["profile"] != "release.clean"
+            or any(not isinstance(binding[k], str) or not HEX64.fullmatch(binding[k])
+                   for k in ("config_sha256", "context_sha256"))
+            or not isinstance(binding["attempt"], str)
+            or not re.fullmatch(r"[0-9a-f]{32}", binding["attempt"])
+            or not isinstance(binding["owner"], str)
+            or not re.fullmatch(r"puber-release:task-[0-9a-f-]{36}:[0-9a-f]{32}:[0-9a-f]{64}", binding["owner"])
+            or not binding["owner"].endswith(":" + binding["attempt"] + ":" + binding["context_sha256"])
+            or not isinstance(binding["run_directory"], str)):
+        raise ContractError("resource-lease checkpoint binding is not closed")
+    if binding["run_directory"]:
+        path = Path(binding["run_directory"])
+        if (not path.is_absolute() or ".." in path.parts
+                or str(path) != binding["run_directory"]):
+            raise ContractError("resource-lease run directory is not exact")
+    resource = binding["resource"]
+    if resource is not None and (
+        not isinstance(resource, dict) or set(resource) != {"id", "generation", "slot"}
+        or any(not isinstance(resource[k], str) or not resource[k] or len(resource[k]) > 256
+               for k in ("id", "slot"))
+        or type(resource["generation"]) is not int or resource["generation"] < 1
+    ):
+        raise ContractError("resource-lease public identity is invalid")
+    if state == "acquiring" and (serial or resource is not None or binding["run_directory"]):
+        raise ContractError("pre-acquisition checkpoint invents an endpoint")
+    if state in {"generating", "cleanup", "completed"} and (not serial or resource is None or not binding["run_directory"]):
+        raise ContractError("acquired checkpoint lacks public ownership")
+    proof = binding["cleanup_proof"]
+    if proof is not None and (
+        not isinstance(proof, dict) or set(proof) != {
+            "phase", "command_stop", "state", "cleanup_pending", "quarantined", "resource"}
+        or proof["phase"] != "finished" or proof["command_stop"] != "confirmed"
+        or proof["state"] not in {"completed", "cancelled", "expired"}
+        or proof["cleanup_pending"] is not False or proof["quarantined"] is not False
+        or proof["resource"] != resource or resource is None
+    ):
+        raise ContractError("terminal resource cleanup proof is invalid")
+    if state == "completed" and proof is None:
+        raise ContractError("completed resource-lease checkpoint lacks terminal cleanup proof")
 PUBLICATION_KEYS = {"schema", "operation_digest", "previous_operation_digest", "pr_url", "release_version", "release_tag", "target_commit", "release_head_oid", "release_preparation_report_digest", "notes_report", "notes_digest", "tag_phase", "tag_status", "unresolved"}
 RELEASE_KEYS = {"schema", "observation_operation_digest", "observation_provenance_fingerprint", "run", "jobs", "release", "assets", "checksum", "notes_digest", "publication_report_digest", "unresolved"}
 CLEANUP_KEYS = {"schema", "operation_digest", "cleanup_session_id", "cleanup_mode", "session_identity", "publication_report", "publication_report_digest", "release_report", "release_report_digest", "release_notes_path", "release_notes_digest", "unresolved", "destructive_action", "blocker_reason"}
@@ -2153,7 +2200,19 @@ def write_profile_checkpoint(root: Path, task_short_id: str, value: Mapping[str,
         previous = None
         try:
             old_raw, previous = _read_checkpoint_descriptor(directory)
-            validate_profile_checkpoint(_json_one(old_raw), expected={"task_short_id": task_short_id})
+            old = validate_profile_checkpoint(_json_one(old_raw), expected={"task_short_id": task_short_id})
+            if old["schema"] != value["schema"]:
+                raise ContractError("checkpoint protocol migration is not implicit")
+            if old["schema"] == "puber_release_profile_checkpoint_v3":
+                # Finalization legitimately advances release_head_oid while
+                # attaching the existing preparation report. The original
+                # candidate/business/lease identity remains immutable.
+                validate_profile_checkpoint(dict(value), expected={
+                    key: item for key, item in old.items() if key != "release_head_oid"
+                })
+                for key in ("run_directory", "resource", "cleanup_proof"):
+                    if old["resource_lease"][key] and old["resource_lease"][key] != value["resource_lease"][key]:
+                        raise ContractError("resource-lease checkpoint retained proof drifted")
         except FileNotFoundError:
             pass
         temporary = ".release-profile-" + secrets.token_hex(16) + ".tmp"
@@ -2204,7 +2263,8 @@ def delete_profile_checkpoint(root: Path, task_short_id: str, receipt):
 
 
 def validate_profile_checkpoint(value, *, expected=None):
-    if not isinstance(value, dict) or set(value) != PROFILE_CHECKPOINT_KEYS or value.get("schema") != "puber_release_profile_checkpoint_v2":
+    v3 = isinstance(value, dict) and value.get("schema") == "puber_release_profile_checkpoint_v3"
+    if not isinstance(value, dict) or set(value) != (PROFILE_CHECKPOINT_V3_KEYS if v3 else PROFILE_CHECKPOINT_KEYS) or value.get("schema") != ("puber_release_profile_checkpoint_v3" if v3 else "puber_release_profile_checkpoint_v2"):
         raise ContractError("profile checkpoint field set is not closed")
     if any(key in value for key in ("token", "credential", "environment")):
         raise ContractError("profile checkpoint contains sensitive fields")
@@ -2219,15 +2279,28 @@ def validate_profile_checkpoint(value, *, expected=None):
     )
     if expected is not None and any(key in expected and value.get(key) != expected[key] for key in identity_keys):
         raise ContractError("profile checkpoint identity drifted")
-    if not isinstance(value["state"], str) or value["state"] not in {"acquiring", "generating", "failed", "completed"}:
+    if not isinstance(value["state"], str) or value["state"] not in ({"acquiring", "generating", "cleanup", "failed", "completed"} if v3 else {"acquiring", "generating", "failed", "completed"}):
         raise ContractError("profile checkpoint state is invalid")
-    if not isinstance(value["candidate_serials"], list) or any(not isinstance(item, str) for item in value["candidate_serials"]) or value["candidate_serials"] != sorted(value["candidate_serials"]) or any(not re.fullmatch(r"^emulator-[A-Za-z0-9._=-]+$", str(item)) for item in value["candidate_serials"]):
-        raise ContractError("profile checkpoint candidate serials are invalid")
-    serials = value["candidate_serials"]
-    if len(serials) != len(set(serials)) or (not serials and value["state"] != "failed"):
-        raise ContractError("profile checkpoint serial set is invalid")
-    if value["resource_serial"] and value["resource_serial"] not in serials:
-        raise ContractError("profile checkpoint resource is not selected")
+    if v3:
+        validate_resource_lease_checkpoint(value["resource_lease"], value["state"], value["resource_serial"])
+        if value["resource_serial"] and not re.fullmatch(r"emulator-[A-Za-z0-9._=-]+", value["resource_serial"]):
+            raise ContractError("resource-lease checkpoint endpoint is invalid")
+        if not value["resource_lease"]["owner"].startswith("puber-release:" + value["task_id"] + ":"):
+            raise ContractError("resource-lease checkpoint Task drifted")
+        if expected is not None and "resource_lease" in expected:
+            actual = value["resource_lease"]
+            if any(actual[k] != expected["resource_lease"].get(k) for k in (
+                "protocol", "profile", "config_sha256", "context_sha256", "attempt", "owner",
+            )):
+                raise ContractError("resource-lease checkpoint configuration/context drifted")
+    else:
+        if not isinstance(value["candidate_serials"], list) or any(not isinstance(item, str) for item in value["candidate_serials"]) or value["candidate_serials"] != sorted(value["candidate_serials"]) or any(not re.fullmatch(r"^emulator-[A-Za-z0-9._=-]+$", str(item)) for item in value["candidate_serials"]):
+            raise ContractError("profile checkpoint candidate serials are invalid")
+        serials = value["candidate_serials"]
+        if len(serials) != len(set(serials)) or (not serials and value["state"] != "failed"):
+            raise ContractError("profile checkpoint serial set is invalid")
+        if value["resource_serial"] and value["resource_serial"] not in serials:
+            raise ContractError("profile checkpoint resource is not selected")
     hashes = value["output_hashes"]
     paths = {"app/src/main/generated/baselineProfiles/baseline-prof.txt", "app/src/main/generated/baselineProfiles/startup-prof.txt"}
     if not isinstance(hashes, dict) or set(hashes) != paths or any(not isinstance(h, str) or not HEX64.fullmatch(h) for h in hashes.values()):
