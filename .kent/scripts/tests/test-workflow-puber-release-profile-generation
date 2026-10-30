@@ -417,7 +417,7 @@ class ResourceAPI:
             "protocol": "puber-resource-lease-v1", "profile": "release.clean",
             "config_sha256": "c" * 64, "context_sha256": "d" * 64,
             "attempt": "e" * 32,
-            "owner": f"puber-release:{TASK_ID}:{'e' * 32}:{'d' * 64}",
+            "owner": module.helper.resource_lease_release_owner(TASK_ID, "e" * 32, "d" * 64),
             "run_directory": "", "resource": None, "cleanup_proof": None,
         }
 

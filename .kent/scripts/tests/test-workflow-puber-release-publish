@@ -1202,7 +1202,8 @@ profile = args[args.index("--profile") + 1]
 assert profile == "release.clean"
 assert args[args.index("--env") + 1] == "ANDROID_SERIAL=adb_serial"
 owner = args[args.index("--owner") + 1]
-assert owner.startswith("puber-release:task-") and len(owner.split(":")) == 4
+assert owner.startswith("puber-release:task-") and len(owner.split(":")) == 3
+assert len(owner) == 120 and len(owner.rsplit(":", 1)[1]) == 64
 run = Path(config["runs_directory"]) / uuid.uuid4().hex
 run.mkdir(mode=0o700)
 write(run / "binding.json", {{"schema":1,"config":config,"profile":profile,

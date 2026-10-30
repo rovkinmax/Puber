@@ -48,7 +48,7 @@
         "config_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         "context_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "attempt": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-        "owner": "puber-release:task-12345678-1234-4234-8234-123456789abc:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "owner": "puber-release:task-12345678-1234-4234-8234-123456789abc:3e77cdbc01135980137121d940755be000084cb6c5a544c586616341393e30ab",
         "run_directory": "",
         "resource": null,
         "cleanup_proof": null

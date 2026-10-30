@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -67,6 +68,7 @@ class Fixture:
         self.native = SimpleNamespace(_fresh_native_context=lambda context: (context, "a" * 64, 1))
         self.patches = [patch.object(mobile, "ROOT", self.root), patch.object(mobile, "CONFIG", self.config),
                         patch.object(mobile, "fresh_release_context", self.native._fresh_native_context),
+                        patch.object(mobile, "native_module", return_value=SimpleNamespace(_helper=helper)),
                         patch.object(mobile, "verify_smoke_identity")]
         for p in self.patches:
             p.start()
@@ -112,6 +114,85 @@ class Fixture:
 
 
 class MobileTests(unittest.TestCase):
+    def test_release_owner_public_contract_and_full_identity(self):
+        # Public grammar from resource-lease wheel 370f4a7f...; production
+        # resourcelease/model.py SHA256:
+        # 5644a67dfbbd1a57466a3db0f3723df979d4fc2369b2c320efbf1bca39291df4.
+        # Direct installed name()/Store.new_receipt compatibility is a separate
+        # qualification gate; this fixed grammar keeps CI hermetic.
+        public_name = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
+        attempt, context = "e" * 32, "d" * 64
+        old = f"puber-release:{TASK}:{attempt}:{context}"
+        self.assertEqual(len(old), 153)
+        self.assertIsNone(public_name.fullmatch(old))
+        expected = (
+            f"puber-release:{TASK}:"
+            "3e77cdbc01135980137121d940755be000084cb6c5a544c586616341393e30ab"
+        )
+        owner = helper.resource_lease_release_owner(TASK, attempt, context)
+        self.assertEqual(owner, expected)
+        self.assertEqual(len(owner.encode("ascii")), 120)
+        self.assertIsNotNone(public_name.fullmatch(owner))
+        self.assertEqual(helper.resource_lease_release_owner(TASK, attempt, context), owner)
+        for task, other_attempt, other_context in (
+            ("task-87654321-4321-4321-8321-cba987654321", attempt, context),
+            (TASK, "f" * 32, context), (TASK, attempt, "a" * 64),
+        ):
+            self.assertNotEqual(
+                helper.resource_lease_release_owner(task, other_attempt, other_context), owner)
+        identity = {"schema": "puber-release-owner-v1", "protocol": "puber-resource-lease-v1",
+                    "task_id": TASK, "attempt": attempt, "context_sha256": context}
+        for key in ("schema", "protocol"):
+            altered = dict(identity, **{key: "foreign-domain"})
+            self.assertNotEqual(f"puber-release:{TASK}:{helper.digest_json(altered)}", owner)
+        for index, valid in enumerate((TASK, attempt, context)):
+            for invalid in (None, True, 1, {}, [], "", valid.upper(), " " + valid,
+                            valid + " ", valid + "\n", valid[:-1], valid + "0"):
+                arguments = [TASK, attempt, context]
+                arguments[index] = invalid
+                with self.subTest(index=index, invalid=invalid):
+                    with self.assertRaises(helper.ContractError):
+                        helper.resource_lease_release_owner(*arguments)
+
+    def test_release_owner_producer_verifier_and_checkpoint_reject_tampering(self):
+        with Fixture() as f:
+            original = copy.deepcopy(f.binding)
+            self.assertEqual(original["owner"], helper.resource_lease_release_owner(
+                TASK, original["attempt"], original["context_sha256"]))
+            mobile.verify_attempt(original, f.context)
+            helper.validate_resource_lease_checkpoint(original, "acquiring", "")
+            changed_task = "task-87654321-4321-4321-8321-cba987654321"
+            changes = {
+                "attempt": "0" * 32, "context_sha256": "0" * 64,
+                "owner": helper.resource_lease_release_owner(
+                    changed_task, original["attempt"], original["context_sha256"]),
+            }
+            for key, changed in changes.items():
+                altered = dict(original, **{key: changed})
+                with self.subTest(key=key), patch.object(mobile, "capture") as dispatch:
+                    with self.assertRaises((helper.ContractError, mobile.Error)):
+                        mobile.verify_attempt(altered, f.context)
+                    dispatch.assert_not_called()
+                if key != "owner":  # External Task comparison is tested below.
+                    with self.assertRaises(helper.ContractError):
+                        helper.validate_resource_lease_checkpoint(altered, "acquiring", "")
+            for key in ("schema", "protocol"):
+                identity = {
+                    "schema": "puber-release-owner-v1", "protocol": "puber-resource-lease-v1",
+                    "task_id": TASK, "attempt": original["attempt"],
+                    "context_sha256": original["context_sha256"], key: "foreign-domain",
+                }
+                altered = dict(original, owner=f"puber-release:{TASK}:{helper.digest_json(identity)}")
+                with self.assertRaises(helper.ContractError):
+                    helper.validate_resource_lease_checkpoint(altered, "acquiring", "")
+            legacy = dict(original, owner=(
+                f"puber-release:{TASK}:{original['attempt']}:{original['context_sha256']}"))
+            with self.assertRaises(helper.ContractError):
+                helper.validate_resource_lease_checkpoint(legacy, "acquiring", "")
+            with self.assertRaises((helper.ContractError, mobile.Error)):
+                mobile.verify_attempt(legacy, f.context)
+            self.assertEqual(f.binding, original)
+
     def test_smoke_record_lock_serializes_all_actions_and_keeps_inode(self):
         for first in ("start", "check", "finish"):
             with self.subTest(first=first), Fixture() as f:
@@ -782,6 +863,12 @@ mobile.smoke('finish',Path(record),json.loads(identity))
                      "release_preparation_report": "", "release_preparation_report_digest": "",
                      "output_hashes": {p: "c" * 64 for p in paths}}
             helper.validate_profile_checkpoint(value)
+            foreign = copy.deepcopy(value)
+            foreign["resource_lease"]["owner"] = helper.resource_lease_release_owner(
+                "task-87654321-4321-4321-8321-cba987654321",
+                f.binding["attempt"], f.binding["context_sha256"])
+            with self.assertRaisesRegex(helper.ContractError, "Task drifted"):
+                helper.validate_profile_checkpoint(foreign)
             with self.assertRaises(helper.ContractError):
                 helper.validate_profile_checkpoint(dict(value, token="SECRET"))
             with self.assertRaises(helper.ContractError):
@@ -811,6 +898,15 @@ mobile.smoke('finish',Path(record),json.loads(identity))
             helper.write_profile_checkpoint(f.root, "PUB-100", value2)
             retained = helper.read_profile_checkpoint(f.root, "PUB-100")
             self.assertEqual(retained, value2)
+            legacy_owner = copy.deepcopy(value2)
+            legacy_owner["resource_lease"]["owner"] = (
+                f"puber-release:{TASK}:{f.binding['attempt']}:{f.binding['context_sha256']}")
+            before_legacy_write = (f.root / ".kent/runtime/PUB-100/release-profile-checkpoint.json").read_bytes()
+            with self.assertRaises(helper.ContractError):
+                helper.write_profile_checkpoint(f.root, "PUB-100", legacy_owner)
+            self.assertEqual(
+                (f.root / ".kent/runtime/PUB-100/release-profile-checkpoint.json").read_bytes(),
+                before_legacy_write)
             changed2 = copy.deepcopy(value2)
             changed2["resource_lease"]["config_sha256"] = "e" * 64
             with self.assertRaises(helper.ContractError):

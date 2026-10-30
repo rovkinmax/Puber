@@ -138,6 +138,25 @@ PROFILE_CHECKPOINT_KEYS = {
 PROFILE_CHECKPOINT_V3_KEYS = (PROFILE_CHECKPOINT_KEYS - {"candidate_serials"}) | {"resource_lease"}
 
 
+def resource_lease_release_owner(task_id, attempt, context_sha256):
+    """Commit the complete command identity within the public 128-byte limit."""
+    if (
+        not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id)
+        or task_id != task_id.lower()
+        or not isinstance(attempt, str) or not re.fullmatch(r"[0-9a-f]{32}", attempt)
+        or not isinstance(context_sha256, str) or not HEX64.fullmatch(context_sha256)
+    ):
+        raise ContractError("resource-lease owner identity is not canonical")
+    identity = {
+        "schema": "puber-release-owner-v1",
+        "protocol": "puber-resource-lease-v1",
+        "task_id": task_id,
+        "attempt": attempt,
+        "context_sha256": context_sha256,
+    }
+    return f"puber-release:{task_id}:{digest_json(identity)}"
+
+
 def validate_resource_lease_checkpoint(binding, state, serial):
     keys = {"protocol", "profile", "config_sha256", "context_sha256", "attempt",
             "owner", "run_directory", "resource", "cleanup_proof"}
@@ -149,8 +168,9 @@ def validate_resource_lease_checkpoint(binding, state, serial):
             or not isinstance(binding["attempt"], str)
             or not re.fullmatch(r"[0-9a-f]{32}", binding["attempt"])
             or not isinstance(binding["owner"], str)
-            or not re.fullmatch(r"puber-release:task-[0-9a-f-]{36}:[0-9a-f]{32}:[0-9a-f]{64}", binding["owner"])
-            or not binding["owner"].endswith(":" + binding["attempt"] + ":" + binding["context_sha256"])
+            or not re.fullmatch(r"puber-release:task-[0-9a-f-]{36}:[0-9a-f]{64}", binding["owner"])
+            or binding["owner"] != resource_lease_release_owner(
+                binding["owner"].split(":")[1], binding["attempt"], binding["context_sha256"])
             or not isinstance(binding["run_directory"], str)):
         raise ContractError("resource-lease checkpoint binding is not closed")
     if binding["run_directory"]:
