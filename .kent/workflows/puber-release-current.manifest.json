@@ -108,7 +108,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/adapters/mobile/puber-resource-lease=b822c54895335471cf10d6ad5823c6739d7ce876754bc7b1b50b7dd629a3e248",
+      "key": ".kent/adapters/mobile/puber-resource-lease=4905127a78f78bbc2ef08d0d04ee74eec6d7ddd53b62ac7df3ea795b7b1c2901",
       "runtime_digest_required": true
     },
     {
@@ -308,12 +308,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-puber-release-profile-generation=eb14382eeff17237a6559c5e50afe061bad57d183a6430bdb5c2a601a12fd010",
+      "key": ".kent/scripts/tests/test-workflow-puber-release-profile-generation=fc9946e5974af04cc2f4eecd806109cb57a23cd0a7b414a54e0314fbd9ca7ed4",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/tests/test-workflow-puber-release-publish=e0681968d50bf8a55da713219fb9b3bf9529986b11a9b7944591886ffcfe1b42",
+      "key": ".kent/scripts/tests/test-workflow-puber-release-publish=14e8d0ecf6e257bde2f2b77d32b83fff5ee1805d451ce79e351d280e9950e6cd",
       "runtime_digest_required": true
     },
     {
@@ -403,7 +403,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/scripts/workflow-puber-release-intent=45a0ca1fbfcc1191c71ee18836cf0287ee81d9e3c28ceb4a23a2921620aeb6fd",
+      "key": ".kent/scripts/workflow-puber-release-intent=8a0c1c3199e4911f4f58815ca8329a79f9c43148180d9ac7b87716319e87ff5a",
       "runtime_digest_required": true
     },
     {
@@ -558,7 +558,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": "tools/fixtures/mobile-resource-migration/resource-lease-cases.json=1dd3c52d228d01843104dea5fc93c8d03e1bdbd6ad0ebd1671ba37f0690664f1",
+      "key": "tools/fixtures/mobile-resource-migration/resource-lease-cases.json=7bdab04987571c2479e709a94257c7f82391f97c2cf6538967b31699e4c3cd43",
       "runtime_digest_required": true
     },
     {
@@ -588,7 +588,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": "tools/test-puber-mobile-tools=40173431325cf2b980217e87b27eef4bf8a6618d83bcf98a0f5dd83f75df5b37",
+      "key": "tools/test-puber-mobile-tools=e0a2c96afbe37dece0b04e3d04acf62ade1fb7f572b78c0b06354e31e16a9593",
       "runtime_digest_required": true
     },
     {

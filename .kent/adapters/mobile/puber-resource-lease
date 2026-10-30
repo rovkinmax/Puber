@@ -163,7 +163,8 @@ def release_attempt(context):
         "protocol": PROTOCOL, "profile": "release.clean",
         "config_sha256": config_sha, "context_sha256": context_sha,
         "attempt": attempt,
-        "owner": f"puber-release:{admitted['task_id']}:{attempt}:{context_sha}",
+        "owner": native_module()._helper.resource_lease_release_owner(
+            admitted["task_id"], attempt, context_sha),
         "run_directory": "", "resource": None, "cleanup_proof": None,
     }
 
@@ -173,7 +174,8 @@ def verify_attempt(binding, context):
     selected, client, config_sha = configuration()
     if (binding["protocol"] != PROTOCOL or binding["profile"] != "release.clean"
             or binding["context_sha256"] != context_sha or binding["config_sha256"] != config_sha
-            or binding["owner"] != f"puber-release:{admitted['task_id']}:{binding['attempt']}:{context_sha}"):
+            or binding["owner"] != native_module()._helper.resource_lease_release_owner(
+                admitted["task_id"], binding["attempt"], context_sha)):
         raise Error("command attempt identity/configuration drift")
     return selected, client
 
