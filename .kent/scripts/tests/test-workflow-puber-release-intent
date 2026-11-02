@@ -56,6 +56,56 @@ with FixtureSandbox.create() as _sandbox, \
     assert mod.parse_run_carrier(mod.canonical_json(mod.NOT_SELECTED_RUN)) == mod.NOT_SELECTED_RUN
 
 
+    def mobile_script_context():
+        profile = (ROOT / ".kent/workflow-profile.toml").read_bytes()
+        return {
+            "schema": mod.MOBILE_SCRIPT_CONTEXT_SCHEMA,
+            "task_id": "task-12345678-1234-4234-8234-123456789abc",
+            "task_short_id": "PUB-99",
+            "project_id": mod.PROJECT_ID,
+            "workflow_id": mod.WORKFLOW_ID,
+            "workflow_name": mod.WORKFLOW_NAME,
+            "workflow_version": mod.WORKFLOW_REVISION,
+            "node_id": "fixture-profile-node",
+            "node_key": "profile_generation",
+            "script_path": str(ROOT / mod.SCRIPT_PATHS["profile_generation"]),
+            "profile_sha256": hashlib.sha256(profile).hexdigest(),
+            "workspace_root": str(ROOT),
+            "execution_base_oid": "1" * 40,
+            "controller_commit": "2" * 40,
+            "operation_id": "3" * 64,
+            "release_type": "minor",
+            "release_version": "99.0.0",
+            "release_tag": "v99.0.0",
+            "release_branch": "release/99.0.0",
+            "release_base_oid": "4" * 40,
+            "candidate_oid": "5" * 40,
+        }
+
+
+    def test_mobile_script_context_exact_fields_revision_and_digest():
+        context = mobile_script_context()
+        canonical, digest = mod.canonical_mobile_script_context(context)
+        assert canonical == context
+        assert digest == hashlib.sha256(mod.canonical_bytes(context)).hexdigest()
+        for invalid in (
+            {**context, "entry_transition": "prepare_profile_generation"},
+            {**context, "workspace_root": str(ROOT / "..")},
+            {**context, "profile_sha256": "0" * 64},
+            {**context, "workflow_version": 98},
+            {**context, "release_tag": "v98.0.0"},
+        ):
+            try:
+                mod.canonical_mobile_script_context(invalid)
+            except mod.ContractError:
+                pass
+            else:
+                raise AssertionError("open, stale, or foreign mobile context was admitted")
+
+
+    test_mobile_script_context_exact_fields_revision_and_digest()
+
+
     sys.path.insert(0, str(SOURCE_ROOT / ".kent/scripts/tests"))
     from puber_native_fixture import MockCheckpointFacade, mock_checkpoint_source
     _test_checkpoint = MockCheckpointFacade(KIT, variant="intent")

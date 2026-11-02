@@ -175,10 +175,22 @@ cleanup proof without receipt secrets. The profile report and preparation
 report schemas remain unchanged. Legacy v2 checkpoints stay diagnostic/recovery
 inputs and are never converted or reused as new ownership.
 
-The historical Script-lock wrapper remains byte-stable but is not selected.
-The retired lock permits only validated status/cleanup. Current source
-selection does not prove host-wide legacy exclusion; retained consumers and
-native admission remain separately reviewed activation gates.
+The current Release source owns canonical
+`puber-mobile-script-context-v1` validation in
+`.kent/scripts/workflow-puber-release-intent`. The Puber resource adapter loads
+that helper only for Release operations because importing it clears the Kent
+Session environment; importing the adapter for Smoke leaves that environment
+intact. Profile generation requires the exact selected
+`puber_resource_lease` adapter and has no legacy Script-lock fallback.
+
+The current source closure removes only
+`.kent/adapters/mobile/puber-script-resource-lock` and its focused test from
+the inherited current-manifest union. The historical 5af manifest and graph,
+the current native graph, and the retained legacy emulator recovery shell stay
+unchanged. Existing retained worktrees are not migrated or retired by this
+source change. Current-source selection does not prove host-wide legacy
+exclusion; retained-consumer compatibility and native admission remain
+separate rollout gates.
 
 Cleanup classifies Task runtime inventory and seal history before checkpoint
 reads or retention. Before final sealing it retains exact checkpoint bytes,

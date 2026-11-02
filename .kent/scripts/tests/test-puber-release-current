@@ -105,6 +105,24 @@ assert profile["kit_runtime"] == {
     "publication_ref": "refs/remotes/origin/main",
 }
 expected_manifest = builder["_expected_manifest"]()
+retired_paths = {
+    ".kent/adapters/mobile/puber-script-resource-lock",
+    ".kent/scripts/tests/test-puber-script-resource-lock",
+}
+assert builder["RETIRED_CURRENT_PATHS"] == frozenset(retired_paths)
+current_manifest_paths = set(expected_manifest["additional_paths"]) | {
+    item["key"].split("=", 1)[0]
+    for item in expected_manifest["external_roots"]
+    if item["kind"] == "source-sha256"
+}
+assert not retired_paths & current_manifest_paths
+historical_manifest = json.loads(builder["BASE_MANIFEST"].read_text(encoding="utf-8"))
+historical_paths = set(historical_manifest["additional_paths"]) | {
+    item["key"].split("=", 1)[0]
+    for item in historical_manifest["external_roots"]
+    if item["kind"] == "source-sha256"
+}
+assert retired_paths <= historical_paths
 builder_path = profile["release"]["builder_path"]
 physical_capture_paths = []
 for external_root in expected_manifest["external_roots"]:
