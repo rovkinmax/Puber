@@ -8,7 +8,6 @@ import importlib.util
 import json
 import os
 import signal
-import stat
 import subprocess
 import tempfile
 from unittest.mock import patch
@@ -54,40 +53,8 @@ def state(candidate: str) -> dict[str, str]:
     }
 
 
-class FakeLeaseAPI:
-    def __init__(self, *, owners=None, release_error=None):
-        self.owners = owners or ["Absent", "Absent"]
-        self.release_error = release_error
-        self.calls: list[tuple[str, object]] = []
-
-    def inspect_recovery(self, context, resources):
-        self.calls.append(("inspect", (context, list(resources))))
-        return [
-            {
-                "schema": "mobile-script-recovery-v1",
-                "resource": resource,
-                "owner_kind": owner,
-                "owner_sha256": "none" if owner == "Absent" else "b" * 64,
-            }
-            for resource, owner in zip(resources, self.owners)
-        ]
-
-    def acquire_any(self, context, resources, *, wait_seconds):
-        self.calls.append(("acquire", (context, list(resources), wait_seconds)))
-        return SimpleNamespace(
-            resource="emulator-5556",
-            token=TOKEN,
-            owner_sha256="c" * 64,
-        )
-
-    def release(self, context, lease):
-        self.calls.append(("release", (context, lease)))
-        if self.release_error:
-            raise self.release_error
-
-
 class Fixture:
-    def __init__(self, *, mode="success", owners=None, release_error=None):
+    def __init__(self, *, mode="success"):
         self.temp = tempfile.TemporaryDirectory(prefix="puber-profile-")
         self.root = Path(self.temp.name).resolve()
         self.mode = mode
@@ -97,8 +64,6 @@ class Fixture:
             "task_show": module.helper.task_show,
             "validate": module.helper.validate_envelope,
             "source": module._assert_runtime_source_closure,
-            "inventory": module._inventory,
-            "lease_loader": module._load_script_lease_adapter,
             "emit": module.helper.emit_exact,
             "handlers": {
                 item: signal.getsignal(item)
@@ -106,7 +71,6 @@ class Fixture:
             },
         }
         self.events: list[tuple[str, str, dict]] = []
-        self.lease = FakeLeaseAPI(owners=owners, release_error=release_error)
         self._materialize()
         module.ROOT = self.root
         module.helper.read_zero_argument = lambda: self.payload
@@ -124,8 +88,6 @@ class Fixture:
             {},
         )
         module._assert_runtime_source_closure = lambda _state: None
-        module._inventory = lambda _adapter: list(SERIALS)
-        module._load_script_lease_adapter = lambda: self.lease
         module.helper.emit_exact = self._emit
 
     def _materialize(self):
@@ -142,18 +104,9 @@ class Fixture:
             (ROOT / module.helper.GRAPH_PATH).read_bytes()
         )
         (self.root / ".kent").mkdir(exist_ok=True)
-        legacy_profile = (ROOT / "tools/fixtures/mobile-resource-migration/workflow-profile-resource-lease.toml").read_text()
-        legacy_profile = legacy_profile.replace('"puber_resource_lease",', '"mobile_resource_lock",').replace(
-            '"android_tools",', '"mobile_script_resource_lock",').replace(
-            'puber_resource_lease = ".kent/adapters/mobile/puber-resource-lease"',
-            'mobile_resource_lock = ".kent/adapters/mobile/emulator-resource-lock.sh"').replace(
-            'android_tools = ".kent/adapters/android/android-tools"',
-            'mobile_script_resource_lock = ".kent/adapters/mobile/puber-script-resource-lock"')
-        (self.root / ".kent/workflow-profile.toml").write_text(legacy_profile)
-        adapter = self.root / ".kent/adapters/mobile/emulator-resource-lock.sh"
-        adapter.parent.mkdir(parents=True)
-        adapter.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        adapter.chmod(0o755)
+        (self.root / ".kent/workflow-profile.toml").write_bytes(
+            (ROOT / ".kent/workflow-profile.toml").read_bytes()
+        )
         generator = self.root / "tools/generate-baseline-profile.sh"
         generator.parent.mkdir(parents=True)
         command = (
@@ -209,10 +162,6 @@ class Fixture:
                     module.helper.validate_envelope = function
                 elif name == "source":
                     module._assert_runtime_source_closure = function
-                elif name == "inventory":
-                    module._inventory = function
-                elif name == "lease_loader":
-                    module._load_script_lease_adapter = function
                 elif name == "emit":
                     module.helper.emit_exact = function
 
@@ -233,54 +182,10 @@ class Fixture:
                 module.helper.validate_envelope = function
             elif name == "source":
                 module._assert_runtime_source_closure = function
-            elif name == "inventory":
-                module._inventory = function
-            elif name == "lease_loader":
-                module._load_script_lease_adapter = function
             elif name == "emit":
                 module.helper.emit_exact = function
         self.temp.cleanup()
 
-
-def test_report_and_checkpoint_contract() -> None:
-    with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
-        (root / ".kent").mkdir()
-        value = {
-            "schema": module.CHECKPOINT_SCHEMA,
-            "task_id": TASK_ID,
-            "task_short_id": "PUB-99",
-            "operation_id": "a" * 64,
-            "release_branch": "release/99.0.0",
-            "release_base_oid": "b" * 40,
-            "candidate_oid": "c" * 40,
-            "release_head_oid": "",
-            "candidate_serials": SERIALS,
-            "state": "acquiring",
-            "resource_serial": "",
-            "profile_report": "",
-            "profile_report_digest": "",
-            "release_preparation_report": "",
-            "release_preparation_report_digest": "",
-            "output_hashes": {path: "d" * 64 for path in module.PROFILE_PATHS},
-        }
-        module.helper.write_profile_checkpoint(root, "PUB-99", value)
-        checkpoint = root / ".kent/runtime/PUB-99/release-profile-checkpoint.json"
-        assert stat.S_IMODE(checkpoint.stat().st_mode) == 0o600
-        snapshot = module.helper.read_profile_checkpoint(root, "PUB-99")
-        assert snapshot == value
-        for changed in (
-            {**value, "token": TOKEN},
-            {**value, "state": "unknown"},
-            {**value, "candidate_serials": []},
-        ):
-            try:
-                module.helper.write_profile_checkpoint(root, "PUB-99", changed)
-            except module.helper.ContractError:
-                pass
-            else:
-                raise AssertionError("unsafe Script checkpoint was accepted")
-        assert module.helper.read_profile_checkpoint(root, "PUB-99") == value
 
 
 def test_network_free_stage_forwards_only_valid_producer_commentary() -> None:
@@ -317,94 +222,47 @@ def test_network_free_stage_forwards_only_valid_producer_commentary() -> None:
         module.helper._qualified_delivery_module = original
 
 
-def test_success_acquires_generates_releases_then_records_completed_checkpoint():
+
+def test_legacy_profile_is_rejected_before_native_or_resource_effects() -> None:
     fixture = Fixture()
     try:
-        assert fixture.run() == 0
-        assert [call[0] for call in fixture.lease.calls] == ["acquire", "release"]
-        assert fixture.lease.calls[0][1][1] == SERIALS
-        assert fixture.lease.calls[0][1][2] == 900
-        checkpoint = fixture.checkpoint()
-        assert checkpoint["state"] == "completed"
-        assert checkpoint["resource_serial"] == "emulator-5556"
-        report = json.loads(checkpoint["profile_report"])
-        assert report["lease_state"] == "released"
-        assert report["tv_serial"] == "emulator-5556"
-        assert report["changed_profiles"] == sorted(module.PROFILE_PATHS)
-        assert TOKEN not in json.dumps(checkpoint)
-        assert TOKEN not in json.dumps(fixture.events)
-        assert fixture.events[-1][0] == "profile_generation_passed"
-        assert fixture.events[-1][1] == "finalize_release"
-        assert fixture.events[-1][2]["profile_report_digest"] == checkpoint["profile_report_digest"]
-        assert "KENT_SESSION_ID" not in module._child_env("emulator-5556")
-    finally:
-        fixture.close()
-
-
-def test_generator_failure_preserves_checkpoint_outputs_and_lease():
-    fixture = Fixture(mode="generator-failure")
-    try:
-        assert fixture.run() == 0
-        checkpoint = fixture.checkpoint()
-        assert checkpoint["state"] == "generating"
-        assert checkpoint["resource_serial"] == "emulator-5556"
-        assert [call[0] for call in fixture.lease.calls] == ["acquire"]
-        assert fixture.events[-1][0] == "profile_generation_needs_user_action"
-        assert all(
-            (fixture.root / path).read_bytes()
-            != fixture.original_profiles[path]
-            for path in module.PROFILE_PATHS
+        profile_path = fixture.root / ".kent/workflow-profile.toml"
+        legacy_profile = profile_path.read_text(encoding="utf-8")
+        legacy_profile = (
+            legacy_profile
+            .replace('"puber_resource_lease",', '"mobile_resource_lock",')
+            .replace('"android_tools",', '"mobile_script_resource_lock",')
+            .replace(
+                'puber_resource_lease = ".kent/adapters/mobile/puber-resource-lease"',
+                'mobile_resource_lock = ".kent/adapters/mobile/emulator-resource-lock.sh"',
+            )
+            .replace(
+                'android_tools = ".kent/adapters/android/android-tools"',
+                'mobile_script_resource_lock = ".kent/adapters/mobile/puber-script-resource-lock"',
+            )
         )
-        assert all(
-            b"Generated" in (fixture.root / path).read_bytes()
-            for path in module.PROFILE_PATHS
-        )
-        assert TOKEN not in json.dumps(checkpoint)
-    finally:
-        fixture.close()
-
-
-def test_ambiguous_prior_owner_blocks_without_acquire_release_or_restore():
-    fixture = Fixture(mode="generator-failure", owners=["ScriptOwnerV1", "Absent"])
-    try:
-        checkpoint = module._checkpoint(
-            "PUB-99",
-            state=fixture.state,
-            candidate_serials=SERIALS,
-            status="generating",
-            resource_serial="emulator-5554",
-            output_hashes={
-                path: hashlib.sha256(raw).hexdigest()
-                for path, raw in fixture.original_profiles.items()
-            },
-        )
+        profile_path.write_text(legacy_profile, encoding="utf-8")
         before = {
             path: (fixture.root / path).read_bytes()
             for path in module.PROFILE_PATHS
         }
-        assert fixture.run() == 0
-        assert [call[0] for call in fixture.lease.calls] == ["inspect"]
-        assert fixture.checkpoint() == checkpoint
-        assert {path: (fixture.root / path).read_bytes() for path in before} == before
-        assert fixture.events[-1][0] == "profile_generation_needs_user_action"
-        assert TOKEN not in json.dumps(fixture.events)
-    finally:
-        fixture.close()
-
-
-def test_release_failure_keeps_generating_checkpoint_and_generated_bytes():
-    fixture = Fixture(release_error=ValueError("release acknowledgement unknown"))
-    try:
-        assert fixture.run() == 0
-        checkpoint = fixture.checkpoint()
-        assert checkpoint["state"] == "generating"
-        assert checkpoint["resource_serial"] == "emulator-5556"
-        assert [call[0] for call in fixture.lease.calls] == ["acquire", "release"]
-        assert all((fixture.root / path).read_bytes() != fixture.original_profiles[path]
-                   for path in module.PROFILE_PATHS)
-        assert fixture.events[-1][0] == "profile_generation_needs_user_action"
-        assert TOKEN not in json.dumps(checkpoint)
-        assert TOKEN not in json.dumps(fixture.events)
+        with patch.object(module.helper, "read_zero_argument") as read, \
+             patch.object(module.helper, "task_show") as task_show, \
+             patch.object(module, "_load_resource_adapter") as load_adapter, \
+             patch.object(module.helper, "emit_exact") as emit, \
+             patch.object(module.subprocess, "run") as run:
+            assert module.main() == 2
+            read.assert_not_called()
+            task_show.assert_not_called()
+            load_adapter.assert_not_called()
+            emit.assert_not_called()
+            run.assert_not_called()
+        assert fixture.events == []
+        assert not (fixture.root / ".kent/runtime").exists()
+        assert {
+            path: (fixture.root / path).read_bytes()
+            for path in module.PROFILE_PATHS
+        } == before
     finally:
         fixture.close()
 
@@ -598,12 +456,8 @@ def test_resource_worker_acknowledgement_and_qualified_source():
             fixture.close()
 
 
-test_report_and_checkpoint_contract()
 test_network_free_stage_forwards_only_valid_producer_commentary()
-test_success_acquires_generates_releases_then_records_completed_checkpoint()
-test_generator_failure_preserves_checkpoint_outputs_and_lease()
-test_ambiguous_prior_owner_blocks_without_acquire_release_or_restore()
-test_release_failure_keeps_generating_checkpoint_and_generated_bytes()
+test_legacy_profile_is_rejected_before_native_or_resource_effects()
 test_resource_parent_matrix()
 test_resource_worker_acknowledgement_and_qualified_source()
 print("workflow-puber-release-profile-generation: passed Script lease and preservation fixtures")

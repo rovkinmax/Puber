@@ -136,6 +136,102 @@ PROFILE_CHECKPOINT_KEYS = {
     "release_preparation_report_digest", "output_hashes",
 }
 PROFILE_CHECKPOINT_V3_KEYS = (PROFILE_CHECKPOINT_KEYS - {"candidate_serials"}) | {"resource_lease"}
+PROFILE_OUTPUT_PATHS = frozenset({
+    "app/src/main/generated/baselineProfiles/baseline-prof.txt",
+    "app/src/main/generated/baselineProfiles/startup-prof.txt",
+})
+MOBILE_SCRIPT_CONTEXT_SCHEMA = "puber-mobile-script-context-v1"
+MOBILE_SCRIPT_CONTEXT_KEYS = {
+    "schema",
+    "task_id",
+    "task_short_id",
+    "project_id",
+    "workflow_id",
+    "workflow_name",
+    "workflow_version",
+    "node_id",
+    "node_key",
+    "script_path",
+    "profile_sha256",
+    "workspace_root",
+    "execution_base_oid",
+    "controller_commit",
+    "operation_id",
+    "release_type",
+    "release_version",
+    "release_tag",
+    "release_branch",
+    "release_base_oid",
+    "candidate_oid",
+}
+
+
+def canonical_mobile_script_context(context: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
+    """Validate and hash the exact native Release context used by its resource lease."""
+    if not isinstance(context, Mapping) or set(context) != MOBILE_SCRIPT_CONTEXT_KEYS:
+        raise ContractError("Script lease context has an open or incomplete field set")
+    value = dict(context)
+    if value.get("schema") != MOBILE_SCRIPT_CONTEXT_SCHEMA:
+        raise ContractError("Script lease context schema is not exact")
+
+    for key in MOBILE_SCRIPT_CONTEXT_KEYS - {"workflow_version"}:
+        item = value.get(key)
+        if not isinstance(item, str) or not item or item != item.strip() or "\x00" in item:
+            raise ContractError(f"context.{key} is not a valid non-empty string")
+    if (
+        isinstance(value.get("workflow_version"), bool)
+        or value.get("workflow_version") != WORKFLOW_REVISION
+    ):
+        raise ContractError("native Puber Release revision is not the prepared 99 cohort")
+    if (
+        not TASK_ID.fullmatch(value["task_id"])
+        or not TASK_SHORT_ID.fullmatch(value["task_short_id"])
+        or any(
+            not SHA1.fullmatch(value[key])
+            for key in (
+                "execution_base_oid",
+                "controller_commit",
+                "release_base_oid",
+                "candidate_oid",
+            )
+        )
+        or not HEX64.fullmatch(value["profile_sha256"])
+        or not HEX64.fullmatch(value["operation_id"])
+    ):
+        raise ContractError("Script lease context identity has an invalid format")
+
+    profile_path = ROOT / ".kent/workflow-profile.toml"
+    try:
+        profile_metadata = profile_path.lstat()
+        profile_bytes = profile_path.read_bytes()
+    except OSError as error:
+        raise ContractError("Puber workflow profile is unavailable") from error
+    if (
+        stat.S_ISLNK(profile_metadata.st_mode)
+        or not stat.S_ISREG(profile_metadata.st_mode)
+        or profile_metadata.st_nlink != 1
+        or len(profile_bytes) > 256 * 1024
+        or value["profile_sha256"] != sha256_bytes(profile_bytes)
+    ):
+        raise ContractError("Puber workflow profile digest is not exact")
+    if (
+        value["project_id"] != PROJECT_ID
+        or value["workflow_id"] != WORKFLOW_ID
+        or value["workflow_name"] != WORKFLOW_NAME
+        or value["node_key"] != "profile_generation"
+        or value["script_path"] != str(ROOT / SCRIPT_PATHS["profile_generation"])
+        or value["workspace_root"] != str(ROOT)
+        or value["release_branch"] != f"release/{value['release_version']}"
+        or value["release_tag"] != f"v{value['release_version']}"
+    ):
+        raise ContractError("Puber Script lease context does not match its fixed runtime identity")
+    if value["release_type"] not in RELEASE_TYPE or not SEMVER.fullmatch(value["release_version"]):
+        raise ContractError("Puber release type or version is invalid")
+
+    encoded = canonical_bytes(value)
+    if len(encoded) > 4096:
+        raise ContractError("Script lease context exceeds its bound")
+    return value, sha256_bytes(encoded)
 
 
 def resource_lease_release_owner(task_id, attempt, context_sha256):

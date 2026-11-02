@@ -116,6 +116,10 @@ BINARY_SOURCE_ROOTS = {"app/debug.jks"}
 DYNAMIC_RELEASE_PATHS = {"app/build.gradle.kts"}
 ENGINEERING_SOURCE = re.compile(r"(?:^|/)puber-engineering-delivery(?:-|\.)")
 V90_AUDIT_SNAPSHOT = ".kent/workflows/puber-release.json"
+RETIRED_CURRENT_PATHS = frozenset({
+    ".kent/adapters/mobile/puber-script-resource-lock",
+    ".kent/scripts/tests/test-puber-script-resource-lock",
+})
 
 
 def _validate_source_92_native_ids() -> None:
@@ -921,9 +925,13 @@ def _expected_manifest() -> dict[str, Any]:
     }
     derived = _derived_paths()
     active_sources = set(CLOSED_PATHS) | derived
+    if active_sources & RETIRED_CURRENT_PATHS:
+        raise ValueError("retired Script-lock paths remain selected by the current source closure")
     if V90_AUDIT_SNAPSHOT in active_sources:
         raise ValueError("v90 audit snapshot is required by the current source closure")
-    sources = (old_sources | old_additional | active_sources) - {V90_AUDIT_SNAPSHOT}
+    sources = (
+        old_sources | old_additional | active_sources
+    ) - {V90_AUDIT_SNAPSHOT} - RETIRED_CURRENT_PATHS
     sources = {
         path for path in sources
         if not ENGINEERING_SOURCE.search(path)

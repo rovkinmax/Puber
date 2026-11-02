@@ -68,7 +68,7 @@ class Fixture:
         self.native = SimpleNamespace(_fresh_native_context=lambda context: (context, "a" * 64, 1))
         self.patches = [patch.object(mobile, "ROOT", self.root), patch.object(mobile, "CONFIG", self.config),
                         patch.object(mobile, "fresh_release_context", self.native._fresh_native_context),
-                        patch.object(mobile, "native_module", return_value=SimpleNamespace(_helper=helper)),
+                        patch.object(mobile, "native_module", return_value=helper),
                         patch.object(mobile, "verify_smoke_identity")]
         for p in self.patches:
             p.start()
@@ -114,6 +114,57 @@ class Fixture:
 
 
 class MobileTests(unittest.TestCase):
+    def test_release_context_import_is_lazy_until_release_use(self):
+        code = """
+import importlib.machinery, importlib.util, os, sys
+for name in ("KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"):
+    os.environ[name] = "retained"
+path = sys.argv[1]
+spec = importlib.util.spec_from_loader(
+    "puber_mobile_lazy_import_test",
+    importlib.machinery.SourceFileLoader("puber_mobile_lazy_import_test", path),
+)
+mobile = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mobile)
+assert all(os.environ.get(name) == "retained" for name in (
+    "KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"
+))
+assert mobile.native_module().WORKFLOW_REVISION == 99
+assert not any(name in os.environ for name in (
+    "KENT_SESSION_ID", "KENT_RUN_ID", "KENT_STEP_ID"
+))
+"""
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", code, str(ROOT / ".kent/adapters/mobile/puber-resource-lease")],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_native_context_loader_rejects_symlink_and_nonfile_before_loading(self):
+        for path_kind in ("symlink", "directory"):
+            with self.subTest(path_kind=path_kind), tempfile.TemporaryDirectory(
+                prefix="puber-native-helper-"
+            ) as directory:
+                root = Path(directory).resolve()
+                helper_path = root / ".kent/scripts/workflow-puber-release-intent"
+                helper_path.parent.mkdir(parents=True)
+                if path_kind == "symlink":
+                    helper_path.symlink_to(ROOT / ".kent/scripts/workflow-puber-release-intent")
+                else:
+                    helper_path.mkdir()
+                with patch.object(mobile, "ROOT", root), patch.object(
+                    mobile,
+                    "SourceFileLoader",
+                    side_effect=AssertionError(
+                        "SourceFileLoader must not run for an unsafe helper path"
+                    ),
+                ) as source_loader:
+                    with self.assertRaises(mobile.Error):
+                        mobile.native_module()
+                    source_loader.assert_not_called()
+
     def test_release_owner_public_contract_and_full_identity(self):
         # Public grammar from resource-lease wheel 370f4a7f...; production
         # resourcelease/model.py SHA256:
@@ -677,6 +728,52 @@ mobile.smoke('finish',Path(record),json.loads(identity))
                     with self.assertRaises(mobile.Error):
                         facade.main()
                 self.assertEqual(invoke.call_count, 1)
+
+    def test_facade_non_device_families_preserve_arguments_without_smoke(self):
+        facade = load("test_puber_family_facade", ROOT / ".kent/adapters/android/android-tools")
+        cases = [
+            ["docs", "search"],
+            ["preview", "list"],
+            ["--arguments", '{"query":"device"}', "docs", "search", "--record"],
+            ["--interface=standalone", "preview", "list"],
+            ["--help"],
+            ["-h"],
+        ]
+        with Fixture() as f:
+            for arguments in cases:
+                with self.subTest(arguments=arguments), patch.object(facade, "mobile", mobile), patch.object(
+                    sys, "argv", ["android-tools", *arguments]
+                ), patch.dict(os.environ, {}, clear=True), patch.object(
+                    mobile, "smoke_binding", side_effect=AssertionError("unexpected identity")
+                ), patch.object(mobile, "smoke", side_effect=AssertionError("unexpected lease")), patch.object(
+                    facade.subprocess, "run", return_value=SimpleNamespace(returncode=7)
+                ) as invoke:
+                    self.assertEqual(facade.main(), 7)
+                    self.assertEqual(invoke.call_args.args[0],
+                                     [str(f.tool), "--config", f.selected["facade_config"], *arguments])
+
+    def test_facade_ambiguous_or_device_grammar_retains_smoke(self):
+        facade = load("test_puber_family_strict", ROOT / ".kent/adapters/android/android-tools")
+        for arguments in [
+            ["device", "tap"], ["evidence", "export"],
+            ["--arguments", "docs", "device", "tap"],
+            ["--helper=preview", "device", "tree"],
+            ["--unknown", "docs", "search"], ["--arguments"], [],
+        ]:
+            with self.subTest(arguments=arguments):
+                self.assertTrue(facade.requires_smoke(arguments))
+        with Fixture(), patch.object(facade, "mobile", mobile), patch.dict(os.environ, {}, clear=True):
+            for arguments in [["device", "tree"], ["evidence", "export"],
+                              ["--config", "/tmp/override", "docs", "search"],
+                              ["--config=/tmp/override", "preview", "list"],
+                              ["docs", "search", "--conf=/tmp/override"],
+                              ["preview", "list", "--c", "/tmp/override"]]:
+                with self.subTest(arguments=arguments), patch.object(
+                    sys, "argv", ["android-tools", *arguments]
+                ), patch.object(facade.subprocess, "run") as invoke:
+                    with self.assertRaises(mobile.Error):
+                        facade.main()
+                    invoke.assert_not_called()
 
     def test_historical_bytes_and_pin(self):
         import tomllib

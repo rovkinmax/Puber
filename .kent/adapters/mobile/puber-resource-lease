@@ -146,7 +146,14 @@ def capture(command, *, env=None, timeout=20):
 
 
 def native_module():
-    path = ROOT / ".kent/adapters/mobile/puber-script-resource-lock"
+    """Load Release identity only when a Release operation actually needs it."""
+    path = ROOT / ".kent/scripts/workflow-puber-release-intent"
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise Error("Puber release runtime helper is unavailable") from error
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise Error("Puber release runtime helper is unsafe")
     spec = importlib.util.spec_from_loader("puber_native_context", SourceFileLoader("puber_native_context", str(path)))
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -163,7 +170,7 @@ def release_attempt(context):
         "protocol": PROTOCOL, "profile": "release.clean",
         "config_sha256": config_sha, "context_sha256": context_sha,
         "attempt": attempt,
-        "owner": native_module()._helper.resource_lease_release_owner(
+        "owner": native_module().resource_lease_release_owner(
             admitted["task_id"], attempt, context_sha),
         "run_directory": "", "resource": None, "cleanup_proof": None,
     }
@@ -174,7 +181,7 @@ def verify_attempt(binding, context):
     selected, client, config_sha = configuration()
     if (binding["protocol"] != PROTOCOL or binding["profile"] != "release.clean"
             or binding["context_sha256"] != context_sha or binding["config_sha256"] != config_sha
-            or binding["owner"] != native_module()._helper.resource_lease_release_owner(
+            or binding["owner"] != native_module().resource_lease_release_owner(
                 admitted["task_id"], binding["attempt"], context_sha)):
         raise Error("command attempt identity/configuration drift")
     return selected, client
@@ -182,8 +189,8 @@ def verify_attempt(binding, context):
 
 def fresh_release_context(context):
     native = native_module()
-    value, context_sha = native._canonical_context(context)
-    helper = native._helper
+    value, context_sha = native.canonical_mobile_script_context(context)
+    helper = native
     if (value["node_id"] != helper._node_id(ROOT, "profile_generation")
             or helper.git(ROOT, "rev-parse", "HEAD") != value["controller_commit"]):
         raise Error("native Script source drift")
@@ -233,7 +240,7 @@ def worker_record(path):
         "task_id": value["context"]["task_id"], "node_id": value["context"]["node_id"],
     }:
         raise Error("worker native binding differs from the parent's admitted context")
-    helper = native_module()._helper
+    helper = native_module()
     helper._bind_qualified_runtime(ROOT, value["native_binding"])
     kit = helper._kit_modules()
     with kit["source_read_budget"]() as budget:
@@ -252,7 +259,7 @@ def worker_record(path):
 def verify_generator(path):
     value = worker_record(path)
     native = native_module()
-    checkpoint = native._helper.read_profile_checkpoint(
+    checkpoint = native.read_profile_checkpoint(
         ROOT, value["context"]["task_short_id"], expected=value["context"],
     )
     if (checkpoint["schema"] != "puber_release_profile_checkpoint_v3"

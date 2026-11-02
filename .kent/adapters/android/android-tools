@@ -14,20 +14,45 @@ mobile = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mobile)
 
 
+def requires_smoke(arguments):
+    """Classify only known facade grammar; ambiguous input retains custody."""
+    value_options = {"--arguments", "--binding-file", "--helper", "--interface"}
+    flags = {"--record", "--include-artifacts"}
+    position = 0
+    while position < len(arguments):
+        token = arguments[position]
+        if token in {"-h", "--help"}:
+            return False
+        if token in value_options:
+            position += 2
+            continue
+        if any(token.startswith(option + "=") for option in value_options):
+            position += 1
+            continue
+        if token in flags:
+            position += 1
+            continue
+        return token not in {"docs", "preview"}
+    return True
+
+
 def main():
     # A caller cannot substitute config, source root, owner or facade binary.
-    if "--config" in sys.argv[1:] or any(arg.startswith("--config=") for arg in sys.argv[1:]):
+    if any(arg.split("=", 1)[0].startswith("--")
+           and len(arg.split("=", 1)[0]) > 2
+           and "--config".startswith(arg.split("=", 1)[0]) for arg in sys.argv[1:]):
         raise mobile.Error("configuration is project-owned")
-    identity = mobile.smoke_binding(
-        os.environ.get("KENT_PROJECT_ID", ""), os.environ.get("KENT_TASK_ID", ""),
-        os.environ.get("KENT_SESSION_ID", ""))
-    result = mobile.smoke("check", os.environ.get("PUBER_SMOKE_LEASE_RECORD", ""), identity)
     selected, _client, _digest = mobile.configuration()
     env = os.environ.copy()
-    for key, value in result["environment"].items():
-        if env.get(key) not in (None, "", value):
-            raise mobile.Error("conflicting inherited lease environment")
-        env[key] = value
+    if requires_smoke(sys.argv[1:]):
+        identity = mobile.smoke_binding(
+            os.environ.get("KENT_PROJECT_ID", ""), os.environ.get("KENT_TASK_ID", ""),
+            os.environ.get("KENT_SESSION_ID", ""))
+        result = mobile.smoke("check", os.environ.get("PUBER_SMOKE_LEASE_RECORD", ""), identity)
+        for key, value in result["environment"].items():
+            if env.get(key) not in (None, "", value):
+                raise mobile.Error("conflicting inherited lease environment")
+            env[key] = value
     return subprocess.run([selected["facade"], "--config", selected["facade_config"],
                            *sys.argv[1:]], env=env).returncode
 
