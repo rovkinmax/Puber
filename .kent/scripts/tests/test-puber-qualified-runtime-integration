@@ -18,7 +18,7 @@ from puber_native_fixture import FixtureSandbox, candidate_freeze_argument, prep
 
 ROOT = Path(__file__).resolve().parents[3]
 KIT_SOURCE_ENV = "PUBER_STAGE_A_RUNTIME_KIT_SOURCE_ROOT"
-KIT_PUBLICATION_REF = "refs/remotes/origin/main"
+KIT_PUBLICATION_REF = "refs/remotes/origin/backport/puber-source-retirement-480"
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 WORKFLOW_ID = "10d8adb2-c74c-4ef0-8b5c-311cb5cd0459"
 TASK_ID = "task-12345678-1234-4234-8234-123456789abc"
@@ -166,9 +166,9 @@ def main() -> int:
         production_binding = (
             "[kit_runtime]\n"
             "schema_version = 1\n"
-            'root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/archive-published-2708-456"\n'
-            'commit = "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"\n'
-            'publication_ref = "refs/remotes/origin/main"\n'
+            'root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/225"\n'
+            'commit = "7a2438eadf52506c09c87af11cfcd1abb08ed983"\n'
+            'publication_ref = "refs/remotes/origin/backport/puber-source-retirement-480"\n'
         )
         assert profile_text.count(production_binding) == 1
         profile_text = profile_text.replace(

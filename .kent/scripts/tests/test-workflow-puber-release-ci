@@ -757,16 +757,16 @@ def _actual_typed_roundtrip(candidate_value: str, sandbox, candidate_freeze=None
             home = sandbox.home
             tool_dir = sandbox.bin
             prepare_cli = native.ci_helper
-            kit_publication_ref = "refs/remotes/origin/main"
+            kit_publication_ref = "refs/remotes/origin/backport/puber-source-retirement-480"
 
             profile_path = fixture_root / ".kent/workflow-profile.toml"
             profile_text = profile_path.read_text(encoding="utf-8")
             production_binding = (
                 "[kit_runtime]\n"
                 "schema_version = 1\n"
-                'root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/archive-published-2708-456"\n'
-                'commit = "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"\n'
-                'publication_ref = "refs/remotes/origin/main"\n'
+                'root = "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/225"\n'
+                'commit = "7a2438eadf52506c09c87af11cfcd1abb08ed983"\n'
+                'publication_ref = "refs/remotes/origin/backport/puber-source-retirement-480"\n'
             )
             assert profile_text.count(production_binding) == 1
             profile_text = profile_text.replace(

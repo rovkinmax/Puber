@@ -100,9 +100,9 @@ profile = tomllib.loads(
 )
 assert profile["kit_runtime"] == {
     "schema_version": 1,
-    "root": "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/archive-published-2708-456",
-    "commit": "2708c3391905ae10dc9e402d4f4ec0b4de020c9c",
-    "publication_ref": "refs/remotes/origin/main",
+    "root": "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/225",
+    "commit": "7a2438eadf52506c09c87af11cfcd1abb08ed983",
+    "publication_ref": "refs/remotes/origin/backport/puber-source-retirement-480",
 }
 expected_manifest = builder["_expected_manifest"]()
 retired_paths = {

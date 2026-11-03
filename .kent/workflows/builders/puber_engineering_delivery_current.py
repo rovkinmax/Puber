@@ -21,10 +21,10 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
 KIT_ROOT = Path(
     "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/"
-    "archive-published-2708-456"
+    "225"
 )
-KIT_COMMIT = "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"
-KIT_REF = "refs/remotes/origin/main"
+KIT_COMMIT = "7a2438eadf52506c09c87af11cfcd1abb08ed983"
+KIT_REF = "refs/remotes/origin/backport/puber-source-retirement-480"
 WORKFLOW_ID = "7061fc98-aae5-4468-9d89-fa28bfe30c72"
 NATIVE_VERSION = 13
 PLAN_ID = "a0716188-a4c1-4506-98c8-39580fbbee07"

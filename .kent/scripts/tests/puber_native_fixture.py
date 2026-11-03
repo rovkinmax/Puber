@@ -21,7 +21,7 @@ SOURCE_ROOT = Path(__file__).resolve().parents[3]
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
 TASK_ID = "task-12345678-1234-4234-8234-123456789abc"
 WORKSPACE_ID = "workspace-puber-native-fixture"
-PUBLICATION_REF = "refs/remotes/origin/main"
+PUBLICATION_REF = "refs/remotes/origin/backport/puber-source-retirement-480"
 
 
 KIT_CANDIDATE_PATHS = frozenset({
@@ -142,7 +142,7 @@ def verify_kit_binding(project, *, sandbox=None, publication="exact"):
     if (not isinstance(binding, dict)
         or set(binding) != {"schema_version", "root", "commit", "publication_ref"}
         or binding["schema_version"] != 1
-        or binding["commit"] != "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"
+        or binding["commit"] != "7a2438eadf52506c09c87af11cfcd1abb08ed983"
         or binding["publication_ref"] != PUBLICATION_REF):
         raise AssertionError("test requires exact reviewed current Kit binding")
     kit = Path(binding["root"]).resolve(strict=True)

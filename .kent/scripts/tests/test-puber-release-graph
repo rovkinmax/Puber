@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from puber_native_fixture import FixtureSandbox
 from unittest.mock import patch as _environment_patch
 with FixtureSandbox.create() as _fixture_sandbox:
-    _fixture_sandbox.allow_read(Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/archive-published-2708-456"))
+    _fixture_sandbox.allow_read(Path("/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/225"))
     with _environment_patch.dict(os.environ, _fixture_sandbox.environment, clear=True):
         ROOT = Path(__file__).resolve().parents[3]
         GRAPH = ROOT / ".kent/workflows/puber-release.json"
