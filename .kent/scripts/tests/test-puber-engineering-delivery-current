@@ -25,9 +25,11 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
 KIT_ROOT = Path(
     "/Users/rovkinmax/.kent/worktrees/kent-engineering-kit/"
-    "archive-published-2708-456"
+    "225"
 )
-KIT_COMMIT = "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"
+KIT_COMMIT = "7a2438eadf52506c09c87af11cfcd1abb08ed983"
+KIT_REF = "refs/remotes/origin/backport/puber-source-retirement-480"
+HISTORICAL_KIT_COMMIT = "2708c3391905ae10dc9e402d4f4ec0b4de020c9c"
 BASE_COMMIT = "a7b4486412c69c7708a3c5a78515dfde870eb88f"
 WORKFLOW_ID = "7061fc98-aae5-4468-9d89-fa28bfe30c72"
 PROJECT_ID = "project-6c1b6c4e-c8e2-4170-b9f7-a7d9c4602176"
@@ -95,6 +97,11 @@ MOBILE_RELEASE_SHA256 = {
     ".kent/workflows/puber-release-current.json": "518c4e7dfe32cb3f57349d69cca4aa4c2badccefdf959cfe7d9f633eeb5af8ac",
     ".kent/workflows/specs/puber-release-current.toml": "8b226c0d18991e4e6ca396594a3364d6d5b56e9112752e9056d590fdf2d43447",
 }
+PINNED_RELEASE_SHA256 = {
+    ".kent/workflow-profile.toml": "b8e10790f8352b819ef0d32923ce0204da99f56e2404df6a89752caf38548429",
+    ".kent/workflows/puber-release-current.json": "518c4e7dfe32cb3f57349d69cca4aa4c2badccefdf959cfe7d9f633eeb5af8ac",
+    ".kent/workflows/specs/puber-release-current.toml": "8b226c0d18991e4e6ca396594a3364d6d5b56e9112752e9056d590fdf2d43447",
+}
 
 
 def replace_unique(raw: bytes, old: bytes, new: bytes) -> bytes:
@@ -123,7 +130,7 @@ def historical_release_bytes(relative: str) -> bytes:
         raw = replace_unique(
             raw,
             b"30b908c9fc7097c0464ae67d58f891a1dd7103fb",
-            KIT_COMMIT.encode("ascii"),
+            HISTORICAL_KIT_COMMIT.encode("ascii"),
         )
     actual_hash = hashlib.sha256(raw).hexdigest()
     if actual_hash != HISTORICAL_RELEASE_SHA256[relative]:
@@ -198,21 +205,52 @@ def mobile_release_bytes(relative: str, historical: bytes) -> bytes:
     return raw
 
 
+def pinned_release_bytes(relative: str, mobile: bytes) -> bytes:
+    if relative != ".kent/workflow-profile.toml":
+        raw = mobile
+    else:
+        raw = replace_unique(
+            mobile,
+            b"/kent-engineering-kit/archive-published-2708-456",
+            b"/kent-engineering-kit/225",
+        )
+        raw = replace_unique(
+            raw,
+            HISTORICAL_KIT_COMMIT.encode("ascii"),
+            KIT_COMMIT.encode("ascii"),
+        )
+        raw = replace_unique(
+            raw,
+            b"refs/remotes/origin/main",
+            KIT_REF.encode("ascii"),
+        )
+    actual_hash = hashlib.sha256(raw).hexdigest()
+    if actual_hash != PINNED_RELEASE_SHA256[relative]:
+        raise AssertionError(f"pinned Release delta changed: {relative}")
+    return raw
+
+
 def classify_release_cohort(
     actual_bytes: dict[str, bytes],
     historical_bytes: dict[str, bytes],
     mobile_bytes: dict[str, bytes],
+    pinned_bytes: dict[str, bytes],
 ) -> str:
     expected_paths = set(RELEASE_COHORT_PATHS)
     cohorts = {
         "historical": historical_bytes,
         "mobile": mobile_bytes,
+        "pinned": pinned_bytes,
     }
     if set(actual_bytes) != expected_paths:
         raise AssertionError("Release cohort is missing or contains unexpected paths")
     if any(set(cohort_bytes) != expected_paths for cohort_bytes in cohorts.values()):
         raise AssertionError("Release cohort definition is incomplete")
-    if cohorts["historical"] == cohorts["mobile"]:
+    unique_cohorts = {
+        tuple(sorted(cohort.items()))
+        for cohort in cohorts.values()
+    }
+    if len(unique_cohorts) != len(cohorts):
         raise AssertionError("Release cohorts are not uniquely distinguishable")
     matches = [
         name for name, cohort_bytes in cohorts.items()
@@ -370,6 +408,7 @@ def release_snapshot(
     actual_cohort_bytes = {}
     expected_historical_bytes = {}
     expected_mobile_bytes = {}
+    expected_pinned_bytes = {}
     streaming_inputs = {
         ".kent/scripts/workflow-puber-release-intent",
         ".kent/scripts/workflow_runtime_contracts.py",
@@ -411,6 +450,10 @@ def release_snapshot(
                 relative,
                 expected_bytes,
             )
+            expected_pinned_bytes[relative] = pinned_release_bytes(
+                relative,
+                expected_mobile_bytes[relative],
+            )
             actual_cohort_bytes[relative] = current_bytes
         elif relative not in streaming_inputs:
             assert_exact_bytes(current_bytes, expected_bytes, relative)
@@ -422,6 +465,7 @@ def release_snapshot(
         actual_cohort_bytes,
         expected_historical_bytes,
         expected_mobile_bytes,
+        expected_pinned_bytes,
     )
     return snapshot
 
@@ -578,6 +622,10 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
             relative: mobile_release_bytes(relative, historical_bytes[relative])
             for relative in RELEASE_COHORT_PATHS
         }
+        pinned_bytes = {
+            relative: pinned_release_bytes(relative, mobile_bytes[relative])
+            for relative in RELEASE_COHORT_PATHS
+        }
         historical_hashes = {
             relative: hashlib.sha256(raw).hexdigest()
             for relative, raw in historical_bytes.items()
@@ -586,17 +634,30 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
             relative: hashlib.sha256(raw).hexdigest()
             for relative, raw in mobile_bytes.items()
         }
+        pinned_hashes = {
+            relative: hashlib.sha256(raw).hexdigest()
+            for relative, raw in pinned_bytes.items()
+        }
         self.assertEqual(historical_hashes, HISTORICAL_RELEASE_SHA256)
         self.assertEqual(mobile_hashes, MOBILE_RELEASE_SHA256)
+        self.assertEqual(pinned_hashes, PINNED_RELEASE_SHA256)
         self.assertEqual(
             classify_release_cohort(
-                historical_bytes, historical_bytes, mobile_bytes,
+                historical_bytes, historical_bytes, mobile_bytes, pinned_bytes,
             ),
             "historical",
         )
         self.assertEqual(
-            classify_release_cohort(mobile_bytes, historical_bytes, mobile_bytes),
+            classify_release_cohort(
+                mobile_bytes, historical_bytes, mobile_bytes, pinned_bytes,
+            ),
             "mobile",
+        )
+        self.assertEqual(
+            classify_release_cohort(
+                pinned_bytes, historical_bytes, mobile_bytes, pinned_bytes,
+            ),
+            "pinned",
         )
 
         graph_path = ".kent/workflows/puber-release-current.json"
@@ -610,32 +671,40 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
             with self.subTest(unqualified_mobile_native_revision=revision):
                 with self.assertRaises(AssertionError):
                     classify_release_cohort(
-                        observed, historical_bytes, mobile_bytes,
+                        observed, historical_bytes, mobile_bytes, pinned_bytes,
                     )
 
-        # A partial historical/mobile mixture is never a third accepted cohort.
-        for mask in range(1 << len(RELEASE_COHORT_PATHS)):
+        # A partial mixture of historical, mobile, and pinned inputs is never
+        # an accepted cohort.
+        cohort_values = (historical_bytes, mobile_bytes, pinned_bytes)
+        cohort_names = ("historical", "mobile", "pinned")
+        for selection in range(len(cohort_values) ** len(RELEASE_COHORT_PATHS)):
+            digits = []
+            remaining = selection
+            for _ in RELEASE_COHORT_PATHS:
+                digits.append(remaining % len(cohort_values))
+                remaining //= len(cohort_values)
             observed = {
-                relative: (
-                    mobile_bytes[relative]
-                    if mask & (1 << index)
-                    else historical_bytes[relative]
-                )
+                relative: cohort_values[digits[index]][relative]
                 for index, relative in enumerate(RELEASE_COHORT_PATHS)
             }
-            if mask in {0, (1 << len(RELEASE_COHORT_PATHS)) - 1}:
-                expected = "historical" if mask == 0 else "mobile"
+            matches = [
+                name for name, cohort in zip(cohort_names, cohort_values)
+                if observed == cohort
+            ]
+            if matches:
+                self.assertEqual(len(matches), 1)
                 self.assertEqual(
                     classify_release_cohort(
-                        observed, historical_bytes, mobile_bytes,
+                        observed, historical_bytes, mobile_bytes, pinned_bytes,
                     ),
-                    expected,
+                    matches[0],
                 )
             else:
-                with self.subTest(mixed_cohort=mask):
+                with self.subTest(mixed_cohort=tuple(digits)):
                     with self.assertRaises(AssertionError):
                         classify_release_cohort(
-                            observed, historical_bytes, mobile_bytes,
+                            observed, historical_bytes, mobile_bytes, pinned_bytes,
                         )
 
         missing = dict(historical_bytes)
@@ -647,7 +716,7 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
         for invalid in (missing, extra):
             with self.assertRaises(AssertionError):
                 classify_release_cohort(
-                    invalid, historical_bytes, mobile_bytes,
+                    invalid, historical_bytes, mobile_bytes, pinned_bytes,
                 )
 
         profile_path = ".kent/workflow-profile.toml"
@@ -663,7 +732,7 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
         drift_cases = {
             profile_path: replace_unique(
                 profile_bytes,
-                KIT_COMMIT.encode("ascii"),
+                HISTORICAL_KIT_COMMIT.encode("ascii"),
                 b"0" * 40,
             ),
             ".kent/workflows/puber-release-current.json":
@@ -677,8 +746,23 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
             with self.subTest(unrelated_drift=relative):
                 with self.assertRaises(AssertionError):
                     classify_release_cohort(
-                        observed, historical_bytes, mobile_bytes,
+                        observed, historical_bytes, mobile_bytes, pinned_bytes,
                     )
+
+        pinned_profile_drift = replace_unique(
+            pinned_bytes[profile_path],
+            KIT_COMMIT.encode("ascii"),
+            b"0" * 40,
+        )
+        observed_pinned_drift = dict(pinned_bytes)
+        observed_pinned_drift[profile_path] = pinned_profile_drift
+        with self.assertRaises(AssertionError):
+            classify_release_cohort(
+                observed_pinned_drift,
+                historical_bytes,
+                mobile_bytes,
+                pinned_bytes,
+            )
 
         # Exercise the real preservation path against a private source copy:
         # exact noncohort inputs reject content/mode drift, while the explicitly
@@ -870,7 +954,7 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
             kit_bootstrap.chmod(0o600)
             git(kit, "commit", "--allow-empty", "-qm", "Published descendant")
             descendant = git(kit, "rev-parse", "HEAD")
-            git(kit, "update-ref", "refs/remotes/origin/main", descendant)
+            git(kit, "update-ref", KIT_REF, descendant)
             git(kit, "checkout", "--detach", KIT_COMMIT)
             builder = module_from_bootstrap(BUILDER_PATH, "puber_builder_fixture")
             builder.KIT_ROOT = kit
@@ -969,6 +1053,12 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
             profile_path.write_text(profile_text, encoding="utf-8")
             profile_path.chmod(0o644)
             fixture.repin_native_sources()
+            fixture.git(
+                fixture.kit,
+                "update-ref",
+                KIT_REF,
+                fixture.commits[fixture.kit],
+            )
 
             fixture.receipt = {
                 "schema": "delivery-source-publication-v1",
@@ -995,7 +1085,7 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
                 "primary_root": str(fixture.project),
                 "kit_root": str(fixture.kit),
                 "source_ref": "refs/remotes/origin/main",
-                "kit_ref": "refs/remotes/origin/main",
+                "kit_ref": KIT_REF,
                 "ci_helper": str(fixture.ci_helper),
                 "helper_bindings": [],
                 "binding": {"kind": "plan-publication"},
