@@ -33,7 +33,7 @@ and executes it with compilation checks after each step.
 
 ### Phase 2: Analysis
 
-Use `kent run --agent=project-researcher --workspace "$PWD" "<bounded analysis prompt>"` to analyze the code:
+Use `kent run --agent=researcher --workspace "$PWD" "<bounded analysis prompt>"` to analyze the code:
 - Identify all files affected by the refactoring
 - Map dependencies: who uses the code being refactored
 - Find all call sites, imports, DI bindings (Koin modules)

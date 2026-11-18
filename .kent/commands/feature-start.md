@@ -48,7 +48,7 @@ Determine if this is a **visual feature** (has UI design) or a **code-only chang
   from the task description or interview, then proceed to Phase 4 (Plan).
 - In standalone manual use, an explicit refactor or migration may be reported as better suited to its dedicated
   procedure, but do not invoke another `/prompt:*` flow automatically.
-- The plan phase handles its own codebase analysis via `project-researcher`.
+- The plan phase handles its own codebase analysis via `researcher`.
 - If unsure, ask the user via `ask_question`: "Is there a Figma design for this, or is it a code-only change?"
 
 ### Phase 2: Design (semi-interactive)

@@ -136,8 +136,8 @@ another branch or commit.
   as missing aggregate fields even when draft and execution validation pass.
 - Every fan-out branch must transition directly to its join. Kent `2.2.0` drops parallel branch lineage on an
   intermediate node, leaving the task active with no placement after both branches complete.
-- Project role aliases are configured in `.kent/config.toml`; for example `project-researcher` maps to
-  `subagents/android-codebase-analyst.md`, even though there is no `subagents/project-researcher.md` file.
+- Project role prompt overlays are configured in `.kent/config.toml`; for example, `researcher` maps to
+  `subagents/android-codebase-analyst.md`, retaining the project-specific prompt filename.
 - After adding or changing subagent roles in `.kent/config.toml`, restart Kent service/GUI before expecting execution
   validation or new workflow tasks to see the role.
 - Do not model recoverable blockers as terminal states. Use `needs_user_action` back to the same node with

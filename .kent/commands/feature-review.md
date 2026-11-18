@@ -45,9 +45,9 @@ Standards and Specification fan-out owns independent final review, and Complianc
 
 For standalone/manual review only, if the feature has both screen and data-layer steps completed (3+ files to review),
 launch review agents in parallel:
-- `kent run --agent=compose-reviewer --workspace "$PWD" "<bounded Compose review prompt>"` — review all
+- `kent run --agent=ui-reviewer --workspace "$PWD" "<bounded Compose review prompt>"` — review all
   screen/component files
-- `kent run --agent=domain-model-reviewer --workspace "$PWD" "<bounded domain review prompt>"` — audit
+- `kent run --agent=domain-reviewer --workspace "$PWD" "<bounded domain review prompt>"` — audit
   interactor/mapper quality
 
 These agents are independent — launch them simultaneously. Merge their findings into the final report.

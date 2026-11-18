@@ -10,8 +10,8 @@ review procedure, but keep this command read-only unless the user explicitly ask
 - Follow `.kent/skills/puber-android-workflow/SKILL.md`.
 - Load `references/rules/feature-target-resolution.md`, `references/rules/workflow.md`, `references/rules/mcp.md`, and
   only recipes relevant to changed files.
-- Use `kent run --agent compose-reviewer --workspace "$PWD" "<prompt>"` for Compose-heavy review.
-- Use `kent run --agent domain-model-reviewer --workspace "$PWD" "<prompt>"` for data/domain mapping review.
+- Use `kent run --agent ui-reviewer --workspace "$PWD" "<prompt>"` for Compose-heavy review.
+- Use `kent run --agent domain-reviewer --workspace "$PWD" "<prompt>"` for data/domain mapping review.
 - Do not edit files, commit, or push.
 
 ## Output
