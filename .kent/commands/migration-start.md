@@ -33,7 +33,7 @@ and executes it file by file with build verification.
 
 ### Phase 2: Analysis
 
-Use `kent run --agent=project-researcher --workspace "$PWD" "<bounded analysis prompt>"` to analyze migration scope:
+Use `kent run --agent=researcher --workspace "$PWD" "<bounded analysis prompt>"` to analyze migration scope:
 
 1. **Identify all files in scope** (single `:app` module)
 2. **Build dependency graph:**

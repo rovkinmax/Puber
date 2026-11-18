@@ -36,8 +36,8 @@ Generates a step-by-step implementation plan based on design and spec data colle
 - Use this knowledge to inform the plan (avoid known pitfalls, reuse proven patterns)
 
 ### Step 2: Analyze existing codebase
-**Recommended**: Use the `project-researcher` Kent subagent for codebase analysis:
-`kent run --agent=project-researcher --workspace "$PWD" "<bounded analysis prompt>"`. It can explore multiple files
+**Recommended**: Use the `researcher` Kent subagent for codebase analysis:
+`kent run --agent=researcher --workspace "$PWD" "<bounded analysis prompt>"`. It can explore multiple files
 efficiently without polluting the main context. For simple file searches, use direct `rg`, `find`, or `ls` instead of
 starting an agent.
 
@@ -220,7 +220,7 @@ The `/prompt:feature-context .todo/<feature> plan` command shows progress summar
 - Do NOT start implementing — only create the plan
 - Use `[ ]` / `[x]` checkboxes on step headers for progress tracking
 - Add `complexity: low/medium/high` to each step header — helps estimate effort
-- For Android codebase analysis: use `kent run --agent=project-researcher --workspace "$PWD" "<prompt>"`.
+- For Android codebase analysis: use `kent run --agent=researcher --workspace "$PWD" "<prompt>"`.
 - Use direct shell searches for simple existence checks and import lookups.
 - For UI steps, always include **Screenshots** field with relevant PNG filenames
 - Load `.todo/_shared/` knowledge to avoid repeating past mistakes

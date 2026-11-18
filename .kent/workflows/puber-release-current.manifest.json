@@ -141,12 +141,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/feature-start.md=1276610b5a214e6e9e0d08acff8ec49fbfc9b7cdd72bbb0b9a9f1b6ec8cf36d1",
+      "key": ".kent/commands/feature-start.md=3d448a5b9ff39cf0b0523f6b49d47232d90ffc0b1a6ffc3e47885784ccbc7ad0",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/migration-start.md=dc89dc5e9395fd344e54a171cd5a2d45466bc18371fc933a72a2e16399cc52e5",
+      "key": ".kent/commands/migration-start.md=0f506f5f471c0bc00ddd4b3f4357a26e653c010ef2e8692cff9c12588fbfb520",
       "runtime_digest_required": true
     },
     {
@@ -161,7 +161,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/refactor-start.md=4e6ca9baac8f94503c53b40cace6a4fdd8f15ee180fece813fe54d19c621c1b0",
+      "key": ".kent/commands/refactor-start.md=8e9aed5a5ce50a76a39129da208c20a85976d317722bbb15481b488141441a34",
       "runtime_digest_required": true
     },
     {
@@ -201,7 +201,7 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/commands/test-coverage.md=a8e75896f66efdba6075654a0a5b2cc8dfa69ea8728dd3f657638e6bf45d42a8",
+      "key": ".kent/commands/test-coverage.md=110e8a593e54a6a3aadbf8606f7c19adc01a4f432fa296b8d8ce37d1c608fada",
       "runtime_digest_required": true
     },
     {
@@ -476,12 +476,12 @@
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/workflow-profile.toml=b8e10790f8352b819ef0d32923ce0204da99f56e2404df6a89752caf38548429",
+      "key": ".kent/workflow-profile.toml=836d76e2a084adf6f2ba8b5430460e02a9e9857bd15720dec7a213634238febc",
       "runtime_digest_required": true
     },
     {
       "kind": "source-sha256",
-      "key": ".kent/workflows/README.md=e93f3f55b7698ea5c9140d318482fbba6cc286751ea460b3da80421cc325d91e",
+      "key": ".kent/workflows/README.md=dd3b9cd3bc4bc5c5f258fa3622268e943c045318c1c26facd7b62651b8c63877",
       "runtime_digest_required": true
     },
     {

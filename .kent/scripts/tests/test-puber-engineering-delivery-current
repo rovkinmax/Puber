@@ -102,6 +102,10 @@ PINNED_RELEASE_SHA256 = {
     ".kent/workflows/puber-release-current.json": "518c4e7dfe32cb3f57349d69cca4aa4c2badccefdf959cfe7d9f633eeb5af8ac",
     ".kent/workflows/specs/puber-release-current.toml": "8b226c0d18991e4e6ca396594a3364d6d5b56e9112752e9056d590fdf2d43447",
 }
+RESEARCHER_RELEASE_SHA256 = {
+    **PINNED_RELEASE_SHA256,
+    ".kent/workflow-profile.toml": "836d76e2a084adf6f2ba8b5430460e02a9e9857bd15720dec7a213634238febc",
+}
 
 
 def replace_unique(raw: bytes, old: bytes, new: bytes) -> bytes:
@@ -230,17 +234,34 @@ def pinned_release_bytes(relative: str, mobile: bytes) -> bytes:
     return raw
 
 
+def researcher_release_bytes(relative: str, pinned: bytes) -> bytes:
+    if relative != ".kent/workflow-profile.toml":
+        raw = pinned
+    else:
+        raw = replace_unique(
+            pinned,
+            b'researcher = "project-researcher"',
+            b'researcher = "researcher"',
+        )
+    actual_hash = hashlib.sha256(raw).hexdigest()
+    if actual_hash != RESEARCHER_RELEASE_SHA256[relative]:
+        raise AssertionError(f"researcher Release delta changed: {relative}")
+    return raw
+
+
 def classify_release_cohort(
     actual_bytes: dict[str, bytes],
     historical_bytes: dict[str, bytes],
     mobile_bytes: dict[str, bytes],
     pinned_bytes: dict[str, bytes],
+    researcher_bytes: dict[str, bytes],
 ) -> str:
     expected_paths = set(RELEASE_COHORT_PATHS)
     cohorts = {
         "historical": historical_bytes,
         "mobile": mobile_bytes,
         "pinned": pinned_bytes,
+        "researcher": researcher_bytes,
     }
     if set(actual_bytes) != expected_paths:
         raise AssertionError("Release cohort is missing or contains unexpected paths")
@@ -409,6 +430,7 @@ def release_snapshot(
     expected_historical_bytes = {}
     expected_mobile_bytes = {}
     expected_pinned_bytes = {}
+    expected_researcher_bytes = {}
     streaming_inputs = {
         ".kent/scripts/workflow-puber-release-intent",
         ".kent/scripts/workflow_runtime_contracts.py",
@@ -454,6 +476,10 @@ def release_snapshot(
                 relative,
                 expected_mobile_bytes[relative],
             )
+            expected_researcher_bytes[relative] = researcher_release_bytes(
+                relative,
+                expected_pinned_bytes[relative],
+            )
             actual_cohort_bytes[relative] = current_bytes
         elif relative not in streaming_inputs:
             assert_exact_bytes(current_bytes, expected_bytes, relative)
@@ -466,6 +492,7 @@ def release_snapshot(
         expected_historical_bytes,
         expected_mobile_bytes,
         expected_pinned_bytes,
+        expected_researcher_bytes,
     )
     return snapshot
 
@@ -613,6 +640,39 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
         self.assertEqual(self.source_snapshot(ROOT), before)
         assert_snapshot_unchanged(before_release, release_snapshot())
 
+    def test_selected_researcher_prompt_keeps_canonical_and_puber_contracts(self):
+        profile = tomllib.loads(
+            (ROOT / ".kent/workflow-profile.toml").read_text(encoding="utf-8")
+        )
+        config = tomllib.loads((ROOT / ".kent/config.toml").read_text(encoding="utf-8"))
+        role = profile["roles"]["researcher"]
+        prompt_path = config["subagents"][role]["system_prompt_file"]
+        self.assertEqual(role, "researcher")
+        self.assertEqual(prompt_path, "subagents/android-codebase-analyst.md")
+
+        prompt = (ROOT / ".kent" / prompt_path).read_text(encoding="utf-8")
+        canonical_preamble = """First read the canonical researcher contract from the installed
+kent-engineering-kit skill's source checkout: resolve the skill symlink under
+`${KENT_PERSISTENCE_ROOT:-$HOME/.kent}/skills/kent-engineering-kit`, then read
+`agents/researcher.md` from that checkout. Its complete contract applies to
+this role, including independent Kit review, inspection-only shell use and
+genuine-node evidence/completion limits. The instructions below specialize
+source analysis for this project; they do not replace or relax that contract.
+If the canonical binding or contract is unavailable, report the missing
+capability and do not substitute a similarly named local file."""
+        self.assertEqual(prompt.count(canonical_preamble), 1)
+        self.assertLess(prompt.index(canonical_preamble), prompt.index("# Role"))
+
+        for domain_instruction in (
+            "# Project conventions",
+            "# What to analyze",
+            "KinoPubApiClient",
+            "Entity usage map",
+            "Usage verification (MANDATORY)",
+        ):
+            with self.subTest(domain_instruction=domain_instruction):
+                self.assertIn(domain_instruction, prompt)
+
     def test_release_cohorts_are_exact_and_preserve_negative_guards(self):
         historical_bytes = {
             relative: historical_release_bytes(relative)
@@ -624,6 +684,10 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
         }
         pinned_bytes = {
             relative: pinned_release_bytes(relative, mobile_bytes[relative])
+            for relative in RELEASE_COHORT_PATHS
+        }
+        researcher_bytes = {
+            relative: researcher_release_bytes(relative, pinned_bytes[relative])
             for relative in RELEASE_COHORT_PATHS
         }
         historical_hashes = {
@@ -638,26 +702,37 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
             relative: hashlib.sha256(raw).hexdigest()
             for relative, raw in pinned_bytes.items()
         }
+        researcher_hashes = {
+            relative: hashlib.sha256(raw).hexdigest()
+            for relative, raw in researcher_bytes.items()
+        }
         self.assertEqual(historical_hashes, HISTORICAL_RELEASE_SHA256)
         self.assertEqual(mobile_hashes, MOBILE_RELEASE_SHA256)
         self.assertEqual(pinned_hashes, PINNED_RELEASE_SHA256)
+        self.assertEqual(researcher_hashes, RESEARCHER_RELEASE_SHA256)
         self.assertEqual(
             classify_release_cohort(
-                historical_bytes, historical_bytes, mobile_bytes, pinned_bytes,
+                historical_bytes, historical_bytes, mobile_bytes, pinned_bytes, researcher_bytes,
             ),
             "historical",
         )
         self.assertEqual(
             classify_release_cohort(
-                mobile_bytes, historical_bytes, mobile_bytes, pinned_bytes,
+                mobile_bytes, historical_bytes, mobile_bytes, pinned_bytes, researcher_bytes,
             ),
             "mobile",
         )
         self.assertEqual(
             classify_release_cohort(
-                pinned_bytes, historical_bytes, mobile_bytes, pinned_bytes,
+                pinned_bytes, historical_bytes, mobile_bytes, pinned_bytes, researcher_bytes,
             ),
             "pinned",
+        )
+        self.assertEqual(
+            classify_release_cohort(
+                researcher_bytes, historical_bytes, mobile_bytes, pinned_bytes, researcher_bytes,
+            ),
+            "researcher",
         )
 
         graph_path = ".kent/workflows/puber-release-current.json"
@@ -671,13 +746,13 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
             with self.subTest(unqualified_mobile_native_revision=revision):
                 with self.assertRaises(AssertionError):
                     classify_release_cohort(
-                        observed, historical_bytes, mobile_bytes, pinned_bytes,
+                        observed, historical_bytes, mobile_bytes, pinned_bytes, researcher_bytes,
                     )
 
-        # A partial mixture of historical, mobile, and pinned inputs is never
-        # an accepted cohort.
-        cohort_values = (historical_bytes, mobile_bytes, pinned_bytes)
-        cohort_names = ("historical", "mobile", "pinned")
+        # A partial mixture of historical, mobile, pinned, and researcher
+        # inputs is never an accepted cohort.
+        cohort_values = (historical_bytes, mobile_bytes, pinned_bytes, researcher_bytes)
+        cohort_names = ("historical", "mobile", "pinned", "researcher")
         for selection in range(len(cohort_values) ** len(RELEASE_COHORT_PATHS)):
             digits = []
             remaining = selection
@@ -696,7 +771,7 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
                 self.assertEqual(len(matches), 1)
                 self.assertEqual(
                     classify_release_cohort(
-                        observed, historical_bytes, mobile_bytes, pinned_bytes,
+                        observed, historical_bytes, mobile_bytes, pinned_bytes, researcher_bytes,
                     ),
                     matches[0],
                 )
@@ -704,7 +779,7 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
                 with self.subTest(mixed_cohort=tuple(digits)):
                     with self.assertRaises(AssertionError):
                         classify_release_cohort(
-                            observed, historical_bytes, mobile_bytes, pinned_bytes,
+                            observed, historical_bytes, mobile_bytes, pinned_bytes, researcher_bytes,
                         )
 
         missing = dict(historical_bytes)
@@ -716,7 +791,7 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
         for invalid in (missing, extra):
             with self.assertRaises(AssertionError):
                 classify_release_cohort(
-                    invalid, historical_bytes, mobile_bytes, pinned_bytes,
+                    invalid, historical_bytes, mobile_bytes, pinned_bytes, researcher_bytes,
                 )
 
         profile_path = ".kent/workflow-profile.toml"
@@ -746,7 +821,7 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
             with self.subTest(unrelated_drift=relative):
                 with self.assertRaises(AssertionError):
                     classify_release_cohort(
-                        observed, historical_bytes, mobile_bytes, pinned_bytes,
+                        observed, historical_bytes, mobile_bytes, pinned_bytes, researcher_bytes,
                     )
 
         pinned_profile_drift = replace_unique(
@@ -762,6 +837,23 @@ class EngineeringCurrentSourceTests(unittest.TestCase):
                 historical_bytes,
                 mobile_bytes,
                 pinned_bytes,
+                researcher_bytes,
+            )
+
+        unrelated_profile_drift = replace_unique(
+            researcher_bytes[profile_path],
+            b'build_doctor = "build-doctor"',
+            b'build_doctor = "gradle-build-doctor"',
+        )
+        observed_unrelated_drift = dict(researcher_bytes)
+        observed_unrelated_drift[profile_path] = unrelated_profile_drift
+        with self.assertRaises(AssertionError):
+            classify_release_cohort(
+                observed_unrelated_drift,
+                historical_bytes,
+                mobile_bytes,
+                pinned_bytes,
+                researcher_bytes,
             )
 
         # Exercise the real preservation path against a private source copy:

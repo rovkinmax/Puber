@@ -32,7 +32,7 @@ and implements them step by step.
 
 ### Phase 2: Analysis
 
-Use `kent run --agent=project-researcher --workspace "$PWD" "<bounded testability analysis prompt>"` to analyze the
+Use `kent run --agent=researcher --workspace "$PWD" "<bounded testability analysis prompt>"` to analyze the
 target path:
 
 1. **Find all source files:**
